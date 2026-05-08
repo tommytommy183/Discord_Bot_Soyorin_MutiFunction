@@ -4,6 +4,7 @@ using Discord.Audio;
 using Discord.Commands;
 using Discord.Interactions;
 using Discord.WebSocket;
+using InstagramApiSharp.Classes;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using MusicBot2.Service;
@@ -292,6 +293,16 @@ public class Program
             await message.Channel.SendMessageAsync(result);
         }
 
+        if(message.Content.ToLower().Contains("threads"))
+        {
+            await message.Channel.SendMessageAsync("再傳再傳再再傳白癡翠");
+            await message.Channel.SendMessageAsync("https://tenor.com/view/bang-dream-bandori-its-mygo-mygo-ave-mujica-gif-11585297176740329728");
+        }
+        else if (message.Content.ToLower().Contains("steam"))
+        {
+            await message.Channel.SendMessageAsync("這個遊戲有人傳過嗎?");
+            await message.Channel.SendMessageAsync("https://tenor.com/view/%E6%98%9F%E7%88%86-gif-2654981557486677598");
+        }
         if (!message.Content.StartsWith("$$")) return;
         string cmd = message.Content.Substring(2);
         var channel = message.Channel as IMessageChannel;
