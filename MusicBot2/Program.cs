@@ -51,6 +51,7 @@ public class Program
     private InteractionService? _interactionService;
     private IServiceProvider? _services;
     private GoogleAIStudioService _googleAIStudioService;
+    private SetTextService _setTextService;
     #endregion
 
     #region 基礎設定
@@ -78,6 +79,9 @@ public class Program
         string googleAIStudioApiKey = configer["GoogleAIStudio:dcBotKey1"];
         string googleAIStudioApiKey2 = configer["GoogleAIStudio:dcBotKey2"];
 
+        var setTextService = new SetTextService(basePath: Directory.GetCurrentDirectory());
+
+
         _client = new DiscordSocketClient(config);
         _commands = new CommandService();
         _interactionService = new InteractionService(_client);
@@ -94,6 +98,7 @@ public class Program
             .AddSingleton<GetChampService>()
             .AddSingleton<OldMaidService>()
             .AddSingleton<RVC_Service>()
+            .AddSingleton<SetTextService>(setTextService)
             .AddSingleton<ElevenLabsService>(sp =>
                 new ElevenLabsService(
                     sp.GetRequiredService<DiscordSocketClient>(),
@@ -105,6 +110,7 @@ public class Program
             .BuildServiceProvider();
 
         _googleAIStudioService = _services.GetRequiredService<GoogleAIStudioService>();
+        _setTextService = _services.GetRequiredService<SetTextService>();
 
         _client.MessageReceived += MessageReceivedHandler;
         _client.Log += Log;
@@ -293,16 +299,12 @@ public class Program
             await message.Channel.SendMessageAsync(result);
         }
 
-        if(message.Content.ToLower().Contains("threads"))
+        string match = _setTextService.Match(message.Content.ToLower());
+        if(!string.IsNullOrEmpty(match))
         {
-            await message.Channel.SendMessageAsync("再傳再傳再再傳白癡翠");
-            await message.Channel.SendMessageAsync("https://tenor.com/view/bang-dream-bandori-its-mygo-mygo-ave-mujica-gif-11585297176740329728");
+            await message.Channel.SendMessageAsync(match);
         }
-        else if (message.Content.ToLower().Contains("steam"))
-        {
-            await message.Channel.SendMessageAsync("這個遊戲有人傳過嗎?");
-            await message.Channel.SendMessageAsync("https://tenor.com/view/%E6%98%9F%E7%88%86-gif-2654981557486677598");
-        }
+
         if (!message.Content.StartsWith("$$")) return;
         string cmd = message.Content.Substring(2);
         var channel = message.Channel as IMessageChannel;
