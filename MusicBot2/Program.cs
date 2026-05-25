@@ -4,6 +4,7 @@ using Discord.Audio;
 using Discord.Commands;
 using Discord.Interactions;
 using Discord.WebSocket;
+using InstagramApiSharp.Classes;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using MusicBot2.Service;
@@ -50,6 +51,7 @@ public class Program
     private InteractionService? _interactionService;
     private IServiceProvider? _services;
     private GoogleAIStudioService _googleAIStudioService;
+    private SetTextService _setTextService;
     #endregion
 
     #region 基礎設定
@@ -77,6 +79,9 @@ public class Program
         string googleAIStudioApiKey = configer["GoogleAIStudio:dcBotKey1"];
         string googleAIStudioApiKey2 = configer["GoogleAIStudio:dcBotKey2"];
 
+        var setTextService = new SetTextService(basePath: Directory.GetCurrentDirectory());
+
+
         _client = new DiscordSocketClient(config);
         _commands = new CommandService();
         _interactionService = new InteractionService(_client);
@@ -93,6 +98,7 @@ public class Program
             .AddSingleton<GetChampService>()
             .AddSingleton<OldMaidService>()
             .AddSingleton<RVC_Service>()
+            .AddSingleton<SetTextService>(setTextService)
             .AddSingleton<ElevenLabsService>(sp =>
                 new ElevenLabsService(
                     sp.GetRequiredService<DiscordSocketClient>(),
@@ -104,6 +110,7 @@ public class Program
             .BuildServiceProvider();
 
         _googleAIStudioService = _services.GetRequiredService<GoogleAIStudioService>();
+        _setTextService = _services.GetRequiredService<SetTextService>();
 
         _client.MessageReceived += MessageReceivedHandler;
         _client.Log += Log;
@@ -290,6 +297,12 @@ public class Program
             var talker = message.Author as SocketGuildUser;
             string result = await _googleAIStudioService.GenerateTextAsync(message.Content, talker, true);
             await message.Channel.SendMessageAsync(result);
+        }
+
+        string match = _setTextService.Match(message.Content.ToLower());
+        if(!string.IsNullOrEmpty(match))
+        {
+            await message.Channel.SendMessageAsync(match);
         }
 
         if (!message.Content.StartsWith("$$")) return;

@@ -22,13 +22,15 @@ namespace MusicBot2.SlahCommands
         private readonly RubiksCubeService _rubiksCubeService;
         private readonly GoogleAIStudioService _googleAIStudioService;
         private readonly RVC_Service _rVC_Service;
+        private readonly SetTextService _setTextService;
 
-        public SlashCommandHandler(Program program, WordGuessingService wordService, MineGameService mineGameService, ElevenLabsService elevenLabsService, OldMaidService oldMaidService, RubiksCubeService rubiksCubeService, GoogleAIStudioService googleAIStudioService, RVC_Service rVC_Service)
+        public SlashCommandHandler(Program program, WordGuessingService wordService, MineGameService mineGameService, ElevenLabsService elevenLabsService, OldMaidService oldMaidService, RubiksCubeService rubiksCubeService, GoogleAIStudioService googleAIStudioService, RVC_Service rVC_Service, SetTextService setTextService)
         {
             _program = program;
             this.wordService = wordService;
             _elevenLabsService = elevenLabsService;
             _mineGameService = mineGameService;
+            _setTextService = setTextService;
             _oldMaidService = oldMaidService;
             _rubiksCubeService = rubiksCubeService;
             _googleAIStudioService = googleAIStudioService;
@@ -379,6 +381,32 @@ namespace MusicBot2.SlahCommands
             var result = _oldMaidService.ResetGame(Context.Channel);
 
             await FollowupAsync(result, ephemeral: true);
+        }
+
+
+        [SlashCommand("settext", "設置文字")]
+        public async Task SetTextCommand(
+            [Summary("if", "如果有這個文字")] string key,
+            [Summary("then", "會跳出下面這段，如果不填就是刪除")] string value = ""
+            )
+        {
+            await DeferAsync();
+
+            _setTextService.Set(key, value);
+
+            await FollowupAsync("設置完成", ephemeral: true);
+        }
+
+        [SlashCommand("settextcheck", "檢查所有的設置文字")]
+        public async Task SetTextCheckCommand()
+        {
+            await DeferAsync();
+
+            var result = _setTextService.GetAll();
+
+            string formattedResult = string.Join("\n", result.Select(kv => $"**{kv.Key}**: {kv.Value}"));
+
+            await FollowupAsync(formattedResult, ephemeral: true);
         }
     }
 }
