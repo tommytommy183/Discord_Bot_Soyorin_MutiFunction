@@ -439,7 +439,7 @@ public class Program
             return;
         }
 
-        if (!await CheckYoutubeUrlAliveAsync(query) && !_isRelatedOn)
+        if (!await CheckYoutubeUrlAliveAsync(query,channel) && !_isRelatedOn)
         {
             await channel.SendMessageAsync($"連結已經死了: {{ {query} }}");
             return;
@@ -1046,13 +1046,14 @@ public class Program
         channel.SendMessageAsync(sb.ToString());
         return (parts[index]);
     }
-    public async Task<bool> CheckYoutubeUrlAliveAsync(string url)
+    public async Task<bool> CheckYoutubeUrlAliveAsync(string url, IMessageChannel channel)
     {
         try
         {
             var videoId = YoutubeExplode.Videos.VideoId.TryParse(url);
             if (videoId == null)
             {
+                await channel.SendMessageAsync("這裡爆炸了，videoId = null");
                 return false;
             }
 
@@ -1060,6 +1061,8 @@ public class Program
             var video = await youtube.Videos.GetAsync(videoId.Value);
             _NowPlayingSongName = video.Title;
 
+
+            await channel.SendMessageAsync($"有取得標題 {video.Title}");
             return video != null; // 如果成功获取到视频信息，则视为有效
         }
         catch (Exception ex)
