@@ -78,12 +78,13 @@ namespace MusicBot2.Service
                 string _filePath = Path.Combine(Directory.GetCurrentDirectory(), "words.txt");
 
                 using var httpClient = new HttpClient();
-                var content = await httpClient.GetStringAsync(file.Url);
+                var bytes = await httpClient.GetByteArrayAsync(file.Url);
+                var content = Encoding.UTF8.GetString(bytes);
 
                 if (string.IsNullOrWhiteSpace(content))
                     return false;
 
-                await File.WriteAllTextAsync(_filePath, content);
+                await File.WriteAllTextAsync(_filePath, content, Encoding.UTF8);
                 return true;
             }
             catch

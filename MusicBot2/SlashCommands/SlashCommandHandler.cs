@@ -416,15 +416,12 @@ namespace MusicBot2.SlahCommands
             )
         {
             await DeferAsync();
-
             var result = await _wordService.SetWord(file);
-
             if (!result)
             {
                 await FollowupAsync("上傳失敗，請確保檔案格式正確且內容不為空", ephemeral: true);
                 return;
             }
-
             await FollowupAsync("上傳成功", ephemeral: true);
         }
     }
