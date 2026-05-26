@@ -1,75 +1,41 @@
-﻿using ElevenLabs.Voices;
-using System.Text.Json;
+﻿using StackExchange.Redis;
 
 public class SetTextService
 {
-    private readonly string _filePath;
-    private Dictionary<string, string> _data = new();
+    private readonly IDatabase _db;
+    private const string HashKey = "setText";
 
-    public SetTextService(string basePath = "")
+    public SetTextService(string redisConnectionString)
     {
-        _filePath = Path.Combine(basePath, "TxtFolder", "SetText.json");
-        Load();
+        var redis = ConnectionMultiplexer.Connect(redisConnectionString);
+        _db = redis.GetDatabase();
     }
 
-    // ── 讀取 ──────────────────────────────────────────
-    public void Load()
+    // ── 關鍵字比對 ────────────────────────────────────
+    public async Task<string?> Match(string input)
     {
-        if (!File.Exists(_filePath))
+        var entries = await _db.HashGetAllAsync(HashKey);
+        foreach (var entry in entries)
         {
-            _data = new Dictionary<string, string>();
-            return;
+            if (input.Contains(entry.Name.ToString(), StringComparison.OrdinalIgnoreCase))
+                return entry.Value.ToString();
         }
-
-        var json = File.ReadAllText(_filePath);
-        _data = JsonSerializer.Deserialize<Dictionary<string, string>>(json)
-                ?? new Dictionary<string, string>();
+        return null;
     }
-
-    // ── 關鍵字比對：輸入一段訊息，找出對應回覆 ─────────
-    // 比對方式：訊息中只要包含 key（不分大小寫）就觸發
-    public string? Match(string input)
-    {
-        foreach (var (key, value) in _data)
-        {
-            if (input.Contains(key, StringComparison.OrdinalIgnoreCase))
-                return value;
-        }
-        return null; // 沒有符合的關鍵字
-    }
-
 
     // ── 取得所有資料 ──────────────────────────────────
-    public IReadOnlyDictionary<string, string> GetAll() => _data;
-
-    // ── 新增 / 更新一筆 ──────────────────────────────
-    public void Set(string key, string value)
+    public async Task<IReadOnlyDictionary<string, string>> GetAll()
     {
-        _data[key] = value;
-        if(string.IsNullOrEmpty(value))
-        {
-            _data.Remove(key);
-        }
-        Save();
+        var entries = await _db.HashGetAllAsync(HashKey);
+        return entries.ToDictionary(e => e.Name.ToString(), e => e.Value.ToString());
     }
 
-    // ── 刪除一筆 ─────────────────────────────────────
-    private bool Remove(string key)
+    // ── 新增 / 更新 / 刪除 ────────────────────────────
+    public async Task Set(string key, string value)
     {
-        var removed = _data.Remove(key);
-        if (removed) Save();
-        return removed;
-    }
-
-    // ── 寫回 JSON ────────────────────────────────────
-    private void Save()
-    {
-        var dir = Path.GetDirectoryName(_filePath)!;
-        if (!Directory.Exists(dir))
-            Directory.CreateDirectory(dir);
-
-        var json = JsonSerializer.Serialize(_data,
-            new JsonSerializerOptions { WriteIndented = true });
-        File.WriteAllText(_filePath, json);
+        if (string.IsNullOrEmpty(value))
+            await _db.HashDeleteAsync(HashKey, key);
+        else
+            await _db.HashSetAsync(HashKey, key, value);
     }
 }

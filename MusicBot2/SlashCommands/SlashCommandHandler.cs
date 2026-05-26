@@ -403,7 +403,7 @@ namespace MusicBot2.SlahCommands
         {
             await DeferAsync();
 
-            var result = _setTextService.GetAll();
+            var result = await _setTextService.GetAll();
 
             string formattedResult = string.Join("\n", result.Select(kv => $"**{kv.Key}**: {kv.Value}"));
 

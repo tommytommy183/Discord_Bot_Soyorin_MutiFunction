@@ -80,8 +80,8 @@ public class Program
         string googleAIStudioApiKey = configer["GoogleAIStudio:dcBotKey1"];
         string googleAIStudioApiKey2 = configer["GoogleAIStudio:dcBotKey2"];
 
-        var setTextService = new SetTextService(basePath: Directory.GetCurrentDirectory());
-
+        string redisConn = configer["Redis:ConnectionString"];
+        var setTextService = new SetTextService(redisConn);
 
         _client = new DiscordSocketClient(config);
         _commands = new CommandService();
@@ -300,7 +300,7 @@ public class Program
             await message.Channel.SendMessageAsync(result);
         }
 
-        string match = _setTextService.Match(message.Content.ToLower());
+        string match = await _setTextService.Match(message.Content.ToLower());
         if(!string.IsNullOrEmpty(match))
         {
             await message.Channel.SendMessageAsync(match);
