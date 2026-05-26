@@ -753,6 +753,7 @@ public class Program
             else
                 filepath = await DownloadAudioAsync(songUrl);
 
+            Console.WriteLine(filepath);
             await Task.Delay(2000);
 
             if (_audioClient == null || _audioClient.ConnectionState != Discord.ConnectionState.Connected)
@@ -1053,7 +1054,6 @@ public class Program
             var videoId = YoutubeExplode.Videos.VideoId.TryParse(url);
             if (videoId == null)
             {
-                await channel.SendMessageAsync("這裡爆炸了，videoId = null");
                 return false;
             }
 
