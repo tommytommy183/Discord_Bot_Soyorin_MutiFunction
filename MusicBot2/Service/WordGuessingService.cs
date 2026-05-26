@@ -1,4 +1,5 @@
-﻿using Discord.WebSocket;
+﻿using Discord;
+using Discord.WebSocket;
 using MusicBot2.Helpers;
 using MusicBot2.Models;
 using System;
@@ -67,6 +68,27 @@ namespace MusicBot2.Service
             {
                 Console.WriteLine(ex);
                 return null;
+            }
+        }
+
+        public async Task<bool> SetWord(IAttachment file)
+        {
+            try
+            {
+                string _filePath = Path.Combine(Directory.GetCurrentDirectory(), "words.txt");
+
+                using var httpClient = new HttpClient();
+                var content = await httpClient.GetStringAsync(file.Url);
+
+                if (string.IsNullOrWhiteSpace(content))
+                    return false;
+
+                await File.WriteAllTextAsync(_filePath, content);
+                return true;
+            }
+            catch
+            {
+                return false;
             }
         }
 

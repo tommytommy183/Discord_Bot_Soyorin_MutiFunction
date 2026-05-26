@@ -8,6 +8,7 @@ using MusicBot2.Models;
 using MusicBot2.Service;
 using RiotSharp.Misc;
 using System.ComponentModel;
+using System.Net.Http;
 using static System.Net.Mime.MediaTypeNames;
 
 namespace MusicBot2.SlahCommands
@@ -15,7 +16,7 @@ namespace MusicBot2.SlahCommands
     public class SlashCommandHandler : InteractionModuleBase<SocketInteractionContext>
     {
         private readonly Program _program;
-        private readonly WordGuessingService wordService;
+        private readonly WordGuessingService _wordService;
         private readonly MineGameService _mineGameService;
         private readonly ElevenLabsService _elevenLabsService;
         private readonly OldMaidService _oldMaidService;
@@ -27,7 +28,7 @@ namespace MusicBot2.SlahCommands
         public SlashCommandHandler(Program program, WordGuessingService wordService, MineGameService mineGameService, ElevenLabsService elevenLabsService, OldMaidService oldMaidService, RubiksCubeService rubiksCubeService, GoogleAIStudioService googleAIStudioService, RVC_Service rVC_Service, SetTextService setTextService)
         {
             _program = program;
-            this.wordService = wordService;
+            _wordService = wordService;
             _elevenLabsService = elevenLabsService;
             _mineGameService = mineGameService;
             _setTextService = setTextService;
@@ -180,7 +181,7 @@ namespace MusicBot2.SlahCommands
             try
             {
                 var user = Context.User as SocketGuildUser;
-                string res = await wordService.Guess(word, user);
+                string res = await _wordService.Guess(word, user);
                 if (!string.IsNullOrEmpty(res))
                 {
                     await RespondAsync(res);
@@ -407,6 +408,24 @@ namespace MusicBot2.SlahCommands
             string formattedResult = string.Join("\n", result.Select(kv => $"**{kv.Key}**: {kv.Value}"));
 
             await FollowupAsync(formattedResult, ephemeral: true);
+        }
+
+        [SlashCommand("wordsupload", "上傳文字")]
+        public async Task WordsUploadCommand(
+            [Summary("file", "要上傳的文字檔案 (txt)")] IAttachment file
+            )
+        {
+            await DeferAsync();
+
+            var result = await _wordService.SetWord(file);
+
+            if (!result)
+            {
+                await FollowupAsync("上傳失敗，請確保檔案格式正確且內容不為空", ephemeral: true);
+                return;
+            }
+
+            await FollowupAsync("上傳成功", ephemeral: true);
         }
     }
 }
