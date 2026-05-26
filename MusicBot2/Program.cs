@@ -441,7 +441,7 @@ public class Program
 
         if (!await CheckYoutubeUrlAliveAsync(query) && !_isRelatedOn)
         {
-            await channel.SendMessageAsync("連結已經死了");
+            await channel.SendMessageAsync($"連結已經死了: {{ {query} }}");
             return;
         }
 
