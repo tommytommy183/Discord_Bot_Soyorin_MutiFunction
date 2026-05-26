@@ -8,7 +8,7 @@
 		<Platforms>AnyCPU;x64</Platforms>	
 	</PropertyGroup>
 	<ItemGroup>
-		<PackageReference Include="Discord.Net" Version="3.19.1" />
+		<PackageReference Include="Discord.Net" Version="3.19.1-nightly.20260504.837" />
 		<PackageReference Include="Discord.Net.Dave" Version="3.19.1" />
 		<PackageReference Include="ElevenLabs-DotNet" Version="3.7.2" />
 		<PackageReference Include="InstagramApiSharp" Version="1.8.1" />
