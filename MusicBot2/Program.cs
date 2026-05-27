@@ -804,8 +804,14 @@ public class Program
             RedirectStandardError = true,
             CreateNoWindow = true
         });
+
         var output = await process!.StandardOutput.ReadToEndAsync();
+        var error = await process.StandardError.ReadToEndAsync();
         await process.WaitForExitAsync();
+
+        if (!string.IsNullOrEmpty(error))
+            Console.WriteLine($"yt-dlp stderr: {error}");
+
         return output.Trim();
     }
 
