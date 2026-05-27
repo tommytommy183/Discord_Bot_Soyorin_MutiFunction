@@ -793,17 +793,25 @@ public class Program
     // 共用的 yt-dlp 執行方法
     private async Task<string> RunYtDlpAsync(string arguments)
     {
+        var ytDlpPath = File.Exists("/usr/local/bin/yt-dlp") ? "/usr/local/bin/yt-dlp" : "yt-dlp";
+
         var process = Process.Start(new ProcessStartInfo
         {
-            FileName = "yt-dlp",
+            FileName = ytDlpPath,
             Arguments = arguments,
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             CreateNoWindow = true
         });
+
         var output = await process!.StandardOutput.ReadToEndAsync();
+        var error = await process.StandardError.ReadToEndAsync();
         await process.WaitForExitAsync();
+
+        if (!string.IsNullOrEmpty(error))
+            Console.WriteLine($"yt-dlp stderr: {error}");
+
         return output.Trim();
     }
 
