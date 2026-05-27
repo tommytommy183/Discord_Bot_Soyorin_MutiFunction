@@ -748,44 +748,40 @@ public class Program
 
         try
         {
+            Console.WriteLine("沒有下載前的檔案位置" + filepath);
             if (songUrl.Contains("bili"))
                 filepath = await DownloadBilibiliAudioAsync(songUrl);
             else
                 filepath = await DownloadAudioAsync(songUrl);
+            Console.WriteLine("成功下載後的檔案位置" + filepath);
 
-            Console.WriteLine(filepath);
             await Task.Delay(2000);
-
             if (_audioClient == null || _audioClient.ConnectionState != Discord.ConnectionState.Connected)
                 _audioClient = await voiceChannel.ConnectAsync(selfDeaf: false, selfMute: false);
 
             var output = _audioClient.CreatePCMStream(AudioApplication.Mixed);
-            using (var audioFile = new AudioFileReader(filepath))
-            {
-                var sampleRate = audioFile.WaveFormat.SampleRate;
-                var channels = audioFile.WaveFormat.Channels;
-                //新增爆
-                var modifiedSampleRate = _isEarRapeOn ? sampleRate / 10 : sampleRate;
-                using (var resampler = new MediaFoundationResampler(audioFile, new WaveFormat(sampleRate, channels)))
-                {
-                    resampler.ResamplerQuality = _isEarRapeOn ? 1 : 60; // 設置重取樣品質
-                    byte[] buffer = new byte[4096];
-                    int bytesRead;
 
-                    // 播放音樂
-                    while ((bytesRead = resampler.Read(buffer, 0, buffer.Length)) > 0)
+            var ffmpegProcess = CreatePcmStreamProcess(filepath, _isEarRapeOn);
+
+            try
+            {
+                byte[] buffer = new byte[4096];
+                int bytesRead;
+                while ((bytesRead = await ffmpegProcess!.StandardOutput.BaseStream.ReadAsync(buffer, 0, buffer.Length)) > 0)
+                {
+                    if (_isSkipRequest)
                     {
-                        audioFile.Volume = _isEarRapeOn ? 10.0f : 1.0f;
-                        if (_isSkipRequest)
-                        {
-                            await output.FlushAsync();
-                            _isSkipRequest = false;
-                            break;
-                        }
-                        await output.WriteAsync(buffer, 0, bytesRead);
+                        _isSkipRequest = false;
+                        break;
                     }
-                    await output.FlushAsync(); // 確保所有數據已發送
+                    await output.WriteAsync(buffer, 0, bytesRead);
                 }
+                await output.FlushAsync();
+            }
+            finally
+            {
+                ffmpegProcess?.Kill();
+                ffmpegProcess?.Dispose();
             }
 
             File.Delete(filepath);
@@ -994,20 +990,29 @@ public class Program
     #endregion
     #region 自訂func
 
-    public Process CreatePcmStreamProcess(string path)
+    public Process CreatePcmStreamProcess(string path, bool isEarRape = false)
     {
+        string ffmpegPath;
         string projectRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
-        string ffmpegPath = Path.Combine(projectRoot, "ffmpeg-master-latest-win64-gpl-shared", "bin", "ffmpeg.exe");
+        string winFfmpeg = Path.Combine(projectRoot, "ffmpeg-master-latest-win64-gpl-shared", "bin", "ffmpeg.exe");
+
+        // Windows 本機用本地 ffmpeg，Linux (Railway) 用系統 ffmpeg
+        ffmpegPath = File.Exists(winFfmpeg) ? winFfmpeg : "ffmpeg";
+
+        var audioFilter = isEarRape
+            ? "-af \"volume=10,asetrate=48000*0.1,aresample=48000\""
+            : "";
 
         return Process.Start(new ProcessStartInfo
         {
             FileName = ffmpegPath,
-            Arguments = $"-hide_banner -loglevel panic -i \"{path}\" -ac 2 -f s16le -ar 48000 pipe:1",
+            Arguments = $"-hide_banner -loglevel panic -i \"{path}\" {audioFilter} -ac 2 -f s16le -ar 48000 pipe:1",
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
         });
     }
+
     public string GetRandomizedTitle(string title, IMessageChannel channel)
     {
         var _ignoreKeywords = new List<string>
