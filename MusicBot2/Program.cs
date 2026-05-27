@@ -1064,10 +1064,10 @@ public class Program
 
             var youtube = new YoutubeClient();
             var video = await youtube.Videos.GetAsync(videoId.Value);
+            await channel.SendMessageAsync($"有取得標題 {video.Title}");
+
             _NowPlayingSongName = video.Title;
 
-
-            await channel.SendMessageAsync($"有取得標題 {video.Title}");
             return video != null; // 如果成功获取到视频信息，则视为有效
         }
         catch (Exception ex)
