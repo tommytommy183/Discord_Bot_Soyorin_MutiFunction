@@ -793,9 +793,11 @@ public class Program
     // 共用的 yt-dlp 執行方法
     private async Task<string> RunYtDlpAsync(string arguments)
     {
+        var ytDlpPath = File.Exists("/usr/local/bin/yt-dlp") ? "/usr/local/bin/yt-dlp" : "yt-dlp";
+
         var process = Process.Start(new ProcessStartInfo
         {
-            FileName = "yt-dlp",
+            FileName = ytDlpPath,
             Arguments = arguments,
             UseShellExecute = false,
             RedirectStandardOutput = true,
