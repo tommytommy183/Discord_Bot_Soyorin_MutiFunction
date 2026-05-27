@@ -294,11 +294,11 @@ public class Program
             await message.Channel.SendMessageAsync(result);
         }
 
-        //string match = await _setTextService.Match(message.Content.ToLower());
-        //if(!string.IsNullOrEmpty(match))
-        //{
-        //    await message.Channel.SendMessageAsync(match);
-        //}
+        string match = await _setTextService.Match(message.Content.ToLower());
+        if (!string.IsNullOrEmpty(match))
+        {
+            await message.Channel.SendMessageAsync(match);
+        }
 
         if (!message.Content.StartsWith("$$")) return;
         string cmd = message.Content.Substring(2);
