@@ -296,7 +296,9 @@ public class Program
                 message.Content.ToLower().Contains("素食"))
         {
             var talker = message.Author as SocketGuildUser;
-            string result = await _googleAIStudioService.GenerateTextAsync(message.Content, talker, true);
+            // 用「伺服器 + 頻道」當記憶 key，避免不同頻道上下文互相污染
+            var channelKey = $"{talker?.Guild?.Id}_{message.Channel.Id}";
+            string result = await _googleAIStudioService.GenerateTextAsync(message.Content, talker, true, channelKey);
             await message.Channel.SendMessageAsync(result);
         }
 

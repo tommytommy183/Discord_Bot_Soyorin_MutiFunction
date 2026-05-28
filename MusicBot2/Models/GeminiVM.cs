@@ -12,9 +12,10 @@ namespace MusicBot2.Models
         public string SystemInstruction { get; set; }
         public string UserMessage { get; set; }
 
-        public float Temperature { get; set; } = 0.7f;
-        public float TopP { get; set; } = 0.95f;
-        public int MaxOutputTokens { get; set; } = 200;
+        public float Temperature { get; set; } = 0.85f;
+        public float TopP { get; set; } = 0.9f;
+        public int TopK { get; set; } = 40;
+        public int MaxOutputTokens { get; set; } = 256;
     }
 
     public class GeminiApiRequest
@@ -53,8 +54,13 @@ namespace MusicBot2.Models
         public float temperature { get; set; }
         //控制生成文本的多樣性，值越高生成的文本越多樣化
         public float topP { get; set; }
+        //限制只從機率最高的 K 個 token 中採樣
+        public int topK { get; set; }
         //限制生成文本的最大長度，以Token為單位
         public int maxOutputTokens { get; set; }
+        //停止生成的序列
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string[] stopSequences { get; set; }
     }
     public class SafetySettings
     {
