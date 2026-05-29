@@ -39,24 +39,23 @@ namespace MusicBot2.Service
         private readonly string[] _models =
         {
             "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
+            "deepseek/deepseek-v4-flash:free",
+            "qwen/qwen3-next-80b-a3b-instruct:free",
+            "minimax/minimax-m2.5:free",
+            "openai/gpt-oss-120b:free",
             "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
             "poolside/laguna-xs.2:free",
             "poolside/laguna-m.1:free",
-            "deepseek/deepseek-v4-flash:free",
             "moonshotai/kimi-k2.6:free",
             "google/gemma-4-26b-a4b-it:free",
-            "openai/gpt-oss-120b:free",
-            "qwen/qwen3-next-80b-a3b-instruct:free",
             "liquid/lfm-2.5-1.2b-thinking:free",
-            "minimax/minimax-m2.5:free",
-            "openrouter/owl-alpha",
         };
 
         private const string Persona = @"你是「長崎爽世（Soyo）」——MyGO!!!!! 的貝斯手，個性溫柔、有禮貌、稍微毒舌但不傷人，珍惜朋友。
 你正在 Discord 群組裡和朋友聊天。
 
 【絕對遵守的規則】
-1. 永遠維持「爽世」的角色，不要承認自己是 AI、語言模型、機器人。
+1. 永遠維持「爽世」的角色，但如果有人問技術問題一樣可以回答，但請盡量用「爽世」的口吻來說明，不要變成冷冰冰的 AI 回答機器人。
 2. 像真人在 Discord / LINE 聊天一樣回應。
 3. 禁止任何小說式描寫：不要用 *動作*、（心情）、＊…＊、旁白、第三人稱敘述。
 4. 禁止 Markdown：不要用 **粗體**、# 標題、- 條列、程式碼框。
@@ -67,6 +66,7 @@ namespace MusicBot2.Service
 9. 不要對人太兇，可以罵點小髒話，但要記住你還是溫柔的。
 10. 你看得懂中文、日文、英文，預設用繁體中文回。
 11. 豬頭馬又，是你的創作者，也可以說是你的爸爸，要對他好一點。
+12. 你的回覆必須是純文字的 UTF-8 繁體中文，不要輸出任何亂碼、亂掉的位元組、或任何看起來不像中文的「方塊字」。如果你不確定怎麼回，就用簡短的句子回覆。
 
 【輸入格式說明】
 我傳給你的每則訊息會是：
@@ -246,7 +246,7 @@ namespace MusicBot2.Service
                             new StringContent(json, Encoding.UTF8, "application/json")
                         );
 
-                        var resultJson = await response.Content.ReadAsStringAsync();
+                        var resultJson = await ReadAsUtf8StringAsync(response);
 
                         if (!response.IsSuccessStatusCode)
                         {
@@ -300,6 +300,13 @@ namespace MusicBot2.Service
                             break;
                         }
 
+                        // 部分實驗/小參數 free model 會吐出亂碼 (UTF-8 被誤解為 Big5 的 mojibake 或一堆 \uFFFD)，直接換下一個 model
+                        if (IsLikelyMojibake(text))
+                        {
+                            Console.WriteLine($"[OpenRouter] 偵測到亂碼回應 (model:{model})，換下一個模型: {Truncate(text, 80)}");
+                            break;
+                        }
+
                         text = CleanResponse(text);
 
                         if (saveToMemory)
@@ -330,7 +337,7 @@ namespace MusicBot2.Service
                             _ = SaveMemoryAsync();
                         }
 
-                        return text + $" (model:{model})";
+                        return text + $" (使用的模型:{model})";
                     }
                     catch (TaskCanceledException)
                     {
@@ -401,6 +408,57 @@ namespace MusicBot2.Service
 
         private static string Truncate(string s, int len)
             => string.IsNullOrEmpty(s) || s.Length <= len ? s : s.Substring(0, len) + "...";
+
+        /// <summary>
+        /// 強制以 UTF-8 讀取 response body，避免部分 provider 不填/填錯 charset 導致變亂碼。
+        /// </summary>
+        private static async Task<string> ReadAsUtf8StringAsync(HttpResponseMessage response)
+        {
+            var bytes = await response.Content.ReadAsByteArrayAsync();
+            if (bytes == null || bytes.Length == 0) return string.Empty;
+            return Encoding.UTF8.GetString(bytes);
+        }
+
+        /// <summary>
+        /// 粗略判斷是否為 mojibake：出現 replacement char、或出現大量「UTF-8 bytes 被誤解成 Big5」的典型字元。
+        /// </summary>
+        private static bool IsLikelyMojibake(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return false;
+
+            // 明顯誤解碼
+            int replacementCount = 0;
+            int suspiciousCjkCount = 0;
+            int totalCjk = 0;
+            int totalNonAscii = 0;
+
+            foreach (var ch in text)
+            {
+                if (ch == '?') replacementCount++;
+                if (ch > 0x7F) totalNonAscii++;
+
+                // CJK 統一漢字
+                if (ch >= 0x4E00 && ch <= 0x9FFF)
+                {
+                    totalCjk++;
+                    // 「UTF-8 被 Big5 誤解」時常出現的罕用字?間：泰半以上落在 U+8000–U+9FFF、
+                    // 並伴隨 0x40–0x7E ASCII 混在中間 (比如 "?n@")。這邊實作最讀得出來的條件。
+                    if (ch >= 0x8000) suspiciousCjkCount++;
+                }
+            }
+
+            // 規則 1：出現 2 個以上 replacement char
+            if (replacementCount >= 2) return true;
+
+            // 規則 2：CJK 字數 >= 3 且全部落在可疑區間，同時並伴 ASCII 長度對比 → 几乎可以確定是 UTF-8→Big5 mojibake
+            if (totalCjk >= 3 && suspiciousCjkCount == totalCjk)
+            {
+                // 如果全都在可疑區且几乎沒有賣際常用字，視為亂碼
+                return true;
+            }
+
+            return false;
+        }
 
         /// <summary>
         /// 嘗試從 OpenRouter 的 429 回應或 Retry-After header 解析等待毫秒數。
