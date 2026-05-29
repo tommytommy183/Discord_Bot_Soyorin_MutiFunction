@@ -51,6 +51,7 @@ public class Program
     private InteractionService? _interactionService;
     private IServiceProvider? _services;
     private GoogleAIStudioService _googleAIStudioService;
+    private OpenRouterService _openRouterService;
     private SetTextService _setTextService;
     #endregion
 
@@ -79,6 +80,7 @@ public class Program
         string token = configer["Discord:Token"];
         string googleAIStudioApiKey = configer["GoogleAIStudio:dcBotKey1"];
         string googleAIStudioApiKey2 = configer["GoogleAIStudio:dcBotKey2"];
+        string openRouterApiKey = configer["Openrouter:ApiKey1"];
 
         string redisConn = configer["Redis:ConnectionString"];
         var setTextService = new SetTextService(redisConn);
@@ -108,9 +110,13 @@ public class Program
             .AddSingleton<GoogleAIStudioService>(sp =>
                 new GoogleAIStudioService(googleAIStudioApiKey,googleAIStudioApiKey2)
                 )
+            .AddSingleton<OpenRouterService>(sp =>
+                new OpenRouterService(openRouterApiKey)
+                )
             .BuildServiceProvider();
 
         _googleAIStudioService = _services.GetRequiredService<GoogleAIStudioService>();
+        _openRouterService = _services.GetRequiredService<OpenRouterService>();
         _setTextService = _services.GetRequiredService<SetTextService>();
 
         _client.MessageReceived += MessageReceivedHandler;
@@ -298,7 +304,7 @@ public class Program
             var talker = message.Author as SocketGuildUser;
             // 用「伺服器 + 頻道」當記憶 key，避免不同頻道上下文互相污染
             var channelKey = $"{talker?.Guild?.Id}_{message.Channel.Id}";
-            string result = await _googleAIStudioService.GenerateTextAsync(message.Content, talker, true, channelKey);
+            string result = await _openRouterService.GenerateTextAsync(message.Content, talker, true, channelKey);
             await message.Channel.SendMessageAsync(result);
         }
 
