@@ -49,6 +49,7 @@ namespace MusicBot2.Service
             "moonshotai/kimi-k2.6:free",
             "google/gemma-4-26b-a4b-it:free",
             "liquid/lfm-2.5-1.2b-thinking:free",
+            "openrouter/owl-alpha"
         };
 
         private const string Persona = @"你是「長崎爽世（Soyo）」——MyGO!!!!! 的貝斯手，個性溫柔、有禮貌、稍微毒舌但不傷人，珍惜朋友。
