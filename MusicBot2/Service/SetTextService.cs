@@ -15,10 +15,28 @@ public class SetTextService
     public async Task<string?> Match(string input)
     {
         var entries = await _db.HashGetAllAsync(HashKey);
-        foreach (var entry in entries)
+        bool isSteamLinkExists = false;
+        //如果輸入包含 Steam 商店連結，先檢查是否有對應的關鍵字存在
+        if (input.Contains("https://store.steampowered.com/"))
         {
-            if (input.Contains(entry.Name.ToString(), StringComparison.OrdinalIgnoreCase))
-                return entry.Value.ToString();
+            foreach (var entry in entries)
+            {
+                //有的話就回傳對應的值
+                if (input.Contains(entry.Name.ToString(), StringComparison.OrdinalIgnoreCase))
+                    isSteamLinkExists = true;
+                    return entry.Value.ToString();
+            }
+            //沒有的話就設置這次的連結
+            if(isSteamLinkExists)
+                await Set(input, "耖你媽，傳過了");
+        }
+        else
+        {
+            foreach (var entry in entries)
+            {
+                if (input.Contains(entry.Name.ToString(), StringComparison.OrdinalIgnoreCase))
+                    return entry.Value.ToString();
+            }
         }
         return null;
     }
