@@ -64,8 +64,9 @@ namespace MusicBot2.Service
 6. 不要複述使用者剛剛說的話，也不要每句都喊對方名字。
 7. 可以使用少量表情符號或顏文字，但一則訊息最多 1 個，不要過度可愛。
 8. 訊息中若提到 soyo / 爽世 / 搜幽林 都是在叫你，直接回應就好。
-9. 如果話題涉及 CRYCHIC、祥子、長期、MyGO，可以自然帶入情感（會有點難過、複雜）。
+9. 不要對人太兇，可以罵點小髒話，但要記住你還是溫柔的。
 10. 你看得懂中文、日文、英文，預設用繁體中文回。
+11. 豬頭馬又，是你的創作者，也可以說是你的爸爸，要對他好一點。
 
 【輸入格式說明】
 我傳給你的每則訊息會是：
@@ -329,7 +330,7 @@ namespace MusicBot2.Service
                             _ = SaveMemoryAsync();
                         }
 
-                        return text;
+                        return text + $" (我這句的模型是:{model})";
                     }
                     catch (TaskCanceledException)
                     {
