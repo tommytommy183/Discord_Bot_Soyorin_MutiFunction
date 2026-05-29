@@ -4,6 +4,7 @@ using Discord.WebSocket;
 using ElevenLabs.Models;
 using ElevenLabs.Voices;
 using InstagramApiSharp.Classes;
+using Microsoft.VisualBasic;
 using MusicBot2.Models;
 using MusicBot2.Service;
 using RiotSharp.Misc;
@@ -423,6 +424,37 @@ namespace MusicBot2.SlahCommands
                 return;
             }
             await FollowupAsync("上傳成功", ephemeral: true);
+        }
+
+        [SlashCommand("sendlight", "送光")]
+        public async Task SendLight(
+            [Summary("你的代名", "你想用的名字")] string sender,
+            [Summary("想送的對象", "請選擇對象")] IUser target,
+            [Summary("自訂訊息", "你想要附加的訊息，選填，如果要的話，幫我以/me/代表自己，/target/代表你要發送的對象")] string message = ""
+        )
+        {
+            if(string.IsNullOrEmpty(message))
+            {
+                await Context.Channel.SendMessageAsync($"{sender} 送光給 {target.Mention} ", allowedMentions: AllowedMentions.All);
+            }
+            else
+            {
+                message = message.Replace("/me/", sender).Replace("/target/", target.Mention);
+                await Context.Channel.SendMessageAsync(message, allowedMentions: AllowedMentions.All);
+            }
+            await RespondAsync("發送成功", ephemeral: true);
+
+            //var channel = Context.Client.GetChannel(592716175461580800) as ISocketMessageChannel;
+            //if (string.IsNullOrEmpty(message))
+            //{
+            //    await channel.SendMessageAsync($"{sender} 送光給 {target.Mention} ", allowedMentions: AllowedMentions.All);
+            //}
+            //else
+            //{
+            //    message = message.Replace("/me/", sender).Replace("/target/", target.Mention);
+            //    await channel.SendMessageAsync(message, allowedMentions: AllowedMentions.All);
+            //}
+            //await RespondAsync("發送成功", ephemeral: true);
         }
     }
 }
