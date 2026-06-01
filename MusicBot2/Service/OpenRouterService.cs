@@ -12,6 +12,7 @@ using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using static System.Net.Mime.MediaTypeNames;
 
 namespace MusicBot2.Service
 {
@@ -29,7 +30,7 @@ namespace MusicBot2.Service
         private Dictionary<string, List<ConversationMessage>> _channelHistories = new();
         private readonly SemaphoreSlim _saveLock = new(1, 1);
 
-        private const int MaxRecentMessages = 20;
+        private const int MaxRecentMessages = 10;
         private const int MaxTotalMessages = 80;
         private const int MaxContextChars = 6000;
 
@@ -418,6 +419,28 @@ namespace MusicBot2.Service
             var bytes = await response.Content.ReadAsByteArrayAsync();
             if (bytes == null || bytes.Length == 0) return string.Empty;
             return Encoding.UTF8.GetString(bytes);
+        }
+
+        public async Task SaveReferenceAsync(string reference, string channelKey)
+        {
+            var history = GetHistory(channelKey);
+
+            history.Add(new ConversationMessage
+            {
+                Role = "model",
+                Text = reference,
+                Timestamp = DateTime.Now,
+                UserName = "爽世"
+            });
+
+            if (history.Count > MaxTotalMessages)
+            {
+                _channelHistories[channelKey] = history
+                    .Skip(history.Count - MaxTotalMessages)
+                    .ToList();
+            }
+
+            await SaveMemoryAsync();
         }
 
         /// <summary>

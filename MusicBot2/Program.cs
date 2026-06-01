@@ -108,7 +108,7 @@ public class Program
                     elevenLabsApiKey
                 ))
             .AddSingleton<GoogleAIStudioService>(sp =>
-                new GoogleAIStudioService(googleAIStudioApiKey,googleAIStudioApiKey2)
+                new GoogleAIStudioService(googleAIStudioApiKey, googleAIStudioApiKey2)
                 )
             .AddSingleton<OpenRouterService>(sp =>
                 new OpenRouterService(openRouterApiKey)
@@ -293,23 +293,38 @@ public class Program
         bool isMentioned = message.MentionedUsers.Any(u => u.Id == _client.CurrentUser.Id);
 
         if (isMentioned ||
-            message.Content.ToLower().Contains("soyo") || 
-            message.Content.ToLower().Contains("搜幽林") || 
-                message.Content.ToLower().Contains("crychic") || 
-                message.Content.ToLower().Contains("長期") || 
-                message.Content.ToLower().Contains("爽世") || 
-                message.Content.ToLower().Contains("爽食") || 
+            message.Content.ToLower().Contains("soyo") ||
+                message.Content.ToLower().Contains("搜幽林") ||
+                message.Content.ToLower().Contains("crychic") ||
+                message.Content.ToLower().Contains("長期") ||
+                message.Content.ToLower().Contains("爽世") ||
+                message.Content.ToLower().Contains("爽食") ||
                 message.Content.ToLower().Contains("素食"))
         {
             var talker = message.Author as SocketGuildUser;
             // 用「伺服器 + 頻道」當記憶 key，避免不同頻道上下文互相污染
             var channelKey = $"{talker?.Guild?.Id}_{message.Channel.Id}";
-            string result = await _openRouterService.GenerateTextAsync(message.Content, talker, true, channelKey);
-            await message.Channel.SendMessageAsync(result);
+
+            if (message.Reference != null)
+            {
+                // 拿到被回復的那則訊息
+                var referencedMessage = await message.Channel.GetMessageAsync(message.Reference.MessageId.Value);
+
+                string originalContent = referencedMessage.Content; // Bot 說的原句
+                string replyContent = message.Content;              // 使用者回復的內容
+
+                await _openRouterService.SaveReferenceAsync(replyContent, channelKey);
+                string result = await _openRouterService.GenerateTextAsync(message.Content, talker, true, channelKey);
+            }
+            else
+            {
+                string result = await _openRouterService.GenerateTextAsync(message.Content, talker, true, channelKey);
+                await message.Channel.SendMessageAsync(result);
+            }
         }
 
         string match = await _setTextService.Match(message.Content.ToLower());
-        if(!string.IsNullOrEmpty(match))
+        if (!string.IsNullOrEmpty(match))
         {
             await message.Channel.SendMessageAsync(match);
         }
@@ -447,7 +462,7 @@ public class Program
             return;
         }
 
-        if (!await CheckYoutubeUrlAliveAsync(query,channel) && !_isRelatedOn)
+        if (!await CheckYoutubeUrlAliveAsync(query, channel) && !_isRelatedOn)
         {
             await channel.SendMessageAsync($"連結已經死了: {{ {query} }}");
             return;
