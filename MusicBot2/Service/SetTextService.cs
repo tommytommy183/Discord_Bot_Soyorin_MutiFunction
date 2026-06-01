@@ -23,12 +23,16 @@ public class SetTextService
             {
                 //有的話就回傳對應的值
                 if (input.Contains(entry.Name.ToString(), StringComparison.OrdinalIgnoreCase))
+                {
                     isSteamLinkExists = true;
                     return entry.Value.ToString();
+                }
             }
             //沒有的話就設置這次的連結
-            if(isSteamLinkExists)
+            if(!isSteamLinkExists)
+            {
                 await Set(input, "耖你媽，傳過了");
+            }
         }
         else
         {
