@@ -230,9 +230,11 @@ namespace MusicBot2.Service
                         }
                         else
                         {
-                            var talker = repliedMessage.Author as SocketGuildUser;
+                            var repliedAuthorName = (repliedMessage.Author as SocketGuildUser)?.DisplayName
+                                                    ?? repliedMessage.Author?.Username
+                                                    ?? "某人";
 
-                            userMessageWithName = $"使用者名稱: {displayName}\n 回覆了 {talker.DisplayName} 的這條訊息: {repliedMessage.Content}\n 回覆訊息: {request.UserMessage}";
+                            userMessageWithName = $"使用者名稱: {displayName}\n 回覆了 {repliedAuthorName} 的這條訊息: {repliedMessage.Content}\n訊息: {request.UserMessage}";
                         }
                         messages.Add(new OpenRouterMessage { Role = "user", Content = userMessageWithName });
 
