@@ -1,5 +1,7 @@
-﻿using Discord.WebSocket;
+﻿using Discord;
+using Discord.WebSocket;
 using MusicBot2.Models;
+using RiotSharp.Endpoints.StatusEndpoint;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -147,45 +149,6 @@ namespace MusicBot2.Service
             }
         }
 
-        public async Task SetReferenceAsync(string channelKey, string referenceMessage,string replyUserName)
-        {
-            if (string.IsNullOrEmpty(channelKey)) return;
-
-            var history = GetHistory(channelKey);
-
-
-
-            if (history.Count > MaxTotalMessages)
-            {
-                _channelHistories[channelKey] = history
-                    .Skip(history.Count - MaxTotalMessages)
-                    .ToList();
-            }
-
-            if (replyUserName == "soyolin長崎爽世")
-            {
-                history.Add(new ConversationMessage
-                {
-                    Role = "model",
-                    Text = referenceMessage,
-                    Timestamp = DateTime.Now,
-                    UserName = "爽世"
-                });
-            }
-            else
-            {
-                history.Add(new ConversationMessage
-                {
-                    Role = "user",
-                    Text = referenceMessage,
-                    Timestamp = DateTime.Now,
-                    UserName = replyUserName
-                });
-            }
-
-            _ = SaveMemoryAsync();
-        }
-
         public async Task ClearMemoryAsync(string channelKey = null)
         {
             if (string.IsNullOrEmpty(channelKey))
@@ -229,7 +192,7 @@ namespace MusicBot2.Service
         /// <summary>
         /// 進階版：使用 GeminiRequestVM (沿用既有 VM，避免到處改型別)
         /// </summary>
-        public async Task<string> GenerateTextAsync(GeminiRequestVM request, SocketGuildUser user, bool saveToMemory = true, string channelKey = null)
+        public async Task<string> GenerateTextAsync(GeminiRequestVM request, SocketGuildUser user, bool saveToMemory = true, string channelKey = null, IMessage? repliedMessage = null)
         {
             channelKey ??= user?.Guild?.Id.ToString() ?? "global";
 
@@ -260,7 +223,17 @@ namespace MusicBot2.Service
 
                         // 當前使用者訊息
                         var displayName = user?.DisplayName ?? user?.Username ?? "Unknown";
-                        var userMessageWithName = $"使用者名稱: {displayName}\n訊息: {request.UserMessage}";
+                        string userMessageWithName;
+                        if (repliedMessage == null)
+                        {
+                            userMessageWithName = $"使用者名稱: {displayName}\n訊息: {request.UserMessage}";
+                        }
+                        else
+                        {
+                            var talker = repliedMessage.Author as SocketGuildUser;
+
+                            userMessageWithName = $"使用者名稱: {displayName}\n 回覆了 {talker.DisplayName} 的這條訊息: {repliedMessage.Content}\n 回覆訊息: {request.UserMessage}";
+                        }
                         messages.Add(new OpenRouterMessage { Role = "user", Content = userMessageWithName });
 
                         var apiRequest = new OpenRouterChatRequest
@@ -399,7 +372,7 @@ namespace MusicBot2.Service
         /// <summary>
         /// 簡化版本：直接傳入訊息
         /// </summary>
-        public async Task<string> GenerateTextAsync(string message, SocketGuildUser user, bool saveToMemory = true, string channelKey = null)
+        public async Task<string> GenerateTextAsync(string message, SocketGuildUser user, bool saveToMemory = true, string channelKey = null, IMessage? repliedMessage = null)
         {
             var request = new GeminiRequestVM
             {
@@ -410,7 +383,7 @@ namespace MusicBot2.Service
                 MaxOutputTokens = 512
             };
 
-            return await GenerateTextAsync(request, user, saveToMemory, channelKey);
+            return await GenerateTextAsync(request, user, saveToMemory, channelKey, repliedMessage);
         }
 
         public string GetMemorySummary(string channelKey = null)

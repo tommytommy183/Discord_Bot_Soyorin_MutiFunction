@@ -312,10 +312,7 @@ public class Program
                 var repliedMessage = await message.Channel.GetMessageAsync(message.Reference.MessageId.Value);
                 if (repliedMessage != null)
                 {
-                    string repliedTalkerName = repliedMessage.Author.Username;
-
-                    await _openRouterService.SetReferenceAsync(channelKey, repliedMessage.Content, repliedTalkerName);
-                    result = await _openRouterService.GenerateTextAsync(message.Content, talker, true, channelKey);
+                    result = await _openRouterService.GenerateTextAsync(message.Content, talker, true, channelKey, repliedMessage);
                     await message.Channel.SendMessageAsync(result);
                     return; // 已處理完畢，直接返回
                 }
