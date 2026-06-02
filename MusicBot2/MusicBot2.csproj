@@ -8,23 +8,31 @@
 		<Platforms>AnyCPU;x64</Platforms>	
 	</PropertyGroup>
 	<ItemGroup>
-		<PackageReference Include="Discord.Net" Version="3.19.1" />
+		<PackageReference Include="Discord.Net" Version="3.19.1-nightly.20260504.837" />
 		<PackageReference Include="Discord.Net.Dave" Version="3.19.1" />
 		<PackageReference Include="ElevenLabs-DotNet" Version="3.7.2" />
 		<PackageReference Include="InstagramApiSharp" Version="1.8.1" />
-		<PackageReference Include="libsodium" Version="1.0.21" />
-		<PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.5" />
-		<PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.5" />
-		<PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.5" />
+		<PackageReference Include="libsodium" Version="1.0.22" />
+		<PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.8" />
+		<PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="10.0.8" />
+		<PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.8" />
+		<PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.8" />
 		<PackageReference Include="OpusDotNet" Version="1.0.3" />
 		<PackageReference Include="RiotSharp" Version="4.0.0" />
-		<PackageReference Include="Sodium.Core" Version="1.4.0" />
-		<PackageReference Include="YoutubeExplode" Version="6.5.7" />
+		<PackageReference Include="Sodium.Core" Version="1.4.1" />
+		<PackageReference Include="StackExchange.Redis" Version="2.13.1" />
+		<PackageReference Include="YoutubeExplode" Version="6.6.0" />
 		<PackageReference Include="NAudio" Version="2.3.0" />
 	</ItemGroup>
 	<ItemGroup>
 	  <None Update="appsettings.json">
 	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+	  </None>
+	  <None Update="TxtFolder\SetText.json">
+	    <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+	  </None>
+	  <None Update="words.txt">
+	    <CopyToOutputDirectory>Always</CopyToOutputDirectory>
 	  </None>
 	</ItemGroup>
 	<ItemGroup>

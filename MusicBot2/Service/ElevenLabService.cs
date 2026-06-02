@@ -49,11 +49,15 @@ namespace MusicBot2.Service
 
             try
             {
-                // 測試不要浪費 token
-                audioFile = "C:\\Users\\tommy_tsai\\Desktop\\Personal Project\\code\\newSoyo\\MusicBot2\\bin\\x64\\Debug\\net8.0\\TTS_Audio\\20260414_164854_哈囉你好嗎.mp3";
-                
-                Console.WriteLine($"✅ TTS 音檔路徑: {audioFile}");
-                Console.WriteLine($"📏 檔案大小: {new FileInfo(audioFile).Length / 1024} KB");
+                // 1️⃣ 調用 ElevenLabs API 產生語音
+                var audioData = await GenerateSpeech(text, model, voiceID);
+
+                // 2️⃣ 儲存音訊檔案
+                audioFile = Path.Combine(_audioStoragePath, $"{DateTime.Now:yyyyMMdd_HHmmss}.mp3");
+                await File.WriteAllBytesAsync(audioFile, audioData);
+
+                //測試用
+                //audioFile = "";
 
                 // 3️⃣ Bot 連接語音頻道
                 audioClient = await userChannel.ConnectAsync();
@@ -84,7 +88,8 @@ namespace MusicBot2.Service
         private string SanitizeFileName(string fileName)
         {
             var invalidChars = Path.GetInvalidFileNameChars();
-            return string.Join("_", fileName.Split(invalidChars, StringSplitOptions.RemoveEmptyEntries));
+            var sanitized = string.Join("_", fileName.Split(invalidChars, StringSplitOptions.RemoveEmptyEntries));
+            return sanitized.Length > 50 ? sanitized.Substring(0, 50) : sanitized;
         }
 
         public void CleanOldFiles(int daysToKeep = 7)
@@ -139,7 +144,7 @@ namespace MusicBot2.Service
             if (!response.IsSuccessStatusCode)
             {
                 Console.WriteLine($"❌ ElevenLabs Error: {content}");
-                throw new Exception(content);
+                throw new Exception($"ElevenLabs API 錯誤: {content}");
             }
 
             Console.WriteLine($"✅ Success: {response.StatusCode}");
@@ -147,7 +152,6 @@ namespace MusicBot2.Service
             return await response.Content.ReadAsByteArrayAsync();
         }
 
-        // ✅ 改用手動轉換單聲道為立體聲
         private async Task SendAudioAsync(IAudioClient client, string path)
         {
             var output = client.CreatePCMStream(AudioApplication.Mixed);
@@ -163,7 +167,7 @@ namespace MusicBot2.Service
 
                     var channels = audioFile.WaveFormat.Channels;
                     
-                    // ✅ 先重採樣到 48kHz（保持原本聲道數）
+                    // 先重採樣到 48kHz（保持原本聲道數）
                     using (var resampler = new MediaFoundationResampler(audioFile, new WaveFormat(48000, channels)))
                     {
                         resampler.ResamplerQuality = 60;
@@ -176,7 +180,7 @@ namespace MusicBot2.Service
                         {
                             totalBytesRead += bytesRead;
                             
-                            // ✅ 如果是單聲道，手動轉換為立體聲
+                            // 如果是單聲道，手動轉換為立體聲
                             if (channels == 1)
                             {
                                 byte[] stereoBuffer = new byte[bytesRead * 2];
@@ -216,32 +220,6 @@ namespace MusicBot2.Service
             {
                 output.Dispose();
             }
-        }
-
-        private Process CreateFFmpegStream(string path)
-        {
-            var psi = new ProcessStartInfo
-            {
-                FileName = _ffmpegPath,
-                Arguments = $"-hide_banner -loglevel panic -i \"{path}\" -ac 2 -f s16le -ar 48000 pipe:1",
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true
-            };
-
-            Console.WriteLine($"🎬 啟動 FFmpeg: {_ffmpegPath}");
-            Console.WriteLine($"📄 音檔路徑: {path}");
-
-            var process = Process.Start(psi);
-            
-            if (process == null)
-            {
-                throw new Exception("無法啟動 FFmpeg");
-            }
-
-            Console.WriteLine($"🎬 FFmpeg 已啟動 (PID: {process.Id})");
-            return process;
         }
     }
 }

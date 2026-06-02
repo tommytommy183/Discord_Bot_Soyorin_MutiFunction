@@ -4,6 +4,7 @@ using Discord.Audio;
 using Discord.Commands;
 using Discord.Interactions;
 using Discord.WebSocket;
+using InstagramApiSharp.Classes;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using MusicBot2.Service;
@@ -26,6 +27,7 @@ using YoutubeExplode.Common;
 using YoutubeExplode.Exceptions;
 using YoutubeExplode.Search;
 using YoutubeExplode.Videos.Streams;
+using static System.Net.Mime.MediaTypeNames;
 
 public class Program
 {
@@ -48,6 +50,9 @@ public class Program
     private bool _isEarRapeOn = false;
     private InteractionService? _interactionService;
     private IServiceProvider? _services;
+    private GoogleAIStudioService _googleAIStudioService;
+    private OpenRouterService _openRouterService;
+    private SetTextService _setTextService;
     #endregion
 
     #region 基礎設定
@@ -68,15 +73,22 @@ public class Program
 
         var builder = new ConfigurationBuilder()
             .SetBasePath(Directory.GetCurrentDirectory())
-            .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
+            .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true)
+            .AddEnvironmentVariables(); // 加這行
 
         IConfiguration configer = builder.Build();
         string token = configer["Discord:Token"];
+        string googleAIStudioApiKey = configer["GoogleAIStudio:dcBotKey1"];
+        string googleAIStudioApiKey2 = configer["GoogleAIStudio:dcBotKey2"];
+        string openRouterApiKey = configer["Openrouter:ApiKey1"];
+
+        string redisConn = configer["Redis:ConnectionString"];
+        var setTextService = new SetTextService(redisConn);
 
         _client = new DiscordSocketClient(config);
         _commands = new CommandService();
         _interactionService = new InteractionService(_client);
-        string elevenLabsApiKey = configer["ElevenLabs:ApiKey"];  // ✅ 從設定檔讀取
+        string elevenLabsApiKey = configer["ElevenLabs:ApiKey"];
 
         // 設置依賴注入
         _services = new ServiceCollection()
@@ -88,12 +100,24 @@ public class Program
             .AddSingleton<RubiksCubeService>()
             .AddSingleton<GetChampService>()
             .AddSingleton<OldMaidService>()
+            .AddSingleton<RVC_Service>()
+            .AddSingleton<SetTextService>(setTextService)
             .AddSingleton<ElevenLabsService>(sp =>
                 new ElevenLabsService(
                     sp.GetRequiredService<DiscordSocketClient>(),
                     elevenLabsApiKey
                 ))
+            .AddSingleton<GoogleAIStudioService>(sp =>
+                new GoogleAIStudioService(googleAIStudioApiKey,googleAIStudioApiKey2)
+                )
+            .AddSingleton<OpenRouterService>(sp =>
+                new OpenRouterService(openRouterApiKey)
+                )
             .BuildServiceProvider();
+
+        _googleAIStudioService = _services.GetRequiredService<GoogleAIStudioService>();
+        _openRouterService = _services.GetRequiredService<OpenRouterService>();
+        _setTextService = _services.GetRequiredService<SetTextService>();
 
         _client.MessageReceived += MessageReceivedHandler;
         _client.Log += Log;
@@ -180,15 +204,15 @@ public class Program
             {
                 // 立即延遲回應
                 await component.DeferAsync();
-                
+
                 var position = int.Parse(component.Data.CustomId.Split('_')[2]);
                 var oldMaidService = _services.GetService<OldMaidService>();
                 var (message, newComponent, needFollowup, followupMessage) = await oldMaidService.DrawCard(
-                    component.Channel, 
-                    component.User as SocketGuildUser, 
+                    component.Channel,
+                    component.User as SocketGuildUser,
                     position
                 );
-                
+
                 // 使用 ModifyOriginalResponseAsync 更新原訊息，而不是發新訊息
                 await component.ModifyOriginalResponseAsync(msg =>
                 {
@@ -200,9 +224,9 @@ public class Program
                 if (needFollowup && !string.IsNullOrEmpty(followupMessage))
                 {
                     await Task.Delay(500); // 稍微延遲讓玩家看到上一個動作
-                    
+
                     var finalComponent = oldMaidService.GetDrawButtons(component.Channel);
-                    
+
                     // 再次更新同一個訊息
                     await component.ModifyOriginalResponseAsync(msg =>
                     {
@@ -265,7 +289,32 @@ public class Program
     #region MSreceive
     public async Task MessageReceivedHandler(SocketMessage message)
     {
-        if (message is not SocketUserMessage userMessage || message.Author.IsBot || !message.Content.StartsWith("$$")) return;
+        if (message is not SocketUserMessage userMessage || message.Author.IsBot) return;
+        bool isMentioned = message.MentionedUsers.Any(u => u.Id == _client.CurrentUser.Id);
+
+        if (isMentioned ||
+            message.Content.ToLower().Contains("soyo") || 
+            message.Content.ToLower().Contains("搜幽林") || 
+                message.Content.ToLower().Contains("crychic") || 
+                message.Content.ToLower().Contains("長期") || 
+                message.Content.ToLower().Contains("爽世") || 
+                message.Content.ToLower().Contains("爽食") || 
+                message.Content.ToLower().Contains("素食"))
+        {
+            var talker = message.Author as SocketGuildUser;
+            // 用「伺服器 + 頻道」當記憶 key，避免不同頻道上下文互相污染
+            var channelKey = $"{talker?.Guild?.Id}_{message.Channel.Id}";
+            string result = await _openRouterService.GenerateTextAsync(message.Content, talker, true, channelKey);
+            await message.Channel.SendMessageAsync(result);
+        }
+
+        string match = await _setTextService.Match(message.Content.ToLower());
+        if(!string.IsNullOrEmpty(match))
+        {
+            await message.Channel.SendMessageAsync(match);
+        }
+
+        if (!message.Content.StartsWith("$$")) return;
         string cmd = message.Content.Substring(2);
         var channel = message.Channel as IMessageChannel;
         var user = message.Author as SocketGuildUser;
@@ -341,7 +390,6 @@ public class Program
                 _isRelatedOn = false;
                 _SongBeenPlayedList.Clear();
                 await channel.SendMessageAsync("取消推薦");
-                await channel.SendMessageAsync("https://anon-tokyo.com/image?frame=1400&episode=13");
             }
         }
         //查詢
@@ -386,7 +434,6 @@ public class Program
         else
         {
             await channel.SendMessageAsync("亂打一通");
-            await channel.SendMessageAsync("https://anon-tokyo.com/image?frame=50472&episode=1-3");
         }
     }
     #endregion
@@ -397,14 +444,12 @@ public class Program
         if (user?.VoiceChannel == null)
         {
             await channel.SendMessageAsync("不進語音房是要撥個ㄐ8? 我去妳房間撥你衣服比較快 ");
-            await channel.SendMessageAsync("https://anon-tokyo.com/image?frame=19672&episode=9");
             return;
         }
 
-        if (!await CheckYoutubeUrlAliveAsync(query) && !_isRelatedOn)
+        if (!await CheckYoutubeUrlAliveAsync(query,channel) && !_isRelatedOn)
         {
-            await channel.SendMessageAsync("連結");
-            await channel.SendMessageAsync("https://anon-tokyo.com/image?frame=1528&episode=13");
+            await channel.SendMessageAsync($"連結已經死了: {{ {query} }}");
             return;
         }
 
@@ -439,7 +484,6 @@ public class Program
             if (user?.VoiceChannel == null)
             {
                 await channel.SendMessageAsync("不進語音房是要撥個ㄐ8? 我去妳房間撥你衣服比較快 ");
-                await channel.SendMessageAsync("https://anon-tokyo.com/image?frame=19672&episode=9");
                 return;
             }
 
@@ -475,32 +519,27 @@ public class Program
         if (user?.VoiceChannel == null)
         {
             await channel.SendMessageAsync("不進語音房是要跳ㄐㄐ");
-            await channel.SendMessageAsync("https://anon-tokyo.com/image?frame=23200&episode=10");
             return;
         }
         if (_isPlaying)
         {
             await channel.SendMessageAsync($"你這個人滿腦子都只想到自己呢 ");
-            await channel.SendMessageAsync($"https://anon-tokyo.com/image?frame=23864&episode=10");
             _isSkipRequest = true;
         }
         else
         {
             await channel.SendMessageAsync("沒歌了是要跳什麼");
-            await channel.SendMessageAsync("https://anon-tokyo.com/image?frame=62208&episode=1-3");
         }
     }
     public async Task LoopMusic(IMessageChannel channel, SocketGuildUser user)
     {
         if (user?.VoiceChannel == null)
         {
-            await channel.SendMessageAsync("https://anon-tokyo.com/image?frame=15088&episode=9");
             return;
         }
         if (_isPlaying)
         {
             await channel.SendMessageAsync($"組一輩子Crychic");
-            await channel.SendMessageAsync($"https://anon-tokyo.com/image?frame=8752&episode=13");
             _LoopingSongUrl = _NowPlayingSongUrl;
         }
         else
@@ -513,13 +552,11 @@ public class Program
         if (user?.VoiceChannel == null)
         {
             await channel.SendMessageAsync("你不進語音是結束不掉的");
-            await channel.SendMessageAsync("https://anon-tokyo.com/image?frame=28840&episode=4");
             return;
         }
         if (_isPlaying)
         {
             await channel.SendMessageAsync($"要持續一輩子是很困難的");
-            await channel.SendMessageAsync($"https://anon-tokyo.com/image?frame=29160&episode=11");
             _LoopingSongUrl = "";
         }
         else
@@ -533,7 +570,6 @@ public class Program
         if (_songQueue.Count == 0)
         {
             await channel.SendMessageAsync("沒歌你還想要清單?");
-            await channel.SendMessageAsync("https://anon-tokyo.com/image?frame=86048&episode=1-3");
             return;
         }
 
@@ -582,7 +618,6 @@ public class Program
         if (_songQueue.Count == 0)
         {
             await channel.SendMessageAsync("沒歌你還想要清單?");
-            await channel.SendMessageAsync("https://anon-tokyo.com/image?frame=86048&episode=1-3");
             return;
         }
 
@@ -629,7 +664,6 @@ public class Program
     {
         if (user?.VoiceChannel == null)
         {
-            await channel.SendMessageAsync("https://anon-tokyo.com/image?frame=15088&episode=9");
             return;
         }
         string url;
@@ -638,19 +672,16 @@ public class Program
             if (_SongBeenPlayedList.Count == 0)
             {
                 _SongBeenPlayedList.Add(_NowPlayingSongID);
-                await channel.SendMessageAsync("https://anon-tokyo.com/image?frame=8368&episode=6");
             }
             url = await SearchRelateVideoAsync(channel, _NowPlayingSongName);
             if (string.IsNullOrEmpty(url))
             {
-                await channel.SendMessageAsync("https://anon-tokyo.com/image?frame=27448&episode=1-3");
                 return;
             }
         }
         else
         {
             await channel.SendMessageAsync("沒點歌還想要推薦 那就聽春日影吧");
-            await channel.SendMessageAsync("https://anon-tokyo.com/image?frame=184&episode=4");
             _NowPlayingSongID = "-kZBuzsZ7Ho";
             url = "https://www.youtube.com/watch?v=-kZBuzsZ7Ho&ab_channel=MyGO%21%21%21%21%21-Topic";
             _SongBeenPlayedList.Add(_NowPlayingSongID);
@@ -674,7 +705,6 @@ public class Program
             _isRelatedOn = false;
             _SongBeenPlayedList.Clear();
             await channel.SendMessageAsync("取消推薦");
-            await channel.SendMessageAsync("https://anon-tokyo.com/image?frame=1400&episode=13");
         }
     }
     public async Task EarRapeAsync(IMessageChannel channel, SocketGuildUser user)
@@ -682,12 +712,9 @@ public class Program
         if (user?.VoiceChannel == null)
         {
             await channel.SendMessageAsync("要進語音诶 還是你想不進語音偷偷ear rape別人？ 想要的話跟我講 我改");
-            await channel.SendMessageAsync("https://anon-tokyo.com/image?frame=16696&episode=1-3");
             return;
         }
         _isEarRapeOn = !_isEarRapeOn;
-        if (_isEarRapeOn) await channel.SendMessageAsync("https://anon-tokyo.com/image?frame=18288&episode=4");
-        else await channel.SendMessageAsync("https://anon-tokyo.com/image?frame=22448&episode=7");
     }
     #endregion
 
@@ -701,7 +728,6 @@ public class Program
             _isPlaying = false;
             await channel.SendMessageAsync("沒歌ㄌ");
             _NowPlayingSongUrl = "";
-            await channel.SendMessageAsync("https://anon-tokyo.com/image?frame=18976&episode=10");
             return;
         }
         //推薦開啟／且歌單只剩一首歌時
@@ -730,43 +756,40 @@ public class Program
 
         try
         {
+            Console.WriteLine("沒有下載前的檔案位置" + filepath);
             if (songUrl.Contains("bili"))
                 filepath = await DownloadBilibiliAudioAsync(songUrl);
             else
                 filepath = await DownloadAudioAsync(songUrl);
+            Console.WriteLine("成功下載後的檔案位置" + filepath);
 
             await Task.Delay(2000);
-
             if (_audioClient == null || _audioClient.ConnectionState != Discord.ConnectionState.Connected)
                 _audioClient = await voiceChannel.ConnectAsync(selfDeaf: false, selfMute: false);
 
             var output = _audioClient.CreatePCMStream(AudioApplication.Mixed);
-            using (var audioFile = new AudioFileReader(filepath))
-            {
-                var sampleRate = audioFile.WaveFormat.SampleRate;
-                var channels = audioFile.WaveFormat.Channels;
-                //新增爆
-                var modifiedSampleRate = _isEarRapeOn ? sampleRate / 10 : sampleRate;
-                using (var resampler = new MediaFoundationResampler(audioFile, new WaveFormat(sampleRate, channels)))
-                {
-                    resampler.ResamplerQuality = _isEarRapeOn ? 1 : 60; // 設置重取樣品質
-                    byte[] buffer = new byte[4096];
-                    int bytesRead;
 
-                    // 播放音樂
-                    while ((bytesRead = resampler.Read(buffer, 0, buffer.Length)) > 0)
+            var ffmpegProcess = CreatePcmStreamProcess(filepath, _isEarRapeOn);
+
+            try
+            {
+                byte[] buffer = new byte[4096];
+                int bytesRead;
+                while ((bytesRead = await ffmpegProcess!.StandardOutput.BaseStream.ReadAsync(buffer, 0, buffer.Length)) > 0)
+                {
+                    if (_isSkipRequest)
                     {
-                        audioFile.Volume = _isEarRapeOn ? 10.0f : 1.0f;
-                        if (_isSkipRequest)
-                        {
-                            await output.FlushAsync();
-                            _isSkipRequest = false;
-                            break;
-                        }
-                        await output.WriteAsync(buffer, 0, bytesRead);
+                        _isSkipRequest = false;
+                        break;
                     }
-                    await output.FlushAsync(); // 確保所有數據已發送
+                    await output.WriteAsync(buffer, 0, bytesRead);
                 }
+                await output.FlushAsync();
+            }
+            finally
+            {
+                ffmpegProcess?.Kill();
+                ffmpegProcess?.Dispose();
             }
 
             File.Delete(filepath);
@@ -776,7 +799,6 @@ public class Program
         catch (Exception ex)
         {
             await channel.SendMessageAsync($"我從來不覺得寫程式開心過:PlayNextSongAsync {ex.Message} {ex}");
-            await channel.SendMessageAsync($"https://anon-tokyo.com/image?frame=20704&episode=6");
         }
     }
     #endregion
@@ -831,21 +853,18 @@ public class Program
             if (!searchResults.Any())
             {
                 await channel.SendMessageAsync("找不到歌曲");
-                await channel.SendMessageAsync("https://anon-tokyo.com/image?frame=5280&episode=13");
                 return "";
             }
             // 获取第一个搜索结果
             var video = searchResults.First();
             var videoUrl = video.Url;
 
-            await channel.SendMessageAsync("https://anon-tokyo.com/image?frame=89608&episode=1-3");
             await channel.SendMessageAsync($"{video.Url}");
             return $"{videoUrl}";
         }
         catch (Exception ex)
         {
             await channel.SendMessageAsync($"我從來不覺得寫程式開心過:GetYoutubeUrlByName {ex.Message}");
-            await channel.SendMessageAsync($" https://anon-tokyo.com/image?frame=20704&episode=6");
             return "";
         }
     }
@@ -904,7 +923,6 @@ public class Program
         catch (Exception ex)
         {
             await channel.SendMessageAsync($"我從來不覺得寫程式開心過:SearchRelateVideoAsync {ex.Message}");
-            await channel.SendMessageAsync($" https://anon-tokyo.com/image?frame=20704&episode=6");
             return "";
         }
     }
@@ -980,20 +998,29 @@ public class Program
     #endregion
     #region 自訂func
 
-    public Process CreatePcmStreamProcess(string path)
+    public Process CreatePcmStreamProcess(string path, bool isEarRape = false)
     {
+        string ffmpegPath;
         string projectRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
-        string ffmpegPath = Path.Combine(projectRoot, "ffmpeg-master-latest-win64-gpl-shared", "bin", "ffmpeg.exe");
+        string winFfmpeg = Path.Combine(projectRoot, "ffmpeg-master-latest-win64-gpl-shared", "bin", "ffmpeg.exe");
+
+        // Windows 本機用本地 ffmpeg，Linux (Railway) 用系統 ffmpeg
+        ffmpegPath = File.Exists(winFfmpeg) ? winFfmpeg : "ffmpeg";
+
+        var audioFilter = isEarRape
+            ? "-af \"volume=10,asetrate=48000*0.1,aresample=48000\""
+            : "";
 
         return Process.Start(new ProcessStartInfo
         {
             FileName = ffmpegPath,
-            Arguments = $"-hide_banner -loglevel panic -i \"{path}\" -ac 2 -f s16le -ar 48000 pipe:1",
+            Arguments = $"-hide_banner -loglevel panic -i \"{path}\" {audioFilter} -ac 2 -f s16le -ar 48000 pipe:1",
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
         });
     }
+
     public string GetRandomizedTitle(string title, IMessageChannel channel)
     {
         var _ignoreKeywords = new List<string>
@@ -1033,7 +1060,7 @@ public class Program
         channel.SendMessageAsync(sb.ToString());
         return (parts[index]);
     }
-    public async Task<bool> CheckYoutubeUrlAliveAsync(string url)
+    public async Task<bool> CheckYoutubeUrlAliveAsync(string url, IMessageChannel channel)
     {
         try
         {
@@ -1045,6 +1072,8 @@ public class Program
 
             var youtube = new YoutubeClient();
             var video = await youtube.Videos.GetAsync(videoId.Value);
+            await channel.SendMessageAsync($"有取得標題 {video.Title}");
+
             _NowPlayingSongName = video.Title;
 
             return video != null; // 如果成功获取到视频信息，则视为有效
