@@ -12,6 +12,7 @@ using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using static System.Net.Mime.MediaTypeNames;
 
 namespace MusicBot2.Service
 {
@@ -144,6 +145,45 @@ namespace MusicBot2.Service
             {
                 _saveLock.Release();
             }
+        }
+
+        public async Task SetReferenceAsync(string channelKey, string referenceMessage,string replyUserName)
+        {
+            if (string.IsNullOrEmpty(channelKey)) return;
+
+            var history = GetHistory(channelKey);
+
+
+
+            if (history.Count > MaxTotalMessages)
+            {
+                _channelHistories[channelKey] = history
+                    .Skip(history.Count - MaxTotalMessages)
+                    .ToList();
+            }
+
+            if (replyUserName == "soyolin長崎爽世")
+            {
+                history.Add(new ConversationMessage
+                {
+                    Role = "model",
+                    Text = referenceMessage,
+                    Timestamp = DateTime.Now,
+                    UserName = "爽世"
+                });
+            }
+            else
+            {
+                history.Add(new ConversationMessage
+                {
+                    Role = "user",
+                    Text = referenceMessage,
+                    Timestamp = DateTime.Now,
+                    UserName = replyUserName
+                });
+            }
+
+            _ = SaveMemoryAsync();
         }
 
         public async Task ClearMemoryAsync(string channelKey = null)
@@ -495,39 +535,4 @@ namespace MusicBot2.Service
             return 0;
         }
     }
-
-    #region OpenRouter DTO
-
-    internal class OpenRouterMessage
-    {
-        [JsonPropertyName("role")]
-        public string Role { get; set; }
-
-        [JsonPropertyName("content")]
-        public string Content { get; set; }
-    }
-
-    internal class OpenRouterChatRequest
-    {
-        [JsonPropertyName("model")]
-        public string Model { get; set; }
-
-        [JsonPropertyName("messages")]
-        public List<OpenRouterMessage> Messages { get; set; }
-
-        [JsonPropertyName("max_tokens")]
-        public int MaxTokens { get; set; }
-
-        [JsonPropertyName("temperature")]
-        public double Temperature { get; set; }
-
-        [JsonPropertyName("top_p")]
-        public double TopP { get; set; }
-
-        [JsonPropertyName("stop")]
-        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public string[] Stop { get; set; }
-    }
-
-    #endregion
 }
