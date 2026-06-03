@@ -100,6 +100,7 @@ public class Program
             .AddSingleton<RubiksCubeService>()
             .AddSingleton<GetChampService>()
             .AddSingleton<OldMaidService>()
+            .AddSingleton<Game2048Service>()
             .AddSingleton<RVC_Service>()
             .AddSingleton<SetTextService>(setTextService)
             .AddSingleton<ElevenLabsService>(sp =>
@@ -198,6 +199,23 @@ public class Program
                             msg.Components = comp?.Build();
                         });
                     }
+                }
+            }
+            // 處理 2048 遊戲按鈕
+            else if (component.Data.CustomId.StartsWith("2048_"))
+            {
+                var parts = component.Data.CustomId.Split('_');
+                if (parts.Length >= 2)
+                {
+                    string direction = parts[1];
+                    var game2048Service = _services.GetService<Game2048Service>();
+                    var (newComponent, embed) = await game2048Service.HandleButtonClick(component, direction);
+
+                    await component.UpdateAsync(msg =>
+                    {
+                        msg.Embed = embed;
+                        msg.Components = newComponent?.Build();
+                    });
                 }
             }
             else if (component.Data.CustomId.StartsWith("oldmaid_draw_"))

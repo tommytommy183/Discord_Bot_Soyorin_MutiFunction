@@ -25,8 +25,9 @@ namespace MusicBot2.SlahCommands
         private readonly GoogleAIStudioService _googleAIStudioService;
         private readonly RVC_Service _rVC_Service;
         private readonly SetTextService _setTextService;
+        private readonly Game2048Service _game2048Service;
 
-        public SlashCommandHandler(Program program, WordGuessingService wordService, MineGameService mineGameService, ElevenLabsService elevenLabsService, OldMaidService oldMaidService, RubiksCubeService rubiksCubeService, GoogleAIStudioService googleAIStudioService, RVC_Service rVC_Service, SetTextService setTextService)
+        public SlashCommandHandler(Program program, WordGuessingService wordService, MineGameService mineGameService, ElevenLabsService elevenLabsService, OldMaidService oldMaidService, RubiksCubeService rubiksCubeService, GoogleAIStudioService googleAIStudioService, RVC_Service rVC_Service, SetTextService setTextService, Game2048Service game2048Service)
         {
             _program = program;
             _wordService = wordService;
@@ -37,6 +38,7 @@ namespace MusicBot2.SlahCommands
             _rubiksCubeService = rubiksCubeService;
             _googleAIStudioService = googleAIStudioService;
             _rVC_Service = rVC_Service;
+            _game2048Service = game2048Service;
         }
 
         [SlashCommand("play", "播放音樂")]
@@ -314,6 +316,32 @@ namespace MusicBot2.SlahCommands
             await DeferAsync();
             var (component, embed) = _rubiksCubeService.StartGame(Context.Channel.Id, 20);
             await FollowupAsync(embed: embed, components: component.Build());
+        }
+
+        [SlashCommand("2048games", "開始 2048 遊戲")]
+        public async Task Game2048Command()
+        {
+            await DeferAsync();
+
+            try
+            {
+                var channelId = Context.Channel.Id;
+
+                var (component, embed) = await _game2048Service.StartGameAsync(channelId);
+
+                await FollowupAsync(embed: embed, components: component?.Build());
+            }
+            catch(Exception ex)
+            {
+                var errorEmbed = new EmbedBuilder()
+                {
+                    Title = "❌ 錯誤",
+                    Description = $"發生錯誤: {ex.Message}",
+                    Color = Color.Red
+                }.Build();
+                await FollowupAsync(embed: errorEmbed, components: new ComponentBuilder().Build());
+            }
+
         }
 
         [SlashCommand("ghoststart", "開始抽鬼牌遊戲(測試模式)")]
