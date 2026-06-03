@@ -40,7 +40,7 @@ namespace MusicBot2.Service
                 _activeGames[channelId] = gameState;
 
                 var component = BuildGameBoard(gameState);
-                var embed = BuildEmbed(gameState, "🎮 2048 遊戲", "合併相同數字的方塊，目標達成 2048！");
+                var embed = BuildEmbed(gameState, "<:kc9:1511607103377379429> 2048", "大家都可以動 應該ㄅ");
 
                 return Task.FromResult((component, embed));
             }
@@ -113,8 +113,11 @@ namespace MusicBot2.Service
                     if (!gameState.Won && CheckWin(gameState))
                     {
                         gameState.Won = true;
-                        var winEmbed = BuildEmbed(gameState, "🎉 恭喜獲勝！", "你達成了 2048！可以繼續挑戰更高分數");
+                        var winEmbed = BuildEmbed(gameState, "🎉 恭喜你發財", "你獲得了kc大軍");
                         var winComponent = BuildGameBoard(gameState);
+
+                        component.Channel.SendMessageAsync(@"<:kc1:1511607011253551194> <:kc2:1511607127825715231> <:kc3:1511607126064103424> <:kc4:1511607123765628959> <:kc5:1511607112378089491> <:kc6:1511607110700498944> <:kc7:1511607109035495444> <:kc8:1511607104849317958> <:kc9:1511607103377379429> <:kc10:1511607101376692305> <:kc11:1511607099732529203> <:kc12:1511607098134495262> <:kc13:1511607096473288835> <:kc14:1511607094636314654> <:kc15:1511607092925038592> ");
+
                         return Task.FromResult((winComponent, winEmbed));
                     }
 
@@ -122,13 +125,13 @@ namespace MusicBot2.Service
                     if (IsGameOver(gameState))
                     {
                         gameState.GameOver = true;
-                        var loseEmbed = BuildEmbed(gameState, "😢 遊戲結束", "沒有可移動的空間了！");
+                        var loseEmbed = BuildEmbed(gameState, "😢 結束了", "全都 結束了 <:saki_ave_mujica:1293560735695376485>");
                         return Task.FromResult((new ComponentBuilder(), loseEmbed));
                     }
                 }
 
                 var component2 = BuildGameBoard(gameState);
-                var embed = BuildEmbed(gameState, "🎮 2048", moved ? "移動成功！" : "無法往這個方向移動");
+                var embed = BuildEmbed(gameState, "<:kc9:1511607103377379429> 2048", moved ? "移動成功！" : "無法往這個方向移動");
 
                 return Task.FromResult((component2, embed));
             }
@@ -403,11 +406,11 @@ namespace MusicBot2.Service
 
             if (gameState.Won)
             {
-                embed.AddField("狀態", "🎉 獲勝！達成 2048！", true);
+                embed.AddField("狀態", "🎉 恭喜數學小天才", true);
             }
             else if (gameState.GameOver)
             {
-                embed.AddField("狀態", "😢 遊戲結束", true);
+                embed.AddField("狀態", "😢 ㄐㄐ", true);
             }
             else
             {
@@ -424,17 +427,17 @@ namespace MusicBot2.Service
         {
             return value switch
             {
-                2 => "2<:kc1:1511607011253551194>", //1
-                4 => "4<:kc2:1511607127825715231>",//2
-                8 => "8<:kc4:1511607123765628959>",//4
-                16 => "16<:kc7:1511607109035495444>",//7
-                32 => "32<:kc6:1511607110700498944>",//6
-                64 => "<:kc9:1511607103377379429>",//9
-                128 => "<:kc13:1511607096473288835>",//13
-                256 => "<:kc3:1511607126064103424>",//3
-                512 => "<:kc10:1511607101376692305>",//10
-                1024 => "<:kc11:1511607099732529203>",//11
-                2048 => "<:kc12:1511607098134495262>",//12
+                2 => "2️⃣",
+                4 => "4️⃣",
+                8 => "8️⃣",
+                16 => "🔶",
+                32 => "🟠",
+                64 => "🟡",
+                128 => "🟢",
+                256 => "🔵",
+                512 => "🟣",
+                1024 => "<a:mygo:1293569874001530921>",
+                2048 => "<a:95333c6fabb3e5d23e6325817ce09986:1293572566715203594>",
                 _ => "⭐"
             };
         }
