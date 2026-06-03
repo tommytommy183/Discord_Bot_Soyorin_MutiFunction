@@ -452,7 +452,7 @@ namespace MusicBot2.Service
             embed.AddField("📊 分數", gameState.Score.ToString(), true);
             if(!string.IsNullOrEmpty(gameState.LastMovedUserName))
             {
-                embed.AddField("最後操作玩家", gameState.LastMovedUserName, true);
+                embed.AddField("最後操作者", gameState.LastMovedUserName, true);
             }
 
             if (gameState.Won)

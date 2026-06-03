@@ -208,8 +208,9 @@ public class Program
                 if (parts.Length >= 2)
                 {
                     string direction = parts[1];
+                    var user = component.User as SocketGuildUser;
                     var game2048Service = _services.GetService<Game2048Service>();
-                    var (newComponent, embed) = await game2048Service.HandleButtonClick(component, direction);
+                    var (newComponent, embed) = await game2048Service.HandleButtonClick(component, direction, user.DisplayName);
 
                     await component.UpdateAsync(msg =>
                     {

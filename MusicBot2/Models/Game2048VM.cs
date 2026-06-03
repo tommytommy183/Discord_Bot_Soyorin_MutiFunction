@@ -15,7 +15,7 @@ namespace MusicBot2.Models
         public bool GameOver { get; set; } = false;
         public bool Won { get; set; } = false;
         public ulong ChannelId { get; set; }
-        public string UserName { get; set; }
+        public string LastMovedUserName { get; set; }
 
         public Game2048VM()
         {
