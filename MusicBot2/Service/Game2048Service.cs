@@ -57,7 +57,7 @@ namespace MusicBot2.Service
         }
 
         // 處理按鈕點擊
-        public Task<(ComponentBuilder, Embed)> HandleButtonClick(SocketMessageComponent component, string direction)
+        public Task<(ComponentBuilder, Embed)> HandleButtonClick(SocketMessageComponent component, string direction,string userName)
         {
             try
             {
@@ -73,7 +73,7 @@ namespace MusicBot2.Service
                     }.Build();
                     return Task.FromResult((new ComponentBuilder(), errorEmbed));
                 }
-
+                _activeGames[channelId].LastMovedUserName = userName;
                 var gameState = _activeGames[channelId];
 
                 if (gameState.GameOver)
@@ -116,7 +116,7 @@ namespace MusicBot2.Service
                         var winEmbed = BuildEmbed(gameState, "🎉 恭喜你發財", "你獲得了kc大軍");
                         var winComponent = BuildGameBoard(gameState);
 
-                        component.Channel.SendMessageAsync(@"<:kc1:1511607011253551194> <:kc2:1511607127825715231> <:kc3:1511607126064103424> <:kc4:1511607123765628959> <:kc5:1511607112378089491> <:kc6:1511607110700498944> <:kc7:1511607109035495444> <:kc8:1511607104849317958> <:kc9:1511607103377379429> <:kc10:1511607101376692305> <:kc11:1511607099732529203> <:kc12:1511607098134495262> <:kc13:1511607096473288835> <:kc14:1511607094636314654> <:kc15:1511607092925038592> ");
+                        component.Channel.SendMessageAsync($"{userName} 獲得了kc大軍，即將征服沒有捷運的北大特區 \n <:kc1:1511607011253551194> <:kc2:1511607127825715231> <:kc3:1511607126064103424> <:kc4:1511607123765628959> <:kc5:1511607112378089491> <:kc6:1511607110700498944> <:kc7:1511607109035495444> <:kc8:1511607104849317958> <:kc9:1511607103377379429> <:kc10:1511607101376692305> <:kc11:1511607099732529203> <:kc12:1511607098134495262> <:kc13:1511607096473288835> <:kc14:1511607094636314654> <:kc15:1511607092925038592> ");
 
                         return Task.FromResult((winComponent, winEmbed));
                     }
@@ -450,6 +450,10 @@ namespace MusicBot2.Service
 
             embed.AddField("🎮 遊戲棋盤", sb.ToString(), false);
             embed.AddField("📊 分數", gameState.Score.ToString(), true);
+            if(!string.IsNullOrEmpty(gameState.LastMovedUserName))
+            {
+                embed.AddField("最後操作玩家", gameState.LastMovedUserName, true);
+            }
 
             if (gameState.Won)
             {
