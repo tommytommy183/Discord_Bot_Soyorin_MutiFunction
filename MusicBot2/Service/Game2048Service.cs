@@ -131,7 +131,9 @@ namespace MusicBot2.Service
                 }
 
                 var component2 = BuildGameBoard(gameState);
-                var embed = BuildEmbed(gameState, "<:kc9:1511607103377379429> 2048", moved ? "移動成功！" : "無法往這個方向移動");
+                string tileList = ShowTileList(gameState.LargestNum);
+                string description = moved ? $"移動成功！ \n 數字與形狀對應:\n {tileList}" : $"無法往這個方向移動 \n 數字與形狀對應:\n {tileList}";
+                var embed = BuildEmbed(gameState, "<:kc9:1511607103377379429> 2048", description);
 
                 return Task.FromResult((component2, embed));
             }
@@ -145,6 +147,50 @@ namespace MusicBot2.Service
                 }.Build();
                 return Task.FromResult((new ComponentBuilder(), errorEmbed));
             }
+        }
+
+        private string ShowTileList(int largestNum)
+        {
+            string result = string.Empty;
+
+            if (largestNum >= 16)
+            {
+                result += "16🔶 ";
+            }
+            if (largestNum >= 32)
+            {
+                result += "32🟠 ";
+            }
+            if (largestNum >= 64)
+            {
+                result += "64🟡 ";
+            }
+            if (largestNum >= 128)
+            {
+                result += "128🟢 ";
+            }
+            if (largestNum >= 256)
+            {
+                result += "256🔵 ";
+            }
+            if (largestNum >= 512)
+            {
+                result += "512🟣 ";
+            }
+            if (largestNum >= 1024)
+            {
+                result += "1024<a:mygo:1293569874001530921> ";
+            }
+            if (largestNum >= 2048)
+            {
+                result += "2048<a:95333c6fabb3e5d23e6325817ce09986:1293572566715203594> ";
+            }
+            if (largestNum >= 4096)
+            {
+                result += "4096<:kc11:1511607099732529203> ";
+            }
+
+            return result;
         }
 
         // 添加隨機方塊
@@ -165,7 +211,7 @@ namespace MusicBot2.Service
             if (emptyCells.Count > 0)
             {
                 var (row, col) = emptyCells[_random.Next(emptyCells.Count)];
-                
+
                 gameState.Grid[row, col] = _random.Next(10) < 9 ? 2 : 4; // 90% 機率出現 2，10% 機率出現 4
             }
         }
@@ -308,6 +354,7 @@ namespace MusicBot2.Service
             {
                 for (int j = 0; j < gameState.Size; j++)
                 {
+                    //測試先用32
                     if (gameState.Grid[i, j] == 2048)
                     {
                         return true;
@@ -438,7 +485,7 @@ namespace MusicBot2.Service
                 512 => "🟣",
                 1024 => "<a:mygo:1293569874001530921>",
                 2048 => "<a:95333c6fabb3e5d23e6325817ce09986:1293572566715203594>",
-                _ => "⭐"
+                _ => "<:kc11:1511607099732529203>"
             };
         }
 
