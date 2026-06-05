@@ -25,8 +25,10 @@ namespace MusicBot2.SlahCommands
         private readonly GoogleAIStudioService _googleAIStudioService;
         private readonly RVC_Service _rVC_Service;
         private readonly SetTextService _setTextService;
+        private readonly Game2048Service _game2048Service;
+        private readonly Pick2Service _pick2Service;
 
-        public SlashCommandHandler(Program program, WordGuessingService wordService, MineGameService mineGameService, ElevenLabsService elevenLabsService, OldMaidService oldMaidService, RubiksCubeService rubiksCubeService, GoogleAIStudioService googleAIStudioService, RVC_Service rVC_Service, SetTextService setTextService)
+        public SlashCommandHandler(Program program, WordGuessingService wordService, MineGameService mineGameService, ElevenLabsService elevenLabsService, OldMaidService oldMaidService, RubiksCubeService rubiksCubeService, GoogleAIStudioService googleAIStudioService, RVC_Service rVC_Service, SetTextService setTextService, Game2048Service game2048Service, Pick2Service pick2Service)
         {
             _program = program;
             _wordService = wordService;
@@ -37,6 +39,8 @@ namespace MusicBot2.SlahCommands
             _rubiksCubeService = rubiksCubeService;
             _googleAIStudioService = googleAIStudioService;
             _rVC_Service = rVC_Service;
+            _game2048Service = game2048Service;
+            _pick2Service = pick2Service;
         }
 
         [SlashCommand("play", "播放音樂")]
@@ -316,6 +320,32 @@ namespace MusicBot2.SlahCommands
             await FollowupAsync(embed: embed, components: component.Build());
         }
 
+        [SlashCommand("2048games", "開始 2048 遊戲")]
+        public async Task Game2048Command()
+        {
+            await DeferAsync();
+
+            try
+            {
+                var channelId = Context.Channel.Id;
+
+                var (component, embed) = await _game2048Service.StartGameAsync(channelId);
+
+                await FollowupAsync(embed: embed, components: component?.Build());
+            }
+            catch(Exception ex)
+            {
+                var errorEmbed = new EmbedBuilder()
+                {
+                    Title = "❌ 錯誤",
+                    Description = $"發生錯誤: {ex.Message}",
+                    Color = Color.Red
+                }.Build();
+                await FollowupAsync(embed: errorEmbed, components: new ComponentBuilder().Build());
+            }
+
+        }
+
         [SlashCommand("ghoststart", "開始抽鬼牌遊戲(測試模式)")]
         public async Task GhostStartCommand()
         {
@@ -444,6 +474,34 @@ namespace MusicBot2.SlahCommands
                 await channel.SendMessageAsync(message, allowedMentions: AllowedMentions.All);
             }
             await RespondAsync("發送成功", ephemeral: true);
+        }
+
+        [SlashCommand("pick2", "輸入殘酷二選一ID開啟遊戲")]
+        public async Task Pick2TitleAsync(
+            [Summary("遊戲id", "要開啟的遊戲ID")] string gameID, 
+            [Summary("選擇總量", "要選擇的項目總量")] int count)
+        {
+            await DeferAsync();
+
+            var channelId = Context.Channel.Id;
+
+            try
+            {
+                var (imageMessage, component, embed) = await _pick2Service.StartGameAsync(channelId, gameID, count);
+
+                // 先發送圖片訊息
+                var imageMsg = await Context.Channel.SendMessageAsync(imageMessage);
+
+                // 再發送投票訊息
+                var voteMsg = await FollowupAsync(embed: embed, components: component?.Build());
+
+                // 儲存訊息 ID
+                _pick2Service.SetMessageIds(channelId, imageMsg.Id, voteMsg.Id);
+            }
+            catch (Exception ex)
+            {
+                await FollowupAsync($"啟動遊戲時發生錯誤: {ex.Message}", ephemeral: true);
+            }
         }
     }
 }

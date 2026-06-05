@@ -1,5 +1,7 @@
-﻿using Discord.WebSocket;
+﻿using Discord;
+using Discord.WebSocket;
 using MusicBot2.Models;
+using RiotSharp.Endpoints.StatusEndpoint;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -12,6 +14,7 @@ using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using static System.Net.Mime.MediaTypeNames;
 
 namespace MusicBot2.Service
 {
@@ -189,7 +192,7 @@ namespace MusicBot2.Service
         /// <summary>
         /// 進階版：使用 GeminiRequestVM (沿用既有 VM，避免到處改型別)
         /// </summary>
-        public async Task<string> GenerateTextAsync(GeminiRequestVM request, SocketGuildUser user, bool saveToMemory = true, string channelKey = null)
+        public async Task<string> GenerateTextAsync(GeminiRequestVM request, SocketGuildUser user, bool saveToMemory = true, string channelKey = null, IMessage? repliedMessage = null)
         {
             channelKey ??= user?.Guild?.Id.ToString() ?? "global";
 
@@ -220,7 +223,19 @@ namespace MusicBot2.Service
 
                         // 當前使用者訊息
                         var displayName = user?.DisplayName ?? user?.Username ?? "Unknown";
-                        var userMessageWithName = $"使用者名稱: {displayName}\n訊息: {request.UserMessage}";
+                        string userMessageWithName;
+                        if (repliedMessage == null)
+                        {
+                            userMessageWithName = $"使用者名稱: {displayName}\n訊息: {request.UserMessage}";
+                        }
+                        else
+                        {
+                            var repliedAuthorName = (repliedMessage.Author as SocketGuildUser)?.DisplayName
+                                                    ?? repliedMessage.Author?.Username
+                                                    ?? "某人";
+
+                            userMessageWithName = $"使用者名稱: {displayName}\n 回覆了 {repliedAuthorName} 的這條訊息: {repliedMessage.Content}\n訊息: {request.UserMessage}";
+                        }
                         messages.Add(new OpenRouterMessage { Role = "user", Content = userMessageWithName });
 
                         var apiRequest = new OpenRouterChatRequest
@@ -359,7 +374,7 @@ namespace MusicBot2.Service
         /// <summary>
         /// 簡化版本：直接傳入訊息
         /// </summary>
-        public async Task<string> GenerateTextAsync(string message, SocketGuildUser user, bool saveToMemory = true, string channelKey = null)
+        public async Task<string> GenerateTextAsync(string message, SocketGuildUser user, bool saveToMemory = true, string channelKey = null, IMessage? repliedMessage = null)
         {
             var request = new GeminiRequestVM
             {
@@ -370,7 +385,7 @@ namespace MusicBot2.Service
                 MaxOutputTokens = 512
             };
 
-            return await GenerateTextAsync(request, user, saveToMemory, channelKey);
+            return await GenerateTextAsync(request, user, saveToMemory, channelKey, repliedMessage);
         }
 
         public string GetMemorySummary(string channelKey = null)
@@ -495,39 +510,4 @@ namespace MusicBot2.Service
             return 0;
         }
     }
-
-    #region OpenRouter DTO
-
-    internal class OpenRouterMessage
-    {
-        [JsonPropertyName("role")]
-        public string Role { get; set; }
-
-        [JsonPropertyName("content")]
-        public string Content { get; set; }
-    }
-
-    internal class OpenRouterChatRequest
-    {
-        [JsonPropertyName("model")]
-        public string Model { get; set; }
-
-        [JsonPropertyName("messages")]
-        public List<OpenRouterMessage> Messages { get; set; }
-
-        [JsonPropertyName("max_tokens")]
-        public int MaxTokens { get; set; }
-
-        [JsonPropertyName("temperature")]
-        public double Temperature { get; set; }
-
-        [JsonPropertyName("top_p")]
-        public double TopP { get; set; }
-
-        [JsonPropertyName("stop")]
-        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public string[] Stop { get; set; }
-    }
-
-    #endregion
 }

@@ -100,6 +100,8 @@ public class Program
             .AddSingleton<RubiksCubeService>()
             .AddSingleton<GetChampService>()
             .AddSingleton<OldMaidService>()
+            .AddSingleton<Game2048Service>()
+            .AddSingleton<Pick2Service>()
             .AddSingleton<RVC_Service>()
             .AddSingleton<SetTextService>(setTextService)
             .AddSingleton<ElevenLabsService>(sp =>
@@ -108,7 +110,7 @@ public class Program
                     elevenLabsApiKey
                 ))
             .AddSingleton<GoogleAIStudioService>(sp =>
-                new GoogleAIStudioService(googleAIStudioApiKey,googleAIStudioApiKey2)
+                new GoogleAIStudioService(googleAIStudioApiKey, googleAIStudioApiKey2)
                 )
             .AddSingleton<OpenRouterService>(sp =>
                 new OpenRouterService(openRouterApiKey)
@@ -196,6 +198,108 @@ public class Program
                         {
                             msg.Embed = emb;
                             msg.Components = comp?.Build();
+                        });
+                    }
+                }
+            }
+            // 處理 2048 遊戲按鈕
+            else if (component.Data.CustomId.StartsWith("2048_"))
+            {
+                var parts = component.Data.CustomId.Split('_');
+                if (parts.Length >= 2)
+                {
+                    string direction = parts[1];
+                    var user = component.User as SocketGuildUser;
+                    var game2048Service = _services.GetService<Game2048Service>();
+                    var (newComponent, embed) = await game2048Service.HandleButtonClick(component, direction, user.DisplayName);
+
+                    await component.UpdateAsync(msg =>
+                    {
+                        msg.Embed = embed;
+                        msg.Components = newComponent?.Build();
+                    });
+                }
+            }
+            // 處理二選一遊戲按鈕
+            else if (component.Data.CustomId.StartsWith("pick2_"))
+            {
+                // 立即延遲回應，避免 3 秒超時
+                await component.DeferAsync();
+
+                var parts = component.Data.CustomId.Split('_');
+                if (parts.Length >= 2)
+                {
+                    string action = parts[1];
+                    var pick2Service = _services.GetService<Pick2Service>();
+
+                    if (action == "vote" && parts.Length >= 3)
+                    {
+                        int choice = int.Parse(parts[2]);
+                        var (imageMessage, newComponent, embed, gameOver) = await pick2Service.HandleVoteAsync(component, choice);
+
+                        // 先更新投票訊息（快）
+                        await component.Message.ModifyAsync(msg =>
+                        {
+                            msg.Embed = embed;
+                            msg.Components = newComponent?.Build();
+                        });
+
+                        // 再更新圖片訊息（慢，但不影響互動）
+                        var gameState = pick2Service.GetGameState(component.Channel.Id);
+                        if (gameState != null && gameState.ImageMessageId != 0)
+                        {
+                            try
+                            {
+                                var imageMsg = await component.Channel.GetMessageAsync(gameState.ImageMessageId);
+                                if (imageMsg is IUserMessage userMsg)
+                                {
+                                    await userMsg.ModifyAsync(msg => msg.Content = imageMessage);
+                                }
+                            }
+                            catch { /* 忽略圖片訊息更新失敗 */ }
+                        }
+                    }
+                    else if (action == "finish")
+                    {
+                        var (imageMessage, newComponent, embed) = await pick2Service.FinishRoundAsync(component.Channel.Id);
+
+                        // 先更新投票訊息
+                        await component.Message.ModifyAsync(msg =>
+                        {
+                            msg.Embed = embed;
+                            msg.Components = newComponent?.Build();
+                        });
+
+                        // 再更新圖片訊息
+                        var gameState = pick2Service.GetGameState(component.Channel.Id);
+                        if (gameState != null && gameState.ImageMessageId != 0)
+                        {
+                            try
+                            {
+                                var imageMsg = await component.Channel.GetMessageAsync(gameState.ImageMessageId);
+                                if (imageMsg is IUserMessage userMsg)
+                                {
+                                    await userMsg.ModifyAsync(msg => msg.Content = imageMessage);
+                                }
+                            }
+                            catch { /* 忽略圖片訊息更新失敗 */ }
+                        }
+                    }
+                    else if (action == "reset")
+                    {
+                        pick2Service.ResetGame(component.Channel.Id);
+
+                        var embed = new EmbedBuilder()
+                        {
+                            Title = "🔄 遊戲已重置",
+                            Description = "請使用 `/pick2` 指令開始新的遊戲",
+                            Color = Color.Green
+                        }.Build();
+
+                        await component.Message.ModifyAsync(msg =>
+                        {
+                            msg.Embed = embed;
+                            msg.Components = new ComponentBuilder().Build();
                         });
                     }
                 }
@@ -293,23 +397,39 @@ public class Program
         bool isMentioned = message.MentionedUsers.Any(u => u.Id == _client.CurrentUser.Id);
 
         if (isMentioned ||
-            message.Content.ToLower().Contains("soyo") || 
-            message.Content.ToLower().Contains("搜幽林") || 
-                message.Content.ToLower().Contains("crychic") || 
-                message.Content.ToLower().Contains("長期") || 
-                message.Content.ToLower().Contains("爽世") || 
-                message.Content.ToLower().Contains("爽食") || 
+            message.Content.ToLower().Contains("soyo") ||
+            message.Content.ToLower().Contains("搜幽林") ||
+                message.Content.ToLower().Contains("crychic") ||
+                message.Content.ToLower().Contains("長期") ||
+                message.Content.ToLower().Contains("爽世") ||
+                message.Content.ToLower().Contains("爽食") ||
                 message.Content.ToLower().Contains("素食"))
         {
             var talker = message.Author as SocketGuildUser;
             // 用「伺服器 + 頻道」當記憶 key，避免不同頻道上下文互相污染
-            var channelKey = $"{talker?.Guild?.Id}_{message.Channel.Id}";
-            string result = await _openRouterService.GenerateTextAsync(message.Content, talker, true, channelKey);
-            await message.Channel.SendMessageAsync(result);
+            var channelKey = $"{message.Channel.Id}";
+
+            string result = string.Empty;
+
+            if (message.Reference != null)
+            {
+                var repliedMessage = await message.Channel.GetMessageAsync(message.Reference.MessageId.Value);
+                if (repliedMessage != null)
+                {
+                    result = await _openRouterService.GenerateTextAsync(message.Content, talker, true, channelKey, repliedMessage);
+                    await message.Channel.SendMessageAsync(result);
+                    return; // 已處理完畢，直接返回
+                }
+            }
+            else
+            {
+                result = await _openRouterService.GenerateTextAsync(message.Content, talker, true, channelKey);
+                await message.Channel.SendMessageAsync(result);
+            }
         }
 
         string match = await _setTextService.Match(message.Content.ToLower());
-        if(!string.IsNullOrEmpty(match))
+        if (!string.IsNullOrEmpty(match))
         {
             await message.Channel.SendMessageAsync(match);
         }
@@ -447,7 +567,7 @@ public class Program
             return;
         }
 
-        if (!await CheckYoutubeUrlAliveAsync(query,channel) && !_isRelatedOn)
+        if (!await CheckYoutubeUrlAliveAsync(query, channel) && !_isRelatedOn)
         {
             await channel.SendMessageAsync($"連結已經死了: {{ {query} }}");
             return;
