@@ -53,7 +53,7 @@ namespace MusicBot2.Service
                 var gameResponse = JsonConvert.DeserializeObject<Pick2GameResponse>(responseContent);
 
                 // 2. 取得遊戲元素資料
-                var elementsResponse = await _httpClient.GetAsync($"https://2pick.app/api/game/{gameResponse.game_serial}/elements?limit=32");
+                var elementsResponse = await _httpClient.GetAsync($"https://2pick.app/api/game/{gameResponse.game_serial}/elements?limit={elementCount}");
 
                 if (!elementsResponse.IsSuccessStatusCode)
                 {
@@ -443,23 +443,5 @@ namespace MusicBot2.Service
                 Color = Color.Red
             }.Build();
         }
-    }
-
-    // 遊戲狀態類別
-    public class Pick2GameState
-    {
-        public ulong ChannelId { get; set; }
-        public string GameSerial { get; set; }
-        public string Title { get; set; }
-        public List<Pick2Element> AllElements { get; set; }
-        public List<Pick2Element> CurrentBracket { get; set; }  // 當前輪次的所有選手
-        public List<Pick2Element> NextBracket { get; set; }  // 下一輪的勝者
-        public List<Pick2Element> CurrentOptions { get; set; }  // 當前比賽的兩個選手
-        public int CurrentMatchIndex { get; set; }  // 當前比賽場次（0-based）
-        public int TotalMatches { get; set; }  // 本輪總場次
-        public int CurrentRound { get; set; }  // 當前是第幾輪（1=初賽, 2=第二輪...）
-        public Dictionary<int, HashSet<ulong>> Votes { get; set; }
-        public ulong ImageMessageId { get; set; }  // 圖片訊息的 ID
-        public ulong VoteMessageId { get; set; }   // 投票訊息的 ID
     }
 }
