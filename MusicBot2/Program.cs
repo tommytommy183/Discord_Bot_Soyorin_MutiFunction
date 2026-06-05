@@ -101,6 +101,7 @@ public class Program
             .AddSingleton<GetChampService>()
             .AddSingleton<OldMaidService>()
             .AddSingleton<Game2048Service>()
+            .AddSingleton<Pick2Service>()
             .AddSingleton<RVC_Service>()
             .AddSingleton<SetTextService>(setTextService)
             .AddSingleton<ElevenLabsService>(sp =>
@@ -217,6 +218,90 @@ public class Program
                         msg.Embed = embed;
                         msg.Components = newComponent?.Build();
                     });
+                }
+            }
+            // 處理二選一遊戲按鈕
+            else if (component.Data.CustomId.StartsWith("pick2_"))
+            {
+                // 立即延遲回應，避免 3 秒超時
+                await component.DeferAsync();
+
+                var parts = component.Data.CustomId.Split('_');
+                if (parts.Length >= 2)
+                {
+                    string action = parts[1];
+                    var pick2Service = _services.GetService<Pick2Service>();
+
+                    if (action == "vote" && parts.Length >= 3)
+                    {
+                        int choice = int.Parse(parts[2]);
+                        var (imageMessage, newComponent, embed, gameOver) = await pick2Service.HandleVoteAsync(component, choice);
+
+                        // 先更新投票訊息（快）
+                        await component.Message.ModifyAsync(msg =>
+                        {
+                            msg.Embed = embed;
+                            msg.Components = newComponent?.Build();
+                        });
+
+                        // 再更新圖片訊息（慢，但不影響互動）
+                        var gameState = pick2Service.GetGameState(component.Channel.Id);
+                        if (gameState != null && gameState.ImageMessageId != 0)
+                        {
+                            try
+                            {
+                                var imageMsg = await component.Channel.GetMessageAsync(gameState.ImageMessageId);
+                                if (imageMsg is IUserMessage userMsg)
+                                {
+                                    await userMsg.ModifyAsync(msg => msg.Content = imageMessage);
+                                }
+                            }
+                            catch { /* 忽略圖片訊息更新失敗 */ }
+                        }
+                    }
+                    else if (action == "finish")
+                    {
+                        var (imageMessage, newComponent, embed) = await pick2Service.FinishRoundAsync(component.Channel.Id);
+
+                        // 先更新投票訊息
+                        await component.Message.ModifyAsync(msg =>
+                        {
+                            msg.Embed = embed;
+                            msg.Components = newComponent?.Build();
+                        });
+
+                        // 再更新圖片訊息
+                        var gameState = pick2Service.GetGameState(component.Channel.Id);
+                        if (gameState != null && gameState.ImageMessageId != 0)
+                        {
+                            try
+                            {
+                                var imageMsg = await component.Channel.GetMessageAsync(gameState.ImageMessageId);
+                                if (imageMsg is IUserMessage userMsg)
+                                {
+                                    await userMsg.ModifyAsync(msg => msg.Content = imageMessage);
+                                }
+                            }
+                            catch { /* 忽略圖片訊息更新失敗 */ }
+                        }
+                    }
+                    else if (action == "reset")
+                    {
+                        pick2Service.ResetGame(component.Channel.Id);
+
+                        var embed = new EmbedBuilder()
+                        {
+                            Title = "🔄 遊戲已重置",
+                            Description = "請使用 `/pick2` 指令開始新的遊戲",
+                            Color = Color.Green
+                        }.Build();
+
+                        await component.Message.ModifyAsync(msg =>
+                        {
+                            msg.Embed = embed;
+                            msg.Components = new ComponentBuilder().Build();
+                        });
+                    }
                 }
             }
             else if (component.Data.CustomId.StartsWith("oldmaid_draw_"))
