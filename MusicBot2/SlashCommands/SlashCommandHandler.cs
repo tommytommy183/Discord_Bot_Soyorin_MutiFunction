@@ -52,15 +52,6 @@ namespace MusicBot2.SlahCommands
             await FollowupAsync("-", ephemeral: true);
         }
 
-        [SlashCommand("p", "播放音樂 (簡短版)")]
-        public async Task PCommand([Summary("查詢", "YouTube URL 或搜尋關鍵字")] string query)
-        {
-            await DeferAsync();
-            var user = Context.User as SocketGuildUser;
-            await _program.PlayMusicAsync(Context.Channel, user, query);
-            await FollowupAsync("-", ephemeral: true);
-        }
-
         [SlashCommand("bilibili", "播放 Bilibili 音樂")]
         public async Task BilibiliCommand([Summary("網址", "Bilibili 影片網址")] string url)
         {
@@ -72,15 +63,6 @@ namespace MusicBot2.SlahCommands
 
         [SlashCommand("skip", "跳過目前歌曲")]
         public async Task SkipCommand()
-        {
-            await DeferAsync();
-            var user = Context.User as SocketGuildUser;
-            await _program.SkipMusic(Context.Channel, user);
-            await FollowupAsync("-", ephemeral: true);
-        }
-
-        [SlashCommand("s", "跳過目前歌曲 (簡短版)")]
-        public async Task SCommand()
         {
             await DeferAsync();
             var user = Context.User as SocketGuildUser;
@@ -117,19 +99,6 @@ namespace MusicBot2.SlahCommands
 
         [SlashCommand("find", "搜尋並播放音樂")]
         public async Task FindCommand([Summary("關鍵字", "搜尋關鍵字")] string query)
-        {
-            await DeferAsync();
-            var user = Context.User as SocketGuildUser;
-            string url = await _program.GetYoutubeUrlByNameAsync(Context.Channel, query);
-            if (!string.IsNullOrEmpty(url))
-            {
-                await _program.PlayMusicAsync(Context.Channel, user, url);
-            }
-            await FollowupAsync("-", ephemeral: true);
-        }
-
-        [SlashCommand("f", "搜尋並播放音樂 (簡短版)")]
-        public async Task FCommand([Summary("關鍵字", "搜尋關鍵字")] string query)
         {
             await DeferAsync();
             var user = Context.User as SocketGuildUser;
