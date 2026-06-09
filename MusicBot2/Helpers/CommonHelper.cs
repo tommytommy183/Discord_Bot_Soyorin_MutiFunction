@@ -55,6 +55,8 @@ namespace MusicBot2.Helpers
                 await message.AddReactionAsync(emote);
                 await Task.Delay(300);
             }
+
+            await message.AddReactionAsync(Emote.Parse("<a:24f60b6c774e8beb:1513720299558801480>"));
         }
 
         public static string AddEmoji(string item)
@@ -70,6 +72,8 @@ namespace MusicBot2.Helpers
                 if (i < items.Length - 1)
                     result.Append("\n ");
             }
+
+            result.Append("<a:24f60b6c774e8beb:1513720299558801480> 是gay或T或非二元性別或性別流動者");
 
             return result.ToString();
         }
