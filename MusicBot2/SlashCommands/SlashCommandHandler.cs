@@ -477,12 +477,15 @@ namespace MusicBot2.SlahCommands
         [SlashCommand("vote", "投票")]
         public async Task VoteAsync(
             [Summary("標題", "標題")] string title,
-            [Summary("投票選項", "選項，以,區隔，ex:1,2,3...")] string item
+            [Summary("投票選項", "選項，以,區隔，ex:1,2,3...")] string item,
+            [Summary("role", "要@的群組")] IRole? role = null
         )
         {
             await DeferAsync();
             string emoteString = CommonHelper.AddEmoji(item);
-            string result = $"**{title}**\n\n{emoteString}";
+            string mention = role != null ? $"{role.Mention}\n" : "";
+
+            string result = $"{mention}**{title}**\n\n{emoteString}";
             await FollowupAsync(result);
 
             var message = await GetOriginalResponseAsync();
