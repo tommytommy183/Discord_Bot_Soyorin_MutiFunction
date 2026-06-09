@@ -49,9 +49,10 @@ namespace MusicBot2.Helpers
 
         public static async Task AddEmojiToMessageAsync(IUserMessage message, int count)
         {
-            for(int i = 0;i<count;i++)
+            for (int i = 0; i < count; i++)
             {
-                await message.AddReactionAsync(new Emoji(emojis[i]));
+                var emote = Emote.Parse(emojis[i]);
+                await message.AddReactionAsync(emote);
                 await Task.Delay(300);
             }
         }
@@ -67,7 +68,7 @@ namespace MusicBot2.Helpers
                 var emoji = emojis[i]; // 循環使用emoji
                 result.Append($"{emoji} {items[i].Trim()}");
                 if (i < items.Length - 1)
-                    result.Append(", ");
+                    result.Append("\n ");
             }
 
             return result.ToString();
