@@ -76,5 +76,21 @@ namespace MusicBot2.Helpers
 
             return result.ToString();
         }
+
+        public static (ComponentBuilder, Embed) BuildErrorResponse(string message)
+        {
+            var embed = BuildErrorEmbed(message);
+            return (new ComponentBuilder(), embed);
+        }
+
+        public static Embed BuildErrorEmbed(string message)
+        {
+            return new EmbedBuilder()
+            {
+                Title = "❌ 诶诶 叫豬頭馬又看一下啦",
+                Description = message,
+                Color = Color.Red
+            }.Build();
+        }
     }
 }

@@ -9,6 +9,7 @@ using System.Text;
 using System.Threading.Tasks;
 using Discord;
 using Discord.WebSocket;
+using MusicBot2.Helpers;
 
 namespace MusicBot2.Service
 {
@@ -45,7 +46,7 @@ namespace MusicBot2.Service
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    var (comp, emb) = BuildErrorResponse($"無法建立遊戲: {response.StatusCode}");
+                    var (comp, emb) = CommonHelper.BuildErrorResponse($"無法建立遊戲: {response.StatusCode}");
                     return ("", comp, emb);
                 }
 
@@ -57,7 +58,7 @@ namespace MusicBot2.Service
 
                 if (!elementsResponse.IsSuccessStatusCode)
                 {
-                    var (comp, emb) = BuildErrorResponse($"無法取得遊戲元素: {elementsResponse.StatusCode}");
+                    var (comp, emb) = CommonHelper.BuildErrorResponse($"無法取得遊戲元素: {elementsResponse.StatusCode}");
                     return ("", comp, emb);
                 }
 
@@ -92,7 +93,7 @@ namespace MusicBot2.Service
             }
             catch (Exception ex)
             {
-                var (comp, emb) = BuildErrorResponse($"發生錯誤: {ex.Message}");
+                var (comp, emb) = CommonHelper.BuildErrorResponse($"發生錯誤: {ex.Message}");
                 return ("", comp, emb);
             }
         }
@@ -163,7 +164,7 @@ namespace MusicBot2.Service
 
             if (!_activeGames.ContainsKey(channelId))
             {
-                var emb = BuildErrorEmbed("找不到進行中的遊戲");
+                var emb = CommonHelper.BuildErrorEmbed("找不到進行中的遊戲");
                 return ("", new ComponentBuilder(), emb, true);
             }
 
@@ -193,7 +194,7 @@ namespace MusicBot2.Service
         {
             if (!_activeGames.ContainsKey(channelId))
             {
-                var (comp, emb) = BuildErrorResponse("找不到進行中的遊戲");
+                var (comp, emb) = CommonHelper.BuildErrorResponse("找不到進行中的遊戲");
                 return ("", comp, emb);
             }
 
@@ -425,23 +426,6 @@ namespace MusicBot2.Service
         public Pick2GameState GetGameState(ulong channelId)
         {
             return _activeGames.ContainsKey(channelId) ? _activeGames[channelId] : null;
-        }
-
-        // 建立錯誤回應
-        private (ComponentBuilder, Embed) BuildErrorResponse(string message)
-        {
-            var embed = BuildErrorEmbed(message);
-            return (new ComponentBuilder(), embed);
-        }
-
-        private Embed BuildErrorEmbed(string message)
-        {
-            return new EmbedBuilder()
-            {
-                Title = "❌ 錯誤",
-                Description = message,
-                Color = Color.Red
-            }.Build();
         }
     }
 }

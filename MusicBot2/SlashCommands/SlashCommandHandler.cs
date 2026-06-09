@@ -28,8 +28,9 @@ namespace MusicBot2.SlahCommands
         private readonly SetTextService _setTextService;
         private readonly Game2048Service _game2048Service;
         private readonly Pick2Service _pick2Service;
+        private readonly JikanAnimeService _animeService;
 
-        public SlashCommandHandler(Program program, WordGuessingService wordService, MineGameService mineGameService, ElevenLabsService elevenLabsService, OldMaidService oldMaidService, RubiksCubeService rubiksCubeService, GoogleAIStudioService googleAIStudioService, RVC_Service rVC_Service, SetTextService setTextService, Game2048Service game2048Service, Pick2Service pick2Service)
+        public SlashCommandHandler(Program program, WordGuessingService wordService, MineGameService mineGameService, ElevenLabsService elevenLabsService, OldMaidService oldMaidService, RubiksCubeService rubiksCubeService, GoogleAIStudioService googleAIStudioService, RVC_Service rVC_Service, SetTextService setTextService, Game2048Service game2048Service, Pick2Service pick2Service,JikanAnimeService animeService)
         {
             _program = program;
             _wordService = wordService;
@@ -42,6 +43,7 @@ namespace MusicBot2.SlahCommands
             _rVC_Service = rVC_Service;
             _game2048Service = game2048Service;
             _pick2Service = pick2Service;
+            _animeService = animeService;
         }
 
         [SlashCommand("play", "播放音樂")]
@@ -491,6 +493,19 @@ namespace MusicBot2.SlahCommands
             var message = await GetOriginalResponseAsync();
 
             await CommonHelper.AddEmojiToMessageAsync(message, item.Split(',').Length);
+        }
+
+        [SlashCommand("guessanimechara", "猜動漫角色")]
+        public async Task GuessAnimeCharaAsync(
+            [Summary("模式", "模式")][Choice("角色猜角色", "ctc"), Choice("角色猜動畫", "cta")] string mode,
+            [Summary("是否查詢熱門", "是否查詢熱門")] bool isTop
+        )
+        {
+            await DeferAsync();
+
+            var result = await _animeService.StartGameAsync(mode, isTop);
+
+            await FollowupAsync(embed: result.embed, components: result.component?.Build());
         }
     }
 }
