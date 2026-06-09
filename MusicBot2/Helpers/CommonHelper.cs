@@ -69,10 +69,9 @@ namespace MusicBot2.Helpers
             {
                 var emoji = emojis[i]; // 循環使用emoji
                 result.Append($"{emoji} {items[i].Trim()}");
-                if (i < items.Length - 1)
+                if (i <= items.Length - 1)
                     result.Append("\n ");
             }
-
             result.Append("<a:24f60b6c774e8beb:1513720299558801480> 是gay或T或非二元性別或性別流動者");
 
             return result.ToString();
