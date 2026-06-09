@@ -5,6 +5,7 @@ using ElevenLabs.Models;
 using ElevenLabs.Voices;
 using InstagramApiSharp.Classes;
 using Microsoft.VisualBasic;
+using MusicBot2.Helpers;
 using MusicBot2.Models;
 using MusicBot2.Service;
 using RiotSharp.Misc;
@@ -426,7 +427,7 @@ namespace MusicBot2.SlahCommands
         }
 
         [SlashCommand("sendlight", "送光")]
-        public async Task SendLight(
+        public async Task SendLightAsync(
             [Summary("你的代名", "你想用的名字")] string sender,
             [Summary("想送的對象", "請選擇對象")] IUser target,
             [Summary("自訂訊息", "你想要附加的訊息，選填，如果要的話，幫我以/me代表自己，/target代表你要發送的對象")] string message = ""
@@ -471,6 +472,22 @@ namespace MusicBot2.SlahCommands
             {
                 await FollowupAsync($"啟動遊戲時發生錯誤: {ex.Message}", ephemeral: true);
             }
+        }
+
+        [SlashCommand("vote", "投票")]
+        public async Task VoteAsync(
+            [Summary("標題", "標題")] string title,
+            [Summary("投票選項", "選項，以,區隔，ex:1,2,3...")] string item
+        )
+        {
+            await DeferAsync();
+            string emoteString = CommonHelper.AddEmoji(item);
+            string result = $"**{title}**\n\n{emoteString}";
+            await FollowupAsync(result);
+
+            var message = await GetOriginalResponseAsync();
+
+            await CommonHelper.AddEmojiToMessageAsync(message, item.Split(',').Length);
         }
     }
 }
