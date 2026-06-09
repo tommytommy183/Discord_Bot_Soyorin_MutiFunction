@@ -369,13 +369,13 @@ namespace MusicBot2.Service
             {
                 // 選項 1
                 sb.AppendLine($"**1️⃣ {gameState.CurrentOptions[0].title}**");
-                if (!string.IsNullOrEmpty(gameState.CurrentOptions[0].thumb_url))
-                {
-                    sb.AppendLine(gameState.CurrentOptions[0].thumb_url);
-                }
-                else if (!string.IsNullOrEmpty(gameState.CurrentOptions[0].source_url))
+                if (!string.IsNullOrEmpty(gameState.CurrentOptions[0].source_url))
                 {
                     sb.AppendLine(gameState.CurrentOptions[0].source_url);
+                }
+                else if (!string.IsNullOrEmpty(gameState.CurrentOptions[0].thumb_url))
+                {
+                    sb.AppendLine(gameState.CurrentOptions[0].thumb_url);
                 }
                 else
                 {
@@ -385,13 +385,13 @@ namespace MusicBot2.Service
 
                 // 選項 2
                 sb.AppendLine($"**2️⃣ {gameState.CurrentOptions[1].title}**");
-                if (!string.IsNullOrEmpty(gameState.CurrentOptions[1].thumb_url))
-                {
-                    sb.AppendLine(gameState.CurrentOptions[1].thumb_url);
-                }
-                else if (!string.IsNullOrEmpty(gameState.CurrentOptions[1].source_url))
+                if (!string.IsNullOrEmpty(gameState.CurrentOptions[1].source_url))
                 {
                     sb.AppendLine(gameState.CurrentOptions[1].source_url);
+                }
+                else if (!string.IsNullOrEmpty(gameState.CurrentOptions[1].thumb_url))
+                {
+                    sb.AppendLine(gameState.CurrentOptions[1].thumb_url);
                 }
                 else
                 {
