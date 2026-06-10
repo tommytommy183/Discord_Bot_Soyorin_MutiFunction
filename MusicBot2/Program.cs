@@ -346,13 +346,14 @@ public class Program
                 await component.DeferAsync();
 
                 var parts = component.Data.CustomId.Split('_');
-                if (parts.Length == 4)
+                if (parts.Length == 5)
                 {
                     int selectedId = int.Parse(parts[2]);
                     int correctId = int.Parse(parts[3]);
+                    string correctName = parts[4];
 
                     var jikanService = _services.GetService<JikanAnimeService>();
-                    var (embed, newComponent) = await jikanService.HandleButtonClickAsync(component, selectedId, correctId);
+                    var (embed, newComponent) = await jikanService.HandleButtonClickAsync(component, selectedId, correctId, correctName);
 
                     await component.ModifyOriginalResponseAsync(msg =>
                     {

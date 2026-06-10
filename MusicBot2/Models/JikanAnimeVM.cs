@@ -48,7 +48,7 @@ namespace MusicBot2.Models
         public int favorites { get; set; }
         public string synopsis { get; set; }
         public string rating { get; set; }
-        public int score { get; set; }
+        public double? score { get; set; }
     }
 
     public class Trailer

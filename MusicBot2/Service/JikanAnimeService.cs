@@ -54,13 +54,13 @@ namespace MusicBot2.Service
             }
 
             // 獲取角色的動畫資訊（返回 (選項列表, 正確答案ID)）
-            var (animeOptions, correctAnimeId) = await GetAnimeOptionsForCharacterAsync(charaResponse.mal_id);
+            var (animeOptions, correctAnimeId,correnctAnimeName) = await GetAnimeOptionsForCharacterAsync(charaResponse.mal_id);
             if (animeOptions == null || animeOptions.Count == 0)
             {
                 return CommonHelper.BuildErrorResponse("無法取得角色的動畫資訊，請重試");
             }
 
-            var component = BuildAnimeOptionsComponent(animeOptions, correctAnimeId);
+            var component = BuildAnimeOptionsComponent(animeOptions, correctAnimeId, charaResponse.name);
             var embed = BuildCharacterToAnimeEmbed(charaResponse);
 
             return (component, embed);
@@ -95,7 +95,7 @@ namespace MusicBot2.Service
             // 打亂順序
             characterOptions = characterOptions.OrderBy(x => Guid.NewGuid()).ToList();
 
-            var component = BuildCharacterOptionsComponent(characterOptions, correctCharacter.mal_id);
+            var component = BuildCharacterOptionsComponent(characterOptions, correctCharacter.mal_id,correctCharacter.name);
             var embed = BuildCharacterToCharacterEmbed(correctCharacter);
 
             return (component, embed);
@@ -142,7 +142,7 @@ namespace MusicBot2.Service
         }
 
         // 獲取角色的動畫選項（1個正確 + 3個隨機）
-        private async Task<(List<AnimeResponse> options, int correctAnimeId)> GetAnimeOptionsForCharacterAsync(int characterId)
+        private async Task<(List<AnimeResponse> options, int correctAnimeId,string correctAnimeName)> GetAnimeOptionsForCharacterAsync(int characterId)
         {
             try
             {
@@ -151,7 +151,7 @@ namespace MusicBot2.Service
                 var response = await _httpClient.GetAsync(url);
                 if (!response.IsSuccessStatusCode)
                 {
-                    return (null, 0);
+                    return (null, 0,null);
                 }
 
                 var responseContent = await response.Content.ReadAsStringAsync();
@@ -159,28 +159,14 @@ namespace MusicBot2.Service
 
                 if (animeData.data == null || animeData.data.Count == 0)
                 {
-                    return (null, 0);
+                    return (null, 0,null);
                 }
 
                 // 取正確答案（角色的第一個動畫）
                 var correctAnime = animeData.data[0].anime;
                 int correctAnimeId = correctAnime.mal_id; // 記錄正確答案的 ID
+                string correctAnimeName = correctAnime.title; // 記錄正確答案的名稱
                 var options = new List<AnimeResponse> { correctAnime };
-
-                // 獲取5個隨機動畫作為錯誤選項
-                for (int i = 0; i < 5; i++)
-                {
-                    var randomResponse = await _httpClient.GetAsync($"{API_BASE_URL}/random/anime");
-                    if (randomResponse.IsSuccessStatusCode)
-                    {
-                        var content = await randomResponse.Content.ReadAsStringAsync();
-                        var wrapper = JsonConvert.DeserializeObject<AnimeWrapper>(content);
-                        if (wrapper?.data != null && wrapper.data.mal_id != correctAnimeId)
-                        {
-                            options.Add(wrapper.data);
-                        }
-                    }
-                }
 
                 while (options.Count < 6)
                 {
@@ -203,16 +189,16 @@ namespace MusicBot2.Service
 
                 // 打亂順序
                 var shuffledOptions = options.OrderBy(x => Guid.NewGuid()).ToList();
-                return (shuffledOptions, correctAnimeId);
+                return (shuffledOptions, correctAnimeId,correctAnimeName);
             }
             catch
             {
-                return (null, 0);
+                return (null, 0,null);
             }
         }
 
         // 建立動畫選項按鈕（用於角色猜動畫）
-        private ComponentBuilder BuildAnimeOptionsComponent(List<AnimeResponse> animeOptions, int correctAnswerId)
+        private ComponentBuilder BuildAnimeOptionsComponent(List<AnimeResponse> animeOptions, int correctAnswerId,string correctAnswerName)
         {
             var builder = new ComponentBuilder();
 
@@ -227,7 +213,7 @@ namespace MusicBot2.Service
 
                 builder.WithButton(
                     label: label,
-                    customId: $"anime_guess_{anime.mal_id}_{correctAnswerId}",
+                    customId: $"anime_guess_{anime.mal_id}_{correctAnswerId}_{correctAnswerName}",
                     style: ButtonStyle.Primary,
                     row: i / 3  // 第0-2個按鈕在第0行，第3-5個按鈕在第1行
                 );
@@ -237,7 +223,7 @@ namespace MusicBot2.Service
         }
 
         // 建立角色選項按鈕（用於角色猜角色）
-        private ComponentBuilder BuildCharacterOptionsComponent(List<CharactersResopnse> characterOptions, int correctAnswerId)
+        private ComponentBuilder BuildCharacterOptionsComponent(List<CharactersResopnse> characterOptions, int correctAnswerId,string correnctAnswerName)
         {
             var builder = new ComponentBuilder();
 
@@ -252,7 +238,7 @@ namespace MusicBot2.Service
 
                 builder.WithButton(
                     label: label,
-                    customId: $"anime_guess_{character.mal_id}_{correctAnswerId}",
+                    customId: $"anime_guess_{character.mal_id}_{correctAnswerId}_{correnctAnswerName}",
                     style: ButtonStyle.Primary,
                     row: i / 3  // 第0-2個按鈕在第0行，第3-5個按鈕在第1行
                 );
@@ -317,6 +303,8 @@ namespace MusicBot2.Service
                 {
                     hint = hint.Substring(0, 147) + "...";
                 }
+                //移除介紹中關於主角的名稱
+                hint = hint.Replace(character.name, "???");
                 embedBuilder.AddField("提示", hint);
             }
 
@@ -327,7 +315,7 @@ namespace MusicBot2.Service
         }
 
         // 處理按鈕點擊
-        public async Task<(Embed embed, ComponentBuilder component)> HandleButtonClickAsync(SocketMessageComponent interaction, int selectedId, int correctId)
+        public async Task<(Embed embed, ComponentBuilder component)> HandleButtonClickAsync(SocketMessageComponent interaction, int selectedId, int correctId,string correctName)
         {
             bool isCorrect = selectedId == correctId;
 
@@ -367,11 +355,11 @@ namespace MusicBot2.Service
             // 添加結果訊息
             if (isCorrect)
             {
-                embedBuilder.AddField("✅ 宅斃了", $"恭喜 宅王之王 **{interaction.User.Mention}** 答對了！ 獎勵你 \n\n{RewardsHelpers.GetRandomRewards()}");
+                embedBuilder.AddField($"✅ 宅斃了: {correctName}", $"恭喜 宅王之王 **{interaction.User.Mention}** 答對了！ 獎勵你 \n\n{RewardsHelpers.GetRandomRewards()}");
             }
             else
             {
-                embedBuilder.AddField("❌ 菜逼八", $"{interaction.User.Mention} so 菜！這你都不認識？");
+                embedBuilder.AddField("❌ 菜逼八", $"{interaction.User.Mention} so 菜！這你都不認識？ {correctName}");
             }
 
             // 禁用所有按鈕
