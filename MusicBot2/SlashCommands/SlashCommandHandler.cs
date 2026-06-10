@@ -5,11 +5,13 @@ using ElevenLabs.Models;
 using ElevenLabs.Voices;
 using InstagramApiSharp.Classes;
 using Microsoft.VisualBasic;
+using MusicBot2.Helpers;
 using MusicBot2.Models;
 using MusicBot2.Service;
 using RiotSharp.Misc;
 using System.ComponentModel;
 using System.Net.Http;
+using System.Xml.Linq;
 using static System.Net.Mime.MediaTypeNames;
 
 namespace MusicBot2.SlahCommands
@@ -27,8 +29,9 @@ namespace MusicBot2.SlahCommands
         private readonly SetTextService _setTextService;
         private readonly Game2048Service _game2048Service;
         private readonly Pick2Service _pick2Service;
+        private readonly JikanAnimeService _animeService;
 
-        public SlashCommandHandler(Program program, WordGuessingService wordService, MineGameService mineGameService, ElevenLabsService elevenLabsService, OldMaidService oldMaidService, RubiksCubeService rubiksCubeService, GoogleAIStudioService googleAIStudioService, RVC_Service rVC_Service, SetTextService setTextService, Game2048Service game2048Service, Pick2Service pick2Service)
+        public SlashCommandHandler(Program program, WordGuessingService wordService, MineGameService mineGameService, ElevenLabsService elevenLabsService, OldMaidService oldMaidService, RubiksCubeService rubiksCubeService, GoogleAIStudioService googleAIStudioService, RVC_Service rVC_Service, SetTextService setTextService, Game2048Service game2048Service, Pick2Service pick2Service,JikanAnimeService animeService)
         {
             _program = program;
             _wordService = wordService;
@@ -41,9 +44,10 @@ namespace MusicBot2.SlahCommands
             _rVC_Service = rVC_Service;
             _game2048Service = game2048Service;
             _pick2Service = pick2Service;
+            _animeService = animeService;
         }
 
-        [SlashCommand("play", "播放音樂")]
+        [SlashCommand("播放音樂", "播放音樂")]
         public async Task PlayCommand([Summary("查詢", "YouTube URL 或搜尋關鍵字")] string query)
         {
             await DeferAsync();
@@ -52,16 +56,7 @@ namespace MusicBot2.SlahCommands
             await FollowupAsync("-", ephemeral: true);
         }
 
-        [SlashCommand("p", "播放音樂 (簡短版)")]
-        public async Task PCommand([Summary("查詢", "YouTube URL 或搜尋關鍵字")] string query)
-        {
-            await DeferAsync();
-            var user = Context.User as SocketGuildUser;
-            await _program.PlayMusicAsync(Context.Channel, user, query);
-            await FollowupAsync("-", ephemeral: true);
-        }
-
-        [SlashCommand("bilibili", "播放 Bilibili 音樂")]
+        [SlashCommand("撥放bilibili", "播放 Bilibili 音樂")]
         public async Task BilibiliCommand([Summary("網址", "Bilibili 影片網址")] string url)
         {
             await DeferAsync();
@@ -70,7 +65,7 @@ namespace MusicBot2.SlahCommands
             await FollowupAsync("-", ephemeral: true);
         }
 
-        [SlashCommand("skip", "跳過目前歌曲")]
+        [SlashCommand("跳過目前歌曲", "跳過目前歌曲")]
         public async Task SkipCommand()
         {
             await DeferAsync();
@@ -79,16 +74,7 @@ namespace MusicBot2.SlahCommands
             await FollowupAsync("-", ephemeral: true);
         }
 
-        [SlashCommand("s", "跳過目前歌曲 (簡短版)")]
-        public async Task SCommand()
-        {
-            await DeferAsync();
-            var user = Context.User as SocketGuildUser;
-            await _program.SkipMusic(Context.Channel, user);
-            await FollowupAsync("-", ephemeral: true);
-        }
-
-        [SlashCommand("loop", "循環播放目前歌曲")]
+        [SlashCommand("循環播放目前歌曲", "循環播放目前歌曲")]
         public async Task LoopCommand()
         {
             await DeferAsync();
@@ -97,7 +83,7 @@ namespace MusicBot2.SlahCommands
             await FollowupAsync("-", ephemeral: true);
         }
 
-        [SlashCommand("unloop", "取消循環播放")]
+        [SlashCommand("取消循環撥放", "取消循環播放")]
         public async Task UnloopCommand()
         {
             await DeferAsync();
@@ -106,7 +92,7 @@ namespace MusicBot2.SlahCommands
             await FollowupAsync("-", ephemeral: true);
         }
 
-        [SlashCommand("related", "開啟/關閉推薦音樂")]
+        [SlashCommand("開關推薦音樂", "開啟/關閉推薦音樂")]
         public async Task RelatedCommand()
         {
             await DeferAsync();
@@ -115,7 +101,7 @@ namespace MusicBot2.SlahCommands
             await FollowupAsync("-", ephemeral: true);
         }
 
-        [SlashCommand("find", "搜尋並播放音樂")]
+        [SlashCommand("搜尋並播放音樂", "搜尋並播放音樂")]
         public async Task FindCommand([Summary("關鍵字", "搜尋關鍵字")] string query)
         {
             await DeferAsync();
@@ -128,20 +114,7 @@ namespace MusicBot2.SlahCommands
             await FollowupAsync("-", ephemeral: true);
         }
 
-        [SlashCommand("f", "搜尋並播放音樂 (簡短版)")]
-        public async Task FCommand([Summary("關鍵字", "搜尋關鍵字")] string query)
-        {
-            await DeferAsync();
-            var user = Context.User as SocketGuildUser;
-            string url = await _program.GetYoutubeUrlByNameAsync(Context.Channel, query);
-            if (!string.IsNullOrEmpty(url))
-            {
-                await _program.PlayMusicAsync(Context.Channel, user, url);
-            }
-            await FollowupAsync("-", ephemeral: true);
-        }
-
-        [SlashCommand("list", "顯示目前播放清單")]
+        [SlashCommand("顯示目前播放清單", "顯示目前播放清單")]
         public async Task ListCommand()
         {
             await DeferAsync();
@@ -150,7 +123,7 @@ namespace MusicBot2.SlahCommands
             await FollowupAsync("-", ephemeral: true);
         }
 
-        [SlashCommand("earrape", "開啟/關閉 Ear Rape 模式")]
+        [SlashCommand("開關earrape", "開啟/關閉 Ear Rape 模式")]
         public async Task EarRapeCommand()
         {
             await DeferAsync();
@@ -159,7 +132,7 @@ namespace MusicBot2.SlahCommands
             await FollowupAsync("-", ephemeral: true);
         }
 
-        [SlashCommand("skill", "查詢英雄技能")]
+        [SlashCommand("查詢英雄技能", "查詢英雄技能")]
         public async Task SkillCommand([Summary("英雄名", "英雄名稱")] string champName)
         {
             await DeferAsync();
@@ -168,7 +141,7 @@ namespace MusicBot2.SlahCommands
             await FollowupAsync("-", ephemeral: true);
         }
 
-        [SlashCommand("guess", "猜測英雄技能")]
+        [SlashCommand("猜測英雄技能", "猜測英雄技能")]
         public async Task GuessCommand(
             [Summary("英雄名", "英雄名稱")] string champName,
             [Summary("技能位置", "P, Q, W, E, 或 R")][Choice("P", "p"), Choice("Q", "q"), Choice("W", "w"), Choice("E", "e"), Choice("R", "r")] string skillPos,
@@ -180,7 +153,7 @@ namespace MusicBot2.SlahCommands
             await FollowupAsync("-", ephemeral: true);
         }
 
-        [SlashCommand("words", "猜單字")]
+        [SlashCommand("猜單字", "猜單字")]
         public async Task Guess(string word)
         {
             try
@@ -199,7 +172,7 @@ namespace MusicBot2.SlahCommands
 
         }
 
-        [SlashCommand("mine", "開始踩地雷遊戲")]
+        [SlashCommand("開始踩地雷遊戲", "開始踩地雷遊戲")]
         public async Task MineCommand()
         {
             await DeferAsync();
@@ -209,7 +182,7 @@ namespace MusicBot2.SlahCommands
             await FollowupAsync(embed: embed, components: component.Build());
         }
 
-        [SlashCommand("minebig", "超大踩地雷遊戲")]
+        [SlashCommand("開始超大踩地雷遊戲", "開始超大踩地雷遊戲")]
         public async Task CustomizedMineCommand(
             [Summary("寬度", "地圖寬度")] int width,
             [Summary("高度", "地圖高度")] int height)
@@ -221,7 +194,7 @@ namespace MusicBot2.SlahCommands
             await FollowupAsync(embed: embed, components: component.Build());
         }
 
-        [SlashCommand("mineopen", "超大踩地雷遊戲")]
+        [SlashCommand("超大踩地雷遊戲開牌", "超大踩地雷遊戲開牌")]
         public async Task OpenBox(
             [Summary("x座標", "x座標")] int x,
             [Summary("y座標", "y座標")] int y)
@@ -232,7 +205,7 @@ namespace MusicBot2.SlahCommands
             await FollowupAsync(embed: embed);
         }
 
-        [SlashCommand("speak", "透過ElevenLabs說話")]
+        [SlashCommand("透過elevenlabs說話", "透過ElevenLabs說話")]
         public async Task ElevenLabsTalk(
             [Summary("text", "要讓他說的話")] string text,
             [Summary("model", "選擇需要使用的模型")][Choice("品質最好", "eleven_v3"), Choice("最穩定", "eleven_multilingual_v2"), Choice("最低延遲", "eleven_flash_v2_5"), Choice("平衡", "eleven_turbo_v2_5")] string model,
@@ -245,7 +218,7 @@ namespace MusicBot2.SlahCommands
             await FollowupAsync("已接收", ephemeral: true);
         }
 
-        [SlashCommand("talk", "聊天(測試中)")]
+        [SlashCommand("聊天測試中", "聊天(測試中)")]
         public async Task Talk(
             [Summary("text", "要讓他說的話")] string text,
             [Summary("speaker", "選擇要讓誰說")][Choice("soyo", "soyo"), Choice("tomori", "tomori"), Choice("anon", "anon")] string speaker,
@@ -273,7 +246,7 @@ namespace MusicBot2.SlahCommands
             );
         }
 
-        [SlashCommand("change_voice", "上傳音檔，選擇聲音模型與參數以改變聲音")]
+        [SlashCommand("上傳音檔來換聲音", "上傳音檔，選擇聲音模型與參數以改變聲音")]
         public async Task ChangeVoice(
             [Summary("file", "要上傳的音樂檔案 (mp3, wav)")] IAttachment file,
             [Summary("speaker", "選擇要讓誰說")][Choice("soyo", "soyo"), Choice("tomori", "tomori"), Choice("anon", "anon")] string speaker,
@@ -296,7 +269,7 @@ namespace MusicBot2.SlahCommands
             );
         }
 
-        [SlashCommand("rubikscube", "開始魔術方塊遊戲")]
+        [SlashCommand("開始魔術方塊遊戲", "開始魔術方塊遊戲")]
         public async Task RubiksCubeCommand(
             [Summary("難度", "打亂步數 (預設20步)")] int scrambleMoves = 20)
         {
@@ -312,7 +285,7 @@ namespace MusicBot2.SlahCommands
             await FollowupAsync(embed: embed, components: component.Build());
         }
 
-        [SlashCommand("cube", "開始魔術方塊遊戲 (簡短版)")]
+        [SlashCommand("開始魔術方塊遊戲短版", "開始魔術方塊遊戲 (簡短版)")]
         public async Task CubeCommand()
         {
             await DeferAsync();
@@ -320,7 +293,7 @@ namespace MusicBot2.SlahCommands
             await FollowupAsync(embed: embed, components: component.Build());
         }
 
-        [SlashCommand("2048games", "開始 2048 遊戲")]
+        [SlashCommand("開始2048遊戲", "開始 2048 遊戲")]
         public async Task Game2048Command()
         {
             await DeferAsync();
@@ -346,7 +319,7 @@ namespace MusicBot2.SlahCommands
 
         }
 
-        [SlashCommand("ghoststart", "開始抽鬼牌遊戲(測試模式)")]
+        [SlashCommand("開始單人抽鬼牌遊戲", "開始抽鬼牌遊戲(測試模式)")]
         public async Task GhostStartCommand()
         {
             await DeferAsync();
@@ -360,7 +333,7 @@ namespace MusicBot2.SlahCommands
             await FollowupAsync(result, components: component?.Build());
         }
 
-        [SlashCommand("ghostplay", "開始多人抽鬼牌遊戲")]
+        [SlashCommand("開始多人抽鬼牌遊戲", "開始多人抽鬼牌遊戲")]
         public async Task GhostPlayCommand(
             [Summary("玩家2", "第二位玩家")] SocketGuildUser player2,
             [Summary("玩家3", "第三位玩家（選填）")] SocketGuildUser player3 = null,
@@ -384,7 +357,7 @@ namespace MusicBot2.SlahCommands
             await FollowupAsync(result, components: component?.Build());
         }
 
-        [SlashCommand("ghosthands", "查看你的手牌")]
+        [SlashCommand("查看你的手牌", "查看你的手牌")]
         public async Task GhostHandsCommand()
         {
             var user = Context.User as SocketGuildUser;
@@ -394,7 +367,7 @@ namespace MusicBot2.SlahCommands
             await RespondAsync(embed: embed, ephemeral: true);
         }
 
-        [SlashCommand("ghoststatus", "查看抽鬼牌遊戲狀態")]
+        [SlashCommand("查看抽鬼牌遊戲狀態", "查看抽鬼牌遊戲狀態")]
         public async Task GhostStatusCommand()
         {
             await DeferAsync();
@@ -405,7 +378,7 @@ namespace MusicBot2.SlahCommands
             await FollowupAsync(status, components: component?.Build());
         }
 
-        [SlashCommand("ghostreset", "重置抽鬼牌遊戲")]
+        [SlashCommand("重置抽鬼牌遊戲", "重置抽鬼牌遊戲")]
         public async Task GhostResetCommand()
         {
             await DeferAsync();
@@ -416,7 +389,7 @@ namespace MusicBot2.SlahCommands
         }
 
 
-        [SlashCommand("settext", "設置文字")]
+        [SlashCommand("設置文字", "設置文字")]
         public async Task SetTextCommand(
             [Summary("if", "如果有這個文字")] string key,
             [Summary("then", "會跳出下面這段，如果不填就是刪除")] string value = ""
@@ -429,7 +402,7 @@ namespace MusicBot2.SlahCommands
             await FollowupAsync("設置完成", ephemeral: true);
         }
 
-        [SlashCommand("settextcheck", "檢查所有的設置文字")]
+        [SlashCommand("檢查所有的設置文字", "檢查所有的設置文字")]
         public async Task SetTextCheckCommand()
         {
             await DeferAsync();
@@ -441,7 +414,7 @@ namespace MusicBot2.SlahCommands
             await FollowupAsync(formattedResult, ephemeral: true);
         }
 
-        [SlashCommand("wordsupload", "上傳文字")]
+        [SlashCommand("上傳文字for馬又only", "上傳文字(for 豬頭馬又only)")]
         public async Task WordsUploadCommand(
             [Summary("file", "要上傳的文字檔案 (txt)")] IAttachment file
             )
@@ -456,8 +429,8 @@ namespace MusicBot2.SlahCommands
             await FollowupAsync("上傳成功", ephemeral: true);
         }
 
-        [SlashCommand("sendlight", "送光")]
-        public async Task SendLight(
+        [SlashCommand("送光", "送光")]
+        public async Task SendLightAsync(
             [Summary("你的代名", "你想用的名字")] string sender,
             [Summary("想送的對象", "請選擇對象")] IUser target,
             [Summary("自訂訊息", "你想要附加的訊息，選填，如果要的話，幫我以/me代表自己，/target代表你要發送的對象")] string message = ""
@@ -476,7 +449,7 @@ namespace MusicBot2.SlahCommands
             await RespondAsync("發送成功", ephemeral: true);
         }
 
-        [SlashCommand("pick2", "輸入殘酷二選一ID開啟遊戲")]
+        [SlashCommand("輸入殘酷二選一id開啟遊戲", "輸入殘酷二選一ID開啟遊戲")]
         public async Task Pick2TitleAsync(
             [Summary("遊戲id", "要開啟的遊戲ID")] string gameID, 
             [Summary("選擇總量", "要選擇的項目總量")] int count)
@@ -501,6 +474,84 @@ namespace MusicBot2.SlahCommands
             catch (Exception ex)
             {
                 await FollowupAsync($"啟動遊戲時發生錯誤: {ex.Message}", ephemeral: true);
+            }
+        }
+
+        [SlashCommand("開啟投票", "開啟投票")]
+        public async Task VoteAsync(
+            [Summary("標題", "標題")] string title,
+            [Summary("投票選項", "選項，以,區隔，ex:1,2,3...")] string item,
+            [Summary("role", "要@的群組")] IRole? role = null
+        )
+        {
+            await DeferAsync();
+            string emoteString = CommonHelper.AddEmoji(item);
+            string mention = role != null ? $"{role.Mention}\n" : "";
+
+            string result = $"{mention}**{title}**\n\n{emoteString}";
+            await FollowupAsync(result);
+
+            var message = await GetOriginalResponseAsync();
+
+            await CommonHelper.AddEmojiToMessageAsync(message, item.Split(',').Length);
+        }
+
+        [SlashCommand("猜動漫角色", "猜動漫角色")]
+        public async Task GuessAnimeCharaAsync(
+            [Summary("模式", "模式")][Choice("角色猜角色", "ctc"), Choice("角色猜動畫", "cta")] string mode,
+            [Summary("是否查詢熱門", "是否查詢熱門")] bool isTop
+        )
+        {
+            await DeferAsync();
+
+            var result = await _animeService.StartGameAsync(mode, isTop);
+
+            await FollowupAsync(embed: result.embed, components: result.component?.Build());
+        }
+
+        [SlashCommand("隨機抽取一部幸運動畫", "隨機抽取一部幸運動畫")]
+        public async Task GetSomeRandomAnime(
+            [Summary("種類", "種類")][Choice("TV", "TV"), Choice("OVA", "OVA"), Choice("Movie", "Movie"), Choice("Special", "Special"), Choice("ONA", "ONA"), Choice("Music", "Music"), Choice("CM", "CM"), Choice("PV", "PV"), Choice("TV Special", "TV Special")] string type = "",
+            [Summary("分級", "分級")][Choice("G", "G"), Choice("pg", "pg"), Choice("pg13", "pg13"), Choice("r17", "r17"), Choice("r", "r"), Choice("rx", "rx")] string ratings = ""
+        )
+        {
+            await DeferAsync();
+
+            var result = await _animeService.GetSomeRandomAnime(type, ratings);
+
+            await FollowupAsync(embed: result.Item1.embed, components: result.Item1.component?.Build());
+
+            if (!string.IsNullOrEmpty(result.imageUrl))
+            {
+                using var http = new HttpClient();
+                var imageBytes = await http.GetByteArrayAsync(result.imageUrl);
+                var stream = new MemoryStream(imageBytes);
+                var attachment = new FileAttachment(stream, "SPOILER_anime.jpg");
+
+                await Context.Channel.SendFileAsync(attachment);
+            }
+        }
+
+        [SlashCommand("隨機抽取一部幸運書籍", "隨機抽取一部幸運書籍")]
+        public async Task GetSomeRandomManga(
+            [Summary("種類", "種類")][Choice("manga", "manga"), Choice("novel", "novel"), Choice("lightnovel", "lightnovel"), Choice("oneshot", "oneshot"), Choice("doujin", "doujin"), Choice("manhwa", "manhwa"), Choice("manhua", "manhua")] string type = "",
+            [Summary("標籤", "標籤")][Choice("Hentai", "12"), Choice("Horror", "14"), Choice("Ecchi", "9"), Choice("Adventure", "2"), Choice("Boys Love", "28"), Choice("Comedy", "4")] string genres = ""
+        )
+        {
+            await DeferAsync();
+
+            var result = await _animeService.GetSomeRandomManga(type, genres);
+
+            await FollowupAsync(embed: result.Item1.embed, components: result.Item1.component?.Build());
+
+            if (!string.IsNullOrEmpty(result.imageUrl))
+            {
+                using var http = new HttpClient();
+                var imageBytes = await http.GetByteArrayAsync(result.imageUrl);
+                var stream = new MemoryStream(imageBytes);
+                var attachment = new FileAttachment(stream, "SPOILER_manga.jpg");
+
+                await Context.Channel.SendFileAsync(attachment);
             }
         }
     }

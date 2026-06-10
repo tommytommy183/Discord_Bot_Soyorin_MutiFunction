@@ -113,9 +113,10 @@ public class Program
                 new GoogleAIStudioService(googleAIStudioApiKey, googleAIStudioApiKey2)
                 )
             .AddSingleton<OpenRouterService>(sp =>
-                new OpenRouterService(openRouterApiKey)
-                )
-            .BuildServiceProvider();
+                  new OpenRouterService(openRouterApiKey)
+                  )
+            .AddSingleton<JikanAnimeService>()
+              .BuildServiceProvider();
 
         _googleAIStudioService = _services.GetRequiredService<GoogleAIStudioService>();
         _openRouterService = _services.GetRequiredService<OpenRouterService>();
@@ -339,6 +340,28 @@ public class Program
                     });
                 }
             }
+            // 處理動畫猜謎按鈕
+            else if (component.Data.CustomId.StartsWith("anime_guess_"))
+            {
+                await component.DeferAsync();
+
+                var parts = component.Data.CustomId.Split('_');
+                if (parts.Length == 5)
+                {
+                    int selectedId = int.Parse(parts[2]);
+                    int correctId = int.Parse(parts[3]);
+                    string correctName = parts[4];
+
+                    var jikanService = _services.GetService<JikanAnimeService>();
+                    var (embed, newComponent) = await jikanService.HandleButtonClickAsync(component, selectedId, correctId, correctName);
+
+                    await component.ModifyOriginalResponseAsync(msg =>
+                    {
+                        msg.Embed = embed;
+                        msg.Components = newComponent?.Build();
+                    });
+                }
+            }
         }
         else
         {
@@ -369,6 +392,8 @@ public class Program
         while (true)
         {
             await _client.SetGameAsync("搜幽林轉生☆大★爆☆誕★", null, ActivityType.CustomStatus);
+            await Task.Delay(20000);
+            await _client.SetGameAsync("老娘soyo上雲端啦 在頻道輸入/可以看到老娘的一堆指令", null, ActivityType.CustomStatus);
             await Task.Delay(20000);
             await _client.SetGameAsync("傻逼DISCORD加密 不如我苦來溪苦一根", null, ActivityType.CustomStatus);
             await Task.Delay(20000);
@@ -403,7 +428,8 @@ public class Program
                 message.Content.ToLower().Contains("長期") ||
                 message.Content.ToLower().Contains("爽世") ||
                 message.Content.ToLower().Contains("爽食") ||
-                message.Content.ToLower().Contains("素食"))
+                message.Content.ToLower().Contains("素食") ||
+                message.Content.ToLower().Contains("我"))
         {
             var talker = message.Author as SocketGuildUser;
             // 用「伺服器 + 頻道」當記憶 key，避免不同頻道上下文互相污染
