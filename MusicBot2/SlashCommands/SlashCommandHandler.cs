@@ -11,6 +11,7 @@ using MusicBot2.Service;
 using RiotSharp.Misc;
 using System.ComponentModel;
 using System.Net.Http;
+using System.Xml.Linq;
 using static System.Net.Mime.MediaTypeNames;
 
 namespace MusicBot2.SlahCommands
@@ -495,7 +496,7 @@ namespace MusicBot2.SlahCommands
             await CommonHelper.AddEmojiToMessageAsync(message, item.Split(',').Length);
         }
 
-        [SlashCommand("guessanimechara", "猜動漫角色")]
+        [SlashCommand("animecharaguess", "猜動漫角色")]
         public async Task GuessAnimeCharaAsync(
             [Summary("模式", "模式")][Choice("角色猜角色", "ctc"), Choice("角色猜動畫", "cta")] string mode,
             [Summary("是否查詢熱門", "是否查詢熱門")] bool isTop
@@ -506,6 +507,29 @@ namespace MusicBot2.SlahCommands
             var result = await _animeService.StartGameAsync(mode, isTop);
 
             await FollowupAsync(embed: result.embed, components: result.component?.Build());
+        }
+
+        [SlashCommand("animerandom", "隨機抽舉一部幸運動畫")]
+        public async Task GetSomeRandomAnime(
+            [Summary("種類", "種類")][Choice("TV", "TV"), Choice("OVA", "OVA"), Choice("Movie", "Movie"), Choice("Special", "Special"), Choice("ONA", "ONA"), Choice("Music", "Music"), Choice("CM", "CM"), Choice("PV", "PV"), Choice("TV Special", "TV Special")] string type = "",
+            [Summary("分級", "分級")][Choice("G", "G"), Choice("pg", "pg"), Choice("pg13", "pg13"), Choice("r17", "r17"), Choice("r", "r"), Choice("rx", "rx")] string ratings = ""
+        )
+        {
+            await DeferAsync();
+
+            var result = await _animeService.GetSomeRandomAnime(type, ratings);
+
+            await FollowupAsync(embed: result.Item1.embed, components: result.Item1.component?.Build());
+
+            if (!string.IsNullOrEmpty(result.imageUrl))
+            {
+                using var http = new HttpClient();
+                var imageBytes = await http.GetByteArrayAsync(result.imageUrl);
+                var stream = new MemoryStream(imageBytes);
+                var attachment = new FileAttachment(stream, "SPOILER_anime.jpg");
+
+                await Context.Channel.SendFileAsync(attachment);
+            }
         }
     }
 }

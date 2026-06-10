@@ -1,4 +1,4 @@
-using Discord;
+ï»¿using Discord;
 using Discord.WebSocket;
 using MusicBot2.Helpers;
 using MusicBot2.Models;
@@ -24,73 +24,75 @@ namespace MusicBot2.Service
         {
             try
             {
-                if (mode.ToLower() == "cta" || mode.ToLower() == "¨¤¦â²q°Êµe")
+                if (mode.ToLower() == "cta" || mode.ToLower() == "è§’è‰²çŒœå‹•ç•«")
                 {
                     return await StartCharacterToAnimeGameAsync(isTop);
                 }
-                else if (mode.ToLower() == "ctc" || mode.ToLower() == "¨¤¦â²q¨¤¦â")
+                else if (mode.ToLower() == "ctc" || mode.ToLower() == "è§’è‰²çŒœè§’è‰²")
                 {
                     return await StartCharacterToCharacterGameAsync(isTop);
                 }
                 else
                 {
-                    return CommonHelper.BuildErrorResponse("¼Ò¦¡¿ù»~¡I½Ğ¿ï¾Ü 'cta'(¨¤¦â²q°Êµe) ©Î 'ctc'(¨¤¦â²q¨¤¦â)");
+                    return CommonHelper.BuildErrorResponse("æ¨¡å¼éŒ¯èª¤ï¼è«‹é¸æ“‡ 'cta'(è§’è‰²çŒœå‹•ç•«) æˆ– 'ctc'(è§’è‰²çŒœè§’è‰²)");
                 }
             }
             catch (Exception ex)
             {
-                return CommonHelper.BuildErrorResponse($"µo¥Í¿ù»~: {ex.Message}");
+                return CommonHelper.BuildErrorResponse($"ç™¼ç”ŸéŒ¯èª¤: {ex.Message}");
             }
         }
 
-        // ¨¤¦â²q°Êµe¼Ò¦¡¡GÅã¥Ü¨¤¦â¡A²q´ú¨Ó¦Û­ş³¡°Êµe
+        // è§’è‰²çŒœå‹•ç•«æ¨¡å¼ï¼šé¡¯ç¤ºè§’è‰²ï¼ŒçŒœæ¸¬ä¾†è‡ªå“ªéƒ¨å‹•ç•«
         private async Task<(ComponentBuilder component, Embed embed)> StartCharacterToAnimeGameAsync(bool isTop)
         {
-            // Àò¨ú¨¤¦â¸ê®Æ
+            // ç²å–è§’è‰²è³‡æ–™
             var charaResponse = await GetCharacterAsync(isTop);
             if (charaResponse == null)
             {
-                return CommonHelper.BuildErrorResponse("µLªkÀò¨ú¨¤¦â¸ê®Æ");
+                return CommonHelper.BuildErrorResponse("ç„¡æ³•ç²å–è§’è‰²è³‡æ–™");
             }
 
-            // Àò¨ú¨¤¦âªº°Êµe¸ê°T¡]1­Ó¥¿½T + 3­ÓÀH¾÷¡^
-            var animeOptions = await GetAnimeOptionsForCharacterAsync(charaResponse.mal_id);
+            // ç²å–è§’è‰²çš„å‹•ç•«è³‡è¨Šï¼ˆè¿”å› (é¸é …åˆ—è¡¨, æ­£ç¢ºç­”æ¡ˆID)ï¼‰
+            var (animeOptions, correctAnimeId) = await GetAnimeOptionsForCharacterAsync(charaResponse.mal_id);
             if (animeOptions == null || animeOptions.Count == 0)
             {
-                return CommonHelper.BuildErrorResponse("µLªk¨ú±o¨¤¦âªº°Êµe¸ê°T¡A½Ğ­«¸Õ");
+                return CommonHelper.BuildErrorResponse("ç„¡æ³•å–å¾—è§’è‰²çš„å‹•ç•«è³‡è¨Šï¼Œè«‹é‡è©¦");
             }
 
-            var correctAnime = animeOptions[0]; // ²Ä¤@­Ó¬O¥¿½Tµª®×
-            var component = BuildAnimeOptionsComponent(animeOptions, correctAnime.mal_id);
-            var embed = BuildCharacterToAnimeEmbed(charaResponse, correctAnime);
+            var component = BuildAnimeOptionsComponent(animeOptions, correctAnimeId);
+            var embed = BuildCharacterToAnimeEmbed(charaResponse);
 
             return (component, embed);
         }
 
-        // ¨¤¦â²q¨¤¦â¼Ò¦¡¡GÅã¥Ü¨¤¦â¹Ï¤ù¡A²q´ú¨¤¦â¦W¦r
+        // è§’è‰²çŒœè§’è‰²æ¨¡å¼ï¼šé¡¯ç¤ºè§’è‰²åœ–ç‰‡ï¼ŒçŒœæ¸¬è§’è‰²åå­—
         private async Task<(ComponentBuilder component, Embed embed)> StartCharacterToCharacterGameAsync(bool isTop)
         {
-            // Àò¨ú¥¿½Tµª®×¨¤¦â
+            // ç²å–æ­£ç¢ºç­”æ¡ˆè§’è‰²
             var correctCharacter = await GetCharacterAsync(isTop);
             if (correctCharacter == null)
             {
-                return CommonHelper.BuildErrorResponse("µLªkÀò¨ú¨¤¦â¸ê®Æ");
+                return CommonHelper.BuildErrorResponse("ç„¡æ³•ç²å–è§’è‰²è³‡æ–™");
             }
 
-            // Àò¨ú¨ä¥L3­ÓÀH¾÷¨¤¦â§@¬°¿ï¶µ
+            // ç²å–å…¶ä»–5å€‹éš¨æ©Ÿè§’è‰²ä½œç‚ºé¸é …
             var characterOptions = new List<CharactersResopnse> { correctCharacter };
 
-            for (int i = 0; i < 3; i++)
+            while (characterOptions.Count < 6)
             {
-                await Task.Delay(1000); // API ³t²v­­¨î
-                var randomChar = await GetCharacterAsync(false); // ÀH¾÷¨¤¦â
-                if (randomChar != null)
+                var randomChar = await GetCharacterAsync(false);
+                if (randomChar != null && randomChar.mal_id != correctCharacter.mal_id)
                 {
                     characterOptions.Add(randomChar);
                 }
+                else
+                {
+                    await Task.Delay(500);
+                }
             }
 
-            // ¥´¶Ã¶¶§Ç
+            // æ‰“äº‚é †åº
             characterOptions = characterOptions.OrderBy(x => Guid.NewGuid()).ToList();
 
             var component = BuildCharacterOptionsComponent(characterOptions, correctCharacter.mal_id);
@@ -99,7 +101,7 @@ namespace MusicBot2.Service
             return (component, embed);
         }
 
-        // Àò¨ú¨¤¦â¡]¤ä´©¼öªù©ÎÀH¾÷¡^
+        // ç²å–è§’è‰²ï¼ˆæ”¯æ´ç†±é–€æˆ–éš¨æ©Ÿï¼‰
         private async Task<CharactersResopnse> GetCharacterAsync(bool isTop)
         {
             try
@@ -139,17 +141,17 @@ namespace MusicBot2.Service
             }
         }
 
-        // Àò¨ú¨¤¦âªº°Êµe¿ï¶µ¡]1­Ó¥¿½T + 3­ÓÀH¾÷¡^
-        private async Task<List<AnimeResponse>> GetAnimeOptionsForCharacterAsync(int characterId)
+        // ç²å–è§’è‰²çš„å‹•ç•«é¸é …ï¼ˆ1å€‹æ­£ç¢º + 3å€‹éš¨æ©Ÿï¼‰
+        private async Task<(List<AnimeResponse> options, int correctAnimeId)> GetAnimeOptionsForCharacterAsync(int characterId)
         {
             try
             {
-                // Àò¨ú¨¤¦â¥X²{ªº°Êµe
+                // ç²å–è§’è‰²å‡ºç¾çš„å‹•ç•«
                 string url = $"{API_BASE_URL}/characters/{characterId}/anime";
                 var response = await _httpClient.GetAsync(url);
                 if (!response.IsSuccessStatusCode)
                 {
-                    return null;
+                    return (null, 0);
                 }
 
                 var responseContent = await response.Content.ReadAsStringAsync();
@@ -157,47 +159,67 @@ namespace MusicBot2.Service
 
                 if (animeData.data == null || animeData.data.Count == 0)
                 {
-                    return null;
+                    return (null, 0);
                 }
 
-                // ¨ú¥¿½Tµª®×¡]¨¤¦âªº²Ä¤@­Ó°Êµe¡^
+                // å–æ­£ç¢ºç­”æ¡ˆï¼ˆè§’è‰²çš„ç¬¬ä¸€å€‹å‹•ç•«ï¼‰
                 var correctAnime = animeData.data[0].anime;
+                int correctAnimeId = correctAnime.mal_id; // è¨˜éŒ„æ­£ç¢ºç­”æ¡ˆçš„ ID
                 var options = new List<AnimeResponse> { correctAnime };
 
-                // Àò¨ú3­ÓÀH¾÷°Êµe§@¬°¿ù»~¿ï¶µ
-                for (int i = 0; i < 3; i++)
+                // ç²å–5å€‹éš¨æ©Ÿå‹•ç•«ä½œç‚ºéŒ¯èª¤é¸é …
+                for (int i = 0; i < 5; i++)
                 {
-                    await Task.Delay(1000); // API ³t²v­­¨î
                     var randomResponse = await _httpClient.GetAsync($"{API_BASE_URL}/random/anime");
                     if (randomResponse.IsSuccessStatusCode)
                     {
                         var content = await randomResponse.Content.ReadAsStringAsync();
                         var wrapper = JsonConvert.DeserializeObject<AnimeWrapper>(content);
-                        if (wrapper?.data != null)
+                        if (wrapper?.data != null && wrapper.data.mal_id != correctAnimeId)
                         {
                             options.Add(wrapper.data);
                         }
                     }
                 }
 
-                // ¥´¶Ã¶¶§Ç
-                return options.OrderBy(x => Guid.NewGuid()).ToList();
+                while (options.Count < 6)
+                {
+                    var randomResponse = await _httpClient.GetAsync($"{API_BASE_URL}/random/anime");
+                    if (randomResponse.IsSuccessStatusCode)
+                    {
+                        var content = await randomResponse.Content.ReadAsStringAsync();
+                        var wrapper = JsonConvert.DeserializeObject<AnimeWrapper>(content);
+                        if (wrapper?.data != null && wrapper.data.mal_id != correctAnimeId)
+                        {
+                            options.Add(wrapper.data);
+                        }
+                    }
+                    else
+                    {
+                        Console.WriteLine("å–å¾— nullï¼Œé‡è©¦...");
+                    }
+                    await Task.Delay(500);
+                }
+
+                // æ‰“äº‚é †åº
+                var shuffledOptions = options.OrderBy(x => Guid.NewGuid()).ToList();
+                return (shuffledOptions, correctAnimeId);
             }
             catch
             {
-                return null;
+                return (null, 0);
             }
         }
 
-        // «Ø¥ß°Êµe¿ï¶µ«ö¶s¡]¥Î©ó¨¤¦â²q°Êµe¡^
+        // å»ºç«‹å‹•ç•«é¸é …æŒ‰éˆ•ï¼ˆç”¨æ–¼è§’è‰²çŒœå‹•ç•«ï¼‰
         private ComponentBuilder BuildAnimeOptionsComponent(List<AnimeResponse> animeOptions, int correctAnswerId)
         {
             var builder = new ComponentBuilder();
 
-            for (int i = 0; i < Math.Min(animeOptions.Count, 4); i++)
+            for (int i = 0; i < Math.Min(animeOptions.Count, 6); i++)
             {
                 var anime = animeOptions[i];
-                string label = anime.title;
+                string label = $"{anime.title} / {anime.title_japanese}";
                 if (label.Length > 80)
                 {
                     label = label.Substring(0, 77) + "...";
@@ -206,22 +228,23 @@ namespace MusicBot2.Service
                 builder.WithButton(
                     label: label,
                     customId: $"anime_guess_{anime.mal_id}_{correctAnswerId}",
-                    style: ButtonStyle.Primary
+                    style: ButtonStyle.Primary,
+                    row: i / 3  // ç¬¬0-2å€‹æŒ‰éˆ•åœ¨ç¬¬0è¡Œï¼Œç¬¬3-5å€‹æŒ‰éˆ•åœ¨ç¬¬1è¡Œ
                 );
             }
 
             return builder;
         }
 
-        // «Ø¥ß¨¤¦â¿ï¶µ«ö¶s¡]¥Î©ó¨¤¦â²q¨¤¦â¡^
+        // å»ºç«‹è§’è‰²é¸é …æŒ‰éˆ•ï¼ˆç”¨æ–¼è§’è‰²çŒœè§’è‰²ï¼‰
         private ComponentBuilder BuildCharacterOptionsComponent(List<CharactersResopnse> characterOptions, int correctAnswerId)
         {
             var builder = new ComponentBuilder();
 
-            for (int i = 0; i < Math.Min(characterOptions.Count, 4); i++)
+            for (int i = 0; i < Math.Min(characterOptions.Count, 6); i++)
             {
                 var character = characterOptions[i];
-                string label = character.name;
+                string label = $"{character.name} / {character.name_kanji}";
                 if (label.Length > 80)
                 {
                     label = label.Substring(0, 77) + "...";
@@ -230,30 +253,25 @@ namespace MusicBot2.Service
                 builder.WithButton(
                     label: label,
                     customId: $"anime_guess_{character.mal_id}_{correctAnswerId}",
-                    style: ButtonStyle.Primary
+                    style: ButtonStyle.Primary,
+                    row: i / 3  // ç¬¬0-2å€‹æŒ‰éˆ•åœ¨ç¬¬0è¡Œï¼Œç¬¬3-5å€‹æŒ‰éˆ•åœ¨ç¬¬1è¡Œ
                 );
             }
 
             return builder;
         }
 
-        // «Ø¥ß¨¤¦â²q°Êµeªº Embed
-        private Embed BuildCharacterToAnimeEmbed(CharactersResopnse character, AnimeResponse correctAnime)
+        // å»ºç«‹è§’è‰²çŒœå‹•ç•«çš„ Embed
+        private Embed BuildCharacterToAnimeEmbed(CharactersResopnse character)
         {
             var embedBuilder = new EmbedBuilder()
             {
-                Title = "?? ²q²q³o­Ó¨¤¦â¨Ó¦Û­ş³¡°Êµe¡H",
-                Description = $"**¨¤¦â¦WºÙ**: {character.name}",
+                Title = "é€™å“ªéƒ¨å‹•ç•«ä¾†çš„ï¼Ÿ",
+                Description = $"**è§’è‰²åç¨±**: {character.name}",
                 Color = Color.Blue
             };
 
-            // Àu¥ı¨Ï¥Î°Êµe¹w§i¤ù
-            if (!string.IsNullOrEmpty(correctAnime.trailer?.url))
-            {
-                embedBuilder.Description += $"\n\n[?? Æ[¬İ¼v¤ù]({correctAnime.trailer.url})";
-            }
-
-            // ¨Ï¥Î¨¤¦â¹Ï¤ù
+            // ä½¿ç”¨è§’è‰²åœ–ç‰‡
             if (!string.IsNullOrEmpty(character.images?.jpg?.image_url))
             {
                 embedBuilder.WithImageUrl(character.images.jpg.image_url);
@@ -266,32 +284,32 @@ namespace MusicBot2.Service
                 {
                     about = about.Substring(0, 197) + "...";
                 }
-                embedBuilder.AddField("Ãö©ó", about);
+                embedBuilder.AddField("é—œæ–¼", about);
             }
 
-            embedBuilder.WithFooter("½Ğ±q¤U¤è«ö¶s¿ï¾Ü¥¿½Tµª®×");
+            embedBuilder.WithFooter("è«‹å¾ä¸‹æ–¹æŒ‰éˆ•é¸æ“‡æ­£ç¢ºç­”æ¡ˆ");
             embedBuilder.WithCurrentTimestamp();
 
             return embedBuilder.Build();
         }
 
-        // «Ø¥ß¨¤¦â²q¨¤¦âªº Embed
+        // å»ºç«‹è§’è‰²çŒœè§’è‰²çš„ Embed
         private Embed BuildCharacterToCharacterEmbed(CharactersResopnse character)
         {
             var embedBuilder = new EmbedBuilder()
             {
-                Title = "?? ²q²q³o¬O­ş­Ó¨¤¦â¡H",
-                Description = "®Ú¾Ú¹Ï¤ù²q´ú¨¤¦â¦WºÙ",
+                Title = "é€™èª°ï¼Ÿ",
+                Description = "æ ¹æ“šåœ–ç‰‡çŒœæ¸¬è§’è‰²åç¨±",
                 Color = Color.Gold
             };
 
-            // ¨Ï¥Î¨¤¦â¹Ï¤ù
+            // ä½¿ç”¨è§’è‰²åœ–ç‰‡
             if (!string.IsNullOrEmpty(character.images?.jpg?.image_url))
             {
                 embedBuilder.WithImageUrl(character.images.jpg.image_url);
             }
 
-            // ´£¨Ñ³¡¤À´£¥Ü¡]¦pªG¦³¡^
+            // æä¾›éƒ¨åˆ†æç¤ºï¼ˆå¦‚æœæœ‰ï¼‰
             if (!string.IsNullOrEmpty(character.about))
             {
                 string hint = character.about;
@@ -299,41 +317,117 @@ namespace MusicBot2.Service
                 {
                     hint = hint.Substring(0, 147) + "...";
                 }
-                embedBuilder.AddField("´£¥Ü", hint);
+                embedBuilder.AddField("æç¤º", hint);
             }
 
-            embedBuilder.WithFooter("½Ğ±q¤U¤è«ö¶s¿ï¾Ü¥¿½Tµª®×");
+            embedBuilder.WithFooter("è«‹å¾ä¸‹æ–¹æŒ‰éˆ•é¸æ“‡æ­£ç¢ºç­”æ¡ˆ");
             embedBuilder.WithCurrentTimestamp();
 
             return embedBuilder.Build();
         }
 
-        // ³B²z«ö¶sÂIÀ»
+        // è™•ç†æŒ‰éˆ•é»æ“Š
         public async Task<(Embed embed, ComponentBuilder component)> HandleButtonClickAsync(SocketMessageComponent interaction, int selectedId, int correctId)
         {
             bool isCorrect = selectedId == correctId;
 
-            var embedBuilder = new EmbedBuilder()
-            {
-                Color = isCorrect ? Color.Green : Color.Red,
-                Timestamp = DateTimeOffset.Now
-            };
+            // ç²å–åŸå§‹ Embed è³‡è¨Š
+            var originalEmbed = interaction.Message.Embeds.FirstOrDefault();
+            var embedBuilder = new EmbedBuilder();
 
-            if (isCorrect)
+            // ä¿ç•™åŸå§‹è³‡è¨Š
+            if (originalEmbed != null)
             {
-                embedBuilder.Title = "?? µª¹ï¤F¡I";
-                embedBuilder.Description = $"®¥³ß {interaction.User.Mention} µª¹ï¤F¡I\n\n{RewardsHelpers.GetRandomRewards()}";
+                embedBuilder.Title = originalEmbed.Title;
+                embedBuilder.Description = originalEmbed.Description;
+                embedBuilder.Color = isCorrect ? Color.Green : Color.Red;
+                embedBuilder.Timestamp = DateTimeOffset.Now;
+
+                // ä¿ç•™åŸå§‹åœ–ç‰‡
+                if (originalEmbed.Image.HasValue)
+                {
+                    embedBuilder.WithImageUrl(originalEmbed.Image.Value.Url);
+                }
+
+                // ä¿ç•™åŸå§‹æ¬„ä½
+                if (originalEmbed.Fields.Length > 0)
+                {
+                    foreach (var field in originalEmbed.Fields)
+                    {
+                        embedBuilder.AddField(field.Name, field.Value, field.Inline);
+                    }
+                }
             }
             else
             {
-                embedBuilder.Title = "? µª¿ù¤F¡I";
-                embedBuilder.Description = $"{interaction.User.Mention} µª¿ù¤F¡I¦A±µ¦A¼F¡I";
+                embedBuilder.Color = isCorrect ? Color.Green : Color.Red;
+                embedBuilder.Timestamp = DateTimeOffset.Now;
             }
 
-            // ¸T¥Î©Ò¦³«ö¶s
+            // æ·»åŠ çµæœè¨Šæ¯
+            if (isCorrect)
+            {
+                embedBuilder.AddField("âœ… å®…æ–ƒäº†", $"æ­å–œ å®…ç‹ä¹‹ç‹ **{interaction.User.Mention}** ç­”å°äº†ï¼ çå‹µä½  \n\n{RewardsHelpers.GetRandomRewards()}");
+            }
+            else
+            {
+                embedBuilder.AddField("âŒ èœé€¼å…«", $"{interaction.User.Mention} so èœï¼é€™ä½ éƒ½ä¸èªè­˜ï¼Ÿ");
+            }
+
+            // ç¦ç”¨æ‰€æœ‰æŒ‰éˆ•
             var disabledComponent = new ComponentBuilder();
 
             return (embedBuilder.Build(), disabledComponent);
+        }
+
+
+        public async Task<((ComponentBuilder component,Embed embed),string imageUrl)> GetSomeRandomAnime(string type, string ratings)
+        {
+            try
+            {
+                string url = $"{API_BASE_URL}/top/anime?";
+
+                if(!string.IsNullOrEmpty(type))
+                {
+                    url += $"&type={type}";
+                }
+                if(!string.IsNullOrEmpty(ratings))
+                {
+                    url += $"&rating={ratings}";
+                }
+
+                Random random = new Random();
+                int page = random.Next(1, 51);
+                url += $"&page={page}";
+                Console.WriteLine(url);
+                var response = await _httpClient.GetAsync(url);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    return (CommonHelper.BuildErrorResponse("ç„¡æ³•ç²å–å‹•ç•«è³‡æ–™"),"");
+                }
+                var content = await response.Content.ReadAsStringAsync();
+                var wrapper = JsonConvert.DeserializeObject<TopAnimeResponse>(content);
+
+                Random random2 = new Random();
+                var anime = wrapper.data[random2.Next(wrapper.data.Count)];
+
+                var embedBuilder = new EmbedBuilder()
+                {
+                    Title = $"{anime.title} / {anime.title_japanese}",
+                    Description = anime.synopsis ?? "æ²’æœ‰å‹•ç•«ç°¡ä»‹",
+                    Color = Color.Purple
+                };
+                if (!string.IsNullOrEmpty(anime.images?.jpg?.image_url) && !anime.rating.ToLower().StartsWith("rx"))
+                {
+                    embedBuilder.WithImageUrl(anime.images.jpg.image_url);
+                }
+                return ((new ComponentBuilder(),embedBuilder.Build()), anime.images.jpg.image_url);
+            }
+            catch (Exception ex)
+            {
+                return (CommonHelper.BuildErrorResponse($"ç™¼ç”ŸéŒ¯èª¤: {ex.Message}"), "");
+            }
         }
     }
 }

@@ -47,6 +47,7 @@ namespace MusicBot2.Models
         public List<string> title_synonyms { get; set; }
         public int favorites { get; set; }
         public string synopsis { get; set; }
+        public string rating { get; set; }
     }
 
     public class Trailer
