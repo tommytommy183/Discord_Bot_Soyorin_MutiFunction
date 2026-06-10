@@ -428,7 +428,8 @@ public class Program
                 message.Content.ToLower().Contains("長期") ||
                 message.Content.ToLower().Contains("爽世") ||
                 message.Content.ToLower().Contains("爽食") ||
-                message.Content.ToLower().Contains("素食"))
+                message.Content.ToLower().Contains("素食") ||
+                message.Content.ToLower().Contains("我"))
         {
             var talker = message.Author as SocketGuildUser;
             // 用「伺服器 + 頻道」當記憶 key，避免不同頻道上下文互相污染
