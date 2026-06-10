@@ -412,10 +412,15 @@ namespace MusicBot2.Service
                 Random random2 = new Random();
                 var anime = wrapper.data[random2.Next(wrapper.data.Count)];
 
+                string description = $"分數:{anime.score}\n簡介:{anime.synopsis ?? "沒有動畫簡介"}";
+
+                if (description.Length > 200) description = description.Substring(0, 200) + "...";
+
+
                 var embedBuilder = new EmbedBuilder()
                 {
                     Title = $"{anime.title} / {anime.title_japanese}",
-                    Description = anime.synopsis ?? "沒有動畫簡介",
+                    Description = description,
                     Color = Color.Purple
                 };
                 if (!string.IsNullOrEmpty(anime.images?.jpg?.image_url) && !anime.rating.ToLower().StartsWith("rx"))
