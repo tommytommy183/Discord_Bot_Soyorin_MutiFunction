@@ -80,4 +80,48 @@ namespace MusicBot2.Models
     {
         public AnimeResponse anime { get; set; }
     }
+    public class TopMangaResponse
+    {
+        public List<MangaResponse> data { get; set; }
+    }
+
+    public class MangaResponse
+    {
+        public int mal_id { get; set; }
+        public string url { get; set; }
+        public Images images { get; set; }
+
+        public string title { get; set; }
+        public string title_english { get; set; }
+        public string title_japanese { get; set; }
+        public List<string> title_synonyms { get; set; }
+        public int favorites { get; set; }
+        public string synopsis { get; set; }
+        public double? score { get; set; }
+        public List<Genres> genres { get; set; }
+    }
+
+    public class Genres
+    {
+        public string mal_id { get; set; }
+        public string name { get; set; }
+    }
+
+    public class PaginationWrapper
+    {
+        public Pagination pagination { get; set; }
+    }
+
+    public class Pagination
+    {
+        public int current_page { get; set; }
+        public Items items { get; set; }
+    }
+
+    public class Items
+    {
+        public int count { get; set; }
+        public int total { get; set; }
+        public int per_page { get; set; }
+    }
 }
