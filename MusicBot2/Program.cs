@@ -969,7 +969,7 @@ public class Program
     {
         try
         {
-            var (exitCode, output, error) = await ExecuteYtDlpAsync($"--get-title {url}");
+            var (exitCode, output, error) = await ExecuteYtDlpAsync($"--skip-download --get-title {url}");
 
             if (exitCode == 0 && !string.IsNullOrWhiteSpace(output))
             {
@@ -1029,7 +1029,7 @@ public class Program
     {
         try
         {
-            var (exitCode, output, error) = await ExecuteYtDlpAsync($"--get-id --default-search ytsearch1: \"{query}\"");
+            var (exitCode, output, error) = await ExecuteYtDlpAsync($"--skip-download --get-id --default-search ytsearch1: \"{query}\"");
 
             if (exitCode == 0 && !string.IsNullOrWhiteSpace(output))
             {
@@ -1060,7 +1060,7 @@ public class Program
             var modifiedTitle = GetRandomizedTitle(name, channel);
 
             // 使用 yt-dlp 搜尋，取得 20 個結果
-            var (exitCode, output, error) = await ExecuteYtDlpAsync($"--get-id --flat-playlist --default-search ytsearch20: \"{modifiedTitle}\"");
+            var (exitCode, output, error) = await ExecuteYtDlpAsync($"--skip-download --get-id --flat-playlist --default-search ytsearch20: \"{modifiedTitle}\"");
 
             if (exitCode == 0 && !string.IsNullOrWhiteSpace(output))
             {
@@ -1106,7 +1106,7 @@ public class Program
     {
         try
         {
-            var (exitCode, output, error) = await ExecuteYtDlpAsync($"--get-id {url}");
+            var (exitCode, output, error) = await ExecuteYtDlpAsync($"--skip-download --get-id {url}");
 
             if (exitCode == 0 && !string.IsNullOrWhiteSpace(output))
             {
@@ -1125,7 +1125,7 @@ public class Program
     {
         try
         {
-            var (exitCode, output, error) = await ExecuteYtDlpAsync($"--get-duration https://www.youtube.com/watch?v={videoId}");
+            var (exitCode, output, error) = await ExecuteYtDlpAsync($"--skip-download --get-duration https://www.youtube.com/watch?v={videoId}");
 
             if (exitCode == 0 && !string.IsNullOrWhiteSpace(output))
             {
@@ -1361,7 +1361,7 @@ public class Program
         try
         {
             // 使用 yt-dlp 檢查影片是否有效
-            var (exitCode, output, error) = await ExecuteYtDlpAsync($"--get-title {url}");
+            var (exitCode, output, error) = await ExecuteYtDlpAsync($"--skip-download --get-title {url}");
 
             if (exitCode == 0 && !string.IsNullOrWhiteSpace(output))
             {
