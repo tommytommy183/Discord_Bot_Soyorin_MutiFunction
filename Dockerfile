@@ -11,7 +11,7 @@ COPY MusicBot2/ MusicBot2/
 
 # 建置和發布（指定 linux-x64 平台）
 WORKDIR /src/MusicBot2
-RUN dotnet publish MusicBot2.csproj -c Release -o /app/publish -r linux-x64 --self-contained false
+RUN dotnet publish MusicBot2.csproj -c Release -o /app/publish -r linux-x64 --self-contained false /p:Platform=x64
 
 # 使用 runtime 映像
 FROM mcr.microsoft.com/dotnet/aspnet:8.0
