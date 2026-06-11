@@ -3,15 +3,14 @@ FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
 # 複製 csproj 並還原相依性（優化 Docker 快取層）
-COPY ["MusicBot2/MusicBot2.csproj", "MusicBot2/"]
-RUN dotnet restore "MusicBot2/MusicBot2.csproj"
+COPY ["*.csproj", "./"]
+RUN dotnet restore -r linux-x64
 
 # 複製所有專案檔案
-COPY MusicBot2/ MusicBot2/
+COPY . .
 
-# 建置和發布
-WORKDIR /src/MusicBot2
-RUN dotnet publish "MusicBot2.csproj" -c Release -o /app/publish
+# 建置和發布（指定 linux-x64 平台）
+RUN dotnet publish "MusicBot2.csproj" -c Release -o /app/publish -r linux-x64 --self-contained false
 
 # 使用 runtime 映像
 FROM mcr.microsoft.com/dotnet/aspnet:8.0
