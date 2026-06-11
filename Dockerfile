@@ -1,15 +1,17 @@
 # 使用 .NET 8.0 SDK 作為建置映像
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
-WORKDIR /app
+WORKDIR /src
 
 # 複製 csproj 並還原相依性（優化 Docker 快取層）
 COPY ["MusicBot2/MusicBot2.csproj", "MusicBot2/"]
 RUN dotnet restore "MusicBot2/MusicBot2.csproj"
 
-# 複製所有檔案並建置
-COPY MusicBot2/ ./MusicBot2/
-WORKDIR /app/MusicBot2
-RUN dotnet publish -c Release -o /app/out
+# 複製所有專案檔案
+COPY MusicBot2/ MusicBot2/
+
+# 建置和發布
+WORKDIR /src/MusicBot2
+RUN dotnet publish "MusicBot2.csproj" -c Release -o /app/publish
 
 # 使用 runtime 映像
 FROM mcr.microsoft.com/dotnet/aspnet:8.0
@@ -29,7 +31,7 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # 複製建置產物
-COPY --from=build /app/out .
+COPY --from=build /app/publish .
 
 # 建立必要資料夾
 RUN mkdir -p temp cookies
