@@ -47,6 +47,7 @@ public class Program
     private GoogleAIStudioService _googleAIStudioService;
     private OpenRouterService _openRouterService;
     private SetTextService _setTextService;
+    private string _cookie;
     
     #endregion
 
@@ -76,6 +77,7 @@ public class Program
         string googleAIStudioApiKey = configer["GoogleAIStudio:dcBotKey1"];
         string googleAIStudioApiKey2 = configer["GoogleAIStudio:dcBotKey2"];
         string openRouterApiKey = configer["Openrouter:ApiKey1"];
+        _cookie = configer["YT_DLP_COOKIES"];
 
         string redisConn = configer["Redis:ConnectionString"];
         var setTextService = new SetTextService(redisConn);
@@ -1226,7 +1228,7 @@ public class Program
     {
         try
         {
-            var cookieContent = Environment.GetEnvironmentVariable("YT_DLP_COOKIES");
+            var cookieContent = _cookie;
             if (string.IsNullOrEmpty(cookieContent))
             {
                 Console.WriteLine("未設定 YT_DLP_COOKIES 環境變數");
