@@ -24,9 +24,9 @@ bld/
 .vs/
 .vscode/
 
-# Sensitive data
-appsettings.json
-appsettings.*.json
+# Sensitive data (keep appsettings.json for build, override in production)
+# appsettings.json
+appsettings.Development.json
 
 # Temp folders
 temp/
