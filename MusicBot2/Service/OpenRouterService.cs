@@ -353,7 +353,7 @@ namespace MusicBot2.Service
                             _ = SaveMemoryAsync();
                         }
 
-                        return text + $" (使用的模型:{model})";
+                        return text;
                     }
                     catch (TaskCanceledException)
                     {

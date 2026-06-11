@@ -305,7 +305,7 @@ namespace MusicBot2.Service
                     hint = hint.Substring(0, 147) + "...";
                 }
                 //移除介紹中關於主角的名稱
-                hint = hint.Replace(character.name, "???");
+                hint = hint.Replace(character.name,"???",StringComparison.OrdinalIgnoreCase);
                 embedBuilder.AddField("提示", hint);
             }
 
