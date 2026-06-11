@@ -62,7 +62,7 @@ namespace MusicBot2.Service
                 return CommonHelper.BuildErrorResponse("無法取得角色的動畫資訊，請重試");
             }
 
-            var component = BuildAnimeOptionsComponent(animeOptions, correctAnimeId, charaResponse.name);
+            var component = BuildAnimeOptionsComponent(animeOptions, correctAnimeId, correnctAnimeName);
             var embed = BuildCharacterToAnimeEmbed(charaResponse);
 
             return (component, embed);
