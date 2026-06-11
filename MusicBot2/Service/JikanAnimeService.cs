@@ -5,6 +5,7 @@ using MusicBot2.Models;
 using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Xml.Linq;
@@ -55,7 +56,7 @@ namespace MusicBot2.Service
             }
 
             // 獲取角色的動畫資訊（返回 (選項列表, 正確答案ID)）
-            var (animeOptions, correctAnimeId,correnctAnimeName) = await GetAnimeOptionsForCharacterAsync(charaResponse.mal_id);
+            var (animeOptions, correctAnimeId, correnctAnimeName) = await GetAnimeOptionsForCharacterAsync(charaResponse.mal_id);
             if (animeOptions == null || animeOptions.Count == 0)
             {
                 return CommonHelper.BuildErrorResponse("無法取得角色的動畫資訊，請重試");
@@ -96,7 +97,7 @@ namespace MusicBot2.Service
             // 打亂順序
             characterOptions = characterOptions.OrderBy(x => Guid.NewGuid()).ToList();
 
-            var component = BuildCharacterOptionsComponent(characterOptions, correctCharacter.mal_id,correctCharacter.name);
+            var component = BuildCharacterOptionsComponent(characterOptions, correctCharacter.mal_id, correctCharacter.name);
             var embed = BuildCharacterToCharacterEmbed(correctCharacter);
 
             return (component, embed);
@@ -133,7 +134,13 @@ namespace MusicBot2.Service
 
                     var responseContent = await response.Content.ReadAsStringAsync();
                     var wrapper = JsonConvert.DeserializeObject<CharacterWrapper>(responseContent);
-                    return wrapper.data;
+
+                    var fullResponse = await _httpClient.GetAsync($"{API_BASE_URL}/characters/{wrapper.data.mal_id}/full");
+                    if (!fullResponse.IsSuccessStatusCode)
+                        return null;
+                    var fullResponseContent = await fullResponse.Content.ReadAsStringAsync();
+                    var fullWrapper = JsonConvert.DeserializeObject<CharacterWrapper>(fullResponseContent);
+                    return fullWrapper.data;
                 }
             }
             catch
@@ -143,7 +150,7 @@ namespace MusicBot2.Service
         }
 
         // 獲取角色的動畫選項（1個正確 + 3個隨機）
-        private async Task<(List<AnimeResponse> options, int correctAnimeId,string correctAnimeName)> GetAnimeOptionsForCharacterAsync(int characterId)
+        private async Task<(List<AnimeResponse> options, int correctAnimeId, string correctAnimeName)> GetAnimeOptionsForCharacterAsync(int characterId)
         {
             try
             {
@@ -152,7 +159,7 @@ namespace MusicBot2.Service
                 var response = await _httpClient.GetAsync(url);
                 if (!response.IsSuccessStatusCode)
                 {
-                    return (null, 0,null);
+                    return (null, 0, null);
                 }
 
                 var responseContent = await response.Content.ReadAsStringAsync();
@@ -160,7 +167,7 @@ namespace MusicBot2.Service
 
                 if (animeData.data == null || animeData.data.Count == 0)
                 {
-                    return (null, 0,null);
+                    return (null, 0, null);
                 }
 
                 // 取正確答案（角色的第一個動畫）
@@ -190,16 +197,16 @@ namespace MusicBot2.Service
 
                 // 打亂順序
                 var shuffledOptions = options.OrderBy(x => Guid.NewGuid()).ToList();
-                return (shuffledOptions, correctAnimeId,correctAnimeName);
+                return (shuffledOptions, correctAnimeId, correctAnimeName);
             }
             catch
             {
-                return (null, 0,null);
+                return (null, 0, null);
             }
         }
 
         // 建立動畫選項按鈕（用於角色猜動畫）
-        private ComponentBuilder BuildAnimeOptionsComponent(List<AnimeResponse> animeOptions, int correctAnswerId,string correctAnswerName)
+        private ComponentBuilder BuildAnimeOptionsComponent(List<AnimeResponse> animeOptions, int correctAnswerId, string correctAnswerName)
         {
             var builder = new ComponentBuilder();
 
@@ -224,7 +231,7 @@ namespace MusicBot2.Service
         }
 
         // 建立角色選項按鈕（用於角色猜角色）
-        private ComponentBuilder BuildCharacterOptionsComponent(List<CharactersResopnse> characterOptions, int correctAnswerId,string correnctAnswerName)
+        private ComponentBuilder BuildCharacterOptionsComponent(List<CharactersResopnse> characterOptions, int correctAnswerId, string correnctAnswerName)
         {
             var builder = new ComponentBuilder();
 
@@ -267,9 +274,9 @@ namespace MusicBot2.Service
             if (!string.IsNullOrEmpty(character.about))
             {
                 string about = character.about;
-                if (about.Length > 200)
+                if (about.Length > 500)
                 {
-                    about = about.Substring(0, 197) + "...";
+                    about = about.Substring(0, 497) + "...";
                 }
                 embedBuilder.AddField("關於", about);
             }
@@ -297,15 +304,34 @@ namespace MusicBot2.Service
             }
 
             // 提供部分提示（如果有）
+
+            string hint = string.Empty;
+            if (character.voices != null && character.voices.Count > 0)
+            {
+                var voiceActors = character.voices
+                    .Where(x => string.Equals(x.language?.Trim(), "Japanese", StringComparison.OrdinalIgnoreCase))
+                    .Select(x => x.person?.name)
+                    .Where(x => !string.IsNullOrWhiteSpace(x));
+
+                hint += $"**聲優**: ||{string.Join("、", voiceActors)}||\n";
+            }
+            if (character.nicknames != null && character.nicknames.Count > 0)
+            {
+                hint += $"**綽號**: ||{string.Join(", ", character.nicknames)}||\n";
+            }
             if (!string.IsNullOrEmpty(character.about))
             {
-                string hint = character.about;
-                if (hint.Length > 150)
-                {
-                    hint = hint.Substring(0, 147) + "...";
-                }
-                //移除介紹中關於主角的名稱
-                hint = hint.Replace(character.name,"???",StringComparison.OrdinalIgnoreCase);
+                hint += $"**簡介**: {character.about}";
+            }
+            if (hint.Length > 500)
+            {
+                hint = hint.Substring(0, 497) + "...";
+            }
+            //移除介紹中關於主角的名稱
+            if(!string.IsNullOrEmpty(hint))
+            {
+                hint = hint.Replace(character.name, "???", StringComparison.OrdinalIgnoreCase);
+                hint = hint.Replace(character.name_kanji, "???", StringComparison.OrdinalIgnoreCase);
                 embedBuilder.AddField("提示", hint);
             }
 
@@ -316,7 +342,7 @@ namespace MusicBot2.Service
         }
 
         // 處理按鈕點擊
-        public async Task<(Embed embed, ComponentBuilder component)> HandleButtonClickAsync(SocketMessageComponent interaction, int selectedId, int correctId,string correctName)
+        public async Task<(Embed embed, ComponentBuilder component)> HandleButtonClickAsync(SocketMessageComponent interaction, int selectedId, int correctId, string correctName)
         {
             bool isCorrect = selectedId == correctId;
 
@@ -370,7 +396,7 @@ namespace MusicBot2.Service
         }
 
 
-        public async Task<((ComponentBuilder component,Embed embed),string imageUrl)> GetSomeRandomAnime(string type, string ratings)
+        public async Task<((ComponentBuilder component, Embed embed), string imageUrl)> GetSomeRandomAnime(string type, string ratings)
         {
             try
             {
@@ -381,7 +407,7 @@ namespace MusicBot2.Service
                 {
                     url += $"&type={type}";
                 }
-                if(!string.IsNullOrEmpty(ratings))
+                if (!string.IsNullOrEmpty(ratings))
                 {
                     url += $"&rating={ratings}";
                 }
@@ -392,14 +418,14 @@ namespace MusicBot2.Service
                 int totalPages = items.total / items.per_page;
 
                 Random random = new Random();
-                int page = random.Next(1, totalPages+1);
+                int page = random.Next(1, totalPages + 1);
                 url += $"&page={page}";
                 Console.WriteLine(url);
                 var response = await _httpClient.GetAsync(url);
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    return (CommonHelper.BuildErrorResponse("無法獲取動畫資料"),"");
+                    return (CommonHelper.BuildErrorResponse("無法獲取動畫資料"), "");
                 }
                 var content = await response.Content.ReadAsStringAsync();
                 var wrapper = JsonConvert.DeserializeObject<TopAnimeResponse>(content);
@@ -456,7 +482,7 @@ namespace MusicBot2.Service
                 int totalPages = items.total / items.per_page;
 
                 Random random = new Random();
-                int page = random.Next(1, totalPages+1);
+                int page = random.Next(1, totalPages + 1);
                 url += $"&page={page}";
                 Console.WriteLine(url);
                 var response = await _httpClient.GetAsync(url);

@@ -16,6 +16,7 @@ namespace MusicBot2.Models
         public List<string> nicknames { get; set; }
         public int favorites { get; set; }
         public string about { get; set; }
+        public List<Voices> voices { get; set; }
     }
 
     public class Images
@@ -123,5 +124,16 @@ namespace MusicBot2.Models
         public int count { get; set; }
         public int total { get; set; }
         public int per_page { get; set; }
+    }
+    public class Voices
+    {
+        public Person person { get; set; }
+        public string language { get; set; }
+    }
+
+    public class Person
+    {
+        public int mal_id { get; set; }
+        public string name { get; set; }
     }
 }
