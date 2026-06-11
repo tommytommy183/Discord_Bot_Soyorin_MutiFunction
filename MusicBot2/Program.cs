@@ -1,5 +1,4 @@
-﻿using AngleSharp.Dom;
-using Discord;
+﻿using Discord;
 using Discord.Audio;
 using Discord.Commands;
 using Discord.Interactions;
@@ -22,11 +21,6 @@ using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
-using YoutubeExplode;
-using YoutubeExplode.Common;
-using YoutubeExplode.Exceptions;
-using YoutubeExplode.Search;
-using YoutubeExplode.Videos.Streams;
 using static System.Net.Mime.MediaTypeNames;
 
 public class Program
@@ -53,6 +47,7 @@ public class Program
     private GoogleAIStudioService _googleAIStudioService;
     private OpenRouterService _openRouterService;
     private SetTextService _setTextService;
+    
     #endregion
 
     #region 基礎設定
@@ -951,61 +946,80 @@ public class Program
     #region yt相關
     public async Task<string> GetVideoIDAsync(string url)
     {
-        var youtube = new YoutubeClient();
-        var videoId = YoutubeExplode.Videos.VideoId.TryParse(url);
-        var video = await youtube.Videos.GetAsync(videoId.Value);
-        var videoTitle = video.Title;
-        if (videoId == null)
+        try
         {
+            var (exitCode, output, error) = await ExecuteYtDlpAsync($"--get-title {url}");
+
+            if (exitCode == 0 && !string.IsNullOrWhiteSpace(output))
+            {
+                return output.Trim();
+            }
+
+            if (!string.IsNullOrEmpty(error))
+            {
+                Console.WriteLine($"GetVideoIDAsync 錯誤: {error}");
+            }
             return "";
         }
-        else
+        catch (Exception ex)
         {
-            return videoTitle;
+            Console.WriteLine($"GetVideoIDAsync 例外: {ex.Message}");
+            return "";
         }
     }
     public async Task<string> DownloadAudioAsync(string url)
     {
-
-        var youtube = new YoutubeClient();
-        var videoId = YoutubeExplode.Videos.VideoId.TryParse(url);
-        if (!videoId.HasValue)
-        {
-            throw new Exception("連結無效");
-        }
-        _NowPlayingSongID = videoId.Value;
-        var video = await youtube.Videos.GetAsync(videoId.Value);
-        _NowPlayingSongName = video.Title.ToString();
-        var streamManifest = await youtube.Videos.Streams.GetManifestAsync(video.Id);
-        var streamInfo = streamManifest.GetAudioOnlyStreams().GetWithHighestBitrate();
-
         var tempDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "temp");
         Directory.CreateDirectory(tempDirectory);
 
-        var filePath = Path.Combine(tempDirectory, $"{Guid.NewGuid()}.mp3");
-        await youtube.Videos.Streams.DownloadAsync(streamInfo, filePath);
+        // 先取得影片 ID 和標題
+        var videoId = await GetYoutubeVideoIdAsync(url);
+        if (string.IsNullOrEmpty(videoId))
+        {
+            throw new Exception("連結無效");
+        }
 
-        return filePath;
+        _NowPlayingSongID = videoId;
+        _NowPlayingSongName = await GetVideoIDAsync(url);
+
+        var filePrefix = Guid.NewGuid().ToString();
+        var outputTemplate = Path.Combine(tempDirectory, $"{filePrefix}.%(ext)s");
+
+        var (exitCode, output, error) = await ExecuteYtDlpAsync($"-f ba -x --audio-format mp3 -o \"{outputTemplate}\" {url}");
+
+        if (exitCode == 0)
+        {
+            var downloadedFile = Directory
+                .EnumerateFiles(tempDirectory, $"{filePrefix}.*")
+                .FirstOrDefault(f => Path.GetExtension(f).Equals(".mp3", StringComparison.OrdinalIgnoreCase));
+
+            if (!string.IsNullOrEmpty(downloadedFile))
+                return downloadedFile;
+        }
+
+        Console.WriteLine($"YouTube 下載失敗: {error}");
+        throw new Exception($"YouTube 下載失敗: {error}");
     }
     public async Task<string> GetYoutubeUrlByNameAsync(IMessageChannel channel, string query)
     {
         try
         {
-            // 使用 YoutubeExplode 搜索视频
-            var youtube = new YoutubeClient();
-            var searchResults = await youtube.Search.GetResultsAsync(query);
+            var (exitCode, output, error) = await ExecuteYtDlpAsync($"--get-id --default-search ytsearch1: \"{query}\"");
 
-            if (!searchResults.Any())
+            if (exitCode == 0 && !string.IsNullOrWhiteSpace(output))
             {
-                await channel.SendMessageAsync("找不到歌曲");
-                return "";
+                var videoId = output.Trim();
+                var videoUrl = $"https://www.youtube.com/watch?v={videoId}";
+                await channel.SendMessageAsync(videoUrl);
+                return videoUrl;
             }
-            // 获取第一个搜索结果
-            var video = searchResults.First();
-            var videoUrl = video.Url;
 
-            await channel.SendMessageAsync($"{video.Url}");
-            return $"{videoUrl}";
+            await channel.SendMessageAsync("找不到歌曲");
+            if (!string.IsNullOrEmpty(error))
+            {
+                Console.WriteLine($"搜尋失敗: {error}");
+            }
+            return "";
         }
         catch (Exception ex)
         {
@@ -1019,56 +1033,101 @@ public class Program
         try
         {
             var modifiedTitle = GetRandomizedTitle(name, channel);
-            var youtube = new YoutubeClient();
-            var searchResults = await youtube.Search.GetResultsAsync(modifiedTitle);
-            var top10Results = searchResults.Take(10);
-            //打亂
-            var random = new Random();
-            var shuffledResults = top10Results.OrderBy(x => random.Next()).ToList();
 
-            // 输出结果
-            foreach (var result in shuffledResults)
+            // 使用 yt-dlp 搜尋，取得 20 個結果
+            var (exitCode, output, error) = await ExecuteYtDlpAsync($"--get-id --flat-playlist --default-search ytsearch20: \"{modifiedTitle}\"");
+
+            if (exitCode == 0 && !string.IsNullOrWhiteSpace(output))
             {
-                // 检查结果类型是否为视频
-                if (result is VideoSearchResult videoResult)
+                var lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+                var random = new Random();
+                var shuffledLines = lines.OrderBy(x => random.Next()).ToList();
+
+                foreach (var videoId in shuffledLines)
                 {
-                    if (videoResult.Duration < TimeSpan.FromMinutes(10))
+                    var trimmedId = videoId.Trim();
+                    if (string.IsNullOrEmpty(trimmedId)) continue;
+
+                    // 檢查是否已播放過
+                    if (!_SongBeenPlayedList.Contains(trimmedId))
                     {
-                        if (!_SongBeenPlayedList.Contains(videoResult.Id))
+                        // 檢查影片長度
+                        var duration = await GetVideoDurationAsync(trimmedId);
+                        if (duration < TimeSpan.FromMinutes(10))
                         {
-                            url = videoResult.Url;
-                            _SongBeenPlayedList.Add(videoResult.Id);
+                            url = $"https://www.youtube.com/watch?v={trimmedId}";
+                            _SongBeenPlayedList.Add(trimmedId);
                             break;
-                        }
-                    }
-
-                }
-            }//真查不到就變20筆 再查不到就return空值回去判斷
-            if (string.IsNullOrEmpty(url))
-            {
-                var top20Results = searchResults.Take(20);
-                foreach (var result in top20Results)
-                {
-                    if (result is VideoSearchResult videoResult)
-                    {
-                        if (videoResult.Duration < TimeSpan.FromMinutes(10))
-                        {
-                            if (!_SongBeenPlayedList.Contains(videoResult.Id))
-                            {
-                                url = videoResult.Url;
-                                _SongBeenPlayedList.Add(videoResult.Id);
-                                break;
-                            }
                         }
                     }
                 }
             }
+            else if (!string.IsNullOrEmpty(error))
+            {
+                Console.WriteLine($"搜尋相關影片失敗: {error}");
+            }
+
             return url;
         }
         catch (Exception ex)
         {
             await channel.SendMessageAsync($"我從來不覺得寫程式開心過:SearchRelateVideoAsync {ex.Message}");
             return "";
+        }
+    }
+
+    // 輔助方法：取得影片 ID
+    private async Task<string> GetYoutubeVideoIdAsync(string url)
+    {
+        try
+        {
+            var (exitCode, output, error) = await ExecuteYtDlpAsync($"--get-id {url}");
+
+            if (exitCode == 0 && !string.IsNullOrWhiteSpace(output))
+            {
+                return output.Trim();
+            }
+            return "";
+        }
+        catch
+        {
+            return "";
+        }
+    }
+
+    // 輔助方法：取得影片長度
+    private async Task<TimeSpan> GetVideoDurationAsync(string videoId)
+    {
+        try
+        {
+            var (exitCode, output, error) = await ExecuteYtDlpAsync($"--get-duration https://www.youtube.com/watch?v={videoId}");
+
+            if (exitCode == 0 && !string.IsNullOrWhiteSpace(output))
+            {
+                var duration = output.Trim();
+                // 解析時間格式 (可能是 MM:SS 或 HH:MM:SS)
+                if (TimeSpan.TryParse(duration, out var result))
+                {
+                    return result;
+                }
+
+                // 處理更複雜的格式 (例如 "5:30" 或 "1:05:30")
+                var parts = duration.Split(':');
+                if (parts.Length == 2) // MM:SS
+                {
+                    return new TimeSpan(0, int.Parse(parts[0]), int.Parse(parts[1]));
+                }
+                else if (parts.Length == 3) // HH:MM:SS
+                {
+                    return new TimeSpan(int.Parse(parts[0]), int.Parse(parts[1]), int.Parse(parts[2]));
+                }
+            }
+
+            return TimeSpan.MaxValue; // 如果無法取得，回傳最大值避免被選中
+        }
+        catch
+        {
+            return TimeSpan.MaxValue;
         }
     }
     #endregion
@@ -1143,6 +1202,63 @@ public class Program
     #endregion
     #region 自訂func
 
+    // YouTube Cookie 處理（從環境變數讀取）
+    private string GetYtDlpCookieArgument()
+    {
+        try
+        {
+            var cookieContent = Environment.GetEnvironmentVariable("YT_DLP_COOKIES");
+            if (string.IsNullOrEmpty(cookieContent))
+            {
+                Console.WriteLine("未設定 YT_DLP_COOKIES 環境變數");
+                return "";
+            }
+
+            // 建立 cookies 目錄
+            var cookieDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "cookies");
+            Directory.CreateDirectory(cookieDir);
+
+            var cookieFile = Path.Combine(cookieDir, "youtube_cookies.txt");
+
+            // 寫入 cookie 檔案（覆蓋舊的）
+            File.WriteAllText(cookieFile, cookieContent);
+
+            Console.WriteLine($"已載入 YouTube cookies: {cookieFile}");
+            return $"--cookies \"{cookieFile}\"";
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"載入 YouTube cookies 失敗: {ex.Message}");
+            return "";
+        }
+    }
+
+    // 統一的 yt-dlp 執行方法
+    private async Task<(int exitCode, string output, string error)> ExecuteYtDlpAsync(string arguments)
+    {
+        var cookieArg = GetYtDlpCookieArgument();
+        var fullArguments = string.IsNullOrEmpty(cookieArg) 
+            ? arguments 
+            : $"{arguments} {cookieArg}";
+
+        var psi = new ProcessStartInfo
+        {
+            FileName = "yt-dlp",
+            Arguments = fullArguments,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+
+        using var process = Process.Start(psi);
+        string output = await process.StandardOutput.ReadToEndAsync();
+        string error = await process.StandardError.ReadToEndAsync();
+        await process.WaitForExitAsync();
+
+        return (process.ExitCode, output, error);
+    }
+
     public Process CreatePcmStreamProcess(string path, bool isEarRape = false)
     {
         string ffmpegPath;
@@ -1209,24 +1325,27 @@ public class Program
     {
         try
         {
-            var videoId = YoutubeExplode.Videos.VideoId.TryParse(url);
-            if (videoId == null)
+            // 使用 yt-dlp 檢查影片是否有效
+            var (exitCode, output, error) = await ExecuteYtDlpAsync($"--get-title {url}");
+
+            if (exitCode == 0 && !string.IsNullOrWhiteSpace(output))
             {
-                return false;
+                var title = output.Trim();
+                await channel.SendMessageAsync($"有取得標題 {title}");
+                _NowPlayingSongName = title;
+                return true;
             }
 
-            var youtube = new YoutubeClient();
-            var video = await youtube.Videos.GetAsync(videoId.Value);
-            await channel.SendMessageAsync($"有取得標題 {video.Title}");
-
-            _NowPlayingSongName = video.Title;
-
-            return video != null; // 如果成功获取到视频信息，则视为有效
+            if (!string.IsNullOrEmpty(error))
+            {
+                Console.WriteLine($"检查视频有效性时发生错误: {error}");
+            }
+            return false;
         }
         catch (Exception ex)
         {
             Console.WriteLine($"检查视频有效性时发生错误: {ex.Message}");
-            return false; // 发生异常，视为无效
+            return false;
         }
     }
     public Color RandomColor()
