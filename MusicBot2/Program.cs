@@ -911,6 +911,25 @@ public class Program
 
             var ffmpegProcess = CreatePcmStreamProcess(filepath, _isEarRapeOn);
 
+            // 檢查 FFmpeg 是否啟動成功
+            if (ffmpegProcess == null)
+            {
+                await channel.SendMessageAsync("❌ FFmpeg 啟動失敗");
+                Console.WriteLine("FFmpeg process 為 null");
+                return;
+            }
+
+            // 讀取 FFmpeg 的錯誤輸出（用於除錯）
+            _ = Task.Run(async () =>
+            {
+                var errorReader = ffmpegProcess.StandardError;
+                string line;
+                while ((line = await errorReader.ReadLineAsync()) != null)
+                {
+                    Console.WriteLine($"FFmpeg 錯誤: {line}");
+                }
+            });
+
             try
             {
                 byte[] buffer = new byte[4096];
@@ -1262,11 +1281,20 @@ public class Program
     public Process CreatePcmStreamProcess(string path, bool isEarRape = false)
     {
         string ffmpegPath;
-        string projectRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
-        string winFfmpeg = Path.Combine(projectRoot, "ffmpeg-master-latest-win64-gpl-shared", "bin", "ffmpeg.exe");
 
-        // Windows 本機用本地 ffmpeg，Linux (Railway) 用系統 ffmpeg
-        ffmpegPath = File.Exists(winFfmpeg) ? winFfmpeg : "ffmpeg";
+        // 檢測作業系統類型
+        if (OperatingSystem.IsWindows())
+        {
+            // Windows 環境：嘗試使用專案內的 ffmpeg
+            string projectRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+            string winFfmpeg = Path.Combine(projectRoot, "ffmpeg-master-latest-win64-gpl-shared", "bin", "ffmpeg.exe");
+            ffmpegPath = File.Exists(winFfmpeg) ? winFfmpeg : "ffmpeg";
+        }
+        else
+        {
+            // Linux/Docker 環境：使用系統安裝的 ffmpeg
+            ffmpegPath = "ffmpeg";
+        }
 
         var audioFilter = isEarRape
             ? "-af \"volume=10,asetrate=48000*0.1,aresample=48000\""
