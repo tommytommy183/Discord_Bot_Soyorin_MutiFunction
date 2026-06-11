@@ -1006,7 +1006,11 @@ public class Program
         var filePrefix = Guid.NewGuid().ToString();
         var outputTemplate = Path.Combine(tempDirectory, $"{filePrefix}.%(ext)s");
 
-        var (exitCode, output, error) = await ExecuteYtDlpAsync($"-f ba -x --audio-format mp3 -o \"{outputTemplate}\" {url}");
+        // 使用更靈活的格式選擇：
+        // 1. bestaudio[ext=m4a] - 嘗試取得 m4a 格式的最佳音質
+        // 2. bestaudio - 如果沒有 m4a，取得任何格式的最佳音質
+        // 3. best - 最後的備案，取得最佳品質的任何格式
+        var (exitCode, output, error) = await ExecuteYtDlpAsync($"-f bestaudio[ext=m4a]/bestaudio/best -x --audio-format mp3 -o \"{outputTemplate}\" {url}");
 
         if (exitCode == 0)
         {
@@ -1163,21 +1167,11 @@ public class Program
         var filePrefix = Guid.NewGuid().ToString();
         var outputTemplate = Path.Combine(tempDirectory, $"{filePrefix}.%(ext)s");
 
-        var psi = new ProcessStartInfo
-        {
-            FileName = "yt-dlp",
-            Arguments = $"-f ba -x --audio-format mp3 -o \"{outputTemplate}\" {url}",
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
+        // 使用 ExecuteYtDlpAsync 統一處理 cookie
+        var (exitCode, output, error) = await ExecuteYtDlpAsync($"-f bestaudio[ext=m4a]/bestaudio/best -x --audio-format mp3 -o \"{outputTemplate}\" {url}");
 
-        using var process = Process.Start(psi);
-        await process.WaitForExitAsync();
-
-        if (process.ExitCode == 0)
-        {
+        if (exitCode == 0)
+{
             // 找出實際的 MP3 檔案
             var downloadedFile = Directory
                 .EnumerateFiles(tempDirectory, $"{filePrefix}.*")
@@ -1187,7 +1181,8 @@ public class Program
                 return downloadedFile;
         }
 
-        throw new Exception("Bilibili 下載失敗搂 OB一串字母女士非常不開心！");
+        Console.WriteLine($"Bilibili 下載失敗: {error}");
+        throw new Exception($"Bilibili 下載失敗搂 OB一串字母女士非常不開心！Error: {error}");
 
     }
 
@@ -1258,9 +1253,13 @@ public class Program
     private async Task<(int exitCode, string output, string error)> ExecuteYtDlpAsync(string arguments)
     {
         var cookieArg = GetYtDlpCookieArgument();
+
+        // Cookie 參數需要放在前面，並添加額外參數來處理受限內容
         var fullArguments = string.IsNullOrEmpty(cookieArg) 
-            ? arguments 
-            : $"{arguments} {cookieArg}";
+            ? $"--no-warnings --no-playlist {arguments}"
+            : $"{cookieArg} --no-warnings --no-playlist {arguments}";
+
+        Console.WriteLine($"執行 yt-dlp 命令: yt-dlp {fullArguments}");
 
         var psi = new ProcessStartInfo
         {
@@ -1276,6 +1275,11 @@ public class Program
         string output = await process.StandardOutput.ReadToEndAsync();
         string error = await process.StandardError.ReadToEndAsync();
         await process.WaitForExitAsync();
+
+        if (process.ExitCode != 0)
+        {
+            Console.WriteLine($"yt-dlp 錯誤輸出: {error}");
+        }
 
         return (process.ExitCode, output, error);
     }
