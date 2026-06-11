@@ -144,7 +144,7 @@ namespace MusicBot2.Service
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[AI Memory Error] 儲存記憶失敗: {ex.Message}");
+                Console.WriteLine($"[AI Memory Error ] 儲存記憶失敗: {ex.Message}");
             }
             finally
             {
