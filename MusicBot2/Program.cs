@@ -1007,10 +1007,10 @@ public class Program
         var outputTemplate = Path.Combine(tempDirectory, $"{filePrefix}.%(ext)s");
 
         // 使用更靈活的格式選擇：
-        // 1. bestaudio[ext=m4a] - 嘗試取得 m4a 格式的最佳音質
-        // 2. bestaudio - 如果沒有 m4a，取得任何格式的最佳音質
-        // 3. best - 最後的備案，取得最佳品質的任何格式
-        var (exitCode, output, error) = await ExecuteYtDlpAsync($"-f bestaudio[ext=m4a]/bestaudio/best -x --audio-format mp3 -o \"{outputTemplate}\" {url}");
+        // bestaudio - 取得任何格式的最佳音質
+        // best - 最後的備案，取得最佳品質的任何格式
+        // 因為我們會用 -x 轉換成 mp3，所以不需要指定特定的容器格式
+        var (exitCode, output, error) = await ExecuteYtDlpAsync($"-f bestaudio/best -x --audio-format mp3 -o \"{outputTemplate}\" {url}");
 
         if (exitCode == 0)
         {
@@ -1168,7 +1168,8 @@ public class Program
         var outputTemplate = Path.Combine(tempDirectory, $"{filePrefix}.%(ext)s");
 
         // 使用 ExecuteYtDlpAsync 統一處理 cookie
-        var (exitCode, output, error) = await ExecuteYtDlpAsync($"-f bestaudio[ext=m4a]/bestaudio/best -x --audio-format mp3 -o \"{outputTemplate}\" {url}");
+        // 使用簡化的格式選擇器，避免格式不可用的錯誤
+        var (exitCode, output, error) = await ExecuteYtDlpAsync($"-f bestaudio/best -x --audio-format mp3 -o \"{outputTemplate}\" {url}");
 
         if (exitCode == 0)
 {
