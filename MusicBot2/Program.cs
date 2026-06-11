@@ -1254,10 +1254,14 @@ public class Program
     {
         var cookieArg = GetYtDlpCookieArgument();
 
-        // Cookie 參數需要放在前面，並添加額外參數來處理受限內容
+        // Cookie 參數需要放在前面
+        // 對於非下載操作（如 --get-title, --get-id 等），添加 --skip-download
+        var isDownloadCommand = arguments.Contains("-o ") || arguments.Contains("--output");
+        var extraArgs = isDownloadCommand ? "" : "--skip-download ";
+
         var fullArguments = string.IsNullOrEmpty(cookieArg) 
-            ? $"--no-warnings --no-playlist {arguments}"
-            : $"{cookieArg} --no-warnings --no-playlist {arguments}";
+            ? $"{extraArgs}{arguments}"
+            : $"{cookieArg} {extraArgs}{arguments}";
 
         Console.WriteLine($"執行 yt-dlp 命令: yt-dlp {fullArguments}");
 
