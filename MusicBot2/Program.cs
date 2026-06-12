@@ -438,14 +438,21 @@ public class Program
                 var repliedMessage = await message.Channel.GetMessageAsync(message.Reference.MessageId.Value);
                 if (repliedMessage != null)
                 {
-                    result = await _openRouterService.GenerateTextAsync(message.Content, talker, true, channelKey, repliedMessage);
+                    //先切回gemini看輸出情況
+                    //result = await _openRouterService.GenerateTextAsync(message.Content, talker, true, channelKey, repliedMessage);
+                    //await message.Channel.SendMessageAsync(result);
+                    //return; // 已處理完畢，直接返回
+
+                    result = await _googleAIStudioService.GenerateTextAsync(message.Content, talker, true, channelKey);
                     await message.Channel.SendMessageAsync(result);
-                    return; // 已處理完畢，直接返回
                 }
             }
             else
             {
-                result = await _openRouterService.GenerateTextAsync(message.Content, talker, true, channelKey);
+                //result = await _openRouterService.GenerateTextAsync(message.Content, talker, true, channelKey);
+                //await message.Channel.SendMessageAsync(result);
+
+                result = await _googleAIStudioService.GenerateTextAsync(message.Content, talker, true, channelKey);
                 await message.Channel.SendMessageAsync(result);
             }
         }
