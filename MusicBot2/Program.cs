@@ -589,10 +589,13 @@ public class Program
             return;
         }
 
-        if (!await CheckYoutubeUrlAliveAsync(query, channel) && !_isRelatedOn)
+        // 檢查影片是否有效（非致命性檢查）
+        var isVideoAlive = await CheckYoutubeUrlAliveAsync(query, channel);
+        if (!isVideoAlive && !_isRelatedOn)
         {
-            await channel.SendMessageAsync($"連結已經死了: {{ {query} }}");
-            return;
+            await channel.SendMessageAsync($"⚠️ 警告：無法驗證影片有效性，但仍會嘗試下載。如果這是地區限制問題，下載可能會失敗。");
+            Console.WriteLine($"[PLAY WARNING] 影片檢查失敗，但仍繼續嘗試下載: {query}");
+            // 不直接 return，給下載一次機會
         }
 
 
@@ -1440,8 +1443,29 @@ public class Program
         Console.WriteLine($"[CHECK DEBUG] 開始檢查 URL: {url}");
         try
         {
+            // 先檢查 yt-dlp 版本
+            Console.WriteLine($"[CHECK DEBUG] 步驟 0: 檢查 yt-dlp 版本");
+            var versionResult = await ExecuteYtDlpAsync($"--version");
+            if (versionResult.exitCode == 0)
+            {
+                Console.WriteLine($"[CHECK DEBUG] yt-dlp 版本: {versionResult.output.Trim()}");
+            }
+
+            // 先嘗試列出可用格式來診斷問題
+            Console.WriteLine($"[CHECK DEBUG] 步驟 1: 列出可用格式");
+            var (listExitCode, listOutput, listError) = await ExecuteYtDlpAsync($"--list-formats --no-check-certificate {url}");
+            Console.WriteLine($"[CHECK DEBUG] --list-formats ExitCode: {listExitCode}");
+            if (!string.IsNullOrEmpty(listOutput))
+            {
+                Console.WriteLine($"[CHECK DEBUG] 可用格式列表（前 800 字元）:\n{listOutput.Substring(0, Math.Min(800, listOutput.Length))}");
+            }
+            if (!string.IsNullOrEmpty(listError))
+            {
+                Console.WriteLine($"[CHECK DEBUG] --list-formats 錯誤: {listError}");
+            }
+
             // 使用 --dump-json 來取得影片資訊，這個方法不會觸發格式檢查
-            Console.WriteLine($"[CHECK DEBUG] 使用 --dump-json 方法");
+            Console.WriteLine($"[CHECK DEBUG] 步驟 2: 使用 --dump-json 方法");
             var (exitCode, output, error) = await ExecuteYtDlpAsync($"--dump-json --no-check-certificate {url}");
 
             Console.WriteLine($"[CHECK DEBUG] 檢查結果 - ExitCode: {exitCode}, HasOutput: {!string.IsNullOrWhiteSpace(output)}");
@@ -1473,6 +1497,12 @@ public class Program
             if (!string.IsNullOrEmpty(error))
             {
                 Console.WriteLine($"[CHECK ERROR] 檢查視頻有效性時發生錯誤: {error}");
+
+                // 提供更友善的錯誤訊息
+                if (error.Contains("not available"))
+                {
+                    await channel.SendMessageAsync($"⚠️ 這個影片在伺服器所在地區不可用");
+                }
             }
             return false;
         }
