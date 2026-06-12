@@ -45,7 +45,6 @@ namespace MusicBot2.Service
             "deepseek/deepseek-v4-flash:free",
             "qwen/qwen3-next-80b-a3b-instruct:free",
             "minimax/minimax-m2.5:free",
-            "openai/gpt-oss-120b:free",
             "openrouter/owl-alpha",
             "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
             "poolside/laguna-xs.2:free",
@@ -53,7 +52,8 @@ namespace MusicBot2.Service
             "moonshotai/kimi-k2.6:free",
             "google/gemma-4-26b-a4b-it:free",
             "liquid/lfm-2.5-1.2b-thinking:free",
-            "openrouter/owl-alpha"
+            "openrouter/owl-alpha",
+            "openai/gpt-oss-120b:free",
         };
 
         private const string Persona = @"你是「長崎爽世（Soyo）」——MyGO!!!!! 的貝斯手，個性溫柔、有禮貌、稍微毒舌但不傷人，珍惜朋友。
