@@ -17,7 +17,7 @@ RUN dotnet publish MusicBot2.csproj -c Release -o /app/publish -r linux-x64 --se
 FROM mcr.microsoft.com/dotnet/aspnet:8.0
 WORKDIR /app
 
-# 一次性安裝所有依賴（避免多次 apt-get update）
+# 一次性安裝所有依賴
 RUN apt-get update && \
     apt-get install -y \
         ffmpeg \
@@ -35,16 +35,14 @@ RUN apt-get update && \
 RUN ldconfig && \
     ldconfig -p | grep libsodium && \
     ldconfig -p | grep libopus && \
-    echo "? libsodium 和 libopus 已安裝"
+    echo "libsodium and libopus installed successfully"
 
 # 安裝最新版 yt-dlp
 RUN pip3 install --break-system-packages --upgrade yt-dlp && \
-    yt-dlp --version && \
-    echo "? yt-dlp 版本: $(yt-dlp --version)"
+    yt-dlp --version
 
 # 驗證 FFmpeg
-RUN ffmpeg -version && \
-    echo "? FFmpeg 已安裝"
+RUN ffmpeg -version | head -n 1
 
 # 複製建置產物
 COPY --from=build /app/publish .
@@ -53,6 +51,6 @@ COPY --from=build /app/publish .
 RUN mkdir -p temp cookies
 
 # 設定環境變數（確保 Discord.Net 能找到 libsodium）
-ENV LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
+ENV LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu
 
 ENTRYPOINT ["dotnet", "MusicBot2.dll"]
