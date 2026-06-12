@@ -36,19 +36,21 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # 下載並安裝 libdave（從 zip 解壓縮）
-RUN wget https://github.com/discord/libdave/releases/download/v1.1.1%2Fcpp/libdave-Linux-X64-boringssl.zip \
+# Download and install libdave - use OpenSSL variant, not BoringSSL
+RUN wget https://github.com/discord/libdave/releases/download/v1.1.1%2Fcpp/libdave-Linux-X64-openssl.zip \
     -O /tmp/libdave.zip && \
-    echo "Downloaded libdave.zip" && \
-    unzip -l /tmp/libdave.zip && \
     unzip -q /tmp/libdave.zip -d /tmp/libdave && \
-    echo "Extracted files:" && \
-    find /tmp/libdave -type f && \
-    find /tmp/libdave -name "*.so*" -exec cp {} /usr/lib/x86_64-linux-gnu/libdave.so \; && \
-    chmod 755 /usr/lib/x86_64-linux-gnu/libdave.so && \
-    ls -lh /usr/lib/x86_64-linux-gnu/libdave.so && \
+    echo "Extracted files:" && find /tmp/libdave -type f && \
+    # Find any .so file and copy it as libdave.so
+    find /tmp/libdave -name "*.so*" | head -1 | xargs -I{} cp {} /usr/local/lib/libdave.so && \
+    chmod 755 /usr/local/lib/libdave.so && \
     ldconfig && \
     rm -rf /tmp/libdave /tmp/libdave.zip && \
-    echo "libdave installed successfully"
+    echo "libdave installed"
+
+    RUN cp /usr/local/lib/libdave.so /app/libdave.so && \
+    chmod 755 /app/libdave.so
+
 
 # 驗證所有語音庫
 RUN ldconfig && \
