@@ -908,21 +908,44 @@ public class Program
                 filepath = await DownloadAudioAsync(songUrl);
             Console.WriteLine("成功下載後的檔案位置" + filepath);
 
-            await Task.Delay(2000);
-            if (_audioClient == null || _audioClient.ConnectionState != Discord.ConnectionState.Connected)
-                _audioClient = await voiceChannel.ConnectAsync(selfDeaf: false, selfMute: false);
+            // 驗證檔案存在且可讀取
+            if (!File.Exists(filepath))
+            {
+                Console.WriteLine($"[PLAY ERROR] 檔案不存在: {filepath}");
+                await channel.SendMessageAsync("❌ 下載的檔案不存在");
+                return;
+            }
+            var fileInfo = new FileInfo(filepath);
+            Console.WriteLine($"[PLAY DEBUG] 檔案大小: {fileInfo.Length} bytes");
 
+            await Task.Delay(2000);
+
+            Console.WriteLine($"[PLAY DEBUG] 準備連接語音頻道");
+            Console.WriteLine($"[PLAY DEBUG] 當前 _audioClient 狀態: {_audioClient?.ConnectionState.ToString() ?? "null"}");
+
+            if (_audioClient == null || _audioClient.ConnectionState != Discord.ConnectionState.Connected)
+            {
+                Console.WriteLine($"[PLAY DEBUG] 嘗試連接語音頻道: {voiceChannel.Name}");
+                _audioClient = await voiceChannel.ConnectAsync(selfDeaf: false, selfMute: false);
+                Console.WriteLine($"[PLAY DEBUG] 連接成功，狀態: {_audioClient.ConnectionState}");
+            }
+
+            Console.WriteLine($"[PLAY DEBUG] 創建 PCM 串流");
             var output = _audioClient.CreatePCMStream(AudioApplication.Mixed);
 
+            Console.WriteLine($"[PLAY DEBUG] 啟動 FFmpeg process");
             var ffmpegProcess = CreatePcmStreamProcess(filepath, _isEarRapeOn);
 
             // 檢查 FFmpeg 是否啟動成功
             if (ffmpegProcess == null)
             {
                 await channel.SendMessageAsync("❌ FFmpeg 啟動失敗");
-                Console.WriteLine("FFmpeg process 為 null");
+                Console.WriteLine("[PLAY ERROR] FFmpeg process 為 null");
                 return;
             }
+
+            Console.WriteLine($"[PLAY DEBUG] FFmpeg process ID: {ffmpegProcess.Id}");
+            Console.WriteLine($"[PLAY DEBUG] FFmpeg 已啟動，開始串流");
 
             // 讀取 FFmpeg 的錯誤輸出（用於除錯）
             _ = Task.Run(async () =>
@@ -931,7 +954,7 @@ public class Program
                 string line;
                 while ((line = await errorReader.ReadLineAsync()) != null)
                 {
-                    Console.WriteLine($"FFmpeg 錯誤: {line}");
+                    Console.WriteLine($"[FFmpeg ERROR] {line}");
                 }
             });
 
@@ -939,19 +962,38 @@ public class Program
             {
                 byte[] buffer = new byte[4096];
                 int bytesRead;
+                int totalBytesRead = 0;
+
                 while ((bytesRead = await ffmpegProcess!.StandardOutput.BaseStream.ReadAsync(buffer, 0, buffer.Length)) > 0)
                 {
                     if (_isSkipRequest)
                     {
+                        Console.WriteLine($"[PLAY DEBUG] 收到跳過請求");
                         _isSkipRequest = false;
                         break;
                     }
                     await output.WriteAsync(buffer, 0, bytesRead);
+                    totalBytesRead += bytesRead;
+
+                    // 每 1MB 輸出一次進度
+                    if (totalBytesRead % (1024 * 1024) == 0)
+                    {
+                        Console.WriteLine($"[PLAY DEBUG] 已串流: {totalBytesRead / (1024 * 1024)} MB");
+                    }
                 }
+
+                Console.WriteLine($"[PLAY DEBUG] 串流完成，總共: {totalBytesRead} bytes");
                 await output.FlushAsync();
+            }
+            catch (Exception streamEx)
+            {
+                Console.WriteLine($"[PLAY ERROR] 串流錯誤: {streamEx.Message}");
+                Console.WriteLine($"[PLAY ERROR] Stack Trace: {streamEx.StackTrace}");
+                await channel.SendMessageAsync($"❌ 播放錯誤: {streamEx.Message}");
             }
             finally
             {
+                Console.WriteLine($"[PLAY DEBUG] 清理資源");
                 ffmpegProcess?.Kill();
                 ffmpegProcess?.Dispose();
             }
@@ -1459,6 +1501,10 @@ public class Program
 
     public Process CreatePcmStreamProcess(string path, bool isEarRape = false)
     {
+        Console.WriteLine($"[FFmpeg DEBUG] 開始創建 PCM Stream Process");
+        Console.WriteLine($"[FFmpeg DEBUG] 檔案路徑: {path}");
+        Console.WriteLine($"[FFmpeg DEBUG] EarRape 模式: {isEarRape}");
+
         string ffmpegPath;
 
         // 檢測作業系統類型
@@ -1468,25 +1514,42 @@ public class Program
             string projectRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
             string winFfmpeg = Path.Combine(projectRoot, "ffmpeg-master-latest-win64-gpl-shared", "bin", "ffmpeg.exe");
             ffmpegPath = File.Exists(winFfmpeg) ? winFfmpeg : "ffmpeg";
+            Console.WriteLine($"[FFmpeg DEBUG] Windows 環境，FFmpeg 路徑: {ffmpegPath}");
         }
         else
         {
             // Linux/Docker 環境：使用系統安裝的 ffmpeg
             ffmpegPath = "ffmpeg";
+            Console.WriteLine($"[FFmpeg DEBUG] Linux/Docker 環境，使用系統 FFmpeg");
         }
 
         var audioFilter = isEarRape
             ? "-af \"volume=10,asetrate=48000*0.1,aresample=48000\""
             : "";
 
-        return Process.Start(new ProcessStartInfo
+        var arguments = $"-hide_banner -loglevel warning -i \"{path}\" {audioFilter} -ac 2 -f s16le -ar 48000 pipe:1";
+        Console.WriteLine($"[FFmpeg DEBUG] FFmpeg 參數: {arguments}");
+
+        try
         {
-            FileName = ffmpegPath,
-            Arguments = $"-hide_banner -loglevel panic -i \"{path}\" {audioFilter} -ac 2 -f s16le -ar 48000 pipe:1",
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-        });
+            var process = Process.Start(new ProcessStartInfo
+            {
+                FileName = ffmpegPath,
+                Arguments = arguments,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+            });
+
+            Console.WriteLine($"[FFmpeg DEBUG] FFmpeg Process 啟動成功，PID: {process?.Id ?? -1}");
+            return process;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[FFmpeg ERROR] 啟動 FFmpeg 失敗: {ex.Message}");
+            Console.WriteLine($"[FFmpeg ERROR] Stack Trace: {ex.StackTrace}");
+            return null;
+        }
     }
 
     public string GetRandomizedTitle(string title, IMessageChannel channel)
