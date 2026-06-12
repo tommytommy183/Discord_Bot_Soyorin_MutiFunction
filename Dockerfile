@@ -65,6 +65,13 @@ RUN ffmpeg -version | head -n 1
 # 複製建置產物
 COPY --from=build /app/publish .
 
+# 複製 libdave 到應用程式目錄（供 .NET NativeLibrary 載入）
+RUN cp /usr/lib/x86_64-linux-gnu/libdave.so /app/libdave.so && \
+    cp /usr/lib/x86_64-linux-gnu/libdave.so /app/runtimes/linux-x64/native/libdave.so 2>/dev/null || \
+    (mkdir -p /app/runtimes/linux-x64/native && cp /usr/lib/x86_64-linux-gnu/libdave.so /app/runtimes/linux-x64/native/libdave.so) && \
+    chmod 755 /app/libdave.so /app/runtimes/linux-x64/native/libdave.so && \
+    echo "libdave copied to app directory"
+
 # 建立必要資料夾
 RUN mkdir -p temp cookies
 
@@ -76,12 +83,16 @@ RUN echo '#!/bin/bash' > /app/check_libs.sh && \
     echo 'ldconfig -p | grep libdave || echo "libdave NOT FOUND"' >> /app/check_libs.sh && \
     echo 'echo "=== Library Paths ==="' >> /app/check_libs.sh && \
     echo 'echo "LD_LIBRARY_PATH: $LD_LIBRARY_PATH"' >> /app/check_libs.sh && \
-    echo 'ls -lh /usr/lib/x86_64-linux-gnu/libdave.so 2>/dev/null || echo "libdave.so file not found"' >> /app/check_libs.sh && \
+    echo 'ls -lh /usr/lib/x86_64-linux-gnu/libdave.so 2>/dev/null || echo "libdave.so NOT in /usr/lib/x86_64-linux-gnu/"' >> /app/check_libs.sh && \
+    echo 'ls -lh /usr/lib/libdave.so 2>/dev/null || echo "libdave.so NOT in /usr/lib/"' >> /app/check_libs.sh && \
+    echo 'ls -lh /lib/x86_64-linux-gnu/libdave.so 2>/dev/null || echo "libdave.so NOT in /lib/x86_64-linux-gnu/"' >> /app/check_libs.sh && \
+    echo 'ls -lh /app/libdave.so 2>/dev/null || echo "libdave.so NOT in /app/"' >> /app/check_libs.sh && \
+    echo 'ls -lh /app/runtimes/linux-x64/native/libdave.so 2>/dev/null || echo "libdave.so NOT in /app/runtimes/linux-x64/native/"' >> /app/check_libs.sh && \
     echo 'echo "=== Starting Application ==="' >> /app/check_libs.sh && \
     echo 'exec dotnet MusicBot2.dll' >> /app/check_libs.sh && \
     chmod +x /app/check_libs.sh
 
-# 設定環境變數
-ENV LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu
+# 設定環境變數（加入當前目錄）
+ENV LD_LIBRARY_PATH=/app:/app/runtimes/linux-x64/native:/usr/lib/x86_64-linux-gnu:/usr/lib:/lib/x86_64-linux-gnu
 
 ENTRYPOINT ["/app/check_libs.sh"]
