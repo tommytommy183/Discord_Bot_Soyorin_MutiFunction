@@ -438,22 +438,21 @@ public class Program
                 var repliedMessage = await message.Channel.GetMessageAsync(message.Reference.MessageId.Value);
                 if (repliedMessage != null)
                 {
-                    //先切回gemini看輸出情況
-                    //result = await _openRouterService.GenerateTextAsync(message.Content, talker, true, channelKey, repliedMessage);
-                    //await message.Channel.SendMessageAsync(result);
-                    //return; // 已處理完畢，直接返回
-
-                    result = await _googleAIStudioService.GenerateTextAsync(message.Content, talker, true, channelKey);
+                    result = await _openRouterService.GenerateTextAsync(message.Content, talker, true, channelKey, repliedMessage);
                     await message.Channel.SendMessageAsync(result);
+                    return; // 已處理完畢，直接返回
+
+                    //result = await _googleAIStudioService.GenerateTextAsync(message.Content, talker, true, channelKey);
+                    //await message.Channel.SendMessageAsync(result);
                 }
             }
             else
             {
-                //result = await _openRouterService.GenerateTextAsync(message.Content, talker, true, channelKey);
-                //await message.Channel.SendMessageAsync(result);
-
-                result = await _googleAIStudioService.GenerateTextAsync(message.Content, talker, true, channelKey);
+                result = await _openRouterService.GenerateTextAsync(message.Content, talker, true, channelKey);
                 await message.Channel.SendMessageAsync(result);
+
+                //result = await _googleAIStudioService.GenerateTextAsync(message.Content, talker, true, channelKey);
+                //await message.Channel.SendMessageAsync(result);
             }
         }
 
@@ -1673,7 +1672,6 @@ public class Program
                         var jsonDoc = System.Text.Json.JsonDocument.Parse(output1);
                         var title = jsonDoc.RootElement.GetProperty("title").GetString();
                         Console.WriteLine($"[CHECK SUCCESS] 不用 cookie 成功！標題: {title}");
-                        await channel.SendMessageAsync($"✅ 有取得標題 {title}");
                         _NowPlayingSongName = title;
                         return true;
                     }

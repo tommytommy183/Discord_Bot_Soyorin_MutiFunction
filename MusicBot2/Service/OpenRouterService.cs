@@ -46,6 +46,7 @@ namespace MusicBot2.Service
             "qwen/qwen3-next-80b-a3b-instruct:free",
             "minimax/minimax-m2.5:free",
             "openai/gpt-oss-120b:free",
+            "openrouter/owl-alpha",
             "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
             "poolside/laguna-xs.2:free",
             "poolside/laguna-m.1:free",
@@ -353,7 +354,7 @@ namespace MusicBot2.Service
                             _ = SaveMemoryAsync();
                         }
 
-                        return text;
+                        return text + $"(model:{model})";
                     }
                     catch (TaskCanceledException)
                     {
