@@ -24,7 +24,7 @@ namespace MusicBot2.Helpers
             {30 ,"https://www.youtube.com/watch?v=Q-Y-C_S5HFY"},
             {31 ,"https://www.youtube.com/watch?v=EPO7f7hMnOk"}
         };
-
+         
         private static Dictionary<int, string> rewardsCompareList = new Dictionary<int, string>
             {
                 { 1, "一首戰神阿基里斯" },
