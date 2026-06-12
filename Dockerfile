@@ -24,6 +24,7 @@ RUN apt-get update && \
         python3 \
         python3-pip \
         curl \
+        wget \
         libsodium23 \
         libsodium-dev \
         libopus0 \
@@ -31,34 +32,22 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# 複製建置產物（包含 runtimes 資料夾中的 libdave）
-COPY --from=build /app/publish .
+# 下載並安裝 libdave（正確版本）
+RUN apt-get install -y unzip wget && \
+    wget https://github.com/discord/libdave/releases/download/v1.1.1%2Fcpp/libdave-Linux-X64-boringssl.zip \
+        -O /tmp/libdave.zip && \
+    unzip /tmp/libdave.zip -d /tmp/libdave && \
+    cp /tmp/libdave/lib/libdave.so /usr/lib/x86_64-linux-gnu/libdave.so && \
+    ldconfig && \
+    rm -rf /tmp/libdave /tmp/libdave.zip && \
+    echo "libdave installed successfully"
 
-# 如果 libdave.so 存在於 runtimes 中，複製到系統庫目錄
-RUN if [ -f "runtimes/linux-x64/native/libdave.so" ]; then \
-        echo "Found libdave.so in build output, copying to system library path..."; \
-        cp runtimes/linux-x64/native/libdave.so /usr/lib/x86_64-linux-gnu/libdave.so; \
-        chmod +x /usr/lib/x86_64-linux-gnu/libdave.so; \
-        ldconfig; \
-        echo "libdave.so installed successfully"; \
-    else \
-        echo "libdave.so not found in build output, checking NuGet packages..."; \
-        find ~/.nuget -name "libdave.so" -exec cp {} /usr/lib/x86_64-linux-gnu/libdave.so \; 2>/dev/null || \
-        echo "WARNING: libdave.so not found, voice encryption will not be available"; \
-    fi
-
-# 驗證必需的庫
+# 驗證所有語音庫
 RUN ldconfig && \
     ldconfig -p | grep libsodium && \
     ldconfig -p | grep libopus && \
-    echo "Essential voice libraries installed"
-
-# 檢查 libdave（可選）
-RUN if ldconfig -p | grep -q libdave; then \
-        echo "libdave is available"; \
-    else \
-        echo "WARNING: libdave not available, will use compatibility mode"; \
-    fi
+    ldconfig -p | grep libdave && \
+    echo "All voice libraries installed successfully"
 
 # 安裝最新版 yt-dlp
 RUN pip3 install --break-system-packages --upgrade yt-dlp && \
@@ -66,6 +55,9 @@ RUN pip3 install --break-system-packages --upgrade yt-dlp && \
 
 # 驗證 FFmpeg
 RUN ffmpeg -version | head -n 1
+
+# 複製建置產物
+COPY --from=build /app/publish .
 
 # 建立必要資料夾
 RUN mkdir -p temp cookies

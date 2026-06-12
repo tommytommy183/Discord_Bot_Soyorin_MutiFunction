@@ -35,11 +35,6 @@
 	  <None Update="words.txt">
 		<CopyToOutputDirectory>Always</CopyToOutputDirectory>
 	  </None>
-	  <!-- 複製 libdave 原生庫 -->
-	  <None Update="runtimes\**\*.*">
-		<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-		<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-	  </None>
 	</ItemGroup>
 	<ItemGroup>
 	  <Folder Include="TTS_Audio\" />
