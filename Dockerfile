@@ -130,14 +130,40 @@ RUN ldconfig && \
     ls -lh /app/libdave.so && \
     ls -lh /app/runtimes/linux-x64/native/libdave.so
 
+# ============================================================
+# 修正 opus 載入問題
+# .NET Discord.Net 會依序嘗試以下名稱：
+#   opus.so / libopus.so / opus / libopus
+# 系統實際檔案是 libopus.so.0，名稱對不上導致 DllNotFoundException
+# 解法：在 /app 目錄建立所有 .NET 會嘗試的名稱
+# ============================================================
+RUN OPUS_REAL=$(ldconfig -p | grep libopus | awk '{print $NF}' | head -1) && \
+    echo "系統 opus 實際路徑：$OPUS_REAL" && \
+    # 複製到 /app，並建立所有可能的名稱
+    cp "$OPUS_REAL" /app/libopus.so && \
+    ln -sf /app/libopus.so /app/opus.so && \
+    ln -sf /app/libopus.so /app/libopus && \
+    ln -sf /app/libopus.so /app/opus && \
+    echo "opus 軟連結建立完成：" && \
+    ls -lh /app/opus.so /app/libopus.so /app/libopus /app/opus
+
+# 同樣修正 libsodium（預防同類問題）
+RUN SODIUM_REAL=$(ldconfig -p | grep libsodium | awk '{print $NF}' | head -1) && \
+    echo "系統 sodium 實際路徑：$SODIUM_REAL" && \
+    cp "$SODIUM_REAL" /app/libsodium.so && \
+    ln -sf /app/libsodium.so /app/sodium.so && \
+    ln -sf /app/libsodium.so /app/libsodium && \
+    ln -sf /app/libsodium.so /app/sodium && \
+    echo "sodium 軟連結建立完成"
+
 # 建立必要資料夾
 RUN mkdir -p temp cookies
 
-# 設定函式庫搜尋路徑（/app 優先，確保 .NET 能找到 libdave）
+# 設定函式庫搜尋路徑（/app 優先，確保 .NET 能找到所有函式庫）
 ENV LD_LIBRARY_PATH=/app:/app/runtimes/linux-x64/native:/usr/lib/x86_64-linux-gnu:/usr/lib:/lib/x86_64-linux-gnu
 
 # 啟動腳本
-RUN printf '#!/bin/bash\nset -e\necho "=== 啟動前檢查 ==="\nldconfig -p | grep libsodium || echo "⚠️  libsodium 未找到"\nldconfig -p | grep libopus   || echo "⚠️  libopus 未找到"\nldconfig -p | grep libdave   || echo "⚠️  libdave 未找到"\necho "LD_LIBRARY_PATH=${LD_LIBRARY_PATH}"\necho "=== 啟動 MusicBot2 ==="\nexec dotnet MusicBot2.dll\n' > /app/start.sh && \
+RUN printf '#!/bin/bash\nset -e\necho "=== 啟動前函式庫檢查 ==="\nldconfig -p | grep libsodium || echo "⚠️  libsodium 未找到"\nldconfig -p | grep libopus   || echo "⚠️  libopus 未找到"\nldconfig -p | grep libdave   || echo "⚠️  libdave 未找到"\necho "--- /app 目錄 ---"\nls -lh /app/*.so /app/libopus /app/opus /app/libsodium /app/sodium 2>/dev/null || true\necho "LD_LIBRARY_PATH=${LD_LIBRARY_PATH}"\necho "=== 啟動 MusicBot2 ==="\nexec dotnet MusicBot2.dll\n' > /app/start.sh && \
     chmod +x /app/start.sh
 
 ENTRYPOINT ["/app/start.sh"]
