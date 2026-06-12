@@ -990,21 +990,28 @@ public class Program
     }
     public async Task<string> DownloadAudioAsync(string url)
     {
+        Console.WriteLine($"[DOWNLOAD DEBUG] 開始下載: {url}");
         var tempDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "temp");
         Directory.CreateDirectory(tempDirectory);
 
         // 先取得影片 ID 和標題
+        Console.WriteLine($"[DOWNLOAD DEBUG] 步驟 1: 取得影片 ID");
         var videoId = await GetYoutubeVideoIdAsync(url);
         if (string.IsNullOrEmpty(videoId))
         {
+            Console.WriteLine($"[DOWNLOAD ERROR] 無法取得影片 ID");
             throw new Exception("連結無效");
         }
+        Console.WriteLine($"[DOWNLOAD DEBUG] 影片 ID: {videoId}");
 
         _NowPlayingSongID = videoId;
         _NowPlayingSongName = await GetVideoIDAsync(url);
+        Console.WriteLine($"[DOWNLOAD DEBUG] 影片名稱: {_NowPlayingSongName}");
 
         var filePrefix = Guid.NewGuid().ToString();
         var outputTemplate = Path.Combine(tempDirectory, $"{filePrefix}.%(ext)s");
+
+        Console.WriteLine($"[DOWNLOAD DEBUG] 步驟 2: 開始嘗試下載，輸出檔案前綴: {filePrefix}");
 
         // 嘗試多種格式策略，從最佳到最寬鬆
         string[] formatOptions = new[]
@@ -1016,27 +1023,42 @@ public class Program
 
         (int exitCode, string output, string error) result = (-1, "", "");
 
-        foreach (var formatOption in formatOptions)
+        for (int i = 0; i < formatOptions.Length; i++)
         {
+            var formatOption = formatOptions[i];
+            Console.WriteLine($"[DOWNLOAD DEBUG] 嘗試格式 {i + 1}/{formatOptions.Length}: '{formatOption}'");
+
             var formatArg = string.IsNullOrEmpty(formatOption) ? "" : $"-f {formatOption} ";
             result = await ExecuteYtDlpAsync($"{formatArg}-x --audio-format mp3 --no-check-certificate -o \"{outputTemplate}\" {url}");
 
+            Console.WriteLine($"[DOWNLOAD DEBUG] 格式 '{formatOption}' 結果 - ExitCode: {result.exitCode}");
+
             if (result.exitCode == 0)
             {
+                Console.WriteLine($"[DOWNLOAD DEBUG] 搜尋下載的檔案於: {tempDirectory}");
                 var downloadedFile = Directory
                     .EnumerateFiles(tempDirectory, $"{filePrefix}.*")
                     .FirstOrDefault(f => Path.GetExtension(f).Equals(".mp3", StringComparison.OrdinalIgnoreCase));
 
                 if (!string.IsNullOrEmpty(downloadedFile))
+                {
+                    Console.WriteLine($"[DOWNLOAD SUCCESS] 下載成功: {downloadedFile}");
                     return downloadedFile;
+                }
+                else
+                {
+                    Console.WriteLine($"[DOWNLOAD WARNING] ExitCode=0 但找不到 mp3 檔案");
+                    var allFiles = Directory.EnumerateFiles(tempDirectory, $"{filePrefix}.*").ToList();
+                    Console.WriteLine($"[DOWNLOAD DEBUG] 找到的檔案: {string.Join(", ", allFiles)}");
+                }
             }
             else
             {
-                Console.WriteLine($"格式 '{formatOption}' 失敗，嘗試下一個格式...");
+                Console.WriteLine($"[DOWNLOAD FAILED] 格式 '{formatOption}' 失敗，嘗試下一個格式...");
             }
         }
 
-        Console.WriteLine($"YouTube 下載失敗（所有格式都嘗試過）: {result.error}");
+        Console.WriteLine($"[DOWNLOAD ERROR] YouTube 下載失敗（所有格式都嘗試過）: {result.error}");
         throw new Exception($"YouTube 下載失敗: {result.error}");
     }
     public async Task<string> GetYoutubeUrlByNameAsync(IMessageChannel channel, string query)
@@ -1238,28 +1260,38 @@ public class Program
     {
         try
         {
+            Console.WriteLine($"[COOKIE DEBUG] 開始載入 cookie");
             var cookieContent = _cookie;
+
             if (string.IsNullOrEmpty(cookieContent))
             {
-                Console.WriteLine("未設定 YT_DLP_COOKIES 環境變數");
+                Console.WriteLine("[COOKIE WARNING] 未設定 YT_DLP_COOKIES 環境變數或 _cookie 為空");
                 return "";
             }
+
+            Console.WriteLine($"[COOKIE DEBUG] Cookie 內容長度: {cookieContent.Length} 字元");
+            Console.WriteLine($"[COOKIE DEBUG] Cookie 前 100 字元: {cookieContent.Substring(0, Math.Min(100, cookieContent.Length))}");
 
             // 建立 cookies 目錄
             var cookieDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "cookies");
             Directory.CreateDirectory(cookieDir);
+            Console.WriteLine($"[COOKIE DEBUG] Cookie 目錄: {cookieDir}");
 
             var cookieFile = Path.Combine(cookieDir, "youtube_cookies.txt");
 
             // 寫入 cookie 檔案（覆蓋舊的）
             File.WriteAllText(cookieFile, cookieContent);
 
-            Console.WriteLine($"已載入 YouTube cookies: {cookieFile}");
+            Console.WriteLine($"[COOKIE SUCCESS] 已載入 YouTube cookies: {cookieFile}");
+            Console.WriteLine($"[COOKIE DEBUG] Cookie 檔案是否存在: {File.Exists(cookieFile)}");
+            Console.WriteLine($"[COOKIE DEBUG] Cookie 檔案大小: {new FileInfo(cookieFile).Length} bytes");
+
             return $"--cookies \"{cookieFile}\"";
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"載入 YouTube cookies 失敗: {ex.Message}");
+            Console.WriteLine($"[COOKIE ERROR] 載入 YouTube cookies 失敗: {ex.Message}");
+            Console.WriteLine($"[COOKIE ERROR] Stack Trace: {ex.StackTrace}");
             return "";
         }
     }
@@ -1274,7 +1306,8 @@ public class Program
             ? $"--no-warnings --no-playlist {arguments}"
             : $"{cookieArg} --no-warnings --no-playlist {arguments}";
 
-        Console.WriteLine($"執行 yt-dlp 命令: yt-dlp {fullArguments}");
+        Console.WriteLine($"[yt-dlp DEBUG] 執行命令: yt-dlp {fullArguments}");
+        Console.WriteLine($"[yt-dlp DEBUG] Cookie 參數: {(string.IsNullOrEmpty(cookieArg) ? "無" : cookieArg)}");
 
         var psi = new ProcessStartInfo
         {
@@ -1291,9 +1324,18 @@ public class Program
         string error = await process.StandardError.ReadToEndAsync();
         await process.WaitForExitAsync();
 
+        Console.WriteLine($"[yt-dlp DEBUG] Exit Code: {process.ExitCode}");
+        Console.WriteLine($"[yt-dlp DEBUG] Output 長度: {output?.Length ?? 0} 字元");
+        Console.WriteLine($"[yt-dlp DEBUG] Output 內容: {(string.IsNullOrEmpty(output) ? "空" : output.Substring(0, Math.Min(200, output.Length)))}");
+        Console.WriteLine($"[yt-dlp DEBUG] Error 長度: {error?.Length ?? 0} 字元");
+
         if (process.ExitCode != 0)
         {
-            Console.WriteLine($"yt-dlp 錯誤輸出: {error}");
+            Console.WriteLine($"[yt-dlp ERROR] 完整錯誤輸出: {error}");
+        }
+        else
+        {
+            Console.WriteLine($"[yt-dlp SUCCESS] 執行成功");
         }
 
         return (process.ExitCode, output, error);
@@ -1372,28 +1414,34 @@ public class Program
     }
     public async Task<bool> CheckYoutubeUrlAliveAsync(string url, IMessageChannel channel)
     {
+        Console.WriteLine($"[CHECK DEBUG] 開始檢查 URL: {url}");
         try
         {
             // 使用 yt-dlp 檢查影片是否有效
             var (exitCode, output, error) = await ExecuteYtDlpAsync($"--skip-download --get-title --no-check-certificate {url}");
 
+            Console.WriteLine($"[CHECK DEBUG] 檢查結果 - ExitCode: {exitCode}, HasOutput: {!string.IsNullOrWhiteSpace(output)}");
+
             if (exitCode == 0 && !string.IsNullOrWhiteSpace(output))
             {
                 var title = output.Trim();
+                Console.WriteLine($"[CHECK SUCCESS] 取得標題: {title}");
                 await channel.SendMessageAsync($"有取得標題 {title}");
                 _NowPlayingSongName = title;
                 return true;
             }
 
+            Console.WriteLine($"[CHECK FAILED] 無法取得標題 - ExitCode: {exitCode}");
             if (!string.IsNullOrEmpty(error))
             {
-                Console.WriteLine($"检查视频有效性时发生错误: {error}");
+                Console.WriteLine($"[CHECK ERROR] 檢查視頻有效性時發生錯誤: {error}");
             }
             return false;
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"检查视频有效性时发生错误: {ex.Message}");
+            Console.WriteLine($"[CHECK EXCEPTION] 檢查視頻有效性時發生異常: {ex.Message}");
+            Console.WriteLine($"[CHECK EXCEPTION] Stack Trace: {ex.StackTrace}");
             return false;
         }
     }
