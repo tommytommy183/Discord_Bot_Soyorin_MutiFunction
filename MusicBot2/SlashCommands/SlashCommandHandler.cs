@@ -554,5 +554,17 @@ namespace MusicBot2.SlahCommands
                 await Context.Channel.SendFileAsync(attachment);
             }
         }
+
+        [SlashCommand("soyo記憶消除", "清除 Soyo 的記憶")]
+        public async Task ClearSoyoMemory(
+            [Summary("頻道", "要清除記憶的頻道")] string channelKey = null
+        )
+        {
+            await DeferAsync();
+
+            await _googleAIStudioService.ClearMemoryAsync(channelKey);
+
+            await FollowupAsync($"已清除 Soyo 的記憶 ({channelKey ?? "全部頻道"})");
+        }
     }
 }
