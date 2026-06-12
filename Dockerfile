@@ -29,7 +29,9 @@ RUN apt-get update && \
         libsodium23 \
         libsodium-dev \
         libopus0 \
-        libopus-dev && \
+        libopus-dev \
+        libssl3 \
+        ca-certificates && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
