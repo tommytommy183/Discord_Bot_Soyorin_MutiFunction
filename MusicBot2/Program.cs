@@ -969,22 +969,33 @@ public class Program
     {
         try
         {
-            var (exitCode, output, error) = await ExecuteYtDlpAsync($"--skip-download --get-title {url}");
+            Console.WriteLine($"[GetVideoIDAsync] 開始取得影片標題: {url}");
+            var (exitCode, output, error) = await ExecuteYtDlpAsync($"--dump-json --no-check-certificate {url}");
 
             if (exitCode == 0 && !string.IsNullOrWhiteSpace(output))
             {
-                return output.Trim();
+                try
+                {
+                    var jsonDoc = System.Text.Json.JsonDocument.Parse(output);
+                    var title = jsonDoc.RootElement.GetProperty("title").GetString();
+                    Console.WriteLine($"[GetVideoIDAsync] 成功取得標題: {title}");
+                    return title ?? "";
+                }
+                catch (Exception jsonEx)
+                {
+                    Console.WriteLine($"[GetVideoIDAsync] 解析 JSON 失敗: {jsonEx.Message}");
+                }
             }
 
             if (!string.IsNullOrEmpty(error))
             {
-                Console.WriteLine($"GetVideoIDAsync 錯誤: {error}");
+                Console.WriteLine($"[GetVideoIDAsync] 錯誤: {error}");
             }
             return "";
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"GetVideoIDAsync 例外: {ex.Message}");
+            Console.WriteLine($"[GetVideoIDAsync] 例外: {ex.Message}");
             return "";
         }
     }
@@ -1142,16 +1153,30 @@ public class Program
     {
         try
         {
-            var (exitCode, output, error) = await ExecuteYtDlpAsync($"--skip-download --get-id --no-check-certificate {url}");
+            Console.WriteLine($"[GetYoutubeVideoIdAsync] 取得影片 ID: {url}");
+            var (exitCode, output, error) = await ExecuteYtDlpAsync($"--dump-json --no-check-certificate {url}");
 
             if (exitCode == 0 && !string.IsNullOrWhiteSpace(output))
             {
-                return output.Trim();
+                try
+                {
+                    var jsonDoc = System.Text.Json.JsonDocument.Parse(output);
+                    var videoId = jsonDoc.RootElement.GetProperty("id").GetString();
+                    Console.WriteLine($"[GetYoutubeVideoIdAsync] 成功取得 ID: {videoId}");
+                    return videoId ?? "";
+                }
+                catch (Exception jsonEx)
+                {
+                    Console.WriteLine($"[GetYoutubeVideoIdAsync] 解析 JSON 失敗: {jsonEx.Message}");
+                }
             }
+
+            Console.WriteLine($"[GetYoutubeVideoIdAsync] 失敗 - ExitCode: {exitCode}");
             return "";
         }
         catch
         {
+            Console.WriteLine($"[GetYoutubeVideoIdAsync] 發生異常");
             return "";
         }
     }
@@ -1161,33 +1186,31 @@ public class Program
     {
         try
         {
-            var (exitCode, output, error) = await ExecuteYtDlpAsync($"--skip-download --get-duration --no-check-certificate https://www.youtube.com/watch?v={videoId}");
+            Console.WriteLine($"[GetVideoDurationAsync] 取得影片長度: {videoId}");
+            var (exitCode, output, error) = await ExecuteYtDlpAsync($"--dump-json --no-check-certificate https://www.youtube.com/watch?v={videoId}");
 
             if (exitCode == 0 && !string.IsNullOrWhiteSpace(output))
             {
-                var duration = output.Trim();
-                // 解析時間格式 (可能是 MM:SS 或 HH:MM:SS)
-                if (TimeSpan.TryParse(duration, out var result))
+                try
                 {
-                    return result;
+                    var jsonDoc = System.Text.Json.JsonDocument.Parse(output);
+                    var durationSeconds = jsonDoc.RootElement.GetProperty("duration").GetDouble();
+                    var videoDuration = TimeSpan.FromSeconds(durationSeconds);
+                    Console.WriteLine($"[GetVideoDurationAsync] 影片長度: {videoDuration}");
+                    return videoDuration;
                 }
-
-                // 處理更複雜的格式 (例如 "5:30" 或 "1:05:30")
-                var parts = duration.Split(':');
-                if (parts.Length == 2) // MM:SS
+                catch (Exception jsonEx)
                 {
-                    return new TimeSpan(0, int.Parse(parts[0]), int.Parse(parts[1]));
-                }
-                else if (parts.Length == 3) // HH:MM:SS
-                {
-                    return new TimeSpan(int.Parse(parts[0]), int.Parse(parts[1]), int.Parse(parts[2]));
+                    Console.WriteLine($"[GetVideoDurationAsync] 解析 JSON 失敗: {jsonEx.Message}");
                 }
             }
 
+            Console.WriteLine($"[GetVideoDurationAsync] 無法取得影片長度，返回最大值");
             return TimeSpan.MaxValue; // 如果無法取得，回傳最大值避免被選中
         }
-        catch
+        catch (Exception ex)
         {
+            Console.WriteLine($"[GetVideoDurationAsync] 發生異常: {ex.Message}");
             return TimeSpan.MaxValue;
         }
     }
@@ -1417,18 +1440,33 @@ public class Program
         Console.WriteLine($"[CHECK DEBUG] 開始檢查 URL: {url}");
         try
         {
-            // 使用 yt-dlp 檢查影片是否有效
-            var (exitCode, output, error) = await ExecuteYtDlpAsync($"--skip-download --get-title --no-check-certificate {url}");
+            // 使用 --dump-json 來取得影片資訊，這個方法不會觸發格式檢查
+            Console.WriteLine($"[CHECK DEBUG] 使用 --dump-json 方法");
+            var (exitCode, output, error) = await ExecuteYtDlpAsync($"--dump-json --no-check-certificate {url}");
 
             Console.WriteLine($"[CHECK DEBUG] 檢查結果 - ExitCode: {exitCode}, HasOutput: {!string.IsNullOrWhiteSpace(output)}");
 
             if (exitCode == 0 && !string.IsNullOrWhiteSpace(output))
             {
-                var title = output.Trim();
-                Console.WriteLine($"[CHECK SUCCESS] 取得標題: {title}");
-                await channel.SendMessageAsync($"有取得標題 {title}");
-                _NowPlayingSongName = title;
-                return true;
+                try
+                {
+                    // 解析 JSON 取得標題
+                    var jsonDoc = System.Text.Json.JsonDocument.Parse(output);
+                    var title = jsonDoc.RootElement.GetProperty("title").GetString();
+
+                    if (!string.IsNullOrEmpty(title))
+                    {
+                        Console.WriteLine($"[CHECK SUCCESS] 取得標題: {title}");
+                        await channel.SendMessageAsync($"有取得標題 {title}");
+                        _NowPlayingSongName = title;
+                        return true;
+                    }
+                }
+                catch (Exception jsonEx)
+                {
+                    Console.WriteLine($"[CHECK ERROR] 解析 JSON 失敗: {jsonEx.Message}");
+                    Console.WriteLine($"[CHECK DEBUG] JSON 內容前 500 字元: {output.Substring(0, Math.Min(500, output.Length))}");
+                }
             }
 
             Console.WriteLine($"[CHECK FAILED] 無法取得標題 - ExitCode: {exitCode}");
