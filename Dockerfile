@@ -36,18 +36,24 @@ RUN apt-get update && \
 # 下載並安裝 libdave（從 zip 解壓縮）
 RUN wget https://github.com/discord/libdave/releases/download/v1.1.1%2Fcpp/libdave-Linux-X64-boringssl.zip \
     -O /tmp/libdave.zip && \
+    echo "Downloaded libdave.zip" && \
+    unzip -l /tmp/libdave.zip && \
     unzip -q /tmp/libdave.zip -d /tmp/libdave && \
-    find /tmp/libdave -name "libdave.so" -exec cp {} /usr/lib/x86_64-linux-gnu/libdave.so \; && \
-    chmod +x /usr/lib/x86_64-linux-gnu/libdave.so && \
+    echo "Extracted files:" && \
+    find /tmp/libdave -type f && \
+    find /tmp/libdave -name "*.so*" -exec cp {} /usr/lib/x86_64-linux-gnu/libdave.so \; && \
+    chmod 755 /usr/lib/x86_64-linux-gnu/libdave.so && \
+    ls -lh /usr/lib/x86_64-linux-gnu/libdave.so && \
+    file /usr/lib/x86_64-linux-gnu/libdave.so && \
     ldconfig && \
     rm -rf /tmp/libdave /tmp/libdave.zip && \
     echo "libdave installed successfully"
 
 # 驗證所有語音庫
 RUN ldconfig && \
-    ldconfig -p | grep libsodium && \
-    ldconfig -p | grep libopus && \
-    ldconfig -p | grep libdave && \
+    echo "Checking libsodium:" && ldconfig -p | grep libsodium && \
+    echo "Checking libopus:" && ldconfig -p | grep libopus && \
+    echo "Checking libdave:" && ldconfig -p | grep libdave && \
     echo "All voice libraries installed successfully"
 
 # 安裝最新版 yt-dlp
@@ -63,7 +69,20 @@ COPY --from=build /app/publish .
 # 建立必要資料夾
 RUN mkdir -p temp cookies
 
+# 建立啟動腳本來驗證 libdave
+RUN echo '#!/bin/bash' > /app/check_libs.sh && \
+    echo 'echo "=== Checking Voice Libraries ==="' >> /app/check_libs.sh && \
+    echo 'ldconfig -p | grep libsodium || echo "libsodium NOT FOUND"' >> /app/check_libs.sh && \
+    echo 'ldconfig -p | grep libopus || echo "libopus NOT FOUND"' >> /app/check_libs.sh && \
+    echo 'ldconfig -p | grep libdave || echo "libdave NOT FOUND"' >> /app/check_libs.sh && \
+    echo 'echo "=== Library Paths ==="' >> /app/check_libs.sh && \
+    echo 'echo "LD_LIBRARY_PATH: $LD_LIBRARY_PATH"' >> /app/check_libs.sh && \
+    echo 'ls -lh /usr/lib/x86_64-linux-gnu/libdave.so 2>/dev/null || echo "libdave.so file not found"' >> /app/check_libs.sh && \
+    echo 'echo "=== Starting Application ==="' >> /app/check_libs.sh && \
+    echo 'exec dotnet MusicBot2.dll' >> /app/check_libs.sh && \
+    chmod +x /app/check_libs.sh
+
 # 設定環境變數
 ENV LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu
 
-ENTRYPOINT ["dotnet", "MusicBot2.dll"]
+ENTRYPOINT ["/app/check_libs.sh"]
