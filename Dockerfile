@@ -44,7 +44,6 @@ RUN wget https://github.com/discord/libdave/releases/download/v1.1.1%2Fcpp/libda
     find /tmp/libdave -name "*.so*" -exec cp {} /usr/lib/x86_64-linux-gnu/libdave.so \; && \
     chmod 755 /usr/lib/x86_64-linux-gnu/libdave.so && \
     ls -lh /usr/lib/x86_64-linux-gnu/libdave.so && \
-    file /usr/lib/x86_64-linux-gnu/libdave.so && \
     ldconfig && \
     rm -rf /tmp/libdave /tmp/libdave.zip && \
     echo "libdave installed successfully"
