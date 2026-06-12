@@ -382,7 +382,7 @@ namespace MusicBot2.Service
             // 添加結果訊息
             if (isCorrect)
             {
-                embedBuilder.AddField($"✅ 宅斃了: {correctName}", $"恭喜 宅王之王 **{interaction.User.Mention}** 答對了！ 獎勵你 \n\n{RewardsHelpers.GetRandomRewards()}");
+                embedBuilder.AddField($"✅ 宅斃了: {correctName}", $"恭喜 宅王之王 **{interaction.User.Mention}** 答對了！ 獎勵你 \n\n{await RewardsHelpers.GetRandomRewards(interaction.Channel, interaction.User as SocketGuildUser)}");
             }
             else
             {

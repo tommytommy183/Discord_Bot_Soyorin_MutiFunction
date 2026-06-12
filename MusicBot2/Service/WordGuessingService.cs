@@ -21,7 +21,7 @@ namespace MusicBot2.Service
             Answer = null;
         }
 
-        public async Task<string> Guess(string word, SocketGuildUser user)
+        public async Task<string> Guess(IMessageChannel channel,string word, SocketGuildUser user)
         {
             try
             {
@@ -58,7 +58,7 @@ namespace MusicBot2.Service
 
                     if (word.ToLower() == Answer.word)
                     {
-                        display += $"\n\n🎉 猜對了我的寶\n單字: **{Answer.word}**\n意思: {Answer.translate} \n 獎勵 {user.DisplayName} {RewardsHelpers.GetRandomRewards()}";
+                        display += $"\n\n🎉 猜對了我的寶\n單字: **{Answer.word}**\n意思: {Answer.translate} \n 獎勵 {user.DisplayName} {await RewardsHelpers.GetRandomRewards(channel, user)}";
                         Answer = null;
                     }
                     return display;

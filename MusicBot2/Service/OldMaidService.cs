@@ -111,7 +111,7 @@ namespace MusicBot2.Service
             {
                 result += $"\n\n🎭 **遊戲結束！**";
                 result += $"\n👻 {game.GetLoserName()} 抽到鬼牌，{game.GetLoserName()}老婆是榨菜味鬼鬼";
-                result += $"\n獎勵: {RewardsHelpers.GetRandomRewards()}";
+                result += $"\n獎勵: {await RewardsHelpers.GetRandomRewards(channel, user)}";
                 _games.Remove(channel.Id);
                 return (result + "\n" + game.GetPublicStatus(), null, false, null);
             }

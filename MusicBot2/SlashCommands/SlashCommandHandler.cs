@@ -149,7 +149,8 @@ namespace MusicBot2.SlahCommands
         {
             await DeferAsync();
             var champService = new GetChampService();
-            await champService.GuessChampSkillAsync(Context.Channel as IMessageChannel, champName.ToLower(), skillPos.ToLower(), userGuess.ToLower());
+            var user = Context.User as SocketGuildUser;
+            await champService.GuessChampSkillAsync(Context.Channel as IMessageChannel, champName.ToLower(), skillPos.ToLower(), userGuess.ToLower(), user);
             await FollowupAsync("-", ephemeral: true);
         }
 
@@ -159,7 +160,7 @@ namespace MusicBot2.SlahCommands
             try
             {
                 var user = Context.User as SocketGuildUser;
-                string res = await _wordService.Guess(word, user);
+                string res = await _wordService.Guess(Context.Channel as IMessageChannel,word, user);
                 if (!string.IsNullOrEmpty(res))
                 {
                     await RespondAsync(res);
