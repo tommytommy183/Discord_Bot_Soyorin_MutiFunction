@@ -33,11 +33,14 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# 下載並安裝 libdave（使用 .so 檔案直接下載）
-RUN wget https://github.com/discord/libdave/releases/download/v1.1.1%2Fcpp/libdave-linux-x64.so \
-    -O /usr/lib/x86_64-linux-gnu/libdave.so && \
+# 下載並安裝 libdave（從 zip 解壓縮）
+RUN wget https://github.com/discord/libdave/releases/download/v1.1.1%2Fcpp/libdave-Linux-X64-boringssl.zip \
+    -O /tmp/libdave.zip && \
+    unzip -q /tmp/libdave.zip -d /tmp/libdave && \
+    find /tmp/libdave -name "libdave.so" -exec cp {} /usr/lib/x86_64-linux-gnu/libdave.so \; && \
     chmod +x /usr/lib/x86_64-linux-gnu/libdave.so && \
     ldconfig && \
+    rm -rf /tmp/libdave /tmp/libdave.zip && \
     echo "libdave installed successfully"
 
 # 驗證所有語音庫
