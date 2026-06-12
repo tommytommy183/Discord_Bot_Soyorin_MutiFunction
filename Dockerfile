@@ -17,26 +17,42 @@ RUN dotnet publish MusicBot2.csproj -c Release -o /app/publish -r linux-x64 --se
 FROM mcr.microsoft.com/dotnet/aspnet:8.0
 WORKDIR /app
 
-# 安裝 ffmpeg、python3 和必要工具
+# 一次性安裝所有依賴（避免多次 apt-get update）
 RUN apt-get update && \
-    apt-get install -y ffmpeg python3 python3-pip curl && \
+    apt-get install -y \
+        ffmpeg \
+        python3 \
+        python3-pip \
+        curl \
+        libsodium23 \
+        libsodium-dev \
+        libopus0 \
+        libopus-dev && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# 安裝最新版 yt-dlp（強制更新到最新版本）
+# 驗證 libsodium 和 libopus 安裝
+RUN ldconfig && \
+    ldconfig -p | grep libsodium && \
+    ldconfig -p | grep libopus && \
+    echo "? libsodium 和 libopus 已安裝"
+
+# 安裝最新版 yt-dlp
 RUN pip3 install --break-system-packages --upgrade yt-dlp && \
-    yt-dlp --version
+    yt-dlp --version && \
+    echo "? yt-dlp 版本: $(yt-dlp --version)"
 
-# 安裝 libsodium（Discord 語音加密需要）
-RUN apt-get update && \
-    apt-get install -y libsodium-dev libopus0 && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+# 驗證 FFmpeg
+RUN ffmpeg -version && \
+    echo "? FFmpeg 已安裝"
 
 # 複製建置產物
 COPY --from=build /app/publish .
 
 # 建立必要資料夾
 RUN mkdir -p temp cookies
+
+# 設定環境變數（確保 Discord.Net 能找到 libsodium）
+ENV LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
 
 ENTRYPOINT ["dotnet", "MusicBot2.dll"]

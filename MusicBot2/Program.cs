@@ -923,15 +923,58 @@ public class Program
             Console.WriteLine($"[PLAY DEBUG] 準備連接語音頻道");
             Console.WriteLine($"[PLAY DEBUG] 當前 _audioClient 狀態: {_audioClient?.ConnectionState.ToString() ?? "null"}");
 
-            if (_audioClient == null || _audioClient.ConnectionState != Discord.ConnectionState.Connected)
+            try
             {
-                Console.WriteLine($"[PLAY DEBUG] 嘗試連接語音頻道: {voiceChannel.Name}");
-                _audioClient = await voiceChannel.ConnectAsync(selfDeaf: false, selfMute: false);
-                Console.WriteLine($"[PLAY DEBUG] 連接成功，狀態: {_audioClient.ConnectionState}");
+                if (_audioClient == null || _audioClient.ConnectionState != Discord.ConnectionState.Connected)
+                {
+                    Console.WriteLine($"[PLAY DEBUG] 嘗試連接語音頻道: {voiceChannel.Name}");
+                    Console.WriteLine($"[PLAY DEBUG] VoiceChannel ID: {voiceChannel.Id}");
+                    Console.WriteLine($"[PLAY DEBUG] Guild: {voiceChannel.Guild.Name}");
+
+                    _audioClient = await voiceChannel.ConnectAsync(selfDeaf: false, selfMute: false);
+
+                    Console.WriteLine($"[PLAY DEBUG] 連接成功，狀態: {_audioClient.ConnectionState}");
+
+                    // 等待連接穩定
+                    await Task.Delay(500);
+                    Console.WriteLine($"[PLAY DEBUG] 等待後狀態: {_audioClient.ConnectionState}");
+                }
+                else
+                {
+                    Console.WriteLine($"[PLAY DEBUG] 已連接，跳過連接步驟");
+                }
+            }
+            catch (Exception connectEx)
+            {
+                Console.WriteLine($"[PLAY ERROR] 連接語音頻道失敗: {connectEx.Message}");
+                Console.WriteLine($"[PLAY ERROR] Exception Type: {connectEx.GetType().Name}");
+                Console.WriteLine($"[PLAY ERROR] Stack Trace: {connectEx.StackTrace}");
+
+                if (connectEx.InnerException != null)
+                {
+                    Console.WriteLine($"[PLAY ERROR] Inner Exception: {connectEx.InnerException.Message}");
+                    Console.WriteLine($"[PLAY ERROR] Inner Stack Trace: {connectEx.InnerException.StackTrace}");
+                }
+
+                await channel.SendMessageAsync($"❌ 無法連接語音頻道: {connectEx.Message}");
+                return;
             }
 
             Console.WriteLine($"[PLAY DEBUG] 創建 PCM 串流");
-            var output = _audioClient.CreatePCMStream(AudioApplication.Mixed);
+            AudioOutStream output = null;
+
+            try
+            {
+                output = _audioClient.CreatePCMStream(AudioApplication.Mixed);
+                Console.WriteLine($"[PLAY DEBUG] PCM 串流創建成功");
+            }
+            catch (Exception streamEx)
+            {
+                Console.WriteLine($"[PLAY ERROR] 創建 PCM 串流失敗: {streamEx.Message}");
+                Console.WriteLine($"[PLAY ERROR] Stack Trace: {streamEx.StackTrace}");
+                await channel.SendMessageAsync($"❌ 無法創建音訊串流: {streamEx.Message}");
+                return;
+            }
 
             Console.WriteLine($"[PLAY DEBUG] 啟動 FFmpeg process");
             var ffmpegProcess = CreatePcmStreamProcess(filepath, _isEarRapeOn);
