@@ -1106,7 +1106,7 @@ public class Program
     {
         try
         {
-            var (exitCode, output, error) = await ExecuteYtDlpAsync($"--skip-download --get-id {url}");
+            var (exitCode, output, error) = await ExecuteYtDlpAsync($"--no-check-formats --skip-download --get-id {url}");
 
             if (exitCode == 0 && !string.IsNullOrWhiteSpace(output))
             {
@@ -1125,7 +1125,7 @@ public class Program
     {
         try
         {
-            var (exitCode, output, error) = await ExecuteYtDlpAsync($"--skip-download --get-duration https://www.youtube.com/watch?v={videoId}");
+            var (exitCode, output, error) = await ExecuteYtDlpAsync($"--no-check-formats --skip-download --get-duration https://www.youtube.com/watch?v={videoId}");
 
             if (exitCode == 0 && !string.IsNullOrWhiteSpace(output))
             {
@@ -1361,7 +1361,7 @@ public class Program
         try
         {
             // 使用 yt-dlp 檢查影片是否有效
-            var (exitCode, output, error) = await ExecuteYtDlpAsync($"--skip-download --get-title {url}");
+            var (exitCode, output, error) = await ExecuteYtDlpAsync($"--no-check-formats --skip-download --get-title {url}");
 
             if (exitCode == 0 && !string.IsNullOrWhiteSpace(output))
             {
