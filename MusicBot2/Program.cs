@@ -1327,10 +1327,16 @@ public class Program
     {
         var cookieArg = GetYtDlpCookieArgument();
 
+        // 添加 YouTube 繞過參數
+        // --extractor-args "youtube:player_client=android" 使用 Android 客戶端 API（較不易被封鎖）
+        // --no-warnings 隱藏警告訊息
+        // --no-playlist 不下載播放清單
+        var bypassArgs = "--extractor-args \"youtube:player_client=android,web\"";
+
         // Cookie 參數需要放在前面，並添加額外參數來處理受限內容
         var fullArguments = string.IsNullOrEmpty(cookieArg) 
-            ? $"--no-warnings --no-playlist {arguments}"
-            : $"{cookieArg} --no-warnings --no-playlist {arguments}";
+            ? $"--no-warnings --no-playlist {bypassArgs} {arguments}"
+            : $"{cookieArg} --no-warnings --no-playlist {bypassArgs} {arguments}";
 
         Console.WriteLine($"[yt-dlp DEBUG] 執行命令: yt-dlp {fullArguments}");
         Console.WriteLine($"[yt-dlp DEBUG] Cookie 參數: {(string.IsNullOrEmpty(cookieArg) ? "無" : cookieArg)}");
@@ -1451,37 +1457,66 @@ public class Program
                 Console.WriteLine($"[CHECK DEBUG] yt-dlp 版本: {versionResult.output.Trim()}");
             }
 
-            // 先嘗試列出可用格式來診斷問題
-            Console.WriteLine($"[CHECK DEBUG] 步驟 1: 列出可用格式");
-            var (listExitCode, listOutput, listError) = await ExecuteYtDlpAsync($"--list-formats --no-check-certificate {url}");
-            Console.WriteLine($"[CHECK DEBUG] --list-formats ExitCode: {listExitCode}");
-            if (!string.IsNullOrEmpty(listOutput))
+            // 測試 1: 完全不用 cookie，最基本的命令
+            Console.WriteLine($"[CHECK DEBUG] 測試 1: 不使用 cookie 的基本命令");
+            var processInfo1 = new ProcessStartInfo
             {
-                Console.WriteLine($"[CHECK DEBUG] 可用格式列表（前 800 字元）:\n{listOutput.Substring(0, Math.Min(800, listOutput.Length))}");
-            }
-            if (!string.IsNullOrEmpty(listError))
+                FileName = "yt-dlp",
+                Arguments = $"-J --no-check-certificate {url}",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using (var process1 = Process.Start(processInfo1))
             {
-                Console.WriteLine($"[CHECK DEBUG] --list-formats 錯誤: {listError}");
+                string output1 = await process1.StandardOutput.ReadToEndAsync();
+                string error1 = await process1.StandardError.ReadToEndAsync();
+                await process1.WaitForExitAsync();
+
+                Console.WriteLine($"[CHECK DEBUG] 無 cookie 測試 - ExitCode: {process1.ExitCode}");
+                Console.WriteLine($"[CHECK DEBUG] Output 長度: {output1?.Length ?? 0}");
+                if (!string.IsNullOrEmpty(error1))
+                {
+                    Console.WriteLine($"[CHECK DEBUG] Error: {error1.Substring(0, Math.Min(200, error1.Length))}");
+                }
+
+                if (process1.ExitCode == 0 && !string.IsNullOrWhiteSpace(output1))
+                {
+                    try
+                    {
+                        var jsonDoc = System.Text.Json.JsonDocument.Parse(output1);
+                        var title = jsonDoc.RootElement.GetProperty("title").GetString();
+                        Console.WriteLine($"[CHECK SUCCESS] 無 cookie 成功！標題: {title}");
+                        await channel.SendMessageAsync($"✅ 有取得標題 {title}");
+                        _NowPlayingSongName = title;
+                        return true;
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[CHECK ERROR] 解析 JSON 失敗: {ex.Message}");
+                    }
+                }
             }
 
-            // 使用 --dump-json 來取得影片資訊，這個方法不會觸發格式檢查
-            Console.WriteLine($"[CHECK DEBUG] 步驟 2: 使用 --dump-json 方法");
-            var (exitCode, output, error) = await ExecuteYtDlpAsync($"--dump-json --no-check-certificate {url}");
+            // 測試 2: 使用 cookie
+            Console.WriteLine($"[CHECK DEBUG] 測試 2: 使用 cookie 通過 ExecuteYtDlpAsync");
+            var (exitCode, output2, error2) = await ExecuteYtDlpAsync($"--dump-json --no-check-certificate {url}");
 
-            Console.WriteLine($"[CHECK DEBUG] 檢查結果 - ExitCode: {exitCode}, HasOutput: {!string.IsNullOrWhiteSpace(output)}");
+            Console.WriteLine($"[CHECK DEBUG] 有 cookie 測試 - ExitCode: {exitCode}, HasOutput: {!string.IsNullOrWhiteSpace(output2)}");
 
-            if (exitCode == 0 && !string.IsNullOrWhiteSpace(output))
+            if (exitCode == 0 && !string.IsNullOrWhiteSpace(output2))
             {
                 try
                 {
-                    // 解析 JSON 取得標題
-                    var jsonDoc = System.Text.Json.JsonDocument.Parse(output);
+                    var jsonDoc = System.Text.Json.JsonDocument.Parse(output2);
                     var title = jsonDoc.RootElement.GetProperty("title").GetString();
 
                     if (!string.IsNullOrEmpty(title))
                     {
-                        Console.WriteLine($"[CHECK SUCCESS] 取得標題: {title}");
-                        await channel.SendMessageAsync($"有取得標題 {title}");
+                        Console.WriteLine($"[CHECK SUCCESS] 有 cookie 成功！標題: {title}");
+                        await channel.SendMessageAsync($"✅ 有取得標題 {title}");
                         _NowPlayingSongName = title;
                         return true;
                     }
@@ -1489,19 +1524,17 @@ public class Program
                 catch (Exception jsonEx)
                 {
                     Console.WriteLine($"[CHECK ERROR] 解析 JSON 失敗: {jsonEx.Message}");
-                    Console.WriteLine($"[CHECK DEBUG] JSON 內容前 500 字元: {output.Substring(0, Math.Min(500, output.Length))}");
                 }
             }
 
-            Console.WriteLine($"[CHECK FAILED] 無法取得標題 - ExitCode: {exitCode}");
-            if (!string.IsNullOrEmpty(error))
+            Console.WriteLine($"[CHECK FAILED] 所有測試都失敗");
+            if (!string.IsNullOrEmpty(error2))
             {
-                Console.WriteLine($"[CHECK ERROR] 檢查視頻有效性時發生錯誤: {error}");
+                Console.WriteLine($"[CHECK ERROR] 最終錯誤: {error2}");
 
-                // 提供更友善的錯誤訊息
-                if (error.Contains("not available"))
+                if (error2.Contains("not available"))
                 {
-                    await channel.SendMessageAsync($"⚠️ 這個影片在伺服器所在地區不可用");
+                    await channel.SendMessageAsync($"⚠️ 影片無法存取，可能是地區限制或 yt-dlp 配置問題");
                 }
             }
             return false;

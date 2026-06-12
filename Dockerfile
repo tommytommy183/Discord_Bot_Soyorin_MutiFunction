@@ -17,12 +17,15 @@ RUN dotnet publish MusicBot2.csproj -c Release -o /app/publish -r linux-x64 --se
 FROM mcr.microsoft.com/dotnet/aspnet:8.0
 WORKDIR /app
 
-# 安裝 ffmpeg 和 yt-dlp（用於音訊處理）
+# 安裝 ffmpeg、python3 和必要工具
 RUN apt-get update && \
-    apt-get install -y ffmpeg python3 python3-pip && \
-    pip3 install --break-system-packages yt-dlp && \
+    apt-get install -y ffmpeg python3 python3-pip curl && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
+
+# 安裝最新版 yt-dlp（強制更新到最新版本）
+RUN pip3 install --break-system-packages --upgrade yt-dlp && \
+    yt-dlp --version
 
 # 安裝 libsodium（Discord 語音加密需要）
 RUN apt-get update && \
