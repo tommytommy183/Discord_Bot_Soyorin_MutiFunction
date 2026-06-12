@@ -1106,7 +1106,7 @@ public class Program
     {
         try
         {
-            var (exitCode, output, error) = await ExecuteYtDlpAsync($"--no-check-formats --skip-download --get-id {url}");
+            var (exitCode, output, error) = await ExecuteYtDlpAsync($"--format \"bestaudio/best\" --skip-download --get-id {url}");
 
             if (exitCode == 0 && !string.IsNullOrWhiteSpace(output))
             {
@@ -1125,7 +1125,7 @@ public class Program
     {
         try
         {
-            var (exitCode, output, error) = await ExecuteYtDlpAsync($"--no-check-formats --skip-download --get-duration https://www.youtube.com/watch?v={videoId}");
+            var (exitCode, output, error) = await ExecuteYtDlpAsync($"--format \"bestaudio/best\" --skip-download --get-duration https://www.youtube.com/watch?v={videoId}");
 
             if (exitCode == 0 && !string.IsNullOrWhiteSpace(output))
             {
