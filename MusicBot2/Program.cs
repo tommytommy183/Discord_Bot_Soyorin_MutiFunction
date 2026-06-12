@@ -1361,7 +1361,7 @@ public class Program
         try
         {
             // 使用 yt-dlp 檢查影片是否有效
-            var (exitCode, output, error) = await ExecuteYtDlpAsync($"--no-check-formats --skip-download --get-title {url}");
+            var (exitCode, output, error) = await ExecuteYtDlpAsync($"--format \"bestaudio/best\" --skip-download --get-title {url}");
 
             if (exitCode == 0 && !string.IsNullOrWhiteSpace(output))
             {
