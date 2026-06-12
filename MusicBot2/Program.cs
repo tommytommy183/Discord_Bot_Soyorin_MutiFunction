@@ -1044,53 +1044,88 @@ public class Program
 
         Console.WriteLine($"[DOWNLOAD DEBUG] 步驟 2: 開始嘗試下載，輸出檔案前綴: {filePrefix}");
 
-        // 嘗試多種格式策略，從最佳到最寬鬆
+        // 嘗試多種格式策略
         string[] formatOptions = new[]
         {
-            "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio",  // 優先選擇常見格式
-            "worst",  // 如果最佳格式不可用，嘗試最低品質（但通常可用）
-            ""  // 最後不指定格式，讓 yt-dlp 自動選擇
+            "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio",
+            "bestaudio",
+            "worst",
+            ""  // 不指定格式
         };
 
-        (int exitCode, string output, string error) result = (-1, "", "");
-
-        for (int i = 0; i < formatOptions.Length; i++)
+        // 策略 1: 先不用 cookie 嘗試（避免地區衝突）
+        Console.WriteLine($"[DOWNLOAD DEBUG] 策略 1: 不使用 cookie");
+        foreach (var formatOption in formatOptions)
         {
-            var formatOption = formatOptions[i];
-            Console.WriteLine($"[DOWNLOAD DEBUG] 嘗試格式 {i + 1}/{formatOptions.Length}: '{formatOption}'");
+            Console.WriteLine($"[DOWNLOAD DEBUG] 嘗試格式: '{formatOption}'");
 
             var formatArg = string.IsNullOrEmpty(formatOption) ? "" : $"-f {formatOption} ";
-            result = await ExecuteYtDlpAsync($"{formatArg}-x --audio-format mp3 --no-check-certificate -o \"{outputTemplate}\" {url}");
+            var args = $"{formatArg}-x --audio-format mp3 --no-check-certificate --extractor-args \"youtube:player_client=android,web\" -o \"{outputTemplate}\" {url}";
 
-            Console.WriteLine($"[DOWNLOAD DEBUG] 格式 '{formatOption}' 結果 - ExitCode: {result.exitCode}");
+            var processInfo = new ProcessStartInfo
+            {
+                FileName = "yt-dlp",
+                Arguments = args,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using (var process = Process.Start(processInfo))
+            {
+                string output = await process.StandardOutput.ReadToEndAsync();
+                string error = await process.StandardError.ReadToEndAsync();
+                await process.WaitForExitAsync();
+
+                Console.WriteLine($"[DOWNLOAD DEBUG] 格式 '{formatOption}' - ExitCode: {process.ExitCode}");
+
+                if (process.ExitCode == 0)
+                {
+                    var downloadedFile = Directory
+                        .EnumerateFiles(tempDirectory, $"{filePrefix}.*")
+                        .FirstOrDefault(f => Path.GetExtension(f).Equals(".mp3", StringComparison.OrdinalIgnoreCase));
+
+                    if (!string.IsNullOrEmpty(downloadedFile))
+                    {
+                        Console.WriteLine($"[DOWNLOAD SUCCESS] 下載成功（無 cookie）: {downloadedFile}");
+                        return downloadedFile;
+                    }
+                }
+                else
+                {
+                    Console.WriteLine($"[DOWNLOAD DEBUG] 失敗原因: {error.Substring(0, Math.Min(200, error.Length))}");
+                }
+            }
+        }
+
+        // 策略 2: 如果不用 cookie 全部失敗，再試用 cookie（可能是需要認證的影片）
+        Console.WriteLine($"[DOWNLOAD DEBUG] 策略 2: 使用 cookie（策略 1 全部失敗）");
+        foreach (var formatOption in formatOptions)
+        {
+            Console.WriteLine($"[DOWNLOAD DEBUG] 嘗試格式（帶 cookie）: '{formatOption}'");
+
+            var formatArg = string.IsNullOrEmpty(formatOption) ? "" : $"-f {formatOption} ";
+            var result = await ExecuteYtDlpAsync($"{formatArg}-x --audio-format mp3 --no-check-certificate -o \"{outputTemplate}\" {url}");
+
+            Console.WriteLine($"[DOWNLOAD DEBUG] 格式 '{formatOption}' - ExitCode: {result.exitCode}");
 
             if (result.exitCode == 0)
             {
-                Console.WriteLine($"[DOWNLOAD DEBUG] 搜尋下載的檔案於: {tempDirectory}");
                 var downloadedFile = Directory
                     .EnumerateFiles(tempDirectory, $"{filePrefix}.*")
                     .FirstOrDefault(f => Path.GetExtension(f).Equals(".mp3", StringComparison.OrdinalIgnoreCase));
 
                 if (!string.IsNullOrEmpty(downloadedFile))
                 {
-                    Console.WriteLine($"[DOWNLOAD SUCCESS] 下載成功: {downloadedFile}");
+                    Console.WriteLine($"[DOWNLOAD SUCCESS] 下載成功（有 cookie）: {downloadedFile}");
                     return downloadedFile;
                 }
-                else
-                {
-                    Console.WriteLine($"[DOWNLOAD WARNING] ExitCode=0 但找不到 mp3 檔案");
-                    var allFiles = Directory.EnumerateFiles(tempDirectory, $"{filePrefix}.*").ToList();
-                    Console.WriteLine($"[DOWNLOAD DEBUG] 找到的檔案: {string.Join(", ", allFiles)}");
-                }
-            }
-            else
-            {
-                Console.WriteLine($"[DOWNLOAD FAILED] 格式 '{formatOption}' 失敗，嘗試下一個格式...");
             }
         }
 
-        Console.WriteLine($"[DOWNLOAD ERROR] YouTube 下載失敗（所有格式都嘗試過）: {result.error}");
-        throw new Exception($"YouTube 下載失敗: {result.error}");
+        Console.WriteLine($"[DOWNLOAD ERROR] YouTube 下載失敗（所有策略都嘗試過）");
+        throw new Exception($"YouTube 下載失敗: 所有格式和策略都已嘗試");
     }
     public async Task<string> GetYoutubeUrlByNameAsync(IMessageChannel channel, string query)
     {
@@ -1498,9 +1533,9 @@ public class Program
         Console.WriteLine($"[CHECK DEBUG] 開始檢查 URL: {url}");
         try
         {
-            // 不使用 cookie 來檢查（測試證實不用 cookie 反而會成功）
-            Console.WriteLine($"[CHECK DEBUG] 使用無 cookie 的基本命令");
-            var processInfo = new ProcessStartInfo
+            // 策略 1: 先不用 cookie 嘗試（避免地區衝突）
+            Console.WriteLine($"[CHECK DEBUG] 策略 1: 不使用 cookie");
+            var processInfo1 = new ProcessStartInfo
             {
                 FileName = "yt-dlp",
                 Arguments = $"-J --no-check-certificate --extractor-args \"youtube:player_client=android,web\" {url}",
@@ -1510,22 +1545,21 @@ public class Program
                 CreateNoWindow = true
             };
 
-            using (var process = Process.Start(processInfo))
+            using (var process1 = Process.Start(processInfo1))
             {
-                string output = await process.StandardOutput.ReadToEndAsync();
-                string error = await process.StandardError.ReadToEndAsync();
-                await process.WaitForExitAsync();
+                string output1 = await process1.StandardOutput.ReadToEndAsync();
+                string error1 = await process1.StandardError.ReadToEndAsync();
+                await process1.WaitForExitAsync();
 
-                Console.WriteLine($"[CHECK DEBUG] ExitCode: {process.ExitCode}");
-                Console.WriteLine($"[CHECK DEBUG] Output 長度: {output?.Length ?? 0}");
+                Console.WriteLine($"[CHECK DEBUG] 策略 1 結果 - ExitCode: {process1.ExitCode}");
 
-                if (process.ExitCode == 0 && !string.IsNullOrWhiteSpace(output))
+                if (process1.ExitCode == 0 && !string.IsNullOrWhiteSpace(output1))
                 {
                     try
                     {
-                        var jsonDoc = System.Text.Json.JsonDocument.Parse(output);
+                        var jsonDoc = System.Text.Json.JsonDocument.Parse(output1);
                         var title = jsonDoc.RootElement.GetProperty("title").GetString();
-                        Console.WriteLine($"[CHECK SUCCESS] 取得標題: {title}");
+                        Console.WriteLine($"[CHECK SUCCESS] 不用 cookie 成功！標題: {title}");
                         await channel.SendMessageAsync($"✅ 有取得標題 {title}");
                         _NowPlayingSongName = title;
                         return true;
@@ -1536,11 +1570,57 @@ public class Program
                     }
                 }
 
-                Console.WriteLine($"[CHECK FAILED] 無法取得標題");
-                if (!string.IsNullOrEmpty(error))
+                // 檢查是否因為年齡限制或會員限定被擋
+                bool needsAuth = error1.Contains("Sign in") || 
+                                error1.Contains("age") || 
+                                error1.Contains("members-only") ||
+                                error1.Contains("private") ||
+                                error1.Contains("unavailable");
+
+                Console.WriteLine($"[CHECK DEBUG] 是否需要認證: {needsAuth}");
+
+                if (!needsAuth)
                 {
-                    Console.WriteLine($"[CHECK ERROR] 錯誤: {error.Substring(0, Math.Min(300, error.Length))}");
-                    await channel.SendMessageAsync($"⚠️ 影片檢查失敗，但會嘗試下載");
+                    Console.WriteLine($"[CHECK FAILED] 策略 1 失敗且不需認證，直接返回");
+                    return false;
+                }
+            }
+
+            // 策略 2: 需要認證時才使用 cookie
+            Console.WriteLine($"[CHECK DEBUG] 策略 2: 使用 cookie（因為影片需要認證）");
+            var (exitCode, output2, error2) = await ExecuteYtDlpAsync($"--dump-json --no-check-certificate {url}");
+
+            Console.WriteLine($"[CHECK DEBUG] 策略 2 結果 - ExitCode: {exitCode}");
+
+            if (exitCode == 0 && !string.IsNullOrWhiteSpace(output2))
+            {
+                try
+                {
+                    var jsonDoc = System.Text.Json.JsonDocument.Parse(output2);
+                    var title = jsonDoc.RootElement.GetProperty("title").GetString();
+
+                    if (!string.IsNullOrEmpty(title))
+                    {
+                        Console.WriteLine($"[CHECK SUCCESS] 用 cookie 成功！標題: {title}");
+                        await channel.SendMessageAsync($"✅ 有取得標題 {title}（需要認證的影片）");
+                        _NowPlayingSongName = title;
+                        return true;
+                    }
+                }
+                catch (Exception jsonEx)
+                {
+                    Console.WriteLine($"[CHECK ERROR] 解析 JSON 失敗: {jsonEx.Message}");
+                }
+            }
+
+            Console.WriteLine($"[CHECK FAILED] 兩種策略都失敗");
+            if (!string.IsNullOrEmpty(error2))
+            {
+                Console.WriteLine($"[CHECK ERROR] 最終錯誤: {error2.Substring(0, Math.Min(300, error2.Length))}");
+
+                if (error2.Contains("not available") || error2.Contains("geo"))
+                {
+                    await channel.SendMessageAsync($"⚠️ 影片可能有地區限制，將嘗試下載");
                 }
             }
 
