@@ -27,13 +27,18 @@
 	</ItemGroup>
 	<ItemGroup>
 	  <None Update="appsettings.json">
-	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 	  </None>
 	  <None Update="TxtFolder\SetText.json">
-	    <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		<CopyToOutputDirectory>Always</CopyToOutputDirectory>
 	  </None>
 	  <None Update="words.txt">
-	    <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+	  </None>
+	  <!-- 複製 libdave 原生庫 -->
+	  <None Update="runtimes\**\*.*">
+		<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
 	  </None>
 	</ItemGroup>
 	<ItemGroup>
