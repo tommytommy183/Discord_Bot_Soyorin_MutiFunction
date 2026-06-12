@@ -25,6 +25,7 @@ RUN apt-get update && \
         python3-pip \
         curl \
         wget \
+        unzip \
         libsodium23 \
         libsodium-dev \
         libopus0 \
@@ -32,14 +33,11 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# 下載並安裝 libdave（正確版本）
-RUN apt-get install -y unzip wget && \
-    wget https://github.com/discord/libdave/releases/download/v1.1.1%2Fcpp/libdave-Linux-X64-boringssl.zip \
-        -O /tmp/libdave.zip && \
-    unzip /tmp/libdave.zip -d /tmp/libdave && \
-    cp /tmp/libdave/lib/libdave.so /usr/lib/x86_64-linux-gnu/libdave.so && \
+# 下載並安裝 libdave（使用 .so 檔案直接下載）
+RUN wget https://github.com/discord/libdave/releases/download/v1.1.1%2Fcpp/libdave-linux-x64.so \
+    -O /usr/lib/x86_64-linux-gnu/libdave.so && \
+    chmod +x /usr/lib/x86_64-linux-gnu/libdave.so && \
     ldconfig && \
-    rm -rf /tmp/libdave /tmp/libdave.zip && \
     echo "libdave installed successfully"
 
 # 驗證所有語音庫
