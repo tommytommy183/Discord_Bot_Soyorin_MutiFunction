@@ -1,14 +1,63 @@
 ﻿# ============================================================
-# 階段一：建置映像
+# 階段一：編譯 libdave（從原始碼建置）
+# ============================================================
+FROM debian:bookworm-slim AS libdave-builder
+
+# 安裝 libdave 編譯所需工具
+RUN apt-get update && \
+    apt-get install -y \
+        git \
+        cmake \
+        ninja-build \
+        make \
+        curl \
+        zip \
+        unzip \
+        tar \
+        pkg-config \
+        libssl-dev \
+        ca-certificates \
+        g++ \
+        gcc \
+        python3 \
+        python3-pip && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Clone libdave（含 vcpkg submodule）
+RUN git clone --recurse-submodules --depth=1 \
+    https://github.com/discord/libdave.git /libdave
+
+WORKDIR /libdave/cpp
+
+# 用 vcpkg + openssl_3 編譯成 shared library（.so）
+RUN cmake -B build \
+        -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DBUILD_SHARED_LIBS=ON \
+        -DTESTING=OFF \
+        -DCMAKE_INSTALL_PREFIX=/libdave/install \
+        -DVCPKG_MANIFEST_DIR=vcpkg-alts/openssl_3 \
+        -DCMAKE_TOOLCHAIN_FILE=vcpkg/scripts/buildsystems/vcpkg.cmake && \
+    cmake --build build --target libdave --config Release && \
+    cmake --install build --config Release
+
+# 確認產出的 .so 位置
+RUN echo "=== libdave 編譯產出 ===" && \
+    find /libdave/install -name "*.so*" -o -name "libdave*" | sort && \
+    find /libdave/cpp/build -name "libdave*.so*" | sort
+
+# ============================================================
+# 階段二：編譯 .NET 應用程式
 # ============================================================
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
-# 複製 csproj 並還原相依性（優化 Docker 快取層）
+# 還原 NuGet 套件（優化 Docker 快取層）
 COPY MusicBot2/MusicBot2.csproj MusicBot2/
 RUN dotnet restore MusicBot2/MusicBot2.csproj -r linux-x64
 
-# 複製所有專案檔案並發布
+# 編譯並發布
 COPY MusicBot2/ MusicBot2/
 WORKDIR /src/MusicBot2
 RUN dotnet publish MusicBot2.csproj \
@@ -19,96 +68,76 @@ RUN dotnet publish MusicBot2.csproj \
     /p:Platform=x64
 
 # ============================================================
-# 階段二：執行映像
+# 階段三：執行映像
 # ============================================================
 FROM mcr.microsoft.com/dotnet/aspnet:8.0
 WORKDIR /app
 
-# 一次性安裝所有系統依賴
+# 安裝執行期所需套件
 RUN apt-get update && \
     apt-get install -y \
         ffmpeg \
         python3 \
         python3-pip \
-        curl \
-        wget \
-        unzip \
         libsodium23 \
-        libsodium-dev \
         libopus0 \
-        libopus-dev \
         libssl3 \
         ca-certificates && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# ============================================================
-# 安裝 libdave
-# 使用方式：請先在本機下載 zip，放在 Dockerfile 同層目錄：
-#   wget "https://github.com/discord/libdave/releases/download/v1.1.1%2Fcpp/libdave-Linux-X64-boringssl.zip"
-# ============================================================
-COPY libdave-Linux-X64-boringssl.zip /tmp/libdave.zip
-
-RUN echo "=== 解壓縮 libdave ===" && \
-    unzip -q /tmp/libdave.zip -d /tmp/libdave && \
-    echo "解壓縮完成，內容如下：" && \
-    find /tmp/libdave -type f && \
-    \
-    # 尋找 .so 檔案並安裝到系統路徑
-    echo "=== 安裝 libdave.so 到系統路徑 ===" && \
-    find /tmp/libdave -name "*.so*" -type f | head -1 | \
-        xargs -I{} cp {} /usr/lib/x86_64-linux-gnu/libdave.so && \
-    chmod 755 /usr/lib/x86_64-linux-gnu/libdave.so && \
-    ldconfig && \
-    \
-    # 同時複製到應用程式目錄（.NET NativeLibrary 優先從此載入）
-    echo "=== 複製 libdave.so 到應用程式目錄 ===" && \
-    cp /usr/lib/x86_64-linux-gnu/libdave.so /app/libdave.so && \
-    mkdir -p /app/runtimes/linux-x64/native && \
-    cp /usr/lib/x86_64-linux-gnu/libdave.so /app/runtimes/linux-x64/native/libdave.so && \
-    chmod 755 /app/libdave.so /app/runtimes/linux-x64/native/libdave.so && \
-    \
-    # 清理暫存
-    rm -rf /tmp/libdave /tmp/libdave.zip && \
-    echo "=== libdave 安裝完成 ==="
-
 # 安裝最新版 yt-dlp
 RUN pip3 install --break-system-packages --upgrade yt-dlp && \
     echo "yt-dlp 版本：$(yt-dlp --version)"
 
-# 驗證 FFmpeg
-RUN echo "FFmpeg 版本：$(ffmpeg -version | head -n 1)"
+# 從 libdave-builder 複製編譯好的 .so
+# 先嘗試從 install 目錄，找不到則從 build 目錄
+COPY --from=libdave-builder /libdave/install /tmp/libdave-install
+COPY --from=libdave-builder /libdave/cpp/build /tmp/libdave-build
 
-# 複製建置產物
+RUN echo "=== 安裝 libdave.so ===" && \
+    # 優先從 install 目錄找，再從 build 目錄找
+    SO_FILE=$(find /tmp/libdave-install -name "libdave*.so*" -type f | head -1) && \
+    if [ -z "$SO_FILE" ]; then \
+        SO_FILE=$(find /tmp/libdave-build -name "libdave*.so*" -type f | head -1); \
+    fi && \
+    if [ -z "$SO_FILE" ]; then \
+        echo "❌ 找不到 libdave.so，請檢查編譯步驟" && exit 1; \
+    fi && \
+    echo "找到：$SO_FILE" && \
+    # 安裝到系統路徑
+    cp "$SO_FILE" /usr/lib/x86_64-linux-gnu/libdave.so && \
+    chmod 755 /usr/lib/x86_64-linux-gnu/libdave.so && \
+    ldconfig && \
+    # 同時複製到應用程式目錄（.NET NativeLibrary 優先搜尋此處）
+    cp /usr/lib/x86_64-linux-gnu/libdave.so /app/libdave.so && \
+    mkdir -p /app/runtimes/linux-x64/native && \
+    cp /usr/lib/x86_64-linux-gnu/libdave.so /app/runtimes/linux-x64/native/libdave.so && \
+    chmod 755 /app/libdave.so /app/runtimes/linux-x64/native/libdave.so && \
+    rm -rf /tmp/libdave-install /tmp/libdave-build && \
+    echo "=== libdave 安裝完成 ==="
+
+# 複製 .NET 發布產物
 COPY --from=build /app/publish .
 
-# 驗證所有語音函式庫是否正確安裝
+# 驗證所有函式庫
 RUN ldconfig && \
-    echo "=== 驗證語音函式庫 ===" && \
+    echo "=== 函式庫驗證 ===" && \
     echo -n "libsodium：" && (ldconfig -p | grep libsodium | head -1 || echo "❌ 找不到") && \
     echo -n "libopus：  " && (ldconfig -p | grep libopus   | head -1 || echo "❌ 找不到") && \
     echo -n "libdave：  " && (ldconfig -p | grep libdave   | head -1 || echo "❌ 找不到") && \
-    echo "=== 驗證應用程式目錄 ===" && \
+    echo "=== 應用程式目錄 ===" && \
     ls -lh /app/libdave.so && \
-    ls -lh /app/runtimes/linux-x64/native/libdave.so && \
-    echo "=== 所有函式庫驗證完成 ==="
+    ls -lh /app/runtimes/linux-x64/native/libdave.so
 
 # 建立必要資料夾
 RUN mkdir -p temp cookies
 
-# 設定函式庫搜尋路徑（應用程式目錄優先）
+# 設定函式庫搜尋路徑（/app 優先，確保 .NET 能找到 libdave）
 ENV LD_LIBRARY_PATH=/app:/app/runtimes/linux-x64/native:/usr/lib/x86_64-linux-gnu:/usr/lib:/lib/x86_64-linux-gnu
 
-# 建立啟動腳本（啟動時再次確認函式庫狀態）
-RUN echo '#!/bin/bash' > /app/start.sh && \
-    echo 'set -e' >> /app/start.sh && \
-    echo 'echo "=== 啟動前函式庫檢查 ==="' >> /app/start.sh && \
-    echo 'ldconfig -p | grep libsodium || echo "⚠️  libsodium 未找到"' >> /app/start.sh && \
-    echo 'ldconfig -p | grep libopus   || echo "⚠️  libopus 未找到"' >> /app/start.sh && \
-    echo 'ldconfig -p | grep libdave   || echo "⚠️  libdave 未找到"' >> /app/start.sh && \
-    echo 'echo "LD_LIBRARY_PATH=${LD_LIBRARY_PATH}"' >> /app/start.sh && \
-    echo 'echo "=== 啟動 MusicBot2 ==="' >> /app/start.sh && \
-    echo 'exec dotnet MusicBot2.dll' >> /app/start.sh && \
+# 啟動腳本
+RUN printf '#!/bin/bash\nset -e\necho "=== 啟動前檢查 ==="\nldconfig -p | grep libsodium || echo "⚠️  libsodium 未找到"\nldconfig -p | grep libopus   || echo "⚠️  libopus 未找到"\nldconfig -p | grep libdave   || echo "⚠️  libdave 未找到"\necho "LD_LIBRARY_PATH=${LD_LIBRARY_PATH}"\necho "=== 啟動 MusicBot2 ==="\nexec dotnet MusicBot2.dll\n' > /app/start.sh && \
     chmod +x /app/start.sh
 
 ENTRYPOINT ["/app/start.sh"]
