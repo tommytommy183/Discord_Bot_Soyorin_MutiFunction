@@ -1006,24 +1006,38 @@ public class Program
         var filePrefix = Guid.NewGuid().ToString();
         var outputTemplate = Path.Combine(tempDirectory, $"{filePrefix}.%(ext)s");
 
-        // 使用更靈活的格式選擇：
-        // bestaudio - 取得任何格式的最佳音質
-        // best - 最後的備案，取得最佳品質的任何格式
-        // 因為我們會用 -x 轉換成 mp3，所以不需要指定特定的容器格式
-        var (exitCode, output, error) = await ExecuteYtDlpAsync($"-f bestaudio/best -x --audio-format mp3 -o \"{outputTemplate}\" {url}");
-
-        if (exitCode == 0)
+        // 嘗試多種格式策略，從最佳到最寬鬆
+        string[] formatOptions = new[]
         {
-            var downloadedFile = Directory
-                .EnumerateFiles(tempDirectory, $"{filePrefix}.*")
-                .FirstOrDefault(f => Path.GetExtension(f).Equals(".mp3", StringComparison.OrdinalIgnoreCase));
+            "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio",  // 優先選擇常見格式
+            "worst",  // 如果最佳格式不可用，嘗試最低品質（但通常可用）
+            ""  // 最後不指定格式，讓 yt-dlp 自動選擇
+        };
 
-            if (!string.IsNullOrEmpty(downloadedFile))
-                return downloadedFile;
+        (int exitCode, string output, string error) result = (-1, "", "");
+
+        foreach (var formatOption in formatOptions)
+        {
+            var formatArg = string.IsNullOrEmpty(formatOption) ? "" : $"-f {formatOption} ";
+            result = await ExecuteYtDlpAsync($"{formatArg}-x --audio-format mp3 --no-check-certificate -o \"{outputTemplate}\" {url}");
+
+            if (result.exitCode == 0)
+            {
+                var downloadedFile = Directory
+                    .EnumerateFiles(tempDirectory, $"{filePrefix}.*")
+                    .FirstOrDefault(f => Path.GetExtension(f).Equals(".mp3", StringComparison.OrdinalIgnoreCase));
+
+                if (!string.IsNullOrEmpty(downloadedFile))
+                    return downloadedFile;
+            }
+            else
+            {
+                Console.WriteLine($"格式 '{formatOption}' 失敗，嘗試下一個格式...");
+            }
         }
 
-        Console.WriteLine($"YouTube 下載失敗: {error}");
-        throw new Exception($"YouTube 下載失敗: {error}");
+        Console.WriteLine($"YouTube 下載失敗（所有格式都嘗試過）: {result.error}");
+        throw new Exception($"YouTube 下載失敗: {result.error}");
     }
     public async Task<string> GetYoutubeUrlByNameAsync(IMessageChannel channel, string query)
     {
@@ -1106,7 +1120,7 @@ public class Program
     {
         try
         {
-            var (exitCode, output, error) = await ExecuteYtDlpAsync($"--format \"bestaudio/best\" --skip-download --get-id {url}");
+            var (exitCode, output, error) = await ExecuteYtDlpAsync($"--skip-download --get-id --no-check-certificate {url}");
 
             if (exitCode == 0 && !string.IsNullOrWhiteSpace(output))
             {
@@ -1125,7 +1139,7 @@ public class Program
     {
         try
         {
-            var (exitCode, output, error) = await ExecuteYtDlpAsync($"--format \"bestaudio/best\" --skip-download --get-duration https://www.youtube.com/watch?v={videoId}");
+            var (exitCode, output, error) = await ExecuteYtDlpAsync($"--skip-download --get-duration --no-check-certificate https://www.youtube.com/watch?v={videoId}");
 
             if (exitCode == 0 && !string.IsNullOrWhiteSpace(output))
             {
@@ -1361,7 +1375,7 @@ public class Program
         try
         {
             // 使用 yt-dlp 檢查影片是否有效
-            var (exitCode, output, error) = await ExecuteYtDlpAsync($"--format \"bestaudio/best\" --skip-download --get-title {url}");
+            var (exitCode, output, error) = await ExecuteYtDlpAsync($"--skip-download --get-title --no-check-certificate {url}");
 
             if (exitCode == 0 && !string.IsNullOrWhiteSpace(output))
             {
