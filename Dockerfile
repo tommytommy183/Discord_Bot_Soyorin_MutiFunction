@@ -24,6 +24,7 @@ RUN apt-get update && \
         python3 \
         python3-pip \
         curl \
+        wget \
         libsodium23 \
         libsodium-dev \
         libopus0 \
@@ -31,11 +32,18 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# 驗證 libsodium 和 libopus 安裝
+# 下載並安裝 libdave（Discord 語音加密庫）
+RUN wget https://github.com/discord/libdave/releases/download/v2.0.0/libdave-linux-x64.so -O /usr/lib/x86_64-linux-gnu/libdave.so && \
+    chmod +x /usr/lib/x86_64-linux-gnu/libdave.so && \
+    ldconfig && \
+    echo "libdave installed successfully"
+
+# 驗證 libsodium、libopus 和 libdave 安裝
 RUN ldconfig && \
     ldconfig -p | grep libsodium && \
     ldconfig -p | grep libopus && \
-    echo "libsodium and libopus installed successfully"
+    ldconfig -p | grep libdave && \
+    echo "All voice libraries installed successfully"
 
 # 安裝最新版 yt-dlp
 RUN pip3 install --break-system-packages --upgrade yt-dlp && \
@@ -50,7 +58,7 @@ COPY --from=build /app/publish .
 # 建立必要資料夾
 RUN mkdir -p temp cookies
 
-# 設定環境變數（確保 Discord.Net 能找到 libsodium）
+# 設定環境變數（確保 Discord.Net 能找到所有庫）
 ENV LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu
 
 ENTRYPOINT ["dotnet", "MusicBot2.dll"]
