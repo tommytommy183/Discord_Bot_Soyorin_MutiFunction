@@ -157,7 +157,7 @@ namespace MusicBot2.Service
             var embedBuilder = new EmbedBuilder()
             {
                 Title = "猜pokemon名稱？",
-                Description = $"**Pokemon屬性**: 屬性:{string.Join(", ", pokemon.types.Select(t => t.type.name))}",
+                Description = $"**Pokemon屬性**:{string.Join(", ", pokemon.types.Select(t => t.type.name))}",
                 Color = Discord.Color.Blue
             };
 
@@ -415,7 +415,7 @@ namespace MusicBot2.Service
             var embedBuilder = new EmbedBuilder()
             {
                 Title = "我是誰？",
-                Description = $"**Pokemon屬性**: 屬性:{string.Join(", ", pokemon.types.Select(t => t.type.name))}",
+                Description = $"**Pokemon屬性**: {string.Join(", ", pokemon.types.Select(t => t.type.name))}",
                 Color = Discord.Color.Blue
             };
 
@@ -446,7 +446,6 @@ namespace MusicBot2.Service
         private async Task<Stream> MakeBlackSilhouette(string imageUrl)
         {
             var bytes = await _httpClient.GetByteArrayAsync(imageUrl);
-
             using var bitmap = SKBitmap.Decode(bytes);
             using var result = new SKBitmap(bitmap.Width, bitmap.Height);
 
@@ -455,16 +454,16 @@ namespace MusicBot2.Service
                 for (int x = 0; x < bitmap.Width; x++)
                 {
                     var pixel = bitmap.GetPixel(x, y);
-                    if (pixel.Alpha > 25)
-                        result.SetPixel(x, y, new SKColor(0, 0, 0, pixel.Alpha));
+
+                    if (pixel.Alpha < 25)
+                        result.SetPixel(x, y, SKColors.White);  // 透明 → 白底
                     else
-                        result.SetPixel(x, y, SKColors.Transparent);
+                        result.SetPixel(x, y, SKColors.Black);  // 有內容 → 黑色輪廓
                 }
             }
 
             using var image = SKImage.FromBitmap(result);
             using var data = image.Encode(SKEncodedImageFormat.Png, 100);
-
             var output = new MemoryStream();
             data.SaveTo(output);
             output.Position = 0;
