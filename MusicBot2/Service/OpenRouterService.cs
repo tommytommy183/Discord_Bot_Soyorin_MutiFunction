@@ -41,7 +41,6 @@ namespace MusicBot2.Service
         // 所以後面排了幾個走不同 provider 的模型作保底。
         private readonly string[] _models =
         {
-            "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
             "deepseek/deepseek-v4-flash:free",
             "qwen/qwen3-next-80b-a3b-instruct:free",
             "minimax/minimax-m2.5:free",
@@ -52,8 +51,8 @@ namespace MusicBot2.Service
             "moonshotai/kimi-k2.6:free",
             "google/gemma-4-26b-a4b-it:free",
             "liquid/lfm-2.5-1.2b-thinking:free",
-            "openrouter/owl-alpha",
             "openai/gpt-oss-120b:free",
+            "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
         };
 
         private const string Persona = @"你是「長崎爽世（Soyo）」——MyGO!!!!! 的貝斯手，個性溫柔、有禮貌、稍微毒舌但不傷人，珍惜朋友。

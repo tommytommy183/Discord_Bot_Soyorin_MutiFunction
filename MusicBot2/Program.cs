@@ -97,6 +97,7 @@ public class Program
             .AddSingleton<RubiksCubeService>()
             .AddSingleton<GetChampService>()
             .AddSingleton<OldMaidService>()
+            .AddSingleton<Game1A2BService>()
             .AddSingleton<Game2048Service>()
             .AddSingleton<Pick2Service>()
             .AddSingleton<PokeService>()
@@ -380,6 +381,86 @@ public class Program
                         msg.Embed = embed;
                         msg.Components = newComponent?.Build();
                     });
+                }
+            }
+            else if (component.Data.CustomId.StartsWith("1a2b_"))
+            {
+                var parts = component.Data.CustomId.Split('_');
+                if (parts.Length == 3)
+                {
+                    string mode = parts[1];
+                    ulong userId = ulong.Parse(parts[2]);
+
+                    var game1A2BService = _services.GetService<Game1A2BService>();
+
+                    // 如果是猜數字，需要彈出Modal（HandleButtonClickAsync會處理響應）
+                    if (mode == "guess")
+                    {
+                        await game1A2BService.HandleButtonClickAsync(component, mode, userId);
+                    }
+                    else if (mode == "quit")
+                    {
+                        // 放棄遊戲需要更新訊息
+                        await component.DeferAsync();
+                        var (newComponent, embed) = await game1A2BService.HandleButtonClickAsync(component, mode, userId);
+
+                        await component.ModifyOriginalResponseAsync(msg =>
+                        {
+                            msg.Embed = embed;
+                            msg.Components = newComponent?.Build();
+                        });
+                    }
+                }
+            }
+        }
+        else if (interaction is SocketModal modal)
+        {
+            // 處理 1A2B Modal 提交
+            if (modal.Data.CustomId.StartsWith("1a2b_modal_"))
+            {
+                var parts = modal.Data.CustomId.Split('_');
+                if (parts.Length == 3)
+                {
+                    ulong userId = ulong.Parse(parts[2]);
+                    var game1A2BService = _services.GetService<Game1A2BService>();
+                    var session = game1A2BService.GetSession(userId);
+                    if (session != null)
+                    {
+                        var result = await game1A2BService.HandleModalSubmitAsync(modal, userId);
+
+                        if (result.isError)
+                        {
+                            // 驗證失敗 → ephemeral，只有自己看到
+                            await modal.RespondAsync(embed: result.Item1.embed, ephemeral: true);
+                        }
+                        else
+                        {
+                            // 成功 → Defer，不產生任何新訊息
+                            await modal.DeferAsync();
+
+                            if (session.MessageId != 0)
+                            {
+                                var gameMessage = await modal.Channel.GetMessageAsync(session.MessageId);
+                                if (gameMessage is IUserMessage userMsg)
+                                {
+                                    await userMsg.ModifyAsync(msg =>
+                                    {
+                                        msg.Embed = result.Item1.embed;
+                                        msg.Components = result.Item1.component?.Build();
+                                    });
+                                }
+                            }
+                        }
+                    }
+                    else
+                    {
+                        var errorEmbed = new EmbedBuilder()
+                            .WithTitle("⚠️ 提示")
+                            .WithColor(Color.Orange)
+                            .WithDescription("找不到遊戲，請重新開始！")
+                            .Build();
+                        await modal.RespondAsync(embed: errorEmbed, ephemeral: true);
+                    }
                 }
             }
         }

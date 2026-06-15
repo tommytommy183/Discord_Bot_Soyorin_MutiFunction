@@ -28,11 +28,12 @@ namespace MusicBot2.SlahCommands
         private readonly RVC_Service _rVC_Service;
         private readonly SetTextService _setTextService;
         private readonly Game2048Service _game2048Service;
+        private readonly Game1A2BService _game1A2BService;
         private readonly Pick2Service _pick2Service;
         private readonly JikanAnimeService _animeService;
         private readonly PokeService _pokeService;
 
-        public SlashCommandHandler(Program program, WordGuessingService wordService, MineGameService mineGameService, ElevenLabsService elevenLabsService, OldMaidService oldMaidService, RubiksCubeService rubiksCubeService, GoogleAIStudioService googleAIStudioService, RVC_Service rVC_Service, SetTextService setTextService, Game2048Service game2048Service, Pick2Service pick2Service,JikanAnimeService animeService, PokeService pokeService)
+        public SlashCommandHandler(Program program, WordGuessingService wordService, MineGameService mineGameService, ElevenLabsService elevenLabsService, OldMaidService oldMaidService, RubiksCubeService rubiksCubeService, GoogleAIStudioService googleAIStudioService, RVC_Service rVC_Service, SetTextService setTextService, Game2048Service game2048Service, Game1A2BService game1A2BService, Pick2Service pick2Service,JikanAnimeService animeService, PokeService pokeService)
         {
             _program = program;
             _wordService = wordService;
@@ -44,6 +45,7 @@ namespace MusicBot2.SlahCommands
             _googleAIStudioService = googleAIStudioService;
             _rVC_Service = rVC_Service;
             _game2048Service = game2048Service;
+            _game1A2BService = game1A2BService;
             _pick2Service = pick2Service;
             _animeService = animeService;
             _pokeService = pokeService;
@@ -581,6 +583,34 @@ namespace MusicBot2.SlahCommands
                 await FollowupWithFileAsync(silhouette, "mystery.png", embed: embed, components: component.Build());
             else
                 await FollowupAsync(embed: embed, components: component.Build());
+        }
+
+        [SlashCommand("1a2b遊戲", "1A2B遊戲")]
+        public async Task SetGames1A2BAsync([Summary("你要設定的數字", "你要設定的數字(4位數) 不輸入則soyo隨機設一筆")] string number = "")
+        {
+            await DeferAsync();
+
+            // 驗證輸入
+            if (!string.IsNullOrEmpty(number))
+            {
+                if (number.Length != 4 || !number.All(char.IsDigit))
+                {
+                    await FollowupAsync("請輸入4位數字！", ephemeral: true);
+                    return;
+                }
+            }
+
+            var userId = Context.User.Id;
+            var (component, embed) = await _game1A2BService.StartGameAsync(userId, number);
+
+            var message = await FollowupAsync(embed: embed, components: component?.Build());
+
+            // 儲存訊息ID到session中
+            var session = _game1A2BService.GetSession(userId);
+            if (session != null)
+            {
+                session.MessageId = message.Id;
+            }
         }
     }
 }
