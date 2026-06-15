@@ -99,6 +99,7 @@ public class Program
             .AddSingleton<OldMaidService>()
             .AddSingleton<Game2048Service>()
             .AddSingleton<Pick2Service>()
+            .AddSingleton<PokeService>()
             .AddSingleton<RVC_Service>()
             .AddSingleton<SetTextService>(setTextService)
             .AddSingleton<ElevenLabsService>(sp =>
@@ -351,6 +352,28 @@ public class Program
 
                     var jikanService = _services.GetService<JikanAnimeService>();
                     var (embed, newComponent) = await jikanService.HandleButtonClickAsync(component, selectedId, correctId, correctName);
+
+                    await component.ModifyOriginalResponseAsync(msg =>
+                    {
+                        msg.Embed = embed;
+                        msg.Components = newComponent?.Build();
+                    });
+                }
+            }
+
+            else if (component.Data.CustomId.StartsWith("poke_guess_"))
+            {
+                await component.DeferAsync();
+
+                var parts = component.Data.CustomId.Split('_');
+                if (parts.Length == 5)
+                {
+                    int selectedId = int.Parse(parts[2]);
+                    int correctId = int.Parse(parts[3]);
+                    string correctName = parts[4];
+
+                    var pokeService = _services.GetService<PokeService>();
+                    var (embed, newComponent) = await pokeService.HandleButtonClickAsync(component, selectedId, correctId, correctName);
 
                     await component.ModifyOriginalResponseAsync(msg =>
                     {
