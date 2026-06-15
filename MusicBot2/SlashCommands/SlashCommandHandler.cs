@@ -572,13 +572,15 @@ namespace MusicBot2.SlahCommands
 
         [SlashCommand("猜pokemon", "猜pokemon")]
         public async Task GuessPokemonAsync(
-    [Summary("模式", "模式")][Choice("猜pokemon名稱", "name"), Choice("猜pokemon技能", "move")] string mode)
+    [Summary("模式", "模式")][Choice("猜pokemon名稱", "name"), Choice("猜pokemon技能", "move"), Choice("我是誰", "who")] string mode)
         {
             await DeferAsync();
+            var ((component, embed), silhouette) = await _pokeService.StartPokeGameAsync(mode);
 
-            var result = await _pokeService.StartPokeGameAsync(mode);
-
-            await FollowupAsync(embed: result.embed, components: result.component?.Build());
+            if (silhouette != null)
+                await FollowupWithFileAsync(silhouette, "mystery.png", embed: embed, components: component.Build());
+            else
+                await FollowupAsync(embed: embed, components: component.Build());
         }
     }
 }
