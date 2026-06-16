@@ -221,7 +221,7 @@ namespace MusicBot2.Service
             }
         }
 
-        private void FindPokemonInChain(PokeGamePokemon pokemon, ChainLink chainLink, int stage)
+        private void FindPokemonInChain(PokeGamePokemon pokemon, EvolutionChainLink chainLink, int stage)
         {
             // 取得當前節點的 Pokemon ID
             var currentId = int.Parse(chainLink.species.url.Split('/').Where(s => !string.IsNullOrEmpty(s)).Last());
@@ -525,17 +525,18 @@ namespace MusicBot2.Service
                 string battlePrompt = $@"請模擬一場精彩的pokemon對戰，並判斷勝負。
 
 對戰雙方：
-1. {player1Name} 的 {pokemon1.CustomName ?? pokemon1.Name}
+1. {player1Name} 的 自訂名稱:{pokemon1.CustomName ?? pokemon1.Name}，真實名稱:{pokemon1.Name}
    - 屬性: {string.Join(", ", pokemon1.Types)}
    - HP: {pokemon1.HP}, 攻擊: {pokemon1.Attack}, 防禦: {pokemon1.Defense}
    - 特攻: {pokemon1.SpecialAttack}, 特防: {pokemon1.SpecialDefense}, 速度: {pokemon1.Speed}
 
-2. {player2Name} 的 {pokemon2.CustomName ?? pokemon2.Name}
+2. {player2Name} 的 自訂名稱:{pokemon2.CustomName ?? pokemon2.Name}，真實名稱:{pokemon2.Name}
    - 屬性: {string.Join(", ", pokemon2.Types)}
    - HP: {pokemon2.HP}, 攻擊: {pokemon2.Attack}, 防禦: {pokemon2.Defense}
    - 特攻: {pokemon2.SpecialAttack}, 特防: {pokemon2.SpecialDefense}, 速度: {pokemon2.Speed}
 
 請根據以上數據和屬性相剋關係，判斷誰會獲勝，並用繁體中文描述一段精彩的對戰過程。
+要以該寶可夢真實的技能來敘述，期間有自訂名稱的話就要叫自訂名稱，沒有的話就叫真實名稱。
 最後請在描述的最後一行明確說明勝者是誰，格式為「勝者：[玩家名稱]」";
 
                 // 呼叫 AI 判斷對戰結果
@@ -608,7 +609,7 @@ namespace MusicBot2.Service
                         var oldName = loserPokemon.Name;
                         loserPokemon = await EvolvePokemonAsync(loserPokemon);
                         if (string.IsNullOrEmpty(evolutionMessage))
-                            evolutionMessage = $"\n\n✨ **雖然失敗了，但 {oldName} 進化成 {loserPokemon.Name} 了！** ✨";
+                            evolutionMessage = $"\n\n✨ **雖然快4了，但 {oldName} 進化成 {loserPokemon.Name} 了！** ✨";
                         else
                             evolutionMessage += $"\n✨ **{oldName} 也進化成 {loserPokemon.Name} 了！** ✨";
 
