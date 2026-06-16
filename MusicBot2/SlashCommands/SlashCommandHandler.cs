@@ -665,6 +665,15 @@ namespace MusicBot2.SlahCommands
             await FollowupAsync(embed: embed, components: component.Build());
         }
 
+        [SlashCommand("測試對戰", "生成假對手進行測試對戰")]
+        public async Task TestBattlePokemonAsync(
+            [Summary("編號", "要出戰的pokemon編號（從1開始）")] int index)
+        {
+            await DeferAsync();
+            var (embed, component) = await _pokeGameService.StartTestBattleAsync(Context.User.Id, Context.User.Username, index);
+            await FollowupAsync(embed: embed, components: component.Build());
+        }
+
 
         #endregion
     }
