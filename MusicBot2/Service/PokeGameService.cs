@@ -456,7 +456,7 @@ namespace MusicBot2.Service
                 #endregion
 
         #region 對戰系統
-        public async Task<(Embed embed, ComponentBuilder component)> StartBattleSearchAsync(ulong userId, string userName, int pokemonIndex)
+        public async Task<(Embed embed, ComponentBuilder component)> StartBattleSearchAsync(ulong userId, string userName)
         {
             try
             {
@@ -471,6 +471,8 @@ namespace MusicBot2.Service
                         .Build();
                     return (errorEmbed, new ComponentBuilder());
                 }
+                Random random = new Random();
+                int pokemonIndex = random.Next(1, player.CaughtPokemon.Count + 1); // 隨機選擇一隻寶可夢參加對戰
 
                 if (pokemonIndex < 1 || pokemonIndex > player.CaughtPokemon.Count)
                 {
