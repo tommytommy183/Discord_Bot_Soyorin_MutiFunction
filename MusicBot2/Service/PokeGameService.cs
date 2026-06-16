@@ -221,7 +221,7 @@ namespace MusicBot2.Service
             }
         }
 
-        private void FindPokemonInChain(PokeGamePokemon pokemon, EvolutionChainLink chainLink, int stage)
+        private void FindPokemonInChain(PokeGamePokemon pokemon, ChainLink chainLink, int stage)
         {
             // 取得當前節點的 Pokemon ID
             var currentId = int.Parse(chainLink.species.url.Split('/').Where(s => !string.IsNullOrEmpty(s)).Last());
