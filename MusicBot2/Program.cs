@@ -115,6 +115,9 @@ public class Program
                   new OpenRouterService(openRouterApiKey)
                   )
             .AddSingleton<JikanAnimeService>()
+            .AddSingleton<PokeGameService>(sp =>
+                new PokeGameService(redisConn, sp.GetRequiredService<OpenRouterService>())
+                )
               .BuildServiceProvider();
 
         _googleAIStudioService = _services.GetRequiredService<GoogleAIStudioService>();

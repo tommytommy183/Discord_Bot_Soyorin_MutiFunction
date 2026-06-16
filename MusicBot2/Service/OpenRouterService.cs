@@ -371,6 +371,92 @@ namespace MusicBot2.Service
             return "（嗯…現在腦袋有點打結，等等再說好嗎）";
         }
 
+
+        public async Task<string> GenerateSimpleTextAsync(string userMessage)
+        {
+            const int maxRetry = 2;
+
+            foreach (var model in _models)
+            {
+                for (int retry = 0; retry < maxRetry; retry++)
+                {
+                    try
+                    {
+                        var messages = new List<OpenRouterMessage>
+                {
+                    new() { Role = "user", Content = userMessage }
+                };
+
+                        var apiRequest = new OpenRouterChatRequest
+                        {
+                            Model = model,
+                            Messages = messages,
+                            MaxTokens = 512
+                        };
+
+                        var json = JsonSerializer.Serialize(apiRequest, new JsonSerializerOptions
+                        {
+                            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+                        });
+
+                        var response = await _httpClient.PostAsync(
+                            "https://openrouter.ai/api/v1/chat/completions",
+                            new StringContent(json, Encoding.UTF8, "application/json")
+                        );
+
+                        var resultJson = await ReadAsUtf8StringAsync(response);
+
+                        if (!response.IsSuccessStatusCode)
+                        {
+                            int status = (int)response.StatusCode;
+                            if (status == 429)
+                            {
+                                int waitMs = ParseRetryAfterMs(resultJson, response);
+                                if (retry == 0 && waitMs > 0 && waitMs <= 5000)
+                                {
+                                    await Task.Delay(waitMs);
+                                    continue;
+                                }
+                                break;
+                            }
+                            if (status is 500 or 502 or 503 or 504)
+                            {
+                                await Task.Delay(800 * (retry + 1));
+                                continue;
+                            }
+                            break;
+                        }
+
+                        using var doc = JsonDocument.Parse(resultJson);
+                        if (!doc.RootElement.TryGetProperty("choices", out var choices) || choices.GetArrayLength() == 0)
+                            break;
+
+                        var choice = choices[0];
+                        string text = null;
+                        if (choice.TryGetProperty("message", out var msgEl) &&
+                            msgEl.TryGetProperty("content", out var contentEl))
+                        {
+                            text = contentEl.GetString();
+                        }
+
+                        if (string.IsNullOrWhiteSpace(text)) break;
+
+                        return text;
+                    }
+                    catch (TaskCanceledException)
+                    {
+                        await Task.Delay(500 * (retry + 1));
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[OpenRouter Exception] Model:{model} Retry:{retry} => {ex.Message}");
+                        await Task.Delay(800 * (retry + 1));
+                    }
+                }
+            }
+
+            return null; // 或丟 exception，看你怎麼處理
+        }
         /// <summary>
         /// 簡化版本：直接傳入訊息
         /// </summary>
@@ -388,6 +474,19 @@ namespace MusicBot2.Service
             return await GenerateTextAsync(request, user, saveToMemory, channelKey, repliedMessage);
         }
 
+        public async Task<string> GenerateSimpleTextAsync(string message, SocketGuildUser user, bool saveToMemory = true, string channelKey = null, IMessage? repliedMessage = null)
+        {
+            var request = new GeminiRequestVM
+            {
+                UserMessage = message,
+                Temperature = 0.85f,
+                TopP = 0.9f,
+                TopK = 40,
+                MaxOutputTokens = 512
+            };
+
+            return await GenerateSimpleTextAsync(message);
+        }
         public string GetMemorySummary(string channelKey = null)
         {
             if (_channelHistories.Count == 0) return "目前沒有對話記憶";

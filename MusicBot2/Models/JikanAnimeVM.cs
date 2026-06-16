@@ -136,4 +136,54 @@ namespace MusicBot2.Models
         public int mal_id { get; set; }
         public string name { get; set; }
     }
+
+
+
+    #region 客製化遊戲相關
+    public class PokeGamePlayer
+    {
+        public ulong UserId { get; set; }
+        public string UserName { get; set; }
+        public List<PokeGamePokemon> CaughtPokemon { get; set; } = new List<PokeGamePokemon>();
+        public DateTime? LastCatchDate { get; set; }
+        public int TotalBattles { get; set; }
+        public int Wins { get; set; }
+        public int Losses { get; set; }
+    }
+
+    public class PokeGamePokemon
+    {
+        public int Id { get; set; }
+        public string Name { get; set; }
+        public string CustomName { get; set; }
+        public string ImageUrl { get; set; }
+        public int HP { get; set; }
+        public int Attack { get; set; }
+        public int Defense { get; set; }
+        public int SpecialAttack { get; set; }
+        public int SpecialDefense { get; set; }
+        public int Speed { get; set; }
+        public List<string> Types { get; set; } = new List<string>();
+        public DateTime CaughtDate { get; set; }
+    }
+
+    public class BattleMatchmaking
+    {
+        public ulong UserId { get; set; }
+        public string UserName { get; set; }
+        public PokeGamePokemon Pokemon { get; set; }
+        public DateTime SearchStartTime { get; set; }
+    }
+
+    public class BattleResult
+    {
+        public ulong WinnerId { get; set; }
+        public string WinnerName { get; set; }
+        public PokeGamePokemon WinnerPokemon { get; set; }
+        public ulong LoserId { get; set; }
+        public string LoserName { get; set; }
+        public PokeGamePokemon LoserPokemon { get; set; }
+        public string BattleDescription { get; set; }
+    }
+    #endregion
 }

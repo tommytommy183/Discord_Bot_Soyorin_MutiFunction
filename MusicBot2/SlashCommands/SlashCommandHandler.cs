@@ -32,8 +32,9 @@ namespace MusicBot2.SlahCommands
         private readonly Pick2Service _pick2Service;
         private readonly JikanAnimeService _animeService;
         private readonly PokeService _pokeService;
+        private readonly PokeGameService _pokeGameService;
 
-        public SlashCommandHandler(Program program, WordGuessingService wordService, MineGameService mineGameService, ElevenLabsService elevenLabsService, OldMaidService oldMaidService, RubiksCubeService rubiksCubeService, GoogleAIStudioService googleAIStudioService, RVC_Service rVC_Service, SetTextService setTextService, Game2048Service game2048Service, Game1A2BService game1A2BService, Pick2Service pick2Service,JikanAnimeService animeService, PokeService pokeService)
+        public SlashCommandHandler(Program program, WordGuessingService wordService, MineGameService mineGameService, ElevenLabsService elevenLabsService, OldMaidService oldMaidService, RubiksCubeService rubiksCubeService, GoogleAIStudioService googleAIStudioService, RVC_Service rVC_Service, SetTextService setTextService, Game2048Service game2048Service, Game1A2BService game1A2BService, Pick2Service pick2Service, JikanAnimeService animeService, PokeService pokeService, PokeGameService pokeGameService)
         {
             _program = program;
             _wordService = wordService;
@@ -49,6 +50,7 @@ namespace MusicBot2.SlahCommands
             _pick2Service = pick2Service;
             _animeService = animeService;
             _pokeService = pokeService;
+            _pokeGameService = pokeGameService;
         }
         #region 音樂撥放相關
         [SlashCommand("播放音樂", "播放音樂")]
@@ -523,7 +525,7 @@ namespace MusicBot2.SlahCommands
         }
         #endregion
 
-        #region puck 2 api
+        #region 殘酷二選一
         [SlashCommand("輸入殘酷二選一id開啟遊戲", "輸入殘酷二選一ID開啟遊戲")]
         public async Task Pick2TitleAsync(
     [Summary("遊戲id", "要開啟的遊戲ID")] string gameID,
@@ -553,7 +555,7 @@ namespace MusicBot2.SlahCommands
         }
         #endregion
 
-        #region jikan api
+        #region 動漫相關
         [SlashCommand("猜動漫角色", "猜動漫角色")]
         public async Task GuessAnimeCharaAsync(
     [Summary("模式", "模式")][Choice("角色猜角色", "ctc"), Choice("角色猜動畫", "cta")] string mode,
@@ -614,7 +616,7 @@ namespace MusicBot2.SlahCommands
         }
         #endregion
 
-        #region pokemon api
+        #region pokemon相關
         [SlashCommand("猜pokemon", "猜pokemon")]
         public async Task GuessPokemonAsync(
 [Summary("模式", "模式")][Choice("猜pokemon名稱", "name"), Choice("猜pokemon技能", "move"), Choice("我是誰", "who")] string mode)
@@ -627,6 +629,43 @@ namespace MusicBot2.SlahCommands
             else
                 await FollowupAsync(embed: embed, components: component.Build());
         }
+
+        [SlashCommand("抓pokemon", "每天抓一隻隨機pokemon")]
+        public async Task CatchPokemonAsync()
+        {
+            await DeferAsync();
+            var (embed, component) = await _pokeGameService.CatchPokemonAsync(Context.User.Id, Context.User.Username);
+            await FollowupAsync(embed: embed, components: component.Build());
+        }
+
+        [SlashCommand("我的pokemon", "查看你的pokemon列表")]
+        public async Task MyPokemonAsync()
+        {
+            await DeferAsync();
+            var (embed, component) = await _pokeGameService.ListPokemonAsync(Context.User.Id, Context.User.Username);
+            await FollowupAsync(embed: embed, components: component.Build());
+        }
+
+        [SlashCommand("自定義pokemon", "自定義你的pokemon名稱")]
+        public async Task CustomizePokemonAsync(
+            [Summary("編號", "pokemon的編號（從1開始）")] int index,
+            [Summary("自訂名稱", "新的名稱")] string customName)
+        {
+            await DeferAsync();
+            var (embed, component) = await _pokeGameService.CustomizePokemonAsync(Context.User.Id, Context.User.Username, index, customName);
+            await FollowupAsync(embed: embed, components: component.Build());
+        }
+
+        [SlashCommand("pokemon對戰", "尋找對手進行pokemon對戰")]
+        public async Task BattlePokemonAsync(
+            [Summary("編號", "要出戰的pokemon編號（從1開始）")] int index)
+        {
+            await DeferAsync();
+            var (embed, component) = await _pokeGameService.StartBattleSearchAsync(Context.User.Id, Context.User.Username, index);
+            await FollowupAsync(embed: embed, components: component.Build());
+        }
+
+
         #endregion
     }
 }
