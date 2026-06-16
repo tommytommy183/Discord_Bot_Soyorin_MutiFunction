@@ -155,9 +155,11 @@ namespace MusicBot2.Service
             {
                 // 如果有閃光圖，則這支pokemon有機會為閃光寶可夢
                 Random randomShiny = new Random();
-                // 閃光寶可夢的機率約為 1/4096
-                isShiny = randomShiny.Next(1, 4097) == 1;
+                // 閃光寶可夢的機率約為 1/100
+                isShiny = randomShiny.Next(1, 101) == 1;
             }
+
+            string imageUrl = isShiny ? pokeData.sprites.front_shiny : pokeData.sprites.front_default;
 
             // 建立PokeGamePokemon物件
             var pokemon = new PokeGamePokemon
@@ -165,8 +167,7 @@ namespace MusicBot2.Service
                 Id = pokeData.id,
                 Name = chineseName,
                 CustomName = null,
-                ImageUrl = pokeData.sprites.other.official_artwork.front_default 
-                    ?? pokeData.sprites.front_default,
+                ImageUrl = imageUrl,
                 HP = pokeData.stats.FirstOrDefault(s => s.stat.name == "hp")?.base_stat ?? 0,
                 Attack = pokeData.stats.FirstOrDefault(s => s.stat.name == "attack")?.base_stat ?? 0,
                 Defense = pokeData.stats.FirstOrDefault(s => s.stat.name == "defense")?.base_stat ?? 0,
