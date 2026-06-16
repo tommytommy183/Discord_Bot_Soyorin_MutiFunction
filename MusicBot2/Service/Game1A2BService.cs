@@ -151,7 +151,7 @@ namespace MusicBot2.Service
                     .WithColor(Color.Green)
                     .WithDescription($"答案就是 **{guess}**，共猜了 **{session.Attempts}** 次！")
                     .AddField("猜測紀錄", string.Join("\n", session.History.TakeLast(10)))
-                    .AddField($"恭喜{modal.User.Username}",$"恭喜獲得 {await RewardsHelpers.GetRandomRewards(modal.Channel, modal.User as SocketGuildUser)}")
+                    .AddField($"恭喜{modal.User.Username}",$"獎勵妳 {await RewardsHelpers.GetRandomRewards(modal.Channel, modal.User as SocketGuildUser)}")
                     .Build();
 
                 return ((new ComponentBuilder(), winEmbed), false);
