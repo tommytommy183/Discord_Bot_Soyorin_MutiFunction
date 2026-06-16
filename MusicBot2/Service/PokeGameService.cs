@@ -108,7 +108,7 @@ namespace MusicBot2.Service
                     .WithColor(Color.Green)
                     .AddField("屬性", string.Join(", ", pokemon.Types), true)
                     .AddField("抓到時間", pokemon.CaughtDate.ToString("yyyy-MM-dd HH:mm"), true)
-                    .AddField("能力值", 
+                    .AddField("能力值",
                         $"HP: {pokemon.HP}\n" +
                         $"攻擊: {pokemon.Attack}\n" +
                         $"防禦: {pokemon.Defense}\n" +
@@ -158,11 +158,11 @@ namespace MusicBot2.Service
             var speciesContent = await speciesResponse.Content.ReadAsStringAsync();
             var speciesData = JsonConvert.DeserializeObject<PokeSpecies>(speciesContent);
 
-            var chineseName = speciesData.names.FirstOrDefault(n => n.language.name == "zh-Hant")?.name 
+            var chineseName = speciesData.names.FirstOrDefault(n => n.language.name == "zh-Hant")?.name
                 ?? pokeData.species.name;
 
 
-            if(!string.IsNullOrEmpty(pokeData.sprites.front_shiny))
+            if (!string.IsNullOrEmpty(pokeData.sprites.front_shiny))
             {
                 // 如果有閃光圖，則這支pokemon有機會為閃光寶可夢
                 Random randomShiny = new Random();
@@ -272,7 +272,7 @@ namespace MusicBot2.Service
                 var speciesContent = await speciesResponse.Content.ReadAsStringAsync();
                 var speciesData = JsonConvert.DeserializeObject<PokeSpecies>(speciesContent);
 
-                var chineseName = speciesData.names.FirstOrDefault(n => n.language.name == "zh-Hant")?.name 
+                var chineseName = speciesData.names.FirstOrDefault(n => n.language.name == "zh-Hant")?.name
                     ?? pokeData.species.name;
 
                 // 保留原本的自訂名稱和閃光狀態
@@ -378,82 +378,92 @@ namespace MusicBot2.Service
                     .WithColor(Color.Gold)
                     .WithFooter($"總共 {player.CaughtPokemon.Count} 隻pokemon | 戰績: {player.Wins}勝 {player.Losses}敗");
 
-                          for (int i = 0; i < player.CaughtPokemon.Count; i++)
-                          {
-                              var pokemon = player.CaughtPokemon[i];
-                              var displayName = pokemon.CustomName ?? pokemon.Name;
-                              var evolutionInfo = pokemon.CanEvolve 
-                                  ? $"\n進化進度: {pokemon.EvolutionPoints}/3 ⭐" 
-                                  : "\n無法進化";
-
-                              embed.AddField(
-                                  $"{i + 1}. {displayName}",
-                                  $"原名: {pokemon.Name}\n" +
-                                  $"屬性: {string.Join(", ", pokemon.Types)}\n" +
-                                  $"HP: {pokemon.HP} | 攻: {pokemon.Attack} | 防: {pokemon.Defense}\n" +
-                                  $"抓到時間: {pokemon.CaughtDate:yyyy-MM-dd}" +
-                                  evolutionInfo,
-                                  false
-                              );
-                          }
-
-                          return (embed.Build(), new ComponentBuilder());
-                      }
-                      catch (Exception ex)
-                      {
-                          return (CommonHelper.BuildErrorResponse($"列出pokemon時發生錯誤: {ex.Message}").Item2, new ComponentBuilder());
-                      }
-                  }
-
-                // 釋放寶可夢
-                public async Task<(Embed embed, ComponentBuilder component)> ReleasePokemonAsync(ulong userId, string userName, int pokemonIndex)
+                for (int i = 0; i < player.CaughtPokemon.Count; i++)
                 {
-                    try
-                    {
-                        var player = await GetPlayerDataAsync(userId, userName);
+                    var pokemon = player.CaughtPokemon[i];
+                    var displayName = pokemon.CustomName ?? pokemon.Name;
+                    var evolutionInfo = pokemon.CanEvolve
+                        ? $"\n進化進度: {pokemon.EvolutionPoints}/3 ⭐"
+                        : "\n無法進化";
 
-                        if (player.CaughtPokemon.Count == 0)
-                        {
-                            var errorEmbed = new EmbedBuilder()
-                                .WithTitle("❌ 你還沒有任何pokemon！")
-                                .WithDescription("先去抓一隻pokemon吧！")
-                                .WithColor(Color.Red)
-                                .Build();
-                            return (errorEmbed, new ComponentBuilder());
-                        }
-
-                        if (pokemonIndex < 1 || pokemonIndex > player.CaughtPokemon.Count)
-                        {
-                            var errorEmbed = new EmbedBuilder()
-                                .WithTitle("❌ 無效的pokemon編號！")
-                                .WithDescription($"請輸入 1 到 {player.CaughtPokemon.Count} 之間的編號")
-                                .WithColor(Color.Red)
-                                .Build();
-                            return (errorEmbed, new ComponentBuilder());
-                        }
-
-                        var pokemon = player.CaughtPokemon[pokemonIndex - 1];
-                        var pokemonName = pokemon.CustomName ?? pokemon.Name;
-
-                        player.CaughtPokemon.RemoveAt(pokemonIndex - 1);
-                        await SavePlayerDataAsync(player);
-
-                        var embed = new EmbedBuilder()
-                            .WithTitle("👋 釋放pokemon")
-                            .WithDescription($"你釋放了 **{pokemonName}**！\n祝它在野外生活愉快！")
-                            .WithThumbnailUrl(pokemon.ImageUrl)
-                            .WithColor(Color.Blue)
-                            .WithFooter($"目前剩餘 {player.CaughtPokemon.Count} 隻pokemon")
-                            .Build();
-
-                        return (embed, new ComponentBuilder());
-                    }
-                    catch (Exception ex)
-                    {
-                        return (CommonHelper.BuildErrorResponse($"釋放pokemon時發生錯誤: {ex.Message}").Item2, new ComponentBuilder());
-                    }
+                    embed.AddField(
+                        $"{i + 1}. {displayName}",
+                        $"原名: {pokemon.Name}\n" +
+                        $"屬性: {string.Join(", ", pokemon.Types)}\n" +
+                        $"HP: {pokemon.HP} | 攻: {pokemon.Attack} | 防: {pokemon.Defense}\n" +
+                        $"抓到時間: {pokemon.CaughtDate:yyyy-MM-dd}" +
+                        evolutionInfo,
+                        false
+                    );
                 }
-                #endregion
+
+                return (embed.Build(), new ComponentBuilder());
+            }
+            catch (Exception ex)
+            {
+                return (CommonHelper.BuildErrorResponse($"列出pokemon時發生錯誤: {ex.Message}").Item2, new ComponentBuilder());
+            }
+        }
+
+        // 釋放寶可夢
+        public async Task<(Embed embed, ComponentBuilder component)> ReleasePokemonAsync(ulong userId, string userName, int pokemonIndex)
+        {
+            try
+            {
+                var player = await GetPlayerDataAsync(userId, userName);
+
+                if (player.CaughtPokemon.Count == 0)
+                {
+                    var errorEmbed = new EmbedBuilder()
+                        .WithTitle("❌ 你還沒有任何pokemon！")
+                        .WithDescription("先去抓一隻pokemon吧！")
+                        .WithColor(Color.Red)
+                        .Build();
+                    return (errorEmbed, new ComponentBuilder());
+                }
+
+                if (player.CaughtPokemon.Count < 6)
+                {
+                    var errorEmbed = new EmbedBuilder()
+                        .WithTitle("❌ 你的pokemon數量不足！")
+                        .WithDescription("至少需要 6 隻pokemon才能蛋雕喔！")
+                        .WithColor(Color.Red)
+                        .Build();
+                    return (errorEmbed, new ComponentBuilder());
+                }
+
+                if (pokemonIndex < 1 || pokemonIndex > player.CaughtPokemon.Count)
+                {
+                    var errorEmbed = new EmbedBuilder()
+                        .WithTitle("❌ 無效的pokemon編號！")
+                        .WithDescription($"請輸入 1 到 {player.CaughtPokemon.Count} 之間的編號")
+                        .WithColor(Color.Red)
+                        .Build();
+                    return (errorEmbed, new ComponentBuilder());
+                }
+
+                var pokemon = player.CaughtPokemon[pokemonIndex - 1];
+                var pokemonName = pokemon.CustomName ?? pokemon.Name;
+
+                player.CaughtPokemon.RemoveAt(pokemonIndex - 1);
+                await SavePlayerDataAsync(player);
+
+                var embed = new EmbedBuilder()
+                    .WithTitle("👋 釋放pokemon")
+                    .WithDescription($"你釋放了 **{pokemonName}**！\n他將會記住 他將會找到你 他將會回來草飼你")
+                    .WithThumbnailUrl(pokemon.ImageUrl)
+                    .WithColor(Color.Blue)
+                    .WithFooter($"目前剩餘 {player.CaughtPokemon.Count} 隻pokemon")
+                    .Build();
+
+                return (embed, new ComponentBuilder());
+            }
+            catch (Exception ex)
+            {
+                return (CommonHelper.BuildErrorResponse($"釋放pokemon時發生錯誤: {ex.Message}").Item2, new ComponentBuilder());
+            }
+        }
+        #endregion
 
         #region 對戰系統
         public async Task<(Embed embed, ComponentBuilder component)> StartBattleSearchAsync(ulong userId, string userName)
@@ -545,15 +555,15 @@ namespace MusicBot2.Service
                 var aiResponse = await _aiService.GenerateSimpleTextAsync(battlePrompt);
 
                 // 解析 AI 回應，判斷勝者
-                bool player1Wins = aiResponse.Contains($"勝者：{player1Name}") || 
+                bool player1Wins = aiResponse.Contains($"勝者：{player1Name}") ||
                                    aiResponse.Contains($"勝者: {player1Name}");
 
                 // 如果 AI 沒有明確指出勝者，則根據數值判斷
                 if (!player1Wins && !aiResponse.Contains($"勝者：{player2Name}") && !aiResponse.Contains($"勝者: {player2Name}"))
                 {
-                    int pokemon1Total = pokemon1.HP + pokemon1.Attack + pokemon1.Defense + 
+                    int pokemon1Total = pokemon1.HP + pokemon1.Attack + pokemon1.Defense +
                                        pokemon1.SpecialAttack + pokemon1.SpecialDefense + pokemon1.Speed;
-                    int pokemon2Total = pokemon2.HP + pokemon2.Attack + pokemon2.Defense + 
+                    int pokemon2Total = pokemon2.HP + pokemon2.Attack + pokemon2.Defense +
                                        pokemon2.SpecialAttack + pokemon2.SpecialDefense + pokemon2.Speed;
                     player1Wins = pokemon1Total > pokemon2Total;
                 }
@@ -640,13 +650,13 @@ namespace MusicBot2.Service
                 // 勝者資訊
                 if (winnerStats != null)
                 {
-                    embedBuilder.AddField($"🏆 勝者: {winnerName}", 
+                    embedBuilder.AddField($"🏆 勝者: {winnerName}",
                         $"{winnerPokemon.CustomName ?? winnerPokemon.Name}\n" +
                         $"戰績: {winnerStats.Wins}勝 {winnerStats.Losses}敗", true);
                 }
                 else
                 {
-                    embedBuilder.AddField($"🏆 勝者: {winnerName}", 
+                    embedBuilder.AddField($"🏆 勝者: {winnerName}",
                         $"{winnerPokemon.CustomName ?? winnerPokemon.Name}\n" +
                         $"(電腦對手)", true);
                 }
@@ -654,13 +664,13 @@ namespace MusicBot2.Service
                 // 敗者資訊
                 if (loserStats != null)
                 {
-                    embedBuilder.AddField($"😢 敗者: {loserName}", 
+                    embedBuilder.AddField($"😢 敗者: {loserName}",
                         $"{loserPokemon.CustomName ?? loserPokemon.Name}\n" +
                         $"戰績: {loserStats.Wins}勝 {loserStats.Losses}敗", true);
                 }
                 else
                 {
-                    embedBuilder.AddField($"😢 敗者: {loserName}", 
+                    embedBuilder.AddField($"😢 敗者: {loserName}",
                         $"{loserPokemon.CustomName ?? loserPokemon.Name}\n" +
                         $"(電腦對手)", true);
                 }
