@@ -81,6 +81,17 @@ namespace MusicBot2.Service
                     return (errorEmbed, new ComponentBuilder());
                 }
 
+                // 檢查寶可夢數量是否已達上限
+                if (player.CaughtPokemon.Count >= 6)
+                {
+                    var errorEmbed = new EmbedBuilder()
+                        .WithTitle("❌ 寶可夢數量已達上限！")
+                        .WithDescription($"你已經有 6 隻寶可夢了！\n請使用 `/釋放寶可夢` 指令釋放一隻寶可夢後再來抓取新的。")
+                        .WithColor(Color.Red)
+                        .Build();
+                    return (errorEmbed, new ComponentBuilder());
+                }
+
                 // 隨機抓一隻pokemon
                 var pokemon = await GetRandomPokemonAsync();
 
@@ -176,10 +187,126 @@ namespace MusicBot2.Service
                 Speed = pokeData.stats.FirstOrDefault(s => s.stat.name == "speed")?.base_stat ?? 0,
                 Types = pokeData.types.Select(t => t.type.name).ToList(),
                 CaughtDate = DateTime.UtcNow,
-                isShiny = isShiny
+                isShiny = isShiny,
+                EvolutionPoints = 0,
+                EvolutionStage = 0,
+                CanEvolve = false,
+                NextEvolutionId = null
             };
 
+            // 檢查這隻寶可夢是否有進化鏈
+            await CheckEvolutionChainAsync(pokemon, speciesData);
+
             return pokemon;
+        }
+
+        // 檢查寶可夢的進化鏈
+        private async Task CheckEvolutionChainAsync(PokeGamePokemon pokemon, PokeSpecies speciesData)
+        {
+            try
+            {
+                // 取得進化鏈資訊
+                var evolutionChainResponse = await _httpClient.GetAsync(speciesData.evolution_chain.url);
+                if (!evolutionChainResponse.IsSuccessStatusCode) return;
+
+                var evolutionChainContent = await evolutionChainResponse.Content.ReadAsStringAsync();
+                var evolutionChain = JsonConvert.DeserializeObject<EvolutionChain>(evolutionChainContent);
+
+                // 找到當前寶可夢在進化鏈中的位置
+                FindPokemonInChain(pokemon, evolutionChain.chain, 0);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"檢查進化鏈時發生錯誤: {ex.Message}");
+            }
+        }
+
+        private void FindPokemonInChain(PokeGamePokemon pokemon, ChainLink chainLink, int stage)
+        {
+            // 取得當前節點的 Pokemon ID
+            var currentId = int.Parse(chainLink.species.url.Split('/').Where(s => !string.IsNullOrEmpty(s)).Last());
+
+            if (currentId == pokemon.Id)
+            {
+                // 找到當前寶可夢
+                pokemon.EvolutionStage = stage;
+
+                // 檢查是否有下一階段進化
+                if (chainLink.evolves_to != null && chainLink.evolves_to.Count > 0)
+                {
+                    var nextEvolution = chainLink.evolves_to[0];
+                    pokemon.NextEvolutionId = int.Parse(nextEvolution.species.url.Split('/').Where(s => !string.IsNullOrEmpty(s)).Last());
+                    pokemon.CanEvolve = true;
+                }
+                return;
+            }
+
+            // 遞迴檢查下一階段
+            if (chainLink.evolves_to != null)
+            {
+                foreach (var nextLink in chainLink.evolves_to)
+                {
+                    FindPokemonInChain(pokemon, nextLink, stage + 1);
+                }
+            }
+        }
+
+        // 執行進化
+        private async Task<PokeGamePokemon> EvolvePokemonAsync(PokeGamePokemon pokemon)
+        {
+            if (!pokemon.CanEvolve || !pokemon.NextEvolutionId.HasValue)
+                return pokemon;
+
+            try
+            {
+                // 獲取進化後的寶可夢資料
+                var response = await _httpClient.GetAsync($"{API_BASE_URL}pokemon/{pokemon.NextEvolutionId.Value}");
+                if (!response.IsSuccessStatusCode)
+                    return pokemon;
+
+                var content = await response.Content.ReadAsStringAsync();
+                var pokeData = JsonConvert.DeserializeObject<Pokemon>(content);
+
+                // 獲取中文名稱
+                var speciesResponse = await _httpClient.GetAsync(pokeData.species.url);
+                var speciesContent = await speciesResponse.Content.ReadAsStringAsync();
+                var speciesData = JsonConvert.DeserializeObject<PokeSpecies>(speciesContent);
+
+                var chineseName = speciesData.names.FirstOrDefault(n => n.language.name == "zh-Hant")?.name 
+                    ?? pokeData.species.name;
+
+                // 保留原本的自訂名稱和閃光狀態
+                var customName = pokemon.CustomName;
+                var isShiny = pokemon.isShiny;
+                var caughtDate = pokemon.CaughtDate;
+
+                // 更新寶可夢資料
+                pokemon.Id = pokeData.id;
+                pokemon.Name = chineseName;
+                pokemon.CustomName = customName;
+                pokemon.ImageUrl = isShiny ? pokeData.sprites.front_shiny : pokeData.sprites.front_default;
+                pokemon.HP = pokeData.stats.FirstOrDefault(s => s.stat.name == "hp")?.base_stat ?? 0;
+                pokemon.Attack = pokeData.stats.FirstOrDefault(s => s.stat.name == "attack")?.base_stat ?? 0;
+                pokemon.Defense = pokeData.stats.FirstOrDefault(s => s.stat.name == "defense")?.base_stat ?? 0;
+                pokemon.SpecialAttack = pokeData.stats.FirstOrDefault(s => s.stat.name == "special-attack")?.base_stat ?? 0;
+                pokemon.SpecialDefense = pokeData.stats.FirstOrDefault(s => s.stat.name == "special-defense")?.base_stat ?? 0;
+                pokemon.Speed = pokeData.stats.FirstOrDefault(s => s.stat.name == "speed")?.base_stat ?? 0;
+                pokemon.Types = pokeData.types.Select(t => t.type.name).ToList();
+                pokemon.isShiny = isShiny;
+                pokemon.CaughtDate = caughtDate;
+                pokemon.EvolutionPoints = 0; // 重置進化點數
+                pokemon.EvolutionStage++;
+
+                // 檢查新的進化鏈
+                await CheckEvolutionChainAsync(pokemon, speciesData);
+
+                return pokemon;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"進化時發生錯誤: {ex.Message}");
+                return pokemon;
+            }
         }
         #endregion
 
@@ -251,28 +378,82 @@ namespace MusicBot2.Service
                     .WithColor(Color.Gold)
                     .WithFooter($"總共 {player.CaughtPokemon.Count} 隻pokemon | 戰績: {player.Wins}勝 {player.Losses}敗");
 
-                for (int i = 0; i < player.CaughtPokemon.Count; i++)
-                {
-                    var pokemon = player.CaughtPokemon[i];
-                    var displayName = pokemon.CustomName ?? pokemon.Name;
-                    embed.AddField(
-                        $"{i + 1}. {displayName}",
-                        $"原名: {pokemon.Name}\n" +
-                        $"屬性: {string.Join(", ", pokemon.Types)}\n" +
-                        $"HP: {pokemon.HP} | 攻: {pokemon.Attack} | 防: {pokemon.Defense}\n" +
-                        $"抓到時間: {pokemon.CaughtDate:yyyy-MM-dd}",
-                        false
-                    );
-                }
+                          for (int i = 0; i < player.CaughtPokemon.Count; i++)
+                          {
+                              var pokemon = player.CaughtPokemon[i];
+                              var displayName = pokemon.CustomName ?? pokemon.Name;
+                              var evolutionInfo = pokemon.CanEvolve 
+                                  ? $"\n進化進度: {pokemon.EvolutionPoints}/3 ⭐" 
+                                  : "\n無法進化";
 
-                return (embed.Build(), new ComponentBuilder());
-            }
-            catch (Exception ex)
-            {
-                return (CommonHelper.BuildErrorResponse($"列出pokemon時發生錯誤: {ex.Message}").Item2, new ComponentBuilder());
-            }
-        }
-        #endregion
+                              embed.AddField(
+                                  $"{i + 1}. {displayName}",
+                                  $"原名: {pokemon.Name}\n" +
+                                  $"屬性: {string.Join(", ", pokemon.Types)}\n" +
+                                  $"HP: {pokemon.HP} | 攻: {pokemon.Attack} | 防: {pokemon.Defense}\n" +
+                                  $"抓到時間: {pokemon.CaughtDate:yyyy-MM-dd}" +
+                                  evolutionInfo,
+                                  false
+                              );
+                          }
+
+                          return (embed.Build(), new ComponentBuilder());
+                      }
+                      catch (Exception ex)
+                      {
+                          return (CommonHelper.BuildErrorResponse($"列出pokemon時發生錯誤: {ex.Message}").Item2, new ComponentBuilder());
+                      }
+                  }
+
+                // 釋放寶可夢
+                public async Task<(Embed embed, ComponentBuilder component)> ReleasePokemonAsync(ulong userId, string userName, int pokemonIndex)
+                {
+                    try
+                    {
+                        var player = await GetPlayerDataAsync(userId, userName);
+
+                        if (player.CaughtPokemon.Count == 0)
+                        {
+                            var errorEmbed = new EmbedBuilder()
+                                .WithTitle("❌ 你還沒有任何pokemon！")
+                                .WithDescription("先去抓一隻pokemon吧！")
+                                .WithColor(Color.Red)
+                                .Build();
+                            return (errorEmbed, new ComponentBuilder());
+                        }
+
+                        if (pokemonIndex < 1 || pokemonIndex > player.CaughtPokemon.Count)
+                        {
+                            var errorEmbed = new EmbedBuilder()
+                                .WithTitle("❌ 無效的pokemon編號！")
+                                .WithDescription($"請輸入 1 到 {player.CaughtPokemon.Count} 之間的編號")
+                                .WithColor(Color.Red)
+                                .Build();
+                            return (errorEmbed, new ComponentBuilder());
+                        }
+
+                        var pokemon = player.CaughtPokemon[pokemonIndex - 1];
+                        var pokemonName = pokemon.CustomName ?? pokemon.Name;
+
+                        player.CaughtPokemon.RemoveAt(pokemonIndex - 1);
+                        await SavePlayerDataAsync(player);
+
+                        var embed = new EmbedBuilder()
+                            .WithTitle("👋 釋放pokemon")
+                            .WithDescription($"你釋放了 **{pokemonName}**！\n祝它在野外生活愉快！")
+                            .WithThumbnailUrl(pokemon.ImageUrl)
+                            .WithColor(Color.Blue)
+                            .WithFooter($"目前剩餘 {player.CaughtPokemon.Count} 隻pokemon")
+                            .Build();
+
+                        return (embed, new ComponentBuilder());
+                    }
+                    catch (Exception ex)
+                    {
+                        return (CommonHelper.BuildErrorResponse($"釋放pokemon時發生錯誤: {ex.Message}").Item2, new ComponentBuilder());
+                    }
+                }
+                #endregion
 
         #region 對戰系統
         public async Task<(Embed embed, ComponentBuilder component)> StartBattleSearchAsync(ulong userId, string userName, int pokemonIndex)
@@ -381,12 +562,34 @@ namespace MusicBot2.Service
                 var loserName = player1Wins ? player2Name : player1Name;
                 var loserPokemon = player1Wins ? pokemon2 : pokemon1;
 
-                // 更新戰績（只更新真實玩家，ID 為 0 的是電腦對手）
+                // 更新戰績和進化點數（只更新真實玩家，ID 為 0 的是電腦對手）
+                string evolutionMessage = "";
+
                 if (winnerId != 0)
                 {
                     var winner = await GetPlayerDataAsync(winnerId, winnerName);
                     winner.TotalBattles++;
                     winner.Wins++;
+
+                    // 更新勝利者寶可夢的進化點數 (+2)
+                    winnerPokemon.EvolutionPoints += 2;
+
+                    // 檢查是否達到進化條件（3點）
+                    if (winnerPokemon.CanEvolve && winnerPokemon.EvolutionPoints >= 3)
+                    {
+                        var oldName = winnerPokemon.Name;
+                        winnerPokemon = await EvolvePokemonAsync(winnerPokemon);
+                        evolutionMessage = $"\n\n✨ **恭喜！{oldName} 進化成 {winnerPokemon.Name} 了！** ✨";
+
+                        // 更新玩家資料中的寶可夢
+                        var pokemonInList = winner.CaughtPokemon.FirstOrDefault(p => p.Id == pokemon1.Id && p.CaughtDate == pokemon1.CaughtDate);
+                        if (pokemonInList != null)
+                        {
+                            var index = winner.CaughtPokemon.IndexOf(pokemonInList);
+                            winner.CaughtPokemon[index] = winnerPokemon;
+                        }
+                    }
+
                     await SavePlayerDataAsync(winner);
                 }
 
@@ -395,6 +598,29 @@ namespace MusicBot2.Service
                     var loser = await GetPlayerDataAsync(loserId, loserName);
                     loser.TotalBattles++;
                     loser.Losses++;
+
+                    // 更新失敗者寶可夢的進化點數 (+1)
+                    loserPokemon.EvolutionPoints += 1;
+
+                    // 檢查是否達到進化條件（3點）
+                    if (loserPokemon.CanEvolve && loserPokemon.EvolutionPoints >= 3)
+                    {
+                        var oldName = loserPokemon.Name;
+                        loserPokemon = await EvolvePokemonAsync(loserPokemon);
+                        if (string.IsNullOrEmpty(evolutionMessage))
+                            evolutionMessage = $"\n\n✨ **雖然失敗了，但 {oldName} 進化成 {loserPokemon.Name} 了！** ✨";
+                        else
+                            evolutionMessage += $"\n✨ **{oldName} 也進化成 {loserPokemon.Name} 了！** ✨";
+
+                        // 更新玩家資料中的寶可夢
+                        var pokemonInList = loser.CaughtPokemon.FirstOrDefault(p => p.Id == pokemon2.Id && p.CaughtDate == pokemon2.CaughtDate);
+                        if (pokemonInList != null)
+                        {
+                            var index = loser.CaughtPokemon.IndexOf(pokemonInList);
+                            loser.CaughtPokemon[index] = loserPokemon;
+                        }
+                    }
+
                     await SavePlayerDataAsync(loser);
                 }
 
@@ -405,7 +631,7 @@ namespace MusicBot2.Service
                 // 建立對戰結果訊息
                 var embedBuilder = new EmbedBuilder()
                     .WithTitle("⚔️ pokemon對戰結果 ⚔️")
-                    .WithDescription(aiResponse)
+                    .WithDescription(aiResponse + evolutionMessage)
                     .WithColor(Color.Gold);
 
                 // 勝者資訊

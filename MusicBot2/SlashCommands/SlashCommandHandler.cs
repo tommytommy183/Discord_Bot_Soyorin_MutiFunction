@@ -674,6 +674,15 @@ namespace MusicBot2.SlahCommands
             await FollowupAsync(embed: embed, components: component.Build());
         }
 
+        [SlashCommand("蛋雕一隻pokemon", "蛋雕一隻pokemon")]
+        public async Task ReleasePokemonAsync(
+            [Summary("編號", "要釋放的pokemon編號（從1開始）")] int index)
+        {
+            await DeferAsync();
+            var (embed, component) = await _pokeGameService.ReleasePokemonAsync(Context.User.Id, Context.User.Username, index);
+            await FollowupAsync(embed: embed, components: component.Build());
+        }
+
 
         #endregion
     }

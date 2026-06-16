@@ -45,13 +45,13 @@ namespace MusicBot2.Service
             "qwen/qwen3-next-80b-a3b-instruct:free",
             "minimax/minimax-m2.5:free",
             "openrouter/owl-alpha",
-            "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
             "poolside/laguna-xs.2:free",
             "poolside/laguna-m.1:free",
             "moonshotai/kimi-k2.6:free",
             "google/gemma-4-26b-a4b-it:free",
             "liquid/lfm-2.5-1.2b-thinking:free",
             "openai/gpt-oss-120b:free",
+            "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
             "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
         };
 

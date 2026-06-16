@@ -65,6 +65,7 @@ namespace MusicBot2.Models
     public class PokeSpecies
     {
         public int id { get; set; }
+        public ResultData evolution_chain { get; set; }
         public List<PokeGenera> genera { get; set; }
         public List<PokeNames> names { get; set; }
         public List<FlavorTextEntries> flavor_text_entries { get; set; }
@@ -88,8 +89,17 @@ namespace MusicBot2.Models
         public ResultData language { get; set; }
     }
 
+    public class EvolutionChain
+    {
+        public int id { get; set; }
+        public ChainLink chain { get; set; }
+    }
 
-
+    public class ChainLink
+    {
+        public ResultData species { get; set; }
+        public List<ChainLink> evolves_to { get; set; }
+    }
 
     public class RandomResponse
     {
@@ -142,7 +152,13 @@ namespace MusicBot2.Models
         public int Speed { get; set; }
         public List<string> Types { get; set; } = new List<string>();
         public DateTime CaughtDate { get; set; }
-        public bool isShiny { get; set; }
+        public bool isShiny { get; set; } = false;
+
+        // 進化系統
+        public int EvolutionPoints { get; set; } = 0; // 進化點數（勝利+2，失敗+1）
+        public int EvolutionStage { get; set; } = 0; // 進化階段（0=基礎，1=一階進化，2=二階進化）
+        public bool CanEvolve { get; set; } = false; // 是否可以進化
+        public int? NextEvolutionId { get; set; } // 下一階段進化的 Pokemon ID
     }
 
     public class BattleMatchmaking
