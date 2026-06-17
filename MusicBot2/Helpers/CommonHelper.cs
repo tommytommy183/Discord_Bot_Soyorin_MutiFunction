@@ -72,7 +72,7 @@ namespace MusicBot2.Helpers
                 if (i <= items.Length - 1)
                     result.Append("\n ");
             }
-            result.Append("<a:24f60b6c774e8beb:1513720299558801480> 是gay或T或非二元性別或性別流動者");
+            result.Append("<a:24f60b6c774e8beb:1513720299558801480> 是男同、女同、獸同、非二元、無性別、雙性別、性別流動、半男 / 半女、酷兒性別、雙靈、星體性別的按下這個");
 
             return result.ToString();
         }

@@ -28,10 +28,13 @@ namespace MusicBot2.SlahCommands
         private readonly RVC_Service _rVC_Service;
         private readonly SetTextService _setTextService;
         private readonly Game2048Service _game2048Service;
+        private readonly Game1A2BService _game1A2BService;
         private readonly Pick2Service _pick2Service;
         private readonly JikanAnimeService _animeService;
+        private readonly PokeService _pokeService;
+        private readonly PokeGameService _pokeGameService;
 
-        public SlashCommandHandler(Program program, WordGuessingService wordService, MineGameService mineGameService, ElevenLabsService elevenLabsService, OldMaidService oldMaidService, RubiksCubeService rubiksCubeService, GoogleAIStudioService googleAIStudioService, RVC_Service rVC_Service, SetTextService setTextService, Game2048Service game2048Service, Pick2Service pick2Service,JikanAnimeService animeService)
+        public SlashCommandHandler(Program program, WordGuessingService wordService, MineGameService mineGameService, ElevenLabsService elevenLabsService, OldMaidService oldMaidService, RubiksCubeService rubiksCubeService, GoogleAIStudioService googleAIStudioService, RVC_Service rVC_Service, SetTextService setTextService, Game2048Service game2048Service, Game1A2BService game1A2BService, Pick2Service pick2Service, JikanAnimeService animeService, PokeService pokeService, PokeGameService pokeGameService)
         {
             _program = program;
             _wordService = wordService;
@@ -43,10 +46,13 @@ namespace MusicBot2.SlahCommands
             _googleAIStudioService = googleAIStudioService;
             _rVC_Service = rVC_Service;
             _game2048Service = game2048Service;
+            _game1A2BService = game1A2BService;
             _pick2Service = pick2Service;
             _animeService = animeService;
+            _pokeService = pokeService;
+            _pokeGameService = pokeGameService;
         }
-
+        #region 音樂撥放相關
         [SlashCommand("播放音樂", "播放音樂")]
         public async Task PlayCommand([Summary("查詢", "YouTube URL 或搜尋關鍵字")] string query)
         {
@@ -131,7 +137,9 @@ namespace MusicBot2.SlahCommands
             await _program.EarRapeAsync(Context.Channel, user);
             await FollowupAsync("-", ephemeral: true);
         }
+        #endregion
 
+        #region Riot相關
         [SlashCommand("查詢英雄技能", "查詢英雄技能")]
         public async Task SkillCommand([Summary("英雄名", "英雄名稱")] string champName)
         {
@@ -149,17 +157,20 @@ namespace MusicBot2.SlahCommands
         {
             await DeferAsync();
             var champService = new GetChampService();
-            await champService.GuessChampSkillAsync(Context.Channel as IMessageChannel, champName.ToLower(), skillPos.ToLower(), userGuess.ToLower());
+            var user = Context.User as SocketGuildUser;
+            await champService.GuessChampSkillAsync(Context.Channel as IMessageChannel, champName.ToLower(), skillPos.ToLower(), userGuess.ToLower(), user);
             await FollowupAsync("-", ephemeral: true);
         }
+        #endregion
 
+        #region 不外接api的簡單遊戲
         [SlashCommand("猜單字", "猜單字")]
         public async Task Guess(string word)
         {
             try
             {
                 var user = Context.User as SocketGuildUser;
-                string res = await _wordService.Guess(word, user);
+                string res = await _wordService.Guess(Context.Channel as IMessageChannel, word, user);
                 if (!string.IsNullOrEmpty(res))
                 {
                     await RespondAsync(res);
@@ -205,73 +216,9 @@ namespace MusicBot2.SlahCommands
             await FollowupAsync(embed: embed);
         }
 
-        [SlashCommand("透過elevenlabs說話", "透過ElevenLabs說話")]
-        public async Task ElevenLabsTalk(
-            [Summary("text", "要讓他說的話")] string text,
-            [Summary("model", "選擇需要使用的模型")][Choice("品質最好", "eleven_v3"), Choice("最穩定", "eleven_multilingual_v2"), Choice("最低延遲", "eleven_flash_v2_5"), Choice("平衡", "eleven_turbo_v2_5")] string model,
-            [Summary("voiceID", "請輸入要使用的voiceID，不填入則預設")] string voiceID = "pNInz6obpgDQGcFmaJgB")
-        {
-            await DeferAsync();
-            var user = Context.User as SocketGuildUser;
-            var voiceChannel = user.VoiceChannel;
-            await _elevenLabsService.SpeakAsync(voiceChannel, text, model, voiceID);
-            await FollowupAsync("已接收", ephemeral: true);
-        }
-
-        [SlashCommand("聊天測試中", "聊天(測試中)")]
-        public async Task Talk(
-            [Summary("text", "要讓他說的話")] string text,
-            [Summary("speaker", "選擇要讓誰說")][Choice("soyo", "soyo"), Choice("tomori", "tomori"), Choice("anon", "anon")] string speaker,
-            [Summary("tts-model", "使用的tts模型")][Choice("tw成熟女聲", "zh-TW-HsiaoChenNeural"), Choice("tw活潑女聲", "zh-TW-HsiaoYuNeura"), Choice("tw男聲", "zh-TW-YunJheNeural"),
-            Choice("cn-AI助理風", "zh-CN-XiaoxiaoNeural"), Choice("cn-廣播風", "zh-CN-YunxiNeural"), Choice("cn-男聲", "zh-CN-XiaoyiNeural")] string tts_model,
-            [Summary("pitch_shift", "音高 (0.5-2之間)")] double pitch = 0
-            )
-        {
-            var user = Context.User as SocketGuildUser;
-
-            //先用google ai studio取得回復
-            //string result = await _googleAIStudioService.GenerateTextAsync(text, user, true);
-            //再用elevenlabs說出來 (免費仔哭哭)
-            //var user = Context.User as SocketGuildUser;
-            //var voiceChannel = user.VoiceChannel;
-            //await _elevenLabsService.SpeakAsync(voiceChannel, text, "eleven_v3", "pNInz6obpgDQGcFmaJgB");
-            using var httpClient = new HttpClient();
-
-            await _rVC_Service.SendTextToSpeach(
-                Context.Channel as ITextChannel,
-                text,
-                speaker,
-                tts_model,
-                pitch
-            );
-        }
-
-        [SlashCommand("上傳音檔來換聲音", "上傳音檔，選擇聲音模型與參數以改變聲音")]
-        public async Task ChangeVoice(
-            [Summary("file", "要上傳的音樂檔案 (mp3, wav)")] IAttachment file,
-            [Summary("speaker", "選擇要讓誰說")][Choice("soyo", "soyo"), Choice("tomori", "tomori"), Choice("anon", "anon")] string speaker,
-            [Summary("pitch_shift", "音高 (0.5-2之間)")] double pitch = 0,
-            [Summary("index_rate", "音色相似度 (0-1之間)")] double indexRate = 0.75,
-            [Summary("protect", "原聲保護度 (0-1之間)")] double protect = 0.33
-        )
-        {
-            using var httpClient = new HttpClient();
-            using var stream = await httpClient.GetStreamAsync(file.Url);
-
-            await _rVC_Service.SendConvertedAudioToChannelAsync(
-                Context.Channel as ITextChannel,
-                stream,
-                file.Filename,
-                speaker,
-                pitch,
-                indexRate,
-                protect
-            );
-        }
-
         [SlashCommand("開始魔術方塊遊戲", "開始魔術方塊遊戲")]
         public async Task RubiksCubeCommand(
-            [Summary("難度", "打亂步數 (預設20步)")] int scrambleMoves = 20)
+    [Summary("難度", "打亂步數 (預設20步)")] int scrambleMoves = 20)
         {
             await DeferAsync();
 
@@ -306,7 +253,7 @@ namespace MusicBot2.SlahCommands
 
                 await FollowupAsync(embed: embed, components: component?.Build());
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
                 var errorEmbed = new EmbedBuilder()
                 {
@@ -388,12 +335,119 @@ namespace MusicBot2.SlahCommands
             await FollowupAsync(result, ephemeral: true);
         }
 
+        [SlashCommand("1a2b遊戲", "1A2B遊戲")]
+        public async Task SetGames1A2BAsync([Summary("你要設定的數字", "你要設定的數字(4位數) 不輸入則soyo隨機設一筆")] string number = "")
+        {
+            await DeferAsync();
 
+            // 驗證輸入
+            if (!string.IsNullOrEmpty(number))
+            {
+                if (number.Length != 4 || !number.All(char.IsDigit))
+                {
+                    await FollowupAsync("請輸入4位數字！", ephemeral: true);
+                    return;
+                }
+            }
+
+            var userId = Context.User.Id;
+            var (component, embed) = await _game1A2BService.StartGameAsync(userId, number);
+
+            var message = await FollowupAsync(embed: embed, components: component?.Build());
+
+            // 儲存訊息ID到session中
+            var session = _game1A2BService.GetSession(userId);
+            if (session != null)
+            {
+                session.MessageId = message.Id;
+            }
+        }
+        #endregion
+
+        #region neuro功能相關
+        [SlashCommand("透過elevenlabs說話", "透過ElevenLabs說話")]
+        public async Task ElevenLabsTalk(
+    [Summary("text", "要讓他說的話")] string text,
+    [Summary("model", "選擇需要使用的模型")][Choice("品質最好", "eleven_v3"), Choice("最穩定", "eleven_multilingual_v2"), Choice("最低延遲", "eleven_flash_v2_5"), Choice("平衡", "eleven_turbo_v2_5")] string model,
+    [Summary("voiceID", "請輸入要使用的voiceID，不填入則預設")] string voiceID = "pNInz6obpgDQGcFmaJgB")
+        {
+            await DeferAsync();
+            var user = Context.User as SocketGuildUser;
+            var voiceChannel = user.VoiceChannel;
+            await _elevenLabsService.SpeakAsync(voiceChannel, text, model, voiceID);
+            await FollowupAsync("已接收", ephemeral: true);
+        }
+
+        [SlashCommand("聊天測試中", "聊天(測試中)")]
+        public async Task Talk(
+            [Summary("text", "要讓他說的話")] string text,
+            [Summary("speaker", "選擇要讓誰說")][Choice("soyo", "soyo"), Choice("tomori", "tomori"), Choice("anon", "anon")] string speaker,
+            [Summary("tts-model", "使用的tts模型")][Choice("tw成熟女聲", "zh-TW-HsiaoChenNeural"), Choice("tw活潑女聲", "zh-TW-HsiaoYuNeura"), Choice("tw男聲", "zh-TW-YunJheNeural"),
+            Choice("cn-AI助理風", "zh-CN-XiaoxiaoNeural"), Choice("cn-廣播風", "zh-CN-YunxiNeural"), Choice("cn-男聲", "zh-CN-XiaoyiNeural")] string tts_model,
+            [Summary("pitch_shift", "音高 (0.5-2之間)")] double pitch = 0
+            )
+        {
+            var user = Context.User as SocketGuildUser;
+
+            //先用google ai studio取得回復
+            //string result = await _googleAIStudioService.GenerateTextAsync(text, user, true);
+            //再用elevenlabs說出來 (免費仔哭哭)
+            //var user = Context.User as SocketGuildUser;
+            //var voiceChannel = user.VoiceChannel;
+            //await _elevenLabsService.SpeakAsync(voiceChannel, text, "eleven_v3", "pNInz6obpgDQGcFmaJgB");
+            using var httpClient = new HttpClient();
+
+            await _rVC_Service.SendTextToSpeach(
+                Context.Channel as ITextChannel,
+                text,
+                speaker,
+                tts_model,
+                pitch
+            );
+        }
+
+        [SlashCommand("上傳音檔來換聲音", "上傳音檔，選擇聲音模型與參數以改變聲音")]
+        public async Task ChangeVoice(
+            [Summary("file", "要上傳的音樂檔案 (mp3, wav)")] IAttachment file,
+            [Summary("speaker", "選擇要讓誰說")][Choice("soyo", "soyo"), Choice("tomori", "tomori"), Choice("anon", "anon")] string speaker,
+            [Summary("pitch_shift", "音高 (0.5-2之間)")] double pitch = 0,
+            [Summary("index_rate", "音色相似度 (0-1之間)")] double indexRate = 0.75,
+            [Summary("protect", "原聲保護度 (0-1之間)")] double protect = 0.33
+        )
+        {
+            using var httpClient = new HttpClient();
+            using var stream = await httpClient.GetStreamAsync(file.Url);
+
+            await _rVC_Service.SendConvertedAudioToChannelAsync(
+                Context.Channel as ITextChannel,
+                stream,
+                file.Filename,
+                speaker,
+                pitch,
+                indexRate,
+                protect
+            );
+        }
+
+        [SlashCommand("soyo記憶消除", "清除 Soyo 的記憶")]
+        public async Task ClearSoyoMemory(
+    [Summary("頻道", "要清除記憶的頻道")] string channelKey = null
+)
+        {
+            await DeferAsync();
+
+            await _googleAIStudioService.ClearMemoryAsync(channelKey);
+
+            await FollowupAsync($"已清除 Soyo 的記憶 ({channelKey ?? "全部頻道"})");
+        }
+        #endregion
+
+        #region 設定相關
         [SlashCommand("設置文字", "設置文字")]
         public async Task SetTextCommand(
-            [Summary("if", "如果有這個文字")] string key,
-            [Summary("then", "會跳出下面這段，如果不填就是刪除")] string value = ""
-            )
+    [Summary("if", "如果有這個文字")] string key,
+    [Summary("then", "會跳出下面這段，如果不填就是刪除")] string value = ""
+    )
         {
             await DeferAsync();
 
@@ -416,8 +470,8 @@ namespace MusicBot2.SlahCommands
 
         [SlashCommand("上傳文字for馬又only", "上傳文字(for 豬頭馬又only)")]
         public async Task WordsUploadCommand(
-            [Summary("file", "要上傳的文字檔案 (txt)")] IAttachment file
-            )
+    [Summary("file", "要上傳的文字檔案 (txt)")] IAttachment file
+    )
         {
             await DeferAsync();
             var result = await _wordService.SetWord(file);
@@ -428,13 +482,15 @@ namespace MusicBot2.SlahCommands
             }
             await FollowupAsync("上傳成功", ephemeral: true);
         }
+        #endregion
 
+        #region 互動用
         [SlashCommand("送光", "送光")]
         public async Task SendLightAsync(
-            [Summary("你的代名", "你想用的名字")] string sender,
-            [Summary("想送的對象", "請選擇對象")] IUser target,
-            [Summary("自訂訊息", "你想要附加的訊息，選填，如果要的話，幫我以/me代表自己，/target代表你要發送的對象")] string message = ""
-        )
+    [Summary("你的代名", "你想用的名字")] string sender,
+    [Summary("想送的對象", "請選擇對象")] IUser target,
+    [Summary("自訂訊息", "你想要附加的訊息，選填，如果要的話，幫我以/me代表自己，/target代表你要發送的對象")] string message = ""
+)
         {
             var channel = Context.Client.GetChannel(592716175461580800) as ISocketMessageChannel;
             if (string.IsNullOrEmpty(message))
@@ -449,10 +505,31 @@ namespace MusicBot2.SlahCommands
             await RespondAsync("發送成功", ephemeral: true);
         }
 
+        [SlashCommand("開啟投票", "開啟投票")]
+        public async Task VoteAsync(
+    [Summary("標題", "標題")] string title,
+    [Summary("投票選項", "選項，以,區隔，ex:1,2,3...")] string item,
+    [Summary("role", "要@的群組")] IRole? role = null
+)
+        {
+            await DeferAsync();
+            string emoteString = CommonHelper.AddEmoji(item);
+            string mention = role != null ? $"{role.Mention}\n" : "";
+
+            string result = $"{mention}**{title}**\n\n{emoteString}";
+            await FollowupAsync(result);
+
+            var message = await GetOriginalResponseAsync();
+
+            await CommonHelper.AddEmojiToMessageAsync(message, item.Split(',').Length);
+        }
+        #endregion
+
+        #region 殘酷二選一
         [SlashCommand("輸入殘酷二選一id開啟遊戲", "輸入殘酷二選一ID開啟遊戲")]
         public async Task Pick2TitleAsync(
-            [Summary("遊戲id", "要開啟的遊戲ID")] string gameID, 
-            [Summary("選擇總量", "要選擇的項目總量")] int count)
+    [Summary("遊戲id", "要開啟的遊戲ID")] string gameID,
+    [Summary("選擇總量", "要選擇的項目總量")] int count)
         {
             await DeferAsync();
 
@@ -476,31 +553,14 @@ namespace MusicBot2.SlahCommands
                 await FollowupAsync($"啟動遊戲時發生錯誤: {ex.Message}", ephemeral: true);
             }
         }
+        #endregion
 
-        [SlashCommand("開啟投票", "開啟投票")]
-        public async Task VoteAsync(
-            [Summary("標題", "標題")] string title,
-            [Summary("投票選項", "選項，以,區隔，ex:1,2,3...")] string item,
-            [Summary("role", "要@的群組")] IRole? role = null
-        )
-        {
-            await DeferAsync();
-            string emoteString = CommonHelper.AddEmoji(item);
-            string mention = role != null ? $"{role.Mention}\n" : "";
-
-            string result = $"{mention}**{title}**\n\n{emoteString}";
-            await FollowupAsync(result);
-
-            var message = await GetOriginalResponseAsync();
-
-            await CommonHelper.AddEmojiToMessageAsync(message, item.Split(',').Length);
-        }
-
+        #region 動漫相關
         [SlashCommand("猜動漫角色", "猜動漫角色")]
         public async Task GuessAnimeCharaAsync(
-            [Summary("模式", "模式")][Choice("角色猜角色", "ctc"), Choice("角色猜動畫", "cta")] string mode,
-            [Summary("是否查詢熱門", "是否查詢熱門")] bool isTop
-        )
+    [Summary("模式", "模式")][Choice("角色猜角色", "ctc"), Choice("角色猜動畫", "cta")] string mode,
+    [Summary("是否查詢熱門", "是否查詢熱門")] bool isTop
+)
         {
             await DeferAsync();
 
@@ -554,5 +614,90 @@ namespace MusicBot2.SlahCommands
                 await Context.Channel.SendFileAsync(attachment);
             }
         }
+        #endregion
+
+        #region pokemon相關
+        [SlashCommand("猜pokemon", "猜pokemon")]
+        public async Task GuessPokemonAsync(
+[Summary("模式", "模式")][Choice("猜pokemon名稱", "name"), Choice("猜pokemon技能", "move"), Choice("我是誰", "who")] string mode)
+        {
+            await DeferAsync();
+            var ((component, embed), silhouette) = await _pokeService.StartPokeGameAsync(mode);
+
+            if (silhouette != null)
+                await FollowupWithFileAsync(silhouette, "mystery.png", embed: embed, components: component.Build());
+            else
+                await FollowupAsync(embed: embed, components: component.Build());
+        }
+
+        [SlashCommand("抓pokemon", "每天抓一隻隨機pokemon")]
+        public async Task CatchPokemonAsync()
+        {
+            await DeferAsync();
+            var (embed, component) = await _pokeGameService.CatchPokemonAsync(Context.User.Id, Context.User.Username);
+            await FollowupAsync(embed: embed, components: component.Build());
+        }
+
+        [SlashCommand("我的pokemon", "查看你的pokemon列表")]
+        public async Task MyPokemonAsync()
+        {
+            await DeferAsync();
+            var (embed, component) = await _pokeGameService.ListPokemonAsync(Context.User.Id, Context.User.Username);
+            await FollowupAsync(embed: embed, components: component.Build());
+        }
+
+        [SlashCommand("自定義pokemon", "自定義你的pokemon名稱")]
+        public async Task CustomizePokemonAsync(
+            [Summary("編號", "pokemon的編號（從1開始）")] int index,
+            [Summary("自訂名稱", "新的名稱")] string customName)
+        {
+            await DeferAsync();
+            var (embed, component) = await _pokeGameService.CustomizePokemonAsync(Context.User.Id, Context.User.Username, index, customName);
+            await FollowupAsync(embed: embed, components: component.Build());
+        }
+
+        [SlashCommand("pokemon對戰", "尋找對手進行pokemon對戰")]
+        public async Task BattlePokemonAsync(
+            [Summary("編號", "要出戰的pokemon編號（從1開始）")] int index = 0)
+        {
+            await DeferAsync();
+
+            var channel = Context.Channel;
+            var (embed, component) = await _pokeGameService.StartBattleSearchAsync(Context.User.Id, Context.User.Username, index, channel);
+            await FollowupAsync(embed: embed, components: component.Build());
+        }
+
+        [SlashCommand("pokemon對戰2v2", "尋找對手進行pokemon2v2對戰")]
+        public async Task BattlePokemon2x2Async(
+    [Summary("第一隻編號", "要出戰的pokemon編號（從1開始）")] int index1,
+    [Summary("第二隻編號", "要出戰的pokemon編號（從1開始）")] int index2)
+        {
+            await DeferAsync();
+
+            var channel = Context.Channel;
+            var (embed, component) = await _pokeGameService.Start2v2BattleSearchAsync(Context.User.Id, Context.User.Username, index1, index2, channel);
+            await FollowupAsync(embed: embed, components: component.Build());
+        }
+
+        [SlashCommand("測試對戰", "生成假對手進行測試對戰")]
+        public async Task TestBattlePokemonAsync(
+            [Summary("編號", "要出戰的pokemon編號（從1開始）")] int index)
+        {
+            await DeferAsync();
+            var (embed, component) = await _pokeGameService.StartTestBattleAsync(Context.User.Id, Context.User.Username, index);
+            await FollowupAsync(embed: embed, components: component.Build());
+        }
+
+        [SlashCommand("蛋雕一隻pokemon", "蛋雕一隻pokemon")]
+        public async Task ReleasePokemonAsync(
+            [Summary("編號", "要釋放的pokemon編號（從1開始）")] int index)
+        {
+            await DeferAsync();
+            var (embed, component) = await _pokeGameService.ReleasePokemonAsync(Context.User.Id, Context.User.Username, index);
+            await FollowupAsync(embed: embed, components: component.Build());
+        }
+
+
+        #endregion
     }
 }

@@ -325,7 +325,7 @@ namespace MusicBot2.Service
             }
         }
 
-        public async Task GuessChampSkillAsync(IMessageChannel channel, string champName, string skillPos, string userGuess)
+        public async Task GuessChampSkillAsync(IMessageChannel channel, string champName, string skillPos, string userGuess, SocketGuildUser user)
         {
             string correctSkillName = string.Empty;
 
@@ -380,11 +380,11 @@ namespace MusicBot2.Service
                         {
                             if (userGuess == userGuess.ToLower().Trim())
                             {
-                                await channel.SendMessageAsync($"完全被你賽到瞜，獎勵你{GetRandomRewards()}");
+                                await channel.SendMessageAsync($"完全被你賽到瞜，獎勵你{await RewardsHelpers.GetRandomRewards(channel, user)}");
                             }
                             else
                             {
-                                await channel.SendMessageAsync($"被你賽到一半，獎勵你{GetRandomRewards()}");
+                                await channel.SendMessageAsync($"被你賽到一半，獎勵你{await RewardsHelpers.GetRandomRewards(channel, user)}");
                             }
                         }
                         else
@@ -398,14 +398,6 @@ namespace MusicBot2.Service
                     }
                 }
             }
-        }
-
-        /// <summary>
-        /// 獲取隨機獎勵
-        /// </summary>
-        public string GetRandomRewards()
-        {
-            return RewardsHelpers.GetRandomRewards();
         }
 
         /// <summary>

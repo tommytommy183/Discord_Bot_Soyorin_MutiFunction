@@ -1,5 +1,4 @@
-﻿using AngleSharp.Dom;
-using Discord;
+﻿using Discord;
 using Discord.Audio;
 using Discord.Commands;
 using Discord.Interactions;
@@ -22,11 +21,6 @@ using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
-using YoutubeExplode;
-using YoutubeExplode.Common;
-using YoutubeExplode.Exceptions;
-using YoutubeExplode.Search;
-using YoutubeExplode.Videos.Streams;
 using static System.Net.Mime.MediaTypeNames;
 
 public class Program
@@ -53,6 +47,8 @@ public class Program
     private GoogleAIStudioService _googleAIStudioService;
     private OpenRouterService _openRouterService;
     private SetTextService _setTextService;
+    private string _cookie;
+    
     #endregion
 
     #region 基礎設定
@@ -81,6 +77,7 @@ public class Program
         string googleAIStudioApiKey = configer["GoogleAIStudio:dcBotKey1"];
         string googleAIStudioApiKey2 = configer["GoogleAIStudio:dcBotKey2"];
         string openRouterApiKey = configer["Openrouter:ApiKey1"];
+        _cookie = configer["YT_DLP_COOKIES"];
 
         string redisConn = configer["Redis:ConnectionString"];
         var setTextService = new SetTextService(redisConn);
@@ -100,8 +97,10 @@ public class Program
             .AddSingleton<RubiksCubeService>()
             .AddSingleton<GetChampService>()
             .AddSingleton<OldMaidService>()
+            .AddSingleton<Game1A2BService>()
             .AddSingleton<Game2048Service>()
             .AddSingleton<Pick2Service>()
+            .AddSingleton<PokeService>()
             .AddSingleton<RVC_Service>()
             .AddSingleton<SetTextService>(setTextService)
             .AddSingleton<ElevenLabsService>(sp =>
@@ -116,6 +115,9 @@ public class Program
                   new OpenRouterService(openRouterApiKey)
                   )
             .AddSingleton<JikanAnimeService>()
+            .AddSingleton<PokeGameService>(sp =>
+                new PokeGameService(redisConn, sp.GetRequiredService<OpenRouterService>())
+                )
               .BuildServiceProvider();
 
         _googleAIStudioService = _services.GetRequiredService<GoogleAIStudioService>();
@@ -362,6 +364,108 @@ public class Program
                     });
                 }
             }
+
+            else if (component.Data.CustomId.StartsWith("poke_guess_"))
+            {
+                await component.DeferAsync();
+
+                var parts = component.Data.CustomId.Split('_');
+                if (parts.Length == 5)
+                {
+                    int selectedId = int.Parse(parts[2]);
+                    int correctId = int.Parse(parts[3]);
+                    string correctName = parts[4];
+
+                    var pokeService = _services.GetService<PokeService>();
+                    var (embed, newComponent) = await pokeService.HandleButtonClickAsync(component, selectedId, correctId, correctName);
+
+                    await component.ModifyOriginalResponseAsync(msg =>
+                    {
+                        msg.Embed = embed;
+                        msg.Components = newComponent?.Build();
+                    });
+                }
+            }
+            else if (component.Data.CustomId.StartsWith("1a2b_"))
+            {
+                var parts = component.Data.CustomId.Split('_');
+                if (parts.Length == 3)
+                {
+                    string mode = parts[1];
+                    ulong userId = ulong.Parse(parts[2]);
+
+                    var game1A2BService = _services.GetService<Game1A2BService>();
+
+                    // 如果是猜數字，需要彈出Modal（HandleButtonClickAsync會處理響應）
+                    if (mode == "guess")
+                    {
+                        await game1A2BService.HandleButtonClickAsync(component, mode, userId);
+                    }
+                    else if (mode == "quit")
+                    {
+                        // 放棄遊戲需要更新訊息
+                        await component.DeferAsync();
+                        var (newComponent, embed) = await game1A2BService.HandleButtonClickAsync(component, mode, userId);
+
+                        await component.ModifyOriginalResponseAsync(msg =>
+                        {
+                            msg.Embed = embed;
+                            msg.Components = newComponent?.Build();
+                        });
+                    }
+                }
+            }
+        }
+        else if (interaction is SocketModal modal)
+        {
+            // 處理 1A2B Modal 提交
+            if (modal.Data.CustomId.StartsWith("1a2b_modal_"))
+            {
+                var parts = modal.Data.CustomId.Split('_');
+                if (parts.Length == 3)
+                {
+                    ulong userId = ulong.Parse(parts[2]);
+                    var game1A2BService = _services.GetService<Game1A2BService>();
+                    var session = game1A2BService.GetSession(userId);
+                    if (session != null)
+                    {
+                        var result = await game1A2BService.HandleModalSubmitAsync(modal, userId);
+
+                        if (result.isError)
+                        {
+                            // 驗證失敗 → ephemeral，只有自己看到
+                            await modal.RespondAsync(embed: result.Item1.embed, ephemeral: true);
+                        }
+                        else
+                        {
+                            // 成功 → Defer，不產生任何新訊息
+                            await modal.DeferAsync();
+
+                            if (session.MessageId != 0)
+                            {
+                                var gameMessage = await modal.Channel.GetMessageAsync(session.MessageId);
+                                if (gameMessage is IUserMessage userMsg)
+                                {
+                                    await userMsg.ModifyAsync(msg =>
+                                    {
+                                        msg.Embed = result.Item1.embed;
+                                        msg.Components = result.Item1.component?.Build();
+                                    });
+                                }
+                            }
+                        }
+                    }
+                    else
+                    {
+                        var errorEmbed = new EmbedBuilder()
+                            .WithTitle("⚠️ 提示")
+                            .WithColor(Color.Orange)
+                            .WithDescription("找不到遊戲，請重新開始！")
+                            .Build();
+                        await modal.RespondAsync(embed: errorEmbed, ephemeral: true);
+                    }
+                }
+            }
         }
         else
         {
@@ -428,8 +532,7 @@ public class Program
                 message.Content.ToLower().Contains("長期") ||
                 message.Content.ToLower().Contains("爽世") ||
                 message.Content.ToLower().Contains("爽食") ||
-                message.Content.ToLower().Contains("素食") ||
-                message.Content.ToLower().Contains("我"))
+                message.Content.ToLower().Contains("素食"))
         {
             var talker = message.Author as SocketGuildUser;
             // 用「伺服器 + 頻道」當記憶 key，避免不同頻道上下文互相污染
@@ -445,12 +548,18 @@ public class Program
                     result = await _openRouterService.GenerateTextAsync(message.Content, talker, true, channelKey, repliedMessage);
                     await message.Channel.SendMessageAsync(result);
                     return; // 已處理完畢，直接返回
+
+                    //result = await _googleAIStudioService.GenerateTextAsync(message.Content, talker, true, channelKey);
+                    //await message.Channel.SendMessageAsync(result);
                 }
             }
             else
             {
                 result = await _openRouterService.GenerateTextAsync(message.Content, talker, true, channelKey);
                 await message.Channel.SendMessageAsync(result);
+
+                //result = await _googleAIStudioService.GenerateTextAsync(message.Content, talker, true, channelKey);
+                //await message.Channel.SendMessageAsync(result);
             }
         }
 
@@ -488,14 +597,6 @@ public class Program
             var mineService = _services.GetService<MineGameService>();
             var (component, embed) = await mineService.StartGameAsync(user.Id, height, width);
             await channel.SendMessageAsync(embed: embed, components: component.Build());
-        }
-        else if (cmd.ToLower().StartsWith("guess"))
-        {
-            //$$guess {英雄名} {技能位置 P,Q,W,E,R} {使用者猜測的名字}
-            var champName = cmd.Substring(5).ToLower().Trim().Split(' ')[0];
-            var skillPos = cmd.Substring(5).ToLower().Trim().Split(' ')[1];
-            var userGuess = cmd.Substring(5).ToLower().Trim().Split(' ')[2];
-            await champService.GuessChampSkillAsync(channel, champName, skillPos, userGuess);
         }
         else if (cmd.ToLower().StartsWith("p"))
         {
@@ -593,10 +694,13 @@ public class Program
             return;
         }
 
-        if (!await CheckYoutubeUrlAliveAsync(query, channel) && !_isRelatedOn)
+        // 檢查影片是否有效（非致命性檢查）
+        var isVideoAlive = await CheckYoutubeUrlAliveAsync(query, channel);
+        if (!isVideoAlive && !_isRelatedOn)
         {
-            await channel.SendMessageAsync($"連結已經死了: {{ {query} }}");
-            return;
+            await channel.SendMessageAsync($"⚠️ 警告：無法驗證影片有效性，但仍會嘗試下載。如果這是地區限制問題，下載可能會失敗。");
+            Console.WriteLine($"[PLAY WARNING] 影片檢查失敗，但仍繼續嘗試下載: {query}");
+            // 不直接 return，給下載一次機會
         }
 
 
@@ -909,31 +1013,135 @@ public class Program
                 filepath = await DownloadAudioAsync(songUrl);
             Console.WriteLine("成功下載後的檔案位置" + filepath);
 
+            // 驗證檔案存在且可讀取
+            if (!File.Exists(filepath))
+            {
+                Console.WriteLine($"[PLAY ERROR] 檔案不存在: {filepath}");
+                await channel.SendMessageAsync("❌ 下載的檔案不存在");
+                return;
+            }
+            var fileInfo = new FileInfo(filepath);
+            Console.WriteLine($"[PLAY DEBUG] 檔案大小: {fileInfo.Length} bytes");
+
             await Task.Delay(2000);
-            if (_audioClient == null || _audioClient.ConnectionState != Discord.ConnectionState.Connected)
-                _audioClient = await voiceChannel.ConnectAsync(selfDeaf: false, selfMute: false);
 
-            var output = _audioClient.CreatePCMStream(AudioApplication.Mixed);
+            Console.WriteLine($"[PLAY DEBUG] 準備連接語音頻道");
+            Console.WriteLine($"[PLAY DEBUG] 當前 _audioClient 狀態: {_audioClient?.ConnectionState.ToString() ?? "null"}");
 
+            try
+            {
+                if (_audioClient == null || _audioClient.ConnectionState != Discord.ConnectionState.Connected)
+                {
+                    Console.WriteLine($"[PLAY DEBUG] 嘗試連接語音頻道: {voiceChannel.Name}");
+                    Console.WriteLine($"[PLAY DEBUG] VoiceChannel ID: {voiceChannel.Id}");
+                    Console.WriteLine($"[PLAY DEBUG] Guild: {voiceChannel.Guild.Name}");
+
+                    _audioClient = await voiceChannel.ConnectAsync(selfDeaf: false, selfMute: false);
+
+                    Console.WriteLine($"[PLAY DEBUG] 連接成功，狀態: {_audioClient.ConnectionState}");
+
+                    // 等待連接穩定
+                    await Task.Delay(500);
+                    Console.WriteLine($"[PLAY DEBUG] 等待後狀態: {_audioClient.ConnectionState}");
+                }
+                else
+                {
+                    Console.WriteLine($"[PLAY DEBUG] 已連接，跳過連接步驟");
+                }
+            }
+            catch (Exception connectEx)
+            {
+                Console.WriteLine($"[PLAY ERROR] 連接語音頻道失敗: {connectEx.Message}");
+                Console.WriteLine($"[PLAY ERROR] Exception Type: {connectEx.GetType().Name}");
+                Console.WriteLine($"[PLAY ERROR] Stack Trace: {connectEx.StackTrace}");
+
+                if (connectEx.InnerException != null)
+                {
+                    Console.WriteLine($"[PLAY ERROR] Inner Exception: {connectEx.InnerException.Message}");
+                    Console.WriteLine($"[PLAY ERROR] Inner Stack Trace: {connectEx.InnerException.StackTrace}");
+                }
+
+                await channel.SendMessageAsync($"❌ 無法連接語音頻道: {connectEx.Message}");
+                return;
+            }
+
+            Console.WriteLine($"[PLAY DEBUG] 創建 PCM 串流");
+            AudioOutStream output = null;
+
+            try
+            {
+                output = _audioClient.CreatePCMStream(AudioApplication.Mixed);
+                Console.WriteLine($"[PLAY DEBUG] PCM 串流創建成功");
+            }
+            catch (Exception streamEx)
+            {
+                Console.WriteLine($"[PLAY ERROR] 創建 PCM 串流失敗: {streamEx.Message}");
+                Console.WriteLine($"[PLAY ERROR] Stack Trace: {streamEx.StackTrace}");
+                await channel.SendMessageAsync($"❌ 無法創建音訊串流: {streamEx.Message}");
+                return;
+            }
+
+            Console.WriteLine($"[PLAY DEBUG] 啟動 FFmpeg process");
             var ffmpegProcess = CreatePcmStreamProcess(filepath, _isEarRapeOn);
+
+            // 檢查 FFmpeg 是否啟動成功
+            if (ffmpegProcess == null)
+            {
+                await channel.SendMessageAsync("❌ FFmpeg 啟動失敗");
+                Console.WriteLine("[PLAY ERROR] FFmpeg process 為 null");
+                return;
+            }
+
+            Console.WriteLine($"[PLAY DEBUG] FFmpeg process ID: {ffmpegProcess.Id}");
+            Console.WriteLine($"[PLAY DEBUG] FFmpeg 已啟動，開始串流");
+
+            // 讀取 FFmpeg 的錯誤輸出（用於除錯）
+            _ = Task.Run(async () =>
+            {
+                var errorReader = ffmpegProcess.StandardError;
+                string line;
+                while ((line = await errorReader.ReadLineAsync()) != null)
+                {
+                    Console.WriteLine($"[FFmpeg ERROR] {line}");
+                }
+            });
 
             try
             {
                 byte[] buffer = new byte[4096];
                 int bytesRead;
+                int totalBytesRead = 0;
+
                 while ((bytesRead = await ffmpegProcess!.StandardOutput.BaseStream.ReadAsync(buffer, 0, buffer.Length)) > 0)
                 {
                     if (_isSkipRequest)
                     {
+                        Console.WriteLine($"[PLAY DEBUG] 收到跳過請求");
                         _isSkipRequest = false;
                         break;
                     }
                     await output.WriteAsync(buffer, 0, bytesRead);
+                    totalBytesRead += bytesRead;
+
+                    // 每 1MB 輸出一次進度
+                    if (totalBytesRead % (1024 * 1024) == 0)
+                    {
+                        Console.WriteLine($"[PLAY DEBUG] 已串流: {totalBytesRead / (1024 * 1024)} MB");
+                    }
                 }
+
+                Console.WriteLine($"[PLAY DEBUG] 串流完成，總共: {totalBytesRead} bytes");
                 await output.FlushAsync();
+            }
+            catch (Exception streamEx)
+            {
+                Console.WriteLine($"[PLAY ERROR] 串流錯誤: {streamEx.Message}");
+                Console.WriteLine($"[PLAY ERROR] Stack Trace: {streamEx.StackTrace}");
+                await channel.SendMessageAsync($"❌ 播放錯誤: {streamEx.Message}");
             }
             finally
             {
+                Console.WriteLine($"[PLAY DEBUG] 清理資源");
                 ffmpegProcess?.Kill();
                 ffmpegProcess?.Dispose();
             }
@@ -952,61 +1160,183 @@ public class Program
     #region yt相關
     public async Task<string> GetVideoIDAsync(string url)
     {
-        var youtube = new YoutubeClient();
-        var videoId = YoutubeExplode.Videos.VideoId.TryParse(url);
-        var video = await youtube.Videos.GetAsync(videoId.Value);
-        var videoTitle = video.Title;
-        if (videoId == null)
+        try
         {
-            return "";
+            Console.WriteLine($"[GetVideoIDAsync] 開始取得影片標題: {url}");
+
+            // 不使用 cookie
+            var processInfo = new ProcessStartInfo
+            {
+                FileName = "yt-dlp",
+                Arguments = $"-J --no-check-certificate --extractor-args \"youtube:player_client=android,web\" {url}",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using (var process = Process.Start(processInfo))
+            {
+                string output = await process.StandardOutput.ReadToEndAsync();
+                string error = await process.StandardError.ReadToEndAsync();
+                await process.WaitForExitAsync();
+
+                if (process.ExitCode == 0 && !string.IsNullOrWhiteSpace(output))
+                {
+                    try
+                    {
+                        var jsonDoc = System.Text.Json.JsonDocument.Parse(output);
+                        var title = jsonDoc.RootElement.GetProperty("title").GetString();
+                        Console.WriteLine($"[GetVideoIDAsync] 成功取得標題: {title}");
+                        return title ?? "";
+                    }
+                    catch (Exception jsonEx)
+                    {
+                        Console.WriteLine($"[GetVideoIDAsync] 解析 JSON 失敗: {jsonEx.Message}");
+                    }
+                }
+
+                if (!string.IsNullOrEmpty(error))
+                {
+                    Console.WriteLine($"[GetVideoIDAsync] 錯誤: {error.Substring(0, Math.Min(200, error.Length))}");
+                }
+                return "";
+            }
         }
-        else
+        catch (Exception ex)
         {
-            return videoTitle;
+            Console.WriteLine($"[GetVideoIDAsync] 例外: {ex.Message}");
+            return "";
         }
     }
     public async Task<string> DownloadAudioAsync(string url)
     {
-
-        var youtube = new YoutubeClient();
-        var videoId = YoutubeExplode.Videos.VideoId.TryParse(url);
-        if (!videoId.HasValue)
-        {
-            throw new Exception("連結無效");
-        }
-        _NowPlayingSongID = videoId.Value;
-        var video = await youtube.Videos.GetAsync(videoId.Value);
-        _NowPlayingSongName = video.Title.ToString();
-        var streamManifest = await youtube.Videos.Streams.GetManifestAsync(video.Id);
-        var streamInfo = streamManifest.GetAudioOnlyStreams().GetWithHighestBitrate();
-
+        Console.WriteLine($"[DOWNLOAD DEBUG] 開始下載: {url}");
         var tempDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "temp");
         Directory.CreateDirectory(tempDirectory);
 
-        var filePath = Path.Combine(tempDirectory, $"{Guid.NewGuid()}.mp3");
-        await youtube.Videos.Streams.DownloadAsync(streamInfo, filePath);
+        // 先取得影片 ID 和標題
+        Console.WriteLine($"[DOWNLOAD DEBUG] 步驟 1: 取得影片 ID");
+        var videoId = await GetYoutubeVideoIdAsync(url);
+        if (string.IsNullOrEmpty(videoId))
+        {
+            Console.WriteLine($"[DOWNLOAD ERROR] 無法取得影片 ID");
+            throw new Exception("連結無效");
+        }
+        Console.WriteLine($"[DOWNLOAD DEBUG] 影片 ID: {videoId}");
 
-        return filePath;
+        _NowPlayingSongID = videoId;
+        _NowPlayingSongName = await GetVideoIDAsync(url);
+        Console.WriteLine($"[DOWNLOAD DEBUG] 影片名稱: {_NowPlayingSongName}");
+
+        var filePrefix = Guid.NewGuid().ToString();
+        var outputTemplate = Path.Combine(tempDirectory, $"{filePrefix}.%(ext)s");
+
+        Console.WriteLine($"[DOWNLOAD DEBUG] 步驟 2: 開始嘗試下載，輸出檔案前綴: {filePrefix}");
+
+        // 嘗試多種格式策略
+        string[] formatOptions = new[]
+        {
+            "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio",
+            "bestaudio",
+            "worst",
+            ""  // 不指定格式
+        };
+
+        // 策略 1: 先不用 cookie 嘗試（避免地區衝突）
+        Console.WriteLine($"[DOWNLOAD DEBUG] 策略 1: 不使用 cookie");
+        foreach (var formatOption in formatOptions)
+        {
+            Console.WriteLine($"[DOWNLOAD DEBUG] 嘗試格式: '{formatOption}'");
+
+            var formatArg = string.IsNullOrEmpty(formatOption) ? "" : $"-f {formatOption} ";
+            var args = $"{formatArg}-x --audio-format mp3 --no-check-certificate --extractor-args \"youtube:player_client=android,web\" -o \"{outputTemplate}\" {url}";
+
+            var processInfo = new ProcessStartInfo
+            {
+                FileName = "yt-dlp",
+                Arguments = args,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using (var process = Process.Start(processInfo))
+            {
+                string output = await process.StandardOutput.ReadToEndAsync();
+                string error = await process.StandardError.ReadToEndAsync();
+                await process.WaitForExitAsync();
+
+                Console.WriteLine($"[DOWNLOAD DEBUG] 格式 '{formatOption}' - ExitCode: {process.ExitCode}");
+
+                if (process.ExitCode == 0)
+                {
+                    var downloadedFile = Directory
+                        .EnumerateFiles(tempDirectory, $"{filePrefix}.*")
+                        .FirstOrDefault(f => Path.GetExtension(f).Equals(".mp3", StringComparison.OrdinalIgnoreCase));
+
+                    if (!string.IsNullOrEmpty(downloadedFile))
+                    {
+                        Console.WriteLine($"[DOWNLOAD SUCCESS] 下載成功（無 cookie）: {downloadedFile}");
+                        return downloadedFile;
+                    }
+                }
+                else
+                {
+                    Console.WriteLine($"[DOWNLOAD DEBUG] 失敗原因: {error.Substring(0, Math.Min(200, error.Length))}");
+                }
+            }
+        }
+
+        // 策略 2: 如果不用 cookie 全部失敗，再試用 cookie（可能是需要認證的影片）
+        Console.WriteLine($"[DOWNLOAD DEBUG] 策略 2: 使用 cookie（策略 1 全部失敗）");
+        foreach (var formatOption in formatOptions)
+        {
+            Console.WriteLine($"[DOWNLOAD DEBUG] 嘗試格式（帶 cookie）: '{formatOption}'");
+
+            var formatArg = string.IsNullOrEmpty(formatOption) ? "" : $"-f {formatOption} ";
+            var result = await ExecuteYtDlpAsync($"{formatArg}-x --audio-format mp3 --no-check-certificate -o \"{outputTemplate}\" {url}");
+
+            Console.WriteLine($"[DOWNLOAD DEBUG] 格式 '{formatOption}' - ExitCode: {result.exitCode}");
+
+            if (result.exitCode == 0)
+            {
+                var downloadedFile = Directory
+                    .EnumerateFiles(tempDirectory, $"{filePrefix}.*")
+                    .FirstOrDefault(f => Path.GetExtension(f).Equals(".mp3", StringComparison.OrdinalIgnoreCase));
+
+                if (!string.IsNullOrEmpty(downloadedFile))
+                {
+                    Console.WriteLine($"[DOWNLOAD SUCCESS] 下載成功（有 cookie）: {downloadedFile}");
+                    return downloadedFile;
+                }
+            }
+        }
+
+        Console.WriteLine($"[DOWNLOAD ERROR] YouTube 下載失敗（所有策略都嘗試過）");
+        throw new Exception($"YouTube 下載失敗: 所有格式和策略都已嘗試");
     }
     public async Task<string> GetYoutubeUrlByNameAsync(IMessageChannel channel, string query)
     {
         try
         {
-            // 使用 YoutubeExplode 搜索视频
-            var youtube = new YoutubeClient();
-            var searchResults = await youtube.Search.GetResultsAsync(query);
+            var (exitCode, output, error) = await ExecuteYtDlpAsync($"--skip-download --get-id --default-search ytsearch1: \"{query}\"");
 
-            if (!searchResults.Any())
+            if (exitCode == 0 && !string.IsNullOrWhiteSpace(output))
             {
-                await channel.SendMessageAsync("找不到歌曲");
-                return "";
+                var videoId = output.Trim();
+                var videoUrl = $"https://www.youtube.com/watch?v={videoId}";
+                await channel.SendMessageAsync(videoUrl);
+                return videoUrl;
             }
-            // 获取第一个搜索结果
-            var video = searchResults.First();
-            var videoUrl = video.Url;
 
-            await channel.SendMessageAsync($"{video.Url}");
-            return $"{videoUrl}";
+            await channel.SendMessageAsync("找不到歌曲");
+            if (!string.IsNullOrEmpty(error))
+            {
+                Console.WriteLine($"搜尋失敗: {error}");
+            }
+            return "";
         }
         catch (Exception ex)
         {
@@ -1020,56 +1350,145 @@ public class Program
         try
         {
             var modifiedTitle = GetRandomizedTitle(name, channel);
-            var youtube = new YoutubeClient();
-            var searchResults = await youtube.Search.GetResultsAsync(modifiedTitle);
-            var top10Results = searchResults.Take(10);
-            //打亂
-            var random = new Random();
-            var shuffledResults = top10Results.OrderBy(x => random.Next()).ToList();
 
-            // 输出结果
-            foreach (var result in shuffledResults)
+            // 使用 yt-dlp 搜尋，取得 20 個結果
+            var (exitCode, output, error) = await ExecuteYtDlpAsync($"--skip-download --get-id --flat-playlist --default-search ytsearch20: \"{modifiedTitle}\"");
+
+            if (exitCode == 0 && !string.IsNullOrWhiteSpace(output))
             {
-                // 检查结果类型是否为视频
-                if (result is VideoSearchResult videoResult)
+                var lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+                var random = new Random();
+                var shuffledLines = lines.OrderBy(x => random.Next()).ToList();
+
+                foreach (var videoId in shuffledLines)
                 {
-                    if (videoResult.Duration < TimeSpan.FromMinutes(10))
+                    var trimmedId = videoId.Trim();
+                    if (string.IsNullOrEmpty(trimmedId)) continue;
+
+                    // 檢查是否已播放過
+                    if (!_SongBeenPlayedList.Contains(trimmedId))
                     {
-                        if (!_SongBeenPlayedList.Contains(videoResult.Id))
+                        // 檢查影片長度
+                        var duration = await GetVideoDurationAsync(trimmedId);
+                        if (duration < TimeSpan.FromMinutes(10))
                         {
-                            url = videoResult.Url;
-                            _SongBeenPlayedList.Add(videoResult.Id);
+                            url = $"https://www.youtube.com/watch?v={trimmedId}";
+                            _SongBeenPlayedList.Add(trimmedId);
                             break;
-                        }
-                    }
-
-                }
-            }//真查不到就變20筆 再查不到就return空值回去判斷
-            if (string.IsNullOrEmpty(url))
-            {
-                var top20Results = searchResults.Take(20);
-                foreach (var result in top20Results)
-                {
-                    if (result is VideoSearchResult videoResult)
-                    {
-                        if (videoResult.Duration < TimeSpan.FromMinutes(10))
-                        {
-                            if (!_SongBeenPlayedList.Contains(videoResult.Id))
-                            {
-                                url = videoResult.Url;
-                                _SongBeenPlayedList.Add(videoResult.Id);
-                                break;
-                            }
                         }
                     }
                 }
             }
+            else if (!string.IsNullOrEmpty(error))
+            {
+                Console.WriteLine($"搜尋相關影片失敗: {error}");
+            }
+
             return url;
         }
         catch (Exception ex)
         {
             await channel.SendMessageAsync($"我從來不覺得寫程式開心過:SearchRelateVideoAsync {ex.Message}");
             return "";
+        }
+    }
+
+    // 輔助方法：取得影片 ID
+    private async Task<string> GetYoutubeVideoIdAsync(string url)
+    {
+        try
+        {
+            Console.WriteLine($"[GetYoutubeVideoIdAsync] 取得影片 ID: {url}");
+
+            // 不使用 cookie
+            var processInfo = new ProcessStartInfo
+            {
+                FileName = "yt-dlp",
+                Arguments = $"-J --no-check-certificate --extractor-args \"youtube:player_client=android,web\" {url}",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using (var process = Process.Start(processInfo))
+            {
+                string output = await process.StandardOutput.ReadToEndAsync();
+                await process.WaitForExitAsync();
+
+                if (process.ExitCode == 0 && !string.IsNullOrWhiteSpace(output))
+                {
+                    try
+                    {
+                        var jsonDoc = System.Text.Json.JsonDocument.Parse(output);
+                        var videoId = jsonDoc.RootElement.GetProperty("id").GetString();
+                        Console.WriteLine($"[GetYoutubeVideoIdAsync] 成功取得 ID: {videoId}");
+                        return videoId ?? "";
+                    }
+                    catch (Exception jsonEx)
+                    {
+                        Console.WriteLine($"[GetYoutubeVideoIdAsync] 解析 JSON 失敗: {jsonEx.Message}");
+                    }
+                }
+
+                Console.WriteLine($"[GetYoutubeVideoIdAsync] 失敗 - ExitCode: {process.ExitCode}");
+                return "";
+            }
+        }
+        catch
+        {
+            Console.WriteLine($"[GetYoutubeVideoIdAsync] 發生異常");
+            return "";
+        }
+    }
+
+    // 輔助方法：取得影片長度
+    private async Task<TimeSpan> GetVideoDurationAsync(string videoId)
+    {
+        try
+        {
+            Console.WriteLine($"[GetVideoDurationAsync] 取得影片長度: {videoId}");
+
+            // 不使用 cookie
+            var processInfo = new ProcessStartInfo
+            {
+                FileName = "yt-dlp",
+                Arguments = $"-J --no-check-certificate --extractor-args \"youtube:player_client=android,web\" https://www.youtube.com/watch?v={videoId}",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using (var process = Process.Start(processInfo))
+            {
+                string output = await process.StandardOutput.ReadToEndAsync();
+                await process.WaitForExitAsync();
+
+                if (process.ExitCode == 0 && !string.IsNullOrWhiteSpace(output))
+                {
+                    try
+                    {
+                        var jsonDoc = System.Text.Json.JsonDocument.Parse(output);
+                        var durationSeconds = jsonDoc.RootElement.GetProperty("duration").GetDouble();
+                        var videoDuration = TimeSpan.FromSeconds(durationSeconds);
+                        Console.WriteLine($"[GetVideoDurationAsync] 影片長度: {videoDuration}");
+                        return videoDuration;
+                    }
+                    catch (Exception jsonEx)
+                    {
+                        Console.WriteLine($"[GetVideoDurationAsync] 解析 JSON 失敗: {jsonEx.Message}");
+                    }
+                }
+
+                Console.WriteLine($"[GetVideoDurationAsync] 無法取得影片長度，返回最大值");
+                return TimeSpan.MaxValue;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[GetVideoDurationAsync] 發生異常: {ex.Message}");
+            return TimeSpan.MaxValue;
         }
     }
     #endregion
@@ -1084,21 +1503,12 @@ public class Program
         var filePrefix = Guid.NewGuid().ToString();
         var outputTemplate = Path.Combine(tempDirectory, $"{filePrefix}.%(ext)s");
 
-        var psi = new ProcessStartInfo
-        {
-            FileName = "yt-dlp",
-            Arguments = $"-f ba -x --audio-format mp3 -o \"{outputTemplate}\" {url}",
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
+        // 使用 ExecuteYtDlpAsync 統一處理 cookie
+        // 使用簡化的格式選擇器，避免格式不可用的錯誤
+        var (exitCode, output, error) = await ExecuteYtDlpAsync($"-f bestaudio/best -x --audio-format mp3 -o \"{outputTemplate}\" {url}");
 
-        using var process = Process.Start(psi);
-        await process.WaitForExitAsync();
-
-        if (process.ExitCode == 0)
-        {
+        if (exitCode == 0)
+{
             // 找出實際的 MP3 檔案
             var downloadedFile = Directory
                 .EnumerateFiles(tempDirectory, $"{filePrefix}.*")
@@ -1108,7 +1518,8 @@ public class Program
                 return downloadedFile;
         }
 
-        throw new Exception("Bilibili 下載失敗搂 OB一串字母女士非常不開心！");
+        Console.WriteLine($"Bilibili 下載失敗: {error}");
+        throw new Exception($"Bilibili 下載失敗搂 OB一串字母女士非常不開心！Error: {error}");
 
     }
 
@@ -1144,27 +1555,149 @@ public class Program
     #endregion
     #region 自訂func
 
+    // YouTube Cookie 處理（從環境變數讀取）
+    private string GetYtDlpCookieArgument()
+    {
+        try
+        {
+            Console.WriteLine($"[COOKIE DEBUG] 開始載入 cookie");
+            var cookieContent = _cookie;
+
+            if (string.IsNullOrEmpty(cookieContent))
+            {
+                Console.WriteLine("[COOKIE WARNING] 未設定 YT_DLP_COOKIES 環境變數或 _cookie 為空");
+                return "";
+            }
+
+            Console.WriteLine($"[COOKIE DEBUG] Cookie 內容長度: {cookieContent.Length} 字元");
+            Console.WriteLine($"[COOKIE DEBUG] Cookie 前 100 字元: {cookieContent.Substring(0, Math.Min(100, cookieContent.Length))}");
+
+            // 建立 cookies 目錄
+            var cookieDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "cookies");
+            Directory.CreateDirectory(cookieDir);
+            Console.WriteLine($"[COOKIE DEBUG] Cookie 目錄: {cookieDir}");
+
+            var cookieFile = Path.Combine(cookieDir, "youtube_cookies.txt");
+
+            // 寫入 cookie 檔案（覆蓋舊的）
+            File.WriteAllText(cookieFile, cookieContent);
+
+            Console.WriteLine($"[COOKIE SUCCESS] 已載入 YouTube cookies: {cookieFile}");
+            Console.WriteLine($"[COOKIE DEBUG] Cookie 檔案是否存在: {File.Exists(cookieFile)}");
+            Console.WriteLine($"[COOKIE DEBUG] Cookie 檔案大小: {new FileInfo(cookieFile).Length} bytes");
+
+            return $"--cookies \"{cookieFile}\"";
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[COOKIE ERROR] 載入 YouTube cookies 失敗: {ex.Message}");
+            Console.WriteLine($"[COOKIE ERROR] Stack Trace: {ex.StackTrace}");
+            return "";
+        }
+    }
+
+    // 統一的 yt-dlp 執行方法
+    private async Task<(int exitCode, string output, string error)> ExecuteYtDlpAsync(string arguments)
+    {
+        var cookieArg = GetYtDlpCookieArgument();
+
+        // 添加 YouTube 繞過參數
+        // --extractor-args "youtube:player_client=android" 使用 Android 客戶端 API（較不易被封鎖）
+        // --no-warnings 隱藏警告訊息
+        // --no-playlist 不下載播放清單
+        var bypassArgs = "--extractor-args \"youtube:player_client=android,web\"";
+
+        // Cookie 參數需要放在前面，並添加額外參數來處理受限內容
+        var fullArguments = string.IsNullOrEmpty(cookieArg) 
+            ? $"--no-warnings --no-playlist {bypassArgs} {arguments}"
+            : $"{cookieArg} --no-warnings --no-playlist {bypassArgs} {arguments}";
+
+        Console.WriteLine($"[yt-dlp DEBUG] 執行命令: yt-dlp {fullArguments}");
+        Console.WriteLine($"[yt-dlp DEBUG] Cookie 參數: {(string.IsNullOrEmpty(cookieArg) ? "無" : cookieArg)}");
+
+        var psi = new ProcessStartInfo
+        {
+            FileName = "yt-dlp",
+            Arguments = fullArguments,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+
+        using var process = Process.Start(psi);
+        string output = await process.StandardOutput.ReadToEndAsync();
+        string error = await process.StandardError.ReadToEndAsync();
+        await process.WaitForExitAsync();
+
+        Console.WriteLine($"[yt-dlp DEBUG] Exit Code: {process.ExitCode}");
+        Console.WriteLine($"[yt-dlp DEBUG] Output 長度: {output?.Length ?? 0} 字元");
+        Console.WriteLine($"[yt-dlp DEBUG] Output 內容: {(string.IsNullOrEmpty(output) ? "空" : output.Substring(0, Math.Min(200, output.Length)))}");
+        Console.WriteLine($"[yt-dlp DEBUG] Error 長度: {error?.Length ?? 0} 字元");
+
+        if (process.ExitCode != 0)
+        {
+            Console.WriteLine($"[yt-dlp ERROR] 完整錯誤輸出: {error}");
+        }
+        else
+        {
+            Console.WriteLine($"[yt-dlp SUCCESS] 執行成功");
+        }
+
+        return (process.ExitCode, output, error);
+    }
+
     public Process CreatePcmStreamProcess(string path, bool isEarRape = false)
     {
-        string ffmpegPath;
-        string projectRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
-        string winFfmpeg = Path.Combine(projectRoot, "ffmpeg-master-latest-win64-gpl-shared", "bin", "ffmpeg.exe");
+        Console.WriteLine($"[FFmpeg DEBUG] 開始創建 PCM Stream Process");
+        Console.WriteLine($"[FFmpeg DEBUG] 檔案路徑: {path}");
+        Console.WriteLine($"[FFmpeg DEBUG] EarRape 模式: {isEarRape}");
 
-        // Windows 本機用本地 ffmpeg，Linux (Railway) 用系統 ffmpeg
-        ffmpegPath = File.Exists(winFfmpeg) ? winFfmpeg : "ffmpeg";
+        string ffmpegPath;
+
+        // 檢測作業系統類型
+        if (OperatingSystem.IsWindows())
+        {
+            // Windows 環境：嘗試使用專案內的 ffmpeg
+            string projectRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+            string winFfmpeg = Path.Combine(projectRoot, "ffmpeg-master-latest-win64-gpl-shared", "bin", "ffmpeg.exe");
+            ffmpegPath = File.Exists(winFfmpeg) ? winFfmpeg : "ffmpeg";
+            Console.WriteLine($"[FFmpeg DEBUG] Windows 環境，FFmpeg 路徑: {ffmpegPath}");
+        }
+        else
+        {
+            // Linux/Docker 環境：使用系統安裝的 ffmpeg
+            ffmpegPath = "ffmpeg";
+            Console.WriteLine($"[FFmpeg DEBUG] Linux/Docker 環境，使用系統 FFmpeg");
+        }
 
         var audioFilter = isEarRape
             ? "-af \"volume=10,asetrate=48000*0.1,aresample=48000\""
             : "";
 
-        return Process.Start(new ProcessStartInfo
+        var arguments = $"-hide_banner -loglevel warning -i \"{path}\" {audioFilter} -ac 2 -f s16le -ar 48000 pipe:1";
+        Console.WriteLine($"[FFmpeg DEBUG] FFmpeg 參數: {arguments}");
+
+        try
         {
-            FileName = ffmpegPath,
-            Arguments = $"-hide_banner -loglevel panic -i \"{path}\" {audioFilter} -ac 2 -f s16le -ar 48000 pipe:1",
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-        });
+            var process = Process.Start(new ProcessStartInfo
+            {
+                FileName = ffmpegPath,
+                Arguments = arguments,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+            });
+
+            Console.WriteLine($"[FFmpeg DEBUG] FFmpeg Process 啟動成功，PID: {process?.Id ?? -1}");
+            return process;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[FFmpeg ERROR] 啟動 FFmpeg 失敗: {ex.Message}");
+            Console.WriteLine($"[FFmpeg ERROR] Stack Trace: {ex.StackTrace}");
+            return null;
+        }
     }
 
     public string GetRandomizedTitle(string title, IMessageChannel channel)
@@ -1208,26 +1741,105 @@ public class Program
     }
     public async Task<bool> CheckYoutubeUrlAliveAsync(string url, IMessageChannel channel)
     {
+        Console.WriteLine($"[CHECK DEBUG] 開始檢查 URL: {url}");
         try
         {
-            var videoId = YoutubeExplode.Videos.VideoId.TryParse(url);
-            if (videoId == null)
+            // 策略 1: 先不用 cookie 嘗試（避免地區衝突）
+            Console.WriteLine($"[CHECK DEBUG] 策略 1: 不使用 cookie");
+            var processInfo1 = new ProcessStartInfo
             {
-                return false;
+                FileName = "yt-dlp",
+                Arguments = $"-J --no-check-certificate --extractor-args \"youtube:player_client=android,web\" {url}",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using (var process1 = Process.Start(processInfo1))
+            {
+                string output1 = await process1.StandardOutput.ReadToEndAsync();
+                string error1 = await process1.StandardError.ReadToEndAsync();
+                await process1.WaitForExitAsync();
+
+                Console.WriteLine($"[CHECK DEBUG] 策略 1 結果 - ExitCode: {process1.ExitCode}");
+
+                if (process1.ExitCode == 0 && !string.IsNullOrWhiteSpace(output1))
+                {
+                    try
+                    {
+                        var jsonDoc = System.Text.Json.JsonDocument.Parse(output1);
+                        var title = jsonDoc.RootElement.GetProperty("title").GetString();
+                        Console.WriteLine($"[CHECK SUCCESS] 不用 cookie 成功！標題: {title}");
+                        _NowPlayingSongName = title;
+                        return true;
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[CHECK ERROR] 解析 JSON 失敗: {ex.Message}");
+                    }
+                }
+
+                // 檢查是否因為年齡限制或會員限定被擋
+                bool needsAuth = error1.Contains("Sign in") || 
+                                error1.Contains("age") || 
+                                error1.Contains("members-only") ||
+                                error1.Contains("private") ||
+                                error1.Contains("unavailable");
+
+                Console.WriteLine($"[CHECK DEBUG] 是否需要認證: {needsAuth}");
+
+                if (!needsAuth)
+                {
+                    Console.WriteLine($"[CHECK FAILED] 策略 1 失敗且不需認證，直接返回");
+                    return false;
+                }
             }
 
-            var youtube = new YoutubeClient();
-            var video = await youtube.Videos.GetAsync(videoId.Value);
-            await channel.SendMessageAsync($"有取得標題 {video.Title}");
+            // 策略 2: 需要認證時才使用 cookie
+            Console.WriteLine($"[CHECK DEBUG] 策略 2: 使用 cookie（因為影片需要認證）");
+            var (exitCode, output2, error2) = await ExecuteYtDlpAsync($"--dump-json --no-check-certificate {url}");
 
-            _NowPlayingSongName = video.Title;
+            Console.WriteLine($"[CHECK DEBUG] 策略 2 結果 - ExitCode: {exitCode}");
 
-            return video != null; // 如果成功获取到视频信息，则视为有效
+            if (exitCode == 0 && !string.IsNullOrWhiteSpace(output2))
+            {
+                try
+                {
+                    var jsonDoc = System.Text.Json.JsonDocument.Parse(output2);
+                    var title = jsonDoc.RootElement.GetProperty("title").GetString();
+
+                    if (!string.IsNullOrEmpty(title))
+                    {
+                        Console.WriteLine($"[CHECK SUCCESS] 用 cookie 成功！標題: {title}");
+                        await channel.SendMessageAsync($"✅ 有取得標題 {title}（需要認證的影片）");
+                        _NowPlayingSongName = title;
+                        return true;
+                    }
+                }
+                catch (Exception jsonEx)
+                {
+                    Console.WriteLine($"[CHECK ERROR] 解析 JSON 失敗: {jsonEx.Message}");
+                }
+            }
+
+            Console.WriteLine($"[CHECK FAILED] 兩種策略都失敗");
+            if (!string.IsNullOrEmpty(error2))
+            {
+                Console.WriteLine($"[CHECK ERROR] 最終錯誤: {error2.Substring(0, Math.Min(300, error2.Length))}");
+
+                if (error2.Contains("not available") || error2.Contains("geo"))
+                {
+                    await channel.SendMessageAsync($"⚠️ 影片可能有地區限制，將嘗試下載");
+                }
+            }
+
+            return false;
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"检查视频有效性时发生错误: {ex.Message}");
-            return false; // 发生异常，视为无效
+            Console.WriteLine($"[CHECK EXCEPTION] 異常: {ex.Message}");
+            return false;
         }
     }
     public Color RandomColor()
