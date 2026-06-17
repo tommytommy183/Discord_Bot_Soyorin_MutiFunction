@@ -246,6 +246,12 @@ namespace MusicBot2.Service
                     pokemon.NextEvolutionId = int.Parse(nextEvolution.species.url.Split('/').Where(s => !string.IsNullOrEmpty(s)).Last());
                     pokemon.CanEvolve = true;
                 }
+                else
+                {
+                    // 沒有下一階段進化，是最終形態
+                    pokemon.CanEvolve = false;
+                    pokemon.NextEvolutionId = null;
+                }
                 return;
             }
 
@@ -393,9 +399,9 @@ namespace MusicBot2.Service
                 {
                     var pokemon = player.CaughtPokemon[i];
                     var displayName = pokemon.CustomName ?? pokemon.Name;
-                    var evolutionInfo = pokemon.CanEvolve
-                        ? $"\n進化進度: {pokemon.EvolutionPoints}/3 ⭐"
-                        : "\n無法進化";
+                    var evolutionInfo = pokemon.CanEvolve 
+                        ? $"\n進化進度: {pokemon.EvolutionPoints}/3 ⭐" 
+                        : $"\n✨ 最終形態 (階段 {pokemon.EvolutionStage})";
 
                     embed.AddField(
                         $"{i + 1}. {displayName}",
@@ -614,7 +620,7 @@ namespace MusicBot2.Service
                         await channel.SendMessageAsync(opponent.Pokemon2.Front_GIF ?? opponent.Pokemon2.ImageUrl);
                     }
 
-                    await channel.SendMessageAsync("==============================對上==============================");
+                    await channel.SendMessageAsync("==========對上==========");
 
                     if (!string.IsNullOrEmpty((pokemon1.Back_GIF ?? pokemon1.Back_ImageUrl) ?? pokemon1.ImageUrl))
                     {
@@ -672,7 +678,7 @@ namespace MusicBot2.Service
    - 特攻: {pokemon2.SpecialAttack}, 特防: {pokemon2.SpecialDefense}, 速度: {pokemon2.Speed}
    - 是否為閃光: {(pokemon2.isShiny ? "是" : "否")}
 
-==================================對上==================================================
+========對上========
 
 3. {player2Name} 的第一隻寶可夢:
     自訂名稱:{opponentPokemon1.CustomName ?? opponentPokemon1.Name}，真實名稱:{opponentPokemon1.Name}
