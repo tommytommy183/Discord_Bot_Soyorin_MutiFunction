@@ -657,10 +657,11 @@ namespace MusicBot2.SlahCommands
         }
 
         [SlashCommand("pokemon對戰", "尋找對手進行pokemon對戰")]
-        public async Task BattlePokemonAsync()
+        public async Task BattlePokemonAsync(
+            [Summary("編號", "要出戰的pokemon編號（從1開始）")] int index = 0)
         {
             await DeferAsync();
-            var (embed, component) = await _pokeGameService.StartBattleSearchAsync(Context.User.Id, Context.User.Username);
+            var (embed, component) = await _pokeGameService.StartBattleSearchAsync(Context.User.Id, Context.User.Username, index);
             await FollowupAsync(embed: embed, components: component.Build());
         }
 

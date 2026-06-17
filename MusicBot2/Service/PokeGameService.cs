@@ -82,11 +82,11 @@ namespace MusicBot2.Service
                 }
 
                 // 檢查寶可夢數量是否已達上限
-                if (player.CaughtPokemon.Count >= 6)
+                if (player.CaughtPokemon.Count >= 10)
                 {
                     var errorEmbed = new EmbedBuilder()
                         .WithTitle("❌ 寶可夢數量已達上限！")
-                        .WithDescription($"你已經有 6 隻寶可夢了！\n請使用 `/釋放寶可夢` 指令釋放一隻寶可夢後再來抓取新的。")
+                        .WithDescription($"你已經有 10 隻pokemon了！\n請使用 `/蛋雕一隻pokemon` 指令釋放一隻後再來抓取新的。")
                         .WithColor(Color.Red)
                         .Build();
                     return (errorEmbed, new ComponentBuilder());
@@ -466,7 +466,7 @@ namespace MusicBot2.Service
         #endregion
 
         #region 對戰系統
-        public async Task<(Embed embed, ComponentBuilder component)> StartBattleSearchAsync(ulong userId, string userName)
+        public async Task<(Embed embed, ComponentBuilder component)> StartBattleSearchAsync(ulong userId, string userName,int index)
         {
             try
             {
@@ -481,8 +481,14 @@ namespace MusicBot2.Service
                         .Build();
                     return (errorEmbed, new ComponentBuilder());
                 }
-                Random random = new Random();
-                int pokemonIndex = random.Next(1, player.CaughtPokemon.Count + 1); // 隨機選擇一隻寶可夢參加對戰
+                int pokemonIndex = index;
+
+                if (index == 0)
+                {
+                    Random random = new Random();
+                    pokemonIndex = random.Next(1, player.CaughtPokemon.Count + 1); // 隨機選擇一隻寶可夢參加對戰
+                }
+
 
                 if (pokemonIndex < 1 || pokemonIndex > player.CaughtPokemon.Count)
                 {
