@@ -300,6 +300,9 @@ namespace MusicBot2.Service
                 pokemon.SpecialDefense = pokeData.stats.FirstOrDefault(s => s.stat.name == "special-defense")?.base_stat ?? 0;
                 pokemon.Speed = pokeData.stats.FirstOrDefault(s => s.stat.name == "speed")?.base_stat ?? 0;
                 pokemon.Types = pokeData.types.Select(t => t.type.name).ToList();
+                pokemon.Back_ImageUrl = isShiny ? pokeData.sprites.back_shiny : pokeData.sprites.back_default;
+                pokemon.Front_GIF = isShiny ? pokeData.sprites.other.showdown.front_shiny : pokeData.sprites.other.showdown.front_default;
+                pokemon.Back_GIF = isShiny ? pokeData.sprites.other.showdown.back_shiny : pokeData.sprites.other.showdown.back_default;
                 pokemon.isShiny = isShiny;
                 pokemon.CaughtDate = caughtDate;
                 pokemon.EvolutionPoints = 0; // 重置進化點數
