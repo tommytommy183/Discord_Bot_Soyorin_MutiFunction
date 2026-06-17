@@ -515,11 +515,11 @@ namespace MusicBot2.Service
                     await RemoveFromMatchmakingAsync(opponent.UserId);
 
                     //對戰前先丟一次雙方pokemon圖片
-                    if(string.IsNullOrEmpty(opponent.Pokemon.Front_GIF ?? opponent.Pokemon.ImageUrl))
+                    if(!string.IsNullOrEmpty(opponent.Pokemon.Front_GIF ?? opponent.Pokemon.ImageUrl))
                     {
                         await channel.SendMessageAsync(opponent.Pokemon.Front_GIF ?? opponent.Pokemon.ImageUrl);
                     }
-                    if (string.IsNullOrEmpty((pokemon.Back_GIF ?? pokemon.Back_ImageUrl) ?? pokemon.ImageUrl))
+                    if (!string.IsNullOrEmpty((pokemon.Back_GIF ?? pokemon.Back_ImageUrl) ?? pokemon.ImageUrl))
                     {
                         await channel.SendMessageAsync((pokemon.Back_GIF ?? pokemon.Back_ImageUrl) ?? pokemon.ImageUrl);
                     }
