@@ -301,7 +301,7 @@ namespace MusicBot2.Service
                 pokemon.Id = pokeData.id;
                 pokemon.Name = chineseName;
                 pokemon.CustomName = customName;
-                pokemon.ImageUrl = isShiny ? pokeData.sprites.front_shiny : pokeData.sprites.front_default;
+                pokemon.ImageUrl = isShiny ? pokeData.sprites.front_shiny : (pokeData.sprites.other.official_artwork.front_default ?? pokeData.sprites.front_default);
                 pokemon.HP = pokeData.stats.FirstOrDefault(s => s.stat.name == "hp")?.base_stat ?? 0;
                 pokemon.Attack = pokeData.stats.FirstOrDefault(s => s.stat.name == "attack")?.base_stat ?? 0;
                 pokemon.Defense = pokeData.stats.FirstOrDefault(s => s.stat.name == "defense")?.base_stat ?? 0;
