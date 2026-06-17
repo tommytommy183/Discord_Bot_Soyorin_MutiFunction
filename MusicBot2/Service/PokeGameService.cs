@@ -170,7 +170,7 @@ namespace MusicBot2.Service
                 isShiny = randomShiny.Next(1, 11) == 1;
             }
 
-            string imageUrl = isShiny ? pokeData.sprites.front_shiny : pokeData.sprites.front_default;
+            string imageUrl = isShiny ? pokeData.sprites.front_shiny : (pokeData.sprites.other.official_artwork.front_default ?? pokeData.sprites.front_default);
 
             // 建立PokeGamePokemon物件
             var pokemon = new PokeGamePokemon
