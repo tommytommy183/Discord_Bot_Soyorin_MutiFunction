@@ -182,6 +182,16 @@ namespace MusicBot2.Models
         public DateTime SearchStartTime { get; set; }
     }
 
+    public class BattleMatchmaking2V2
+    {
+        public ulong UserId { get; set; }
+        public string UserName { get; set; }
+        public PokeGamePokemon Pokemon1 { get; set; }
+        public PokeGamePokemon Pokemon2 { get; set; }
+
+        public DateTime SearchStartTime { get; set; }
+    }
+
     public class BattleResult
     {
         public ulong WinnerId { get; set; }

@@ -26,6 +26,8 @@ namespace MusicBot2.Service
         private const string API_BASE_URL = "https://pokeapi.co/api/v2/";
         private const string PLAYER_DATA_KEY = "pokegame:player:";
         private const string MATCHMAKING_KEY = "pokegame:matchmaking";
+        private const string MATCHMAKING_KEY_2V2 = "pokegame:matchmaking:2v2";
+
 
         public PokeGameService(string redisConnectionString, OpenRouterService aiService)
         {
@@ -542,9 +544,89 @@ namespace MusicBot2.Service
             }
         }
 
-        private async Task<(Embed embed, ComponentBuilder component)> ExecuteBattleAsync(
-            ulong player1Id, string player1Name, PokeGamePokemon pokemon1,
-            ulong player2Id, string player2Name, PokeGamePokemon pokemon2)
+
+        public async Task<(Embed embed, ComponentBuilder component)> Start2v2BattleSearchAsync(ulong userId, string userName, int index1,int index2, IMessageChannel channel)
+        {
+            try
+            {
+                var player = await GetPlayerDataAsync(userId, userName);
+
+                if (player.CaughtPokemon.Count <= 1)
+                {
+                    var errorEmbed = new EmbedBuilder()
+                        .WithTitle("❌ 你還沒有足夠的pokemon阿低底")
+                        .WithDescription("先去抓至少兩隻pokemon")
+                        .WithColor(Color.Red)
+                        .Build();
+                    return (errorEmbed, new ComponentBuilder());
+                }
+                if (index1 == index2)
+                {
+                    var errorEmbed = new EmbedBuilder()
+                        .WithTitle("❌ 無效的pokemon編號")
+                        .WithDescription("想搞影分身是不是?")
+                        .WithColor(Color.Red)
+                        .Build();
+                    return (errorEmbed, new ComponentBuilder());
+                }
+                if (index1 < 1 || index1 > player.CaughtPokemon.Count || index2 < 1 || index2 > player.CaughtPokemon.Count)
+                {
+                    var errorEmbed = new EmbedBuilder()
+                        .WithTitle("❌ 無效的pokemon編號！")
+                        .WithDescription($"請輸入 1 到 {player.CaughtPokemon.Count} 之間的編號")
+                        .WithColor(Color.Red)
+                        .Build();
+                    return (errorEmbed, new ComponentBuilder());
+                }
+
+                var pokemon1 = player.CaughtPokemon[index1 - 1];
+                var pokemon2 = player.CaughtPokemon[index2 - 1];
+
+
+
+                // 檢查是否有其他玩家在等待
+                var waitingPlayers = await GetWaitingPlayers2V2Async();
+                var opponent = waitingPlayers.FirstOrDefault(p => p.UserId != userId);
+
+                if (opponent != null)
+                {
+                    // 找到對手，開始對戰！
+                    await RemoveFromMatchmaking2V2Async(opponent.UserId);
+
+                    //對戰前先丟一次雙方pokemon圖片
+
+                    await channel.SendMessageAsync(opponent.Pokemon.Front_GIF ?? opponent.Pokemon.ImageUrl);
+                    await channel.SendMessageAsync(opponent.Pokemon.Front_GIF ?? opponent.Pokemon.ImageUrl);
+
+                    await channel.SendMessageAsync((pokemon1.Back_GIF ?? pokemon1.Back_ImageUrl) ?? pokemon1.ImageUrl);
+                    await channel.SendMessageAsync((pokemon2.Back_GIF ?? pokemon2.Back_ImageUrl) ?? pokemon2.ImageUrl);
+
+                    return await Execute2V2BattleAsync(userId, userName, pokemon1, pokemon2, opponent.UserId, opponent.UserName, opponent.Pokemon);
+                }
+                else
+                {
+                    // 沒有對手，加入配對池
+                    await AddToMatchmaking2V2Async(userId, userName, pokemon1,pokemon2);
+
+                    var embed = new EmbedBuilder()
+                        .WithTitle("🔍 尋找對手中...")
+                        .WithDescription($"使用 **{pokemon1.CustomName ?? pokemon1.Name}** 和 **{pokemon2.CustomName ?? pokemon2.Name}** 尋找對手中！\n請等待其他玩家加入對戰...")
+                        .WithThumbnailUrl(pokemon2.ImageUrl)
+                        .WithImageUrl(pokemon1.ImageUrl)
+                        .WithColor(Color.Blue)
+                        .Build();
+
+                    return (embed, new ComponentBuilder());
+                }
+            }
+            catch (Exception ex)
+            {
+                return (CommonHelper.BuildErrorResponse($"開始對戰搜尋時發生錯誤: {ex.Message}").Item2, new ComponentBuilder());
+            }
+        }
+        private async Task<(Embed embed, ComponentBuilder component)> Execute2V2BattleAsync(
+            ulong player1Id, string player1Name, PokeGamePokemon pokemon1, PokeGamePokemon pokemon2,
+            ulong player2Id, string player2Name, PokeGamePokemon opponentPokemon1, PokeGamePokemon opponentPokemon2)
         {
             try
             {
@@ -715,6 +797,179 @@ namespace MusicBot2.Service
             }
         }
 
+
+        private async Task<(Embed embed, ComponentBuilder component)> ExecuteBattleAsync(
+    ulong player1Id, string player1Name, PokeGamePokemon pokemon1,
+    ulong player2Id, string player2Name, PokeGamePokemon pokemon2)
+        {
+            try
+            {
+                // 準備對戰資訊給 AI 判斷
+                string battlePrompt = $@"請模擬一場精彩的pokemon對戰，並判斷勝負。
+
+對戰雙方：
+1. {player1Name} 的 自訂名稱:{pokemon1.CustomName ?? pokemon1.Name}，真實名稱:{pokemon1.Name}
+   - 屬性: {string.Join(", ", pokemon1.Types)}
+   - HP: {pokemon1.HP}, 攻擊: {pokemon1.Attack}, 防禦: {pokemon1.Defense}
+   - 特攻: {pokemon1.SpecialAttack}, 特防: {pokemon1.SpecialDefense}, 速度: {pokemon1.Speed}
+   - 是否為閃光: {(pokemon1.isShiny ? "是" : "否")}
+
+2. {player2Name} 的 自訂名稱:{pokemon2.CustomName ?? pokemon2.Name}，真實名稱:{pokemon2.Name}
+   - 屬性: {string.Join(", ", pokemon2.Types)}
+   - HP: {pokemon2.HP}, 攻擊: {pokemon2.Attack}, 防禦: {pokemon2.Defense}
+   - 特攻: {pokemon2.SpecialAttack}, 特防: {pokemon2.SpecialDefense}, 速度: {pokemon2.Speed}
+   - 是否為閃光: {(pokemon2.isShiny ? "是" : "否")}
+
+請根據以上數據和屬性相剋關係，判斷誰會獲勝，並用繁體中文描述一段精彩的對戰過程。
+要以該pokemon真實的技能來敘述，期間有自訂名稱的話就要叫自訂名稱，沒有的話就叫真實名稱。
+如果是閃光的，對話中要提到閃光的特效。
+最後請在描述的最後一行明確說明勝者是誰，格式為「勝者：[玩家名稱]」";
+
+                // 呼叫 AI 判斷對戰結果
+                var aiResponse = await _aiService.GenerateSimpleTextAsync(battlePrompt);
+
+                // 解析 AI 回應，判斷勝者
+                bool player1Wins = aiResponse.Contains($"勝者：{player1Name}") ||
+                                   aiResponse.Contains($"勝者: {player1Name}");
+
+                // 如果 AI 沒有明確指出勝者，則根據數值判斷
+                if (!player1Wins && !aiResponse.Contains($"勝者：{player2Name}") && !aiResponse.Contains($"勝者: {player2Name}"))
+                {
+                    int pokemon1Total = pokemon1.HP + pokemon1.Attack + pokemon1.Defense +
+                                       pokemon1.SpecialAttack + pokemon1.SpecialDefense + pokemon1.Speed;
+                    int pokemon2Total = pokemon2.HP + pokemon2.Attack + pokemon2.Defense +
+                                       pokemon2.SpecialAttack + pokemon2.SpecialDefense + pokemon2.Speed;
+                    player1Wins = pokemon1Total > pokemon2Total;
+                }
+
+                var winnerId = player1Wins ? player1Id : player2Id;
+                var winnerName = player1Wins ? player1Name : player2Name;
+                var winnerPokemon = player1Wins ? pokemon1 : pokemon2;
+                var loserId = player1Wins ? player2Id : player1Id;
+                var loserName = player1Wins ? player2Name : player1Name;
+                var loserPokemon = player1Wins ? pokemon2 : pokemon1;
+
+                // 更新戰績和進化點數（只更新真實玩家，ID 為 0 的是電腦對手）
+                string evolutionMessage = "";
+
+                if (winnerId != 0)
+                {
+                    var winner = await GetPlayerDataAsync(winnerId, winnerName);
+                    winner.TotalBattles++;
+                    winner.Wins++;
+
+                    // 更新勝利者pokemon的進化點數 (+2)
+                    winnerPokemon.EvolutionPoints += 2;
+
+                    // 檢查是否達到進化條件（3點）
+                    if (winnerPokemon.CanEvolve && winnerPokemon.EvolutionPoints >= 3)
+                    {
+                        var oldName = winnerPokemon.Name;
+                        winnerPokemon = await EvolvePokemonAsync(winnerPokemon);
+                        evolutionMessage = $"\n\n✨ **恭喜！{oldName} 進化成 {winnerPokemon.Name} 了！** ✨";
+
+                        // 更新玩家資料中的pokemon
+                        var pokemonInList = winner.CaughtPokemon.FirstOrDefault(p => p.Id == pokemon1.Id && p.CaughtDate == pokemon1.CaughtDate);
+                        if (pokemonInList != null)
+                        {
+                            var index = winner.CaughtPokemon.IndexOf(pokemonInList);
+                            winner.CaughtPokemon[index] = winnerPokemon;
+                        }
+                    }
+
+                    await SavePlayerDataAsync(winner);
+                }
+
+                if (loserId != 0)
+                {
+                    var loser = await GetPlayerDataAsync(loserId, loserName);
+                    loser.TotalBattles++;
+                    loser.Losses++;
+
+                    // 更新失敗者pokemon的進化點數 (+1)
+                    loserPokemon.EvolutionPoints += 1;
+
+                    // 檢查是否達到進化條件（3點）
+                    if (loserPokemon.CanEvolve && loserPokemon.EvolutionPoints >= 3)
+                    {
+                        var oldName = loserPokemon.Name;
+                        loserPokemon = await EvolvePokemonAsync(loserPokemon);
+                        if (string.IsNullOrEmpty(evolutionMessage))
+                            evolutionMessage = $"\n\n✨ **雖然快4了，但 {oldName} 進化成 {loserPokemon.Name} 了！** ✨";
+                        else
+                            evolutionMessage += $"\n✨ **{oldName} 也進化成 {loserPokemon.Name} 了！** ✨";
+
+                        // 更新玩家資料中的pokemon
+                        var pokemonInList = loser.CaughtPokemon.FirstOrDefault(p => p.Id == pokemon2.Id && p.CaughtDate == pokemon2.CaughtDate);
+                        if (pokemonInList != null)
+                        {
+                            var index = loser.CaughtPokemon.IndexOf(pokemonInList);
+                            loser.CaughtPokemon[index] = loserPokemon;
+                        }
+                    }
+
+                    await SavePlayerDataAsync(loser);
+                }
+
+                // 取得戰績資訊（用於顯示）
+                var winnerStats = winnerId != 0 ? await GetPlayerDataAsync(winnerId, winnerName) : null;
+                var loserStats = loserId != 0 ? await GetPlayerDataAsync(loserId, loserName) : null;
+
+                // 建立對戰結果訊息
+                var embedBuilder = new EmbedBuilder()
+                    .WithTitle("⚔️ pokemon對戰結果 ⚔️")
+                    .WithDescription(aiResponse + evolutionMessage)
+                    .WithColor(Color.Gold);
+
+                // 勝者資訊
+                if (winnerStats != null)
+                {
+                    embedBuilder.AddField($"🏆 勝者: {winnerName}",
+                        $"{winnerPokemon.CustomName ?? winnerPokemon.Name}\n" +
+                        $"戰績: {winnerStats.Wins}勝 {winnerStats.Losses}敗", true);
+                }
+                else
+                {
+                    embedBuilder.AddField($"🏆 勝者: {winnerName}",
+                        $"{winnerPokemon.CustomName ?? winnerPokemon.Name}\n" +
+                        $"(電腦對手)", true);
+                }
+
+                // 敗者資訊
+                if (loserStats != null)
+                {
+                    embedBuilder.AddField($"😢 敗者: {loserName}",
+                        $"{loserPokemon.CustomName ?? loserPokemon.Name}\n" +
+                        $"戰績: {loserStats.Wins}勝 {loserStats.Losses}敗", true);
+                }
+                else
+                {
+                    embedBuilder.AddField($"😢 敗者: {loserName}",
+                        $"{loserPokemon.CustomName ?? loserPokemon.Name}\n" +
+                        $"(電腦對手)", true);
+                }
+
+                // 只有真實玩家獲勝才給獎勵
+                if (winnerId != 0)
+                {
+                    embedBuilder.AddField("🎁 獲勝獎勵", "恭喜獲得一次額外抓pokemon的機會！", false);
+
+                    // 給勝者一次額外的抓寶機會（重置今日抓寶紀錄）
+                    var winnerForReward = await GetPlayerDataAsync(winnerId, winnerName);
+                    winnerForReward.LastCatchDate = null;
+                    await SavePlayerDataAsync(winnerForReward);
+                }
+
+                embedBuilder.WithCurrentTimestamp();
+                var embed = embedBuilder.Build();
+
+                return (embed, new ComponentBuilder());
+            }
+            catch (Exception ex)
+            {
+                return (CommonHelper.BuildErrorResponse($"執行對戰時發生錯誤: {ex.Message}").Item2, new ComponentBuilder());
+            }
+        }
         // 測試用對戰 - 生成假對手
         public async Task<(Embed embed, ComponentBuilder component)> StartTestBattleAsync(ulong userId, string userName, int pokemonIndex)
         {
@@ -969,6 +1224,139 @@ namespace MusicBot2.Service
                 try
                 {
                     await _redisDb.HashDeleteAsync(MATCHMAKING_KEY, userId.ToString());
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"⚠️ Redis 配對刪除失敗，切換到記憶體儲存: {ex.Message}");
+                    // Redis 失敗時降級到記憶體儲存
+                    _memoryMatchmaking.Remove(userId);
+                }
+            }
+            else
+            {
+                // 使用記憶體儲存
+                _memoryMatchmaking.Remove(userId);
+                await Task.CompletedTask;
+            }
+        }
+
+        private async Task AddToMatchmaking2V2Async(ulong userId, string userName, PokeGamePokemon pokemon1, PokeGamePokemon pokemon2)
+        {
+            var matchmaking = new BattleMatchmaking
+            {
+                UserId = userId,
+                UserName = userName,
+                Pokemon = pokemon,
+                SearchStartTime = DateTime.UtcNow
+            };
+
+            if (_useRedis)
+            {
+                try
+                {
+                    var data = JsonConvert.SerializeObject(matchmaking);
+                    await _redisDb.HashSetAsync(MATCHMAKING_KEY_2V2, userId.ToString(), data);
+
+                    // 設定 5 分鐘過期
+                    await _redisDb.KeyExpireAsync(MATCHMAKING_KEY_2V2, TimeSpan.FromMinutes(5));
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"⚠️ Redis 配對寫入失敗，切換到記憶體儲存: {ex.Message}");
+                    // Redis 失敗時降級到記憶體儲存
+                    _memoryMatchmaking[userId] = matchmaking;
+                }
+            }
+            else
+            {
+                // 使用記憶體儲存
+                _memoryMatchmaking[userId] = matchmaking;
+                await Task.CompletedTask;
+            }
+        }
+
+        private async Task<List<BattleMatchmaking>> GetWaitingPlayers2V2Async()
+        {
+            var result = new List<BattleMatchmaking>();
+
+            if (_useRedis)
+            {
+                try
+                {
+                    var entries = await _redisDb.HashGetAllAsync(MATCHMAKING_KEY_2V2);
+
+                    foreach (var entry in entries)
+                    {
+                        try
+                        {
+                            var matchmaking = JsonConvert.DeserializeObject<BattleMatchmaking>(entry.Value);
+                            // 只返回 5 分鐘內的搜尋
+                            if ((DateTime.UtcNow - matchmaking.SearchStartTime).TotalMinutes < 5)
+                            {
+                                result.Add(matchmaking);
+                            }
+                        }
+                        catch { }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"⚠️ Redis 配對讀取失敗，切換到記憶體儲存: {ex.Message}");
+                    // Redis 失敗時降級到記憶體儲存
+                    var expiredKeys = new List<ulong>();
+                    foreach (var kvp in _memoryMatchmaking)
+                    {
+                        if ((DateTime.UtcNow - kvp.Value.SearchStartTime).TotalMinutes < 5)
+                        {
+                            result.Add(kvp.Value);
+                        }
+                        else
+                        {
+                            expiredKeys.Add(kvp.Key);
+                        }
+                    }
+
+                    foreach (var key in expiredKeys)
+                    {
+                        _memoryMatchmaking.Remove(key);
+                    }
+                }
+            }
+            else
+            {
+                // 使用記憶體儲存
+                var expiredKeys = new List<ulong>();
+                foreach (var kvp in _memoryMatchmaking)
+                {
+                    if ((DateTime.UtcNow - kvp.Value.SearchStartTime).TotalMinutes < 5)
+                    {
+                        result.Add(kvp.Value);
+                    }
+                    else
+                    {
+                        expiredKeys.Add(kvp.Key);
+                    }
+                }
+
+                // 清理過期的配對
+                foreach (var key in expiredKeys)
+                {
+                    _memoryMatchmaking.Remove(key);
+                }
+
+                await Task.CompletedTask;
+            }
+
+            return result;
+        }
+
+        private async Task RemoveFromMatchmaking2V2Async(ulong userId)
+        {
+            if (_useRedis)
+            {
+                try
+                {
+                    await _redisDb.HashDeleteAsync(MATCHMAKING_KEY_2V2, userId.ToString());
                 }
                 catch (Exception ex)
                 {
