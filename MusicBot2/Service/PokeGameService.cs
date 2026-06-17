@@ -8,6 +8,7 @@ using StackExchange.Redis;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Threading.Tasks;
 
 namespace MusicBot2.Service
@@ -730,6 +731,9 @@ namespace MusicBot2.Service
                     winnerPokemon1.EvolutionPoints += 2;
                     winnerPokemon2.EvolutionPoints += 2;
 
+                    int preId1 = winnerPokemon1.Id;
+                    int preId2 = winnerPokemon2.Id;
+
                     // 檢查是否達到進化條件（3點）
                     if (winnerPokemon1.CanEvolve && winnerPokemon1.EvolutionPoints >= 3)
                     {
@@ -738,13 +742,36 @@ namespace MusicBot2.Service
                         evolutionMessage = $"\n\n✨ **恭喜！{oldName} 進化成 {winnerPokemon1.Name} 了！** ✨";
 
                         // 更新玩家資料中的pokemon
-                        var pokemonInList = winner.CaughtPokemon.FirstOrDefault(p => p.Id == pokemon1.Id && p.CaughtDate == pokemon1.CaughtDate);
+                        var pokemonInList = winner.CaughtPokemon.FirstOrDefault(p => p.Id == preId1 && p.CaughtDate == winnerPokemon1.CaughtDate);
                         if (pokemonInList != null)
                         {
                             var index = winner.CaughtPokemon.IndexOf(pokemonInList);
-                            winner.CaughtPokemon[index] = winnerPokemon;
+                            winner.CaughtPokemon[index] = winnerPokemon1;
                         }
                     }
+
+                    if (winnerPokemon2.CanEvolve && winnerPokemon2.EvolutionPoints >= 3)
+                    {
+                        var oldName = winnerPokemon2.Name;
+                        winnerPokemon2 = await EvolvePokemonAsync(winnerPokemon2);
+                        evolutionMessage = $"\n\n✨ **恭喜！{oldName} 進化成 {winnerPokemon2.Name} 了！** ✨";
+                        // 更新玩家資料中的pokemon
+                        var pokemonInList = winner.CaughtPokemon.FirstOrDefault(p => p.Id == preId2 && p.CaughtDate == winnerPokemon2.CaughtDate);
+                        if (pokemonInList != null)
+                        {
+                            var index = winner.CaughtPokemon.IndexOf(pokemonInList);
+                            winner.CaughtPokemon[index] = winnerPokemon2;
+                        }
+                    }
+
+                    winner.CaughtPokemon = winner.CaughtPokemon.Select(p =>
+                    {
+                        if (p.Id == preId1)
+                            return winnerPokemon1;
+                        if (p.Id == preId2)
+                            return winnerPokemon2;
+                        return p;
+                    }).ToList();
 
                     await SavePlayerDataAsync(winner);
                 }
@@ -756,26 +783,57 @@ namespace MusicBot2.Service
                     loser.Losses++;
 
                     // 更新失敗者pokemon的進化點數 (+1)
-                    loserPokemon.EvolutionPoints += 1;
+                    loserPokemon1.EvolutionPoints += 1;
+                    loserPokemon2.EvolutionPoints += 1;
+
+                    int preId1 = loserPokemon1.Id;
+                    int preId2 = loserPokemon2.Id;
 
                     // 檢查是否達到進化條件（3點）
-                    if (loserPokemon.CanEvolve && loserPokemon.EvolutionPoints >= 3)
+                    if (loserPokemon1.CanEvolve && loserPokemon1.EvolutionPoints >= 3)
                     {
-                        var oldName = loserPokemon.Name;
-                        loserPokemon = await EvolvePokemonAsync(loserPokemon);
+                        var oldName = loserPokemon1.Name;
+                        loserPokemon1 = await EvolvePokemonAsync(loserPokemon1);
                         if (string.IsNullOrEmpty(evolutionMessage))
-                            evolutionMessage = $"\n\n✨ **雖然快4了，但 {oldName} 進化成 {loserPokemon.Name} 了！** ✨";
+                            evolutionMessage = $"\n\n✨ **雖然快4了，但 {oldName} 進化成 {loserPokemon1.Name} 了！** ✨";
                         else
-                            evolutionMessage += $"\n✨ **{oldName} 也進化成 {loserPokemon.Name} 了！** ✨";
+                            evolutionMessage += $"\n✨ **{oldName} 也進化成 {loserPokemon1.Name} 了！** ✨";
 
                         // 更新玩家資料中的pokemon
-                        var pokemonInList = loser.CaughtPokemon.FirstOrDefault(p => p.Id == pokemon2.Id && p.CaughtDate == pokemon2.CaughtDate);
+                        var pokemonInList = loser.CaughtPokemon.FirstOrDefault(p => p.Id == preId1 && p.CaughtDate == loserPokemon1.CaughtDate);
                         if (pokemonInList != null)
                         {
                             var index = loser.CaughtPokemon.IndexOf(pokemonInList);
-                            loser.CaughtPokemon[index] = loserPokemon;
+                            loser.CaughtPokemon[index] = loserPokemon1;
                         }
                     }
+
+                    if (loserPokemon2.CanEvolve && loserPokemon2.EvolutionPoints >= 3)
+                    {
+                        var oldName = loserPokemon2.Name;
+                        loserPokemon2 = await EvolvePokemonAsync(loserPokemon2);
+                        if (string.IsNullOrEmpty(evolutionMessage))
+                            evolutionMessage = $"\n\n✨ **雖然快4了，但 {oldName} 進化成 {loserPokemon2.Name} 了！** ✨";
+                        else
+                            evolutionMessage += $"\n✨ **{oldName} 也進化成 {loserPokemon2.Name} 了！** ✨";
+
+                        // 更新玩家資料中的pokemon
+                        var pokemonInList = loser.CaughtPokemon.FirstOrDefault(p => p.Id == preId2 && p.CaughtDate == loserPokemon2.CaughtDate);
+                        if (pokemonInList != null)
+                        {
+                            var index = loser.CaughtPokemon.IndexOf(pokemonInList);
+                            loser.CaughtPokemon[index] = loserPokemon2;
+                        }
+                    }
+
+                    loser.CaughtPokemon = loser.CaughtPokemon.Select(p =>
+                    {
+                        if (p.Id == preId1)
+                            return loserPokemon1;
+                        if (p.Id == preId2)
+                            return loserPokemon2;
+                        return p;
+                    }).ToList();
 
                     await SavePlayerDataAsync(loser);
                 }
@@ -794,13 +852,15 @@ namespace MusicBot2.Service
                 if (winnerStats != null)
                 {
                     embedBuilder.AddField($"🏆 勝者: {winnerName}",
-                        $"{winnerPokemon.CustomName ?? winnerPokemon.Name}\n" +
+                        $"{winnerPokemon1.CustomName ?? winnerPokemon1.Name}\n" +
+                        $"和他的戰友 {winnerPokemon2.CustomName ?? winnerPokemon2.Name}\n" +
                         $"戰績: {winnerStats.Wins}勝 {winnerStats.Losses}敗", true);
                 }
                 else
                 {
                     embedBuilder.AddField($"🏆 勝者: {winnerName}",
-                        $"{winnerPokemon.CustomName ?? winnerPokemon.Name}\n" +
+                        $"{winnerPokemon1.CustomName ?? winnerPokemon1.Name}\n" +
+                        $"和他的戰友 {winnerPokemon2.CustomName ?? winnerPokemon2.Name}\n" +
                         $"(電腦對手)", true);
                 }
 
@@ -808,13 +868,15 @@ namespace MusicBot2.Service
                 if (loserStats != null)
                 {
                     embedBuilder.AddField($"😢 敗者: {loserName}",
-                        $"{loserPokemon.CustomName ?? loserPokemon.Name}\n" +
+                        $"{loserPokemon1.CustomName ?? loserPokemon1.Name}\n" +
+                        $"和他的盧蛇好朋友 {loserPokemon2.CustomName ?? loserPokemon2.Name}\n" +
                         $"戰績: {loserStats.Wins}勝 {loserStats.Losses}敗", true);
                 }
                 else
                 {
                     embedBuilder.AddField($"😢 敗者: {loserName}",
-                        $"{loserPokemon.CustomName ?? loserPokemon.Name}\n" +
+                        $"{loserPokemon1.CustomName ?? loserPokemon1.Name}\n" +
+                        $"和他的盧蛇好朋友 {loserPokemon2.CustomName ?? loserPokemon2.Name}\n" +
                         $"(電腦對手)", true);
                 }
 
