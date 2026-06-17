@@ -81,11 +81,11 @@ namespace MusicBot2.Service
                     return (errorEmbed, new ComponentBuilder());
                 }
 
-                // 檢查寶可夢數量是否已達上限
+                // 檢查pokemon數量是否已達上限
                 if (player.CaughtPokemon.Count >= 10)
                 {
                     var errorEmbed = new EmbedBuilder()
-                        .WithTitle("❌ 寶可夢數量已達上限！")
+                        .WithTitle("❌ pokemon數量已達上限！")
                         .WithDescription($"你已經有 10 隻pokemon了！\n請使用 `/蛋雕一隻pokemon` 指令釋放一隻後再來抓取新的。")
                         .WithColor(Color.Red)
                         .Build();
@@ -164,9 +164,9 @@ namespace MusicBot2.Service
 
             if (!string.IsNullOrEmpty(pokeData.sprites.front_shiny))
             {
-                // 如果有閃光圖，則這支pokemon有機會為閃光寶可夢
+                // 如果有閃光圖，則這支pokemon有機會為閃光pokemon
                 Random randomShiny = new Random();
-                // 閃光寶可夢的機率約為 1/10
+                // 閃光pokemon的機率約為 1/10
                 isShiny = randomShiny.Next(1, 11) == 1;
             }
 
@@ -194,13 +194,13 @@ namespace MusicBot2.Service
                 NextEvolutionId = null
             };
 
-            // 檢查這隻寶可夢是否有進化鏈
+            // 檢查這隻pokemon是否有進化鏈
             await CheckEvolutionChainAsync(pokemon, speciesData);
 
             return pokemon;
         }
 
-        // 檢查寶可夢的進化鏈
+        // 檢查pokemon的進化鏈
         private async Task CheckEvolutionChainAsync(PokeGamePokemon pokemon, PokeSpecies speciesData)
         {
             try
@@ -212,7 +212,7 @@ namespace MusicBot2.Service
                 var evolutionChainContent = await evolutionChainResponse.Content.ReadAsStringAsync();
                 var evolutionChain = JsonConvert.DeserializeObject<EvolutionChain>(evolutionChainContent);
 
-                // 找到當前寶可夢在進化鏈中的位置
+                // 找到當前pokemon在進化鏈中的位置
                 FindPokemonInChain(pokemon, evolutionChain.chain, 0);
             }
             catch (Exception ex)
@@ -228,7 +228,7 @@ namespace MusicBot2.Service
 
             if (currentId == pokemon.Id)
             {
-                // 找到當前寶可夢
+                // 找到當前pokemon
                 pokemon.EvolutionStage = stage;
 
                 // 檢查是否有下一階段進化
@@ -259,7 +259,7 @@ namespace MusicBot2.Service
 
             try
             {
-                // 獲取進化後的寶可夢資料
+                // 獲取進化後的pokemon資料
                 var response = await _httpClient.GetAsync($"{API_BASE_URL}pokemon/{pokemon.NextEvolutionId.Value}");
                 if (!response.IsSuccessStatusCode)
                     return pokemon;
@@ -272,7 +272,7 @@ namespace MusicBot2.Service
                 var speciesContent = await speciesResponse.Content.ReadAsStringAsync();
                 var speciesData = JsonConvert.DeserializeObject<PokeSpecies>(speciesContent);
 
-                var chineseName = speciesData.names.FirstOrDefault(n => n.language.name == "zh-Hant")?.name
+                var chineseName = speciesData.names.FirstOrDefault(n => n.language.name == "zh-hant")?.name
                     ?? pokeData.species.name;
 
                 // 保留原本的自訂名稱和閃光狀態
@@ -280,7 +280,7 @@ namespace MusicBot2.Service
                 var isShiny = pokemon.isShiny;
                 var caughtDate = pokemon.CaughtDate;
 
-                // 更新寶可夢資料
+                // 更新pokemon資料
                 pokemon.Id = pokeData.id;
                 pokemon.Name = chineseName;
                 pokemon.CustomName = customName;
@@ -405,7 +405,7 @@ namespace MusicBot2.Service
             }
         }
 
-        // 釋放寶可夢
+        // 釋放pokemon
         public async Task<(Embed embed, ComponentBuilder component)> ReleasePokemonAsync(ulong userId, string userName, int pokemonIndex)
         {
             try
@@ -486,7 +486,7 @@ namespace MusicBot2.Service
                 if (index == 0)
                 {
                     Random random = new Random();
-                    pokemonIndex = random.Next(1, player.CaughtPokemon.Count + 1); // 隨機選擇一隻寶可夢參加對戰
+                    pokemonIndex = random.Next(1, player.CaughtPokemon.Count + 1); // 隨機選擇一隻pokemon參加對戰
                 }
 
 
@@ -554,7 +554,7 @@ namespace MusicBot2.Service
    - 特攻: {pokemon2.SpecialAttack}, 特防: {pokemon2.SpecialDefense}, 速度: {pokemon2.Speed}
 
 請根據以上數據和屬性相剋關係，判斷誰會獲勝，並用繁體中文描述一段精彩的對戰過程。
-要以該寶可夢真實的技能來敘述，期間有自訂名稱的話就要叫自訂名稱，沒有的話就叫真實名稱。
+要以該pokemon真實的技能來敘述，期間有自訂名稱的話就要叫自訂名稱，沒有的話就叫真實名稱。
 最後請在描述的最後一行明確說明勝者是誰，格式為「勝者：[玩家名稱]」";
 
                 // 呼叫 AI 判斷對戰結果
@@ -590,7 +590,7 @@ namespace MusicBot2.Service
                     winner.TotalBattles++;
                     winner.Wins++;
 
-                    // 更新勝利者寶可夢的進化點數 (+2)
+                    // 更新勝利者pokemon的進化點數 (+2)
                     winnerPokemon.EvolutionPoints += 2;
 
                     // 檢查是否達到進化條件（3點）
@@ -600,7 +600,7 @@ namespace MusicBot2.Service
                         winnerPokemon = await EvolvePokemonAsync(winnerPokemon);
                         evolutionMessage = $"\n\n✨ **恭喜！{oldName} 進化成 {winnerPokemon.Name} 了！** ✨";
 
-                        // 更新玩家資料中的寶可夢
+                        // 更新玩家資料中的pokemon
                         var pokemonInList = winner.CaughtPokemon.FirstOrDefault(p => p.Id == pokemon1.Id && p.CaughtDate == pokemon1.CaughtDate);
                         if (pokemonInList != null)
                         {
@@ -618,7 +618,7 @@ namespace MusicBot2.Service
                     loser.TotalBattles++;
                     loser.Losses++;
 
-                    // 更新失敗者寶可夢的進化點數 (+1)
+                    // 更新失敗者pokemon的進化點數 (+1)
                     loserPokemon.EvolutionPoints += 1;
 
                     // 檢查是否達到進化條件（3點）
@@ -631,7 +631,7 @@ namespace MusicBot2.Service
                         else
                             evolutionMessage += $"\n✨ **{oldName} 也進化成 {loserPokemon.Name} 了！** ✨";
 
-                        // 更新玩家資料中的寶可夢
+                        // 更新玩家資料中的pokemon
                         var pokemonInList = loser.CaughtPokemon.FirstOrDefault(p => p.Id == pokemon2.Id && p.CaughtDate == pokemon2.CaughtDate);
                         if (pokemonInList != null)
                         {
