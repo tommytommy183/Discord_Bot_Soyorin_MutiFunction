@@ -179,6 +179,7 @@ namespace MusicBot2.Service
                 Name = chineseName,
                 CustomName = null,
                 ImageUrl = imageUrl,
+                Back_ImageUrl = isShiny ? pokeData.sprites.back_shiny : pokeData.sprites.back_default,
                 HP = pokeData.stats.FirstOrDefault(s => s.stat.name == "hp")?.base_stat ?? 0,
                 Attack = pokeData.stats.FirstOrDefault(s => s.stat.name == "attack")?.base_stat ?? 0,
                 Defense = pokeData.stats.FirstOrDefault(s => s.stat.name == "defense")?.base_stat ?? 0,
@@ -191,7 +192,9 @@ namespace MusicBot2.Service
                 EvolutionPoints = 0,
                 EvolutionStage = 0,
                 CanEvolve = false,
-                NextEvolutionId = null
+                NextEvolutionId = null,
+                Front_GIF = isShiny ? pokeData.sprites.other.showdown.front_shiny : pokeData.sprites.other.showdown.front_default,
+                Back_GIF = isShiny ? pokeData.sprites.other.showdown.back_shiny : pokeData.sprites.other.showdown.back_default
             };
 
             // 檢查這隻pokemon是否有進化鏈
@@ -466,7 +469,7 @@ namespace MusicBot2.Service
         #endregion
 
         #region 對戰系統
-        public async Task<(Embed embed, ComponentBuilder component)> StartBattleSearchAsync(ulong userId, string userName,int index)
+        public async Task<(Embed embed, ComponentBuilder component)> StartBattleSearchAsync(ulong userId, string userName,int index, IMessageChannel channel)
         {
             try
             {
@@ -510,6 +513,12 @@ namespace MusicBot2.Service
                 {
                     // 找到對手，開始對戰！
                     await RemoveFromMatchmakingAsync(opponent.UserId);
+
+                    //對戰前先丟一次雙方pokemon圖片
+                    
+                    await channel.SendMessageAsync(opponent.Pokemon.Front_GIF ?? opponent.Pokemon.ImageUrl);
+                    await channel.SendMessageAsync((pokemon.Back_GIF ?? pokemon.Back_ImageUrl) ?? pokemon.ImageUrl);
+
                     return await ExecuteBattleAsync(userId, userName, pokemon, opponent.UserId, opponent.UserName, opponent.Pokemon);
                 }
                 else
@@ -547,14 +556,17 @@ namespace MusicBot2.Service
    - 屬性: {string.Join(", ", pokemon1.Types)}
    - HP: {pokemon1.HP}, 攻擊: {pokemon1.Attack}, 防禦: {pokemon1.Defense}
    - 特攻: {pokemon1.SpecialAttack}, 特防: {pokemon1.SpecialDefense}, 速度: {pokemon1.Speed}
+   - 是否為閃光: {(pokemon1.isShiny ? "是" : "否")}
 
 2. {player2Name} 的 自訂名稱:{pokemon2.CustomName ?? pokemon2.Name}，真實名稱:{pokemon2.Name}
    - 屬性: {string.Join(", ", pokemon2.Types)}
    - HP: {pokemon2.HP}, 攻擊: {pokemon2.Attack}, 防禦: {pokemon2.Defense}
    - 特攻: {pokemon2.SpecialAttack}, 特防: {pokemon2.SpecialDefense}, 速度: {pokemon2.Speed}
+   - 是否為閃光: {(pokemon2.isShiny ? "是" : "否")}
 
 請根據以上數據和屬性相剋關係，判斷誰會獲勝，並用繁體中文描述一段精彩的對戰過程。
 要以該pokemon真實的技能來敘述，期間有自訂名稱的話就要叫自訂名稱，沒有的話就叫真實名稱。
+如果是閃光的，對話中要提到閃光的特效。
 最後請在描述的最後一行明確說明勝者是誰，格式為「勝者：[玩家名稱]」";
 
                 // 呼叫 AI 判斷對戰結果

@@ -30,6 +30,7 @@ namespace MusicBot2.Models
         public string front_default { get; set; }
         public string back_default { get; set; }
         public string front_shiny { get; set; }
+        public string back_shiny { get; set; }
         public SpritesOther other { get; set; }
     }
 
@@ -39,13 +40,21 @@ namespace MusicBot2.Models
         public SprotesImage home { get; set; }
         [JsonProperty("official-artwork")]
         public SprotesImage official_artwork { get; set; }
-        public SprotesImage showdown { get; set; }
+        public ShowDown showdown { get; set; }
     }
 
     public class SprotesImage
     {
         public string front_default { get; set; }
         public string back_default { get; set; }
+    }
+
+    public class ShowDown
+    {
+        public string front_default { get; set; }
+        public string back_default { get; set; }
+        public string front_shiny { get; set; }
+        public string back_shiny { get; set; }
     }
 
     public class PokeStats
@@ -144,6 +153,8 @@ namespace MusicBot2.Models
         public string Name { get; set; }
         public string CustomName { get; set; }
         public string ImageUrl { get; set; }
+        public string Back_ImageUrl { get; set; }
+
         public int HP { get; set; }
         public int Attack { get; set; }
         public int Defense { get; set; }
@@ -159,6 +170,8 @@ namespace MusicBot2.Models
         public int EvolutionStage { get; set; } = 0; // 進化階段（0=基礎，1=一階進化，2=二階進化）
         public bool CanEvolve { get; set; } = false; // 是否可以進化
         public int? NextEvolutionId { get; set; } // 下一階段進化的 Pokemon ID
+        public string Front_GIF { get; set; } // 動態圖片 URL
+        public string Back_GIF { get; set; } // 動態圖片 URL
     }
 
     public class BattleMatchmaking

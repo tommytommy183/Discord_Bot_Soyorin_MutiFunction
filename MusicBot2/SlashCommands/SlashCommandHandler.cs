@@ -661,7 +661,9 @@ namespace MusicBot2.SlahCommands
             [Summary("編號", "要出戰的pokemon編號（從1開始）")] int index = 0)
         {
             await DeferAsync();
-            var (embed, component) = await _pokeGameService.StartBattleSearchAsync(Context.User.Id, Context.User.Username, index);
+
+            var channel = Context.Channel;
+            var (embed, component) = await _pokeGameService.StartBattleSearchAsync(Context.User.Id, Context.User.Username, index, channel);
             await FollowupAsync(embed: embed, components: component.Build());
         }
 
