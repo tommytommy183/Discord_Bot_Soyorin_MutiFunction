@@ -611,6 +611,7 @@ namespace MusicBot2.Service
                     // 更新勝利者pokemon的進化點數 (+2)
                     winnerPokemon.EvolutionPoints += 2;
 
+                    int preId = winnerPokemon.Id;
                     // 檢查是否達到進化條件（3點）
                     if (winnerPokemon.CanEvolve && winnerPokemon.EvolutionPoints >= 3)
                     {
@@ -629,7 +630,7 @@ namespace MusicBot2.Service
 
                     winner.CaughtPokemon = winner.CaughtPokemon.Select(p =>
                     {
-                        if (p.Id == winnerPokemon.Id && p.CaughtDate == winnerPokemon.CaughtDate)
+                        if (p.Id == preId)
                             return winnerPokemon;
                         return p;
                     }).ToList();
@@ -646,6 +647,7 @@ namespace MusicBot2.Service
                     // 更新失敗者pokemon的進化點數 (+1)
                     loserPokemon.EvolutionPoints += 1;
 
+                    int preId = loserPokemon.Id;
                     // 檢查是否達到進化條件（3點）
                     if (loserPokemon.CanEvolve && loserPokemon.EvolutionPoints >= 3)
                     {
@@ -667,7 +669,7 @@ namespace MusicBot2.Service
 
                     loser.CaughtPokemon = loser.CaughtPokemon.Select(p =>
                     {
-                        if (p.Id == loserPokemon.Id && p.CaughtDate == loserPokemon.CaughtDate)
+                        if (p.Id == preId)
                             return loserPokemon;
                         return p;
                     }).ToList();
