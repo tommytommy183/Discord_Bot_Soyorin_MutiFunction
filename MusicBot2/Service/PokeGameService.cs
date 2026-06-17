@@ -470,7 +470,7 @@ namespace MusicBot2.Service
 
                 var embed = new EmbedBuilder()
                     .WithTitle("👋 釋放pokemon")
-                    .WithDescription($"你釋放了 **{pokemonName}**！\n他將會記住 他將會找到你 他將會回來草飼你")
+                    .WithDescription($"你釋放了 **{pokemonName}**！\n他將會記住你 他將會找到你 他將會回來草飼你")
                     .WithThumbnailUrl(pokemon.ImageUrl)
                     .WithColor(Color.Blue)
                     .WithFooter($"目前剩餘 {player.CaughtPokemon.Count} 隻pokemon")
@@ -700,7 +700,7 @@ namespace MusicBot2.Service
 
 請根據以上數據和屬性相剋關係，判斷誰會獲勝，並用繁體中文描述一段精彩的對戰過程。
 要以該pokemon真實的技能來敘述，期間有自訂名稱的話就要叫自訂名稱，沒有的話就叫真實名稱。
-如果是閃光的，對話中要提到閃光的特效。
+如果是閃光的，對話中要提到閃光的特效，但閃光完全不影響戰鬥結果。
 最後請在描述的最後一行明確說明勝者是誰，格式為「勝者：[玩家名稱]」";
 
                 // 呼叫 AI 判斷對戰結果
@@ -944,7 +944,7 @@ namespace MusicBot2.Service
 
 請根據以上數據和屬性相剋關係，判斷誰會獲勝，並用繁體中文描述一段精彩的對戰過程。
 要以該pokemon真實的技能來敘述，期間有自訂名稱的話就要叫自訂名稱，沒有的話就叫真實名稱。
-如果是閃光的，對話中要提到閃光的特效。
+如果是閃光的，對話中要提到閃光的特效，但閃光完全不影響戰鬥結果。
 最後請在描述的最後一行明確說明勝者是誰，格式為「勝者：[玩家名稱]」";
 
                 // 呼叫 AI 判斷對戰結果
