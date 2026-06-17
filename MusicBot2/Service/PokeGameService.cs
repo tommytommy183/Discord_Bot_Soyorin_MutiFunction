@@ -94,7 +94,7 @@ namespace MusicBot2.Service
 
                 // 隨機抓一隻pokemon
                 var pokemon = await GetRandomPokemonAsync();
-
+                string ShinyText = pokemon.isShiny ? "✨襪烙勒是閃的寶貝✨" : "";
                 // 儲存到玩家資料
                 player.CaughtPokemon.Add(pokemon);
                 player.LastCatchDate = DateTime.UtcNow;
@@ -102,7 +102,7 @@ namespace MusicBot2.Service
 
                 // 建立回應訊息
                 var embed = new EmbedBuilder()
-                    .WithTitle($"🎉 恭喜抓到pokemon！")
+                    .WithTitle($"🎉 恭喜抓到pokemon！{ShinyText}")
                     .WithDescription($"**{pokemon.Name}** 加入了你的隊伍！")
                     .WithThumbnailUrl(pokemon.ImageUrl)
                     .WithColor(Color.Green)
@@ -158,7 +158,7 @@ namespace MusicBot2.Service
             var speciesContent = await speciesResponse.Content.ReadAsStringAsync();
             var speciesData = JsonConvert.DeserializeObject<PokeSpecies>(speciesContent);
 
-            var chineseName = speciesData.names.FirstOrDefault(n => n.language.name == "zh-Hant")?.name
+            var chineseName = speciesData.names.FirstOrDefault(n => n.language.name == "zh-hant")?.name
                 ?? pokeData.species.name;
 
 
@@ -166,8 +166,8 @@ namespace MusicBot2.Service
             {
                 // 如果有閃光圖，則這支pokemon有機會為閃光寶可夢
                 Random randomShiny = new Random();
-                // 閃光寶可夢的機率約為 1/100
-                isShiny = randomShiny.Next(1, 101) == 1;
+                // 閃光寶可夢的機率約為 1/10
+                isShiny = randomShiny.Next(1, 11) == 1;
             }
 
             string imageUrl = isShiny ? pokeData.sprites.front_shiny : pokeData.sprites.front_default;
