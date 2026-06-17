@@ -242,7 +242,10 @@ namespace MusicBot2.Service
                 // 檢查是否有下一階段進化
                 if (chainLink.evolves_to != null && chainLink.evolves_to.Count > 0)
                 {
-                    var nextEvolution = chainLink.evolves_to[0];
+                    //下一種進化有多個的話就隨
+                    Random random = new Random();
+                    int index = random.Next(0, chainLink.evolves_to.Count);
+                    var nextEvolution = chainLink.evolves_to[index];
                     pokemon.NextEvolutionId = int.Parse(nextEvolution.species.url.Split('/').Where(s => !string.IsNullOrEmpty(s)).Last());
                     pokemon.CanEvolve = true;
                 }
