@@ -8,6 +8,7 @@ using StackExchange.Redis;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Threading.Tasks;
 
 namespace MusicBot2.Service
@@ -626,6 +627,13 @@ namespace MusicBot2.Service
                         }
                     }
 
+                    winner.CaughtPokemon = winner.CaughtPokemon.Select(p =>
+                    {
+                        if (p.Id == winnerPokemon.Id && p.CaughtDate == winnerPokemon.CaughtDate)
+                            return winnerPokemon;
+                        return p;
+                    }).ToList();
+
                     await SavePlayerDataAsync(winner);
                 }
 
@@ -656,6 +664,13 @@ namespace MusicBot2.Service
                             loser.CaughtPokemon[index] = loserPokemon;
                         }
                     }
+
+                    loser.CaughtPokemon = loser.CaughtPokemon.Select(p =>
+                    {
+                        if (p.Id == loserPokemon.Id && p.CaughtDate == loserPokemon.CaughtDate)
+                            return loserPokemon;
+                        return p;
+                    }).ToList();
 
                     await SavePlayerDataAsync(loser);
                 }
