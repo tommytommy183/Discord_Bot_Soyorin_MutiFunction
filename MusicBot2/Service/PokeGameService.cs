@@ -596,14 +596,27 @@ namespace MusicBot2.Service
                     await RemoveFromMatchmaking2V2Async(opponent.UserId);
 
                     //對戰前先丟一次雙方pokemon圖片
+                    if(!string.IsNullOrEmpty(opponent.Pokemon1.Front_GIF ?? opponent.Pokemon1.ImageUrl))
+                    {
+                        await channel.SendMessageAsync(opponent.Pokemon1.Front_GIF ?? opponent.Pokemon1.ImageUrl);
+                    }
+                    if (!string.IsNullOrEmpty(opponent.Pokemon2.Front_GIF ?? opponent.Pokemon2.ImageUrl))
+                    {
+                        await channel.SendMessageAsync(opponent.Pokemon2.Front_GIF ?? opponent.Pokemon2.ImageUrl);
+                    }
 
-                    await channel.SendMessageAsync(opponent.Pokemon.Front_GIF ?? opponent.Pokemon.ImageUrl);
-                    await channel.SendMessageAsync(opponent.Pokemon.Front_GIF ?? opponent.Pokemon.ImageUrl);
+                    await channel.SendMessageAsync("==============================對上==============================");
 
-                    await channel.SendMessageAsync((pokemon1.Back_GIF ?? pokemon1.Back_ImageUrl) ?? pokemon1.ImageUrl);
-                    await channel.SendMessageAsync((pokemon2.Back_GIF ?? pokemon2.Back_ImageUrl) ?? pokemon2.ImageUrl);
+                    if (!string.IsNullOrEmpty((pokemon1.Back_GIF ?? pokemon1.Back_ImageUrl) ?? pokemon1.ImageUrl))
+                    {
+                        await channel.SendMessageAsync((pokemon1.Back_GIF ?? pokemon1.Back_ImageUrl) ?? pokemon1.ImageUrl);
+                    }
+                    if (!string.IsNullOrEmpty((pokemon2.Back_GIF ?? pokemon2.Back_ImageUrl) ?? pokemon2.ImageUrl))
+                    {
+                        await channel.SendMessageAsync((pokemon2.Back_GIF ?? pokemon2.Back_ImageUrl) ?? pokemon2.ImageUrl);
+                    }
 
-                    return await Execute2V2BattleAsync(userId, userName, pokemon1, pokemon2, opponent.UserId, opponent.UserName, opponent.Pokemon);
+                    return await Execute2V2BattleAsync(userId, userName, pokemon1, pokemon2, opponent.UserId, opponent.UserName, opponent.Pokemon1, opponent.Pokemon2);
                 }
                 else
                 {
@@ -636,17 +649,36 @@ namespace MusicBot2.Service
                 string battlePrompt = $@"請模擬一場精彩的pokemon對戰，並判斷勝負。
 
 對戰雙方：
-1. {player1Name} 的 自訂名稱:{pokemon1.CustomName ?? pokemon1.Name}，真實名稱:{pokemon1.Name}
+1. {player1Name} 的 第一隻寶可夢:
+    自訂名稱:{pokemon1.CustomName ?? pokemon1.Name}，真實名稱:{pokemon1.Name}
    - 屬性: {string.Join(", ", pokemon1.Types)}
    - HP: {pokemon1.HP}, 攻擊: {pokemon1.Attack}, 防禦: {pokemon1.Defense}
    - 特攻: {pokemon1.SpecialAttack}, 特防: {pokemon1.SpecialDefense}, 速度: {pokemon1.Speed}
    - 是否為閃光: {(pokemon1.isShiny ? "是" : "否")}
 
-2. {player2Name} 的 自訂名稱:{pokemon2.CustomName ?? pokemon2.Name}，真實名稱:{pokemon2.Name}
+2. {player1Name} 的 第二隻寶可夢:
+    自訂名稱:{pokemon2.CustomName ?? pokemon2.Name}，真實名稱:{pokemon2.Name}
    - 屬性: {string.Join(", ", pokemon2.Types)}
    - HP: {pokemon2.HP}, 攻擊: {pokemon2.Attack}, 防禦: {pokemon2.Defense}
    - 特攻: {pokemon2.SpecialAttack}, 特防: {pokemon2.SpecialDefense}, 速度: {pokemon2.Speed}
    - 是否為閃光: {(pokemon2.isShiny ? "是" : "否")}
+
+==================================對上==================================================
+
+3. {player2Name} 的第一隻寶可夢:
+    自訂名稱:{opponentPokemon1.CustomName ?? opponentPokemon1.Name}，真實名稱:{opponentPokemon1.Name}
+   - 屬性: {string.Join(", ", opponentPokemon1.Types)}
+   - HP: {opponentPokemon1.HP}, 攻擊: {opponentPokemon1.Attack}, 防禦: {opponentPokemon1.Defense}
+   - 特攻: {opponentPokemon1.SpecialAttack}, 特防: {opponentPokemon1.SpecialDefense}, 速度: {opponentPokemon1.Speed}
+   - 是否為閃光: {(opponentPokemon1.isShiny ? "是" : "否")}
+
+4. {player2Name} 的第二隻寶可夢:
+    自訂名稱:{opponentPokemon2.CustomName ?? opponentPokemon2.Name}，真實名稱:{opponentPokemon2.Name}
+   - 屬性: {string.Join(", ", opponentPokemon2.Types)}
+   - HP: {opponentPokemon2.HP}, 攻擊: {opponentPokemon2.Attack}, 防禦: {opponentPokemon2.Defense}
+   - 特攻: {opponentPokemon2.SpecialAttack}, 特防: {opponentPokemon2.SpecialDefense}, 速度: {opponentPokemon2.Speed}
+   - 是否為閃光: {(opponentPokemon2.isShiny ? "是" : "否")}
+
 
 請根據以上數據和屬性相剋關係，判斷誰會獲勝，並用繁體中文描述一段精彩的對戰過程。
 要以該pokemon真實的技能來敘述，期間有自訂名稱的話就要叫自訂名稱，沒有的話就叫真實名稱。
@@ -664,18 +696,26 @@ namespace MusicBot2.Service
                 if (!player1Wins && !aiResponse.Contains($"勝者：{player2Name}") && !aiResponse.Contains($"勝者: {player2Name}"))
                 {
                     int pokemon1Total = pokemon1.HP + pokemon1.Attack + pokemon1.Defense +
-                                       pokemon1.SpecialAttack + pokemon1.SpecialDefense + pokemon1.Speed;
-                    int pokemon2Total = pokemon2.HP + pokemon2.Attack + pokemon2.Defense +
+                                       pokemon1.SpecialAttack + pokemon1.SpecialDefense + pokemon1.Speed +
+                                       pokemon2.HP + pokemon2.Attack + pokemon2.Defense +
                                        pokemon2.SpecialAttack + pokemon2.SpecialDefense + pokemon2.Speed;
-                    player1Wins = pokemon1Total > pokemon2Total;
+                    int opponentPokemonTotal = opponentPokemon1.HP + opponentPokemon1.Attack + opponentPokemon1.Defense +
+                                       opponentPokemon1.SpecialAttack + opponentPokemon1.SpecialDefense + opponentPokemon1.Speed +
+                                       opponentPokemon2.HP + opponentPokemon2.Attack + opponentPokemon2.Defense +
+                                       opponentPokemon2.SpecialAttack + opponentPokemon2.SpecialDefense + opponentPokemon2.Speed;
+                    player1Wins = pokemon1Total > opponentPokemonTotal;
                 }
 
                 var winnerId = player1Wins ? player1Id : player2Id;
                 var winnerName = player1Wins ? player1Name : player2Name;
-                var winnerPokemon = player1Wins ? pokemon1 : pokemon2;
+                var winnerPokemon1 = player1Wins ? pokemon1 : opponentPokemon1;
+                var winnerPokemon2 = player1Wins ? pokemon2 : opponentPokemon2;
+
                 var loserId = player1Wins ? player2Id : player1Id;
                 var loserName = player1Wins ? player2Name : player1Name;
-                var loserPokemon = player1Wins ? pokemon2 : pokemon1;
+
+                var loserPokemon1 = player1Wins ? opponentPokemon1 : pokemon1;
+                var loserPokemon2 = player1Wins ? opponentPokemon2 : pokemon2;
 
                 // 更新戰績和進化點數（只更新真實玩家，ID 為 0 的是電腦對手）
                 string evolutionMessage = "";
@@ -687,14 +727,15 @@ namespace MusicBot2.Service
                     winner.Wins++;
 
                     // 更新勝利者pokemon的進化點數 (+2)
-                    winnerPokemon.EvolutionPoints += 2;
+                    winnerPokemon1.EvolutionPoints += 2;
+                    winnerPokemon2.EvolutionPoints += 2;
 
                     // 檢查是否達到進化條件（3點）
-                    if (winnerPokemon.CanEvolve && winnerPokemon.EvolutionPoints >= 3)
+                    if (winnerPokemon1.CanEvolve && winnerPokemon1.EvolutionPoints >= 3)
                     {
-                        var oldName = winnerPokemon.Name;
-                        winnerPokemon = await EvolvePokemonAsync(winnerPokemon);
-                        evolutionMessage = $"\n\n✨ **恭喜！{oldName} 進化成 {winnerPokemon.Name} 了！** ✨";
+                        var oldName = winnerPokemon1.Name;
+                        winnerPokemon1 = await EvolvePokemonAsync(winnerPokemon1);
+                        evolutionMessage = $"\n\n✨ **恭喜！{oldName} 進化成 {winnerPokemon1.Name} 了！** ✨";
 
                         // 更新玩家資料中的pokemon
                         var pokemonInList = winner.CaughtPokemon.FirstOrDefault(p => p.Id == pokemon1.Id && p.CaughtDate == pokemon1.CaughtDate);
@@ -1244,11 +1285,12 @@ namespace MusicBot2.Service
 
         private async Task AddToMatchmaking2V2Async(ulong userId, string userName, PokeGamePokemon pokemon1, PokeGamePokemon pokemon2)
         {
-            var matchmaking = new BattleMatchmaking
+            var matchmaking = new BattleMatchmaking2V2
             {
                 UserId = userId,
                 UserName = userName,
-                Pokemon = pokemon,
+                Pokemon1 = pokemon1,
+                Pokemon2 = pokemon2,
                 SearchStartTime = DateTime.UtcNow
             };
 
@@ -1266,13 +1308,13 @@ namespace MusicBot2.Service
                 {
                     Console.WriteLine($"⚠️ Redis 配對寫入失敗，切換到記憶體儲存: {ex.Message}");
                     // Redis 失敗時降級到記憶體儲存
-                    _memoryMatchmaking[userId] = matchmaking;
+                    _memoryMatchmaking2V2[userId] = matchmaking;
                 }
             }
             else
             {
                 // 使用記憶體儲存
-                _memoryMatchmaking[userId] = matchmaking;
+                _memoryMatchmaking2V2[userId] = matchmaking;
                 await Task.CompletedTask;
             }
         }
@@ -1328,7 +1370,7 @@ namespace MusicBot2.Service
             {
                 // 使用記憶體儲存
                 var expiredKeys = new List<ulong>();
-                foreach (var kvp in _memoryMatchmaking)
+                foreach (var kvp in _memoryMatchmaking2V2)
                 {
                     if ((DateTime.UtcNow - kvp.Value.SearchStartTime).TotalMinutes < 5)
                     {
@@ -1343,7 +1385,7 @@ namespace MusicBot2.Service
                 // 清理過期的配對
                 foreach (var key in expiredKeys)
                 {
-                    _memoryMatchmaking.Remove(key);
+                    _memoryMatchmaking2V2.Remove(key);
                 }
 
                 await Task.CompletedTask;
@@ -1364,13 +1406,13 @@ namespace MusicBot2.Service
                 {
                     Console.WriteLine($"⚠️ Redis 配對刪除失敗，切換到記憶體儲存: {ex.Message}");
                     // Redis 失敗時降級到記憶體儲存
-                    _memoryMatchmaking.Remove(userId);
+                    _memoryMatchmaking2V2.Remove(userId);
                 }
             }
             else
             {
                 // 使用記憶體儲存
-                _memoryMatchmaking.Remove(userId);
+                _memoryMatchmaking2V2.Remove(userId);
                 await Task.CompletedTask;
             }
         }
