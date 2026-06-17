@@ -22,6 +22,8 @@ namespace MusicBot2.Service
         // 記憶體儲存 (當 Redis 無法連線時使用)
         private static readonly Dictionary<ulong, PokeGamePlayer> _memoryPlayers = new Dictionary<ulong, PokeGamePlayer>();
         private static readonly Dictionary<ulong, BattleMatchmaking> _memoryMatchmaking = new Dictionary<ulong, BattleMatchmaking>();
+        private static readonly Dictionary<ulong, BattleMatchmaking2V2> _memoryMatchmaking2V2 = new Dictionary<ulong, BattleMatchmaking2V2>();
+
 
         private const string API_BASE_URL = "https://pokeapi.co/api/v2/";
         private const string PLAYER_DATA_KEY = "pokegame:player:";
@@ -1275,9 +1277,9 @@ namespace MusicBot2.Service
             }
         }
 
-        private async Task<List<BattleMatchmaking>> GetWaitingPlayers2V2Async()
+        private async Task<List<BattleMatchmaking2V2>> GetWaitingPlayers2V2Async()
         {
-            var result = new List<BattleMatchmaking>();
+            var result = new List<BattleMatchmaking2V2>();
 
             if (_useRedis)
             {
@@ -1289,7 +1291,7 @@ namespace MusicBot2.Service
                     {
                         try
                         {
-                            var matchmaking = JsonConvert.DeserializeObject<BattleMatchmaking>(entry.Value);
+                            var matchmaking = JsonConvert.DeserializeObject<BattleMatchmaking2V2>(entry.Value);
                             // 只返回 5 分鐘內的搜尋
                             if ((DateTime.UtcNow - matchmaking.SearchStartTime).TotalMinutes < 5)
                             {
@@ -1304,7 +1306,7 @@ namespace MusicBot2.Service
                     Console.WriteLine($"⚠️ Redis 配對讀取失敗，切換到記憶體儲存: {ex.Message}");
                     // Redis 失敗時降級到記憶體儲存
                     var expiredKeys = new List<ulong>();
-                    foreach (var kvp in _memoryMatchmaking)
+                    foreach (var kvp in _memoryMatchmaking2V2)
                     {
                         if ((DateTime.UtcNow - kvp.Value.SearchStartTime).TotalMinutes < 5)
                         {
@@ -1318,7 +1320,7 @@ namespace MusicBot2.Service
 
                     foreach (var key in expiredKeys)
                     {
-                        _memoryMatchmaking.Remove(key);
+                        _memoryMatchmaking2V2.Remove(key);
                     }
                 }
             }
