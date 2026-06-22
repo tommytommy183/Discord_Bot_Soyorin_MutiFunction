@@ -1310,8 +1310,8 @@ namespace MusicBot2.Service
                     var data = JsonConvert.SerializeObject(matchmaking);
                     await _redisDb.HashSetAsync(MATCHMAKING_KEY, userId.ToString(), data);
 
-                    // 設定 5 分鐘過期
-                    await _redisDb.KeyExpireAsync(MATCHMAKING_KEY, TimeSpan.FromMinutes(5));
+                    // 設定 1440 分鐘過期 (24 小時)
+                    await _redisDb.KeyExpireAsync(MATCHMAKING_KEY, TimeSpan.FromMinutes(1440));
                 }
                 catch (Exception ex)
                 {
@@ -1343,8 +1343,8 @@ namespace MusicBot2.Service
                         try
                         {
                             var matchmaking = JsonConvert.DeserializeObject<BattleMatchmaking>(entry.Value);
-                            // 只返回 5 分鐘內的搜尋
-                            if ((DateTime.UtcNow - matchmaking.SearchStartTime).TotalMinutes < 5)
+                            // 只返回 1440 分鐘內的搜尋 (24 小時)
+                            if ((DateTime.UtcNow - matchmaking.SearchStartTime).TotalMinutes < 1440)
                             {
                                 result.Add(matchmaking);
                             }
@@ -1359,7 +1359,7 @@ namespace MusicBot2.Service
                     var expiredKeys = new List<ulong>();
                     foreach (var kvp in _memoryMatchmaking)
                     {
-                        if ((DateTime.UtcNow - kvp.Value.SearchStartTime).TotalMinutes < 5)
+                        if ((DateTime.UtcNow - kvp.Value.SearchStartTime).TotalMinutes < 1440)
                         {
                             result.Add(kvp.Value);
                         }
@@ -1381,7 +1381,7 @@ namespace MusicBot2.Service
                 var expiredKeys = new List<ulong>();
                 foreach (var kvp in _memoryMatchmaking)
                 {
-                    if ((DateTime.UtcNow - kvp.Value.SearchStartTime).TotalMinutes < 5)
+                    if ((DateTime.UtcNow - kvp.Value.SearchStartTime).TotalMinutes < 1440)
                     {
                         result.Add(kvp.Value);
                     }
@@ -1445,8 +1445,8 @@ namespace MusicBot2.Service
                     var data = JsonConvert.SerializeObject(matchmaking);
                     await _redisDb.HashSetAsync(MATCHMAKING_KEY_2V2, userId.ToString(), data);
 
-                    // 設定 5 分鐘過期
-                    await _redisDb.KeyExpireAsync(MATCHMAKING_KEY_2V2, TimeSpan.FromMinutes(5));
+                    // 設定 1440 分鐘過期 (24 小時)
+                    await _redisDb.KeyExpireAsync(MATCHMAKING_KEY_2V2, TimeSpan.FromMinutes(1440));
                 }
                 catch (Exception ex)
                 {
@@ -1478,8 +1478,8 @@ namespace MusicBot2.Service
                         try
                         {
                             var matchmaking = JsonConvert.DeserializeObject<BattleMatchmaking2V2>(entry.Value);
-                            // 只返回 5 分鐘內的搜尋
-                            if ((DateTime.UtcNow - matchmaking.SearchStartTime).TotalMinutes < 5)
+                            // 只返回 1440 分鐘內的搜尋 (24 小時)
+                            if ((DateTime.UtcNow - matchmaking.SearchStartTime).TotalMinutes < 1440)
                             {
                                 result.Add(matchmaking);
                             }
@@ -1494,7 +1494,7 @@ namespace MusicBot2.Service
                     var expiredKeys = new List<ulong>();
                     foreach (var kvp in _memoryMatchmaking2V2)
                     {
-                        if ((DateTime.UtcNow - kvp.Value.SearchStartTime).TotalMinutes < 5)
+                        if ((DateTime.UtcNow - kvp.Value.SearchStartTime).TotalMinutes < 1440)
                         {
                             result.Add(kvp.Value);
                         }
@@ -1516,7 +1516,7 @@ namespace MusicBot2.Service
                 var expiredKeys = new List<ulong>();
                 foreach (var kvp in _memoryMatchmaking2V2)
                 {
-                    if ((DateTime.UtcNow - kvp.Value.SearchStartTime).TotalMinutes < 5)
+                    if ((DateTime.UtcNow - kvp.Value.SearchStartTime).TotalMinutes < 1440)
                     {
                         result.Add(kvp.Value);
                     }
