@@ -7,6 +7,7 @@ using Newtonsoft.Json;
 using StackExchange.Redis;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
@@ -31,11 +32,15 @@ namespace MusicBot2.Service
         private const string MATCHMAKING_KEY = "pokegame:matchmaking";
         private const string MATCHMAKING_KEY_2V2 = "pokegame:matchmaking:2v2";
 
+        private readonly DiscordSocketClient _client;
 
-        public PokeGameService(string redisConnectionString, OpenRouterService aiService)
+
+
+        public PokeGameService(string redisConnectionString, OpenRouterService aiService, DiscordSocketClient client)
         {
             _httpClient = new HttpClient();
             _aiService = aiService;
+            _client = client;
 
             // 嘗試連線 Redis，如果失敗則使用記憶體儲存
             try
@@ -525,28 +530,33 @@ namespace MusicBot2.Service
                 // 檢查是否有其他玩家在等待
                 var waitingPlayers = await GetWaitingPlayersAsync();
                 var opponent = waitingPlayers.FirstOrDefault(p => p.UserId != userId);
-
                 if (opponent != null)
                 {
-                    // 找到對手，開始對戰！
                     await RemoveFromMatchmakingAsync(opponent.UserId);
 
-                    //對戰前先丟一次雙方pokemon圖片
-                    if(!string.IsNullOrEmpty(opponent.Pokemon.Front_GIF ?? opponent.Pokemon.ImageUrl))
+                    // 取得對手的頻道
+                    var opponentChannel = _client.GetChannel(opponent.ChannelId) as IMessageChannel;
+
+                    // ✅ 分別通知雙方頻道
+                    await NotifyBattleStartAsync(channel, userId, pokemon, opponent);
+                    if (opponentChannel != null && opponentChannel.Id != channel.Id)
                     {
-                        await channel.SendMessageAsync(opponent.Pokemon.Front_GIF ?? opponent.Pokemon.ImageUrl);
-                    }
-                    if (!string.IsNullOrEmpty((pokemon.Back_GIF ?? pokemon.Back_ImageUrl) ?? pokemon.ImageUrl))
-                    {
-                        await channel.SendMessageAsync((pokemon.Back_GIF ?? pokemon.Back_ImageUrl) ?? pokemon.ImageUrl);
+                        await NotifyBattleStartAsync(opponentChannel, opponent.UserId, opponent.Pokemon,
+                            new BattleMatchmaking { UserId = userId, UserName = userName, Pokemon = pokemon });
                     }
 
-                    return await ExecuteBattleAsync(userId, userName, pokemon, opponent.UserId, opponent.UserName, opponent.Pokemon);
+                    var (embed, component) = await ExecuteBattleAsync(userId, userName, pokemon,
+                        opponent.UserId, opponent.UserName, opponent.Pokemon);
+
+                    // 在對方頻道發送對戰結果
+                    await opponentChannel.SendMessageAsync(embed: embed, components: component.Build());
+
+                    return (embed, component);
                 }
                 else
                 {
-                    // 沒有對手，加入配對池
-                    await AddToMatchmakingAsync(userId, userName, pokemon);
+                    // 加入配對池時一併儲存 ChannelId
+                    await AddToMatchmakingAsync(userId, userName, pokemon, channel.Id);  // ← 新增 channelId
 
                     var embed = new EmbedBuilder()
                         .WithTitle("🔍 尋找對手中...")
@@ -554,13 +564,55 @@ namespace MusicBot2.Service
                         .WithThumbnailUrl(pokemon.ImageUrl)
                         .WithColor(Color.Blue)
                         .Build();
-
                     return (embed, new ComponentBuilder());
                 }
             }
             catch (Exception ex)
             {
                 return (CommonHelper.BuildErrorResponse($"開始對戰搜尋時發生錯誤: {ex.Message}").Item2, new ComponentBuilder());
+            }
+        }
+
+        private async Task NotifyBattleStartAsync(
+            IMessageChannel channel, ulong viewerUserId,
+            PokeGamePokemon pokemon, BattleMatchmaking opponent)
+        {
+            // 發送對方的 pokemon 圖（從對方視角是敵方）
+            var opponentImageUrl = opponent.Pokemon.Front_GIF ?? opponent.Pokemon.ImageUrl;
+            if (!string.IsNullOrEmpty(opponentImageUrl))
+                await channel.SendMessageAsync(opponentImageUrl);
+
+            // 發送自己的 pokemon 圖（背面）
+            var myImageUrl = (pokemon.Back_GIF ?? pokemon.Back_ImageUrl) ?? pokemon.ImageUrl;
+            if (!string.IsNullOrEmpty(myImageUrl))
+                await channel.SendMessageAsync(myImageUrl);
+        }
+
+        private async Task NotifyBattleStart2V2Async(
+            IMessageChannel channel, ulong viewerUserId,
+            PokeGamePokemon pokemon1, PokeGamePokemon pokemon2
+            , BattleMatchmaking2V2 opponent)
+        {
+            //對戰前先丟一次雙方pokemon圖片
+            if (!string.IsNullOrEmpty(opponent.Pokemon1.Front_GIF ?? opponent.Pokemon1.ImageUrl))
+            {
+                await channel.SendMessageAsync(opponent.Pokemon1.Front_GIF ?? opponent.Pokemon1.ImageUrl);
+
+            }
+            if (!string.IsNullOrEmpty(opponent.Pokemon2.Front_GIF ?? opponent.Pokemon2.ImageUrl))
+            {
+                await channel.SendMessageAsync(opponent.Pokemon2.Front_GIF ?? opponent.Pokemon2.ImageUrl);
+            }
+
+            await channel.SendMessageAsync("==========對上==========");
+
+            if (!string.IsNullOrEmpty((pokemon1.Back_GIF ?? pokemon1.Back_ImageUrl) ?? pokemon1.ImageUrl))
+            {
+                await channel.SendMessageAsync((pokemon1.Back_GIF ?? pokemon1.Back_ImageUrl) ?? pokemon1.ImageUrl);
+            }
+            if (!string.IsNullOrEmpty((pokemon2.Back_GIF ?? pokemon2.Back_ImageUrl) ?? pokemon2.ImageUrl))
+            {
+                await channel.SendMessageAsync((pokemon2.Back_GIF ?? pokemon2.Back_ImageUrl) ?? pokemon2.ImageUrl);
             }
         }
 
@@ -613,33 +665,21 @@ namespace MusicBot2.Service
                     // 找到對手，開始對戰！
                     await RemoveFromMatchmaking2V2Async(opponent.UserId);
 
-                    //對戰前先丟一次雙方pokemon圖片
-                    if(!string.IsNullOrEmpty(opponent.Pokemon1.Front_GIF ?? opponent.Pokemon1.ImageUrl))
+                    await NotifyBattleStart2V2Async(channel, userId, pokemon1, pokemon2, opponent);
+                    var opponentChannel = _client.GetChannel(opponent.ChannelId) as IMessageChannel;
+                    if (opponentChannel != null && opponentChannel.Id != channel.Id)
                     {
-                        await channel.SendMessageAsync(opponent.Pokemon1.Front_GIF ?? opponent.Pokemon1.ImageUrl);
+                        await NotifyBattleStart2V2Async(opponentChannel, opponent.UserId, opponent.Pokemon1, opponent.Pokemon2,
+                            new BattleMatchmaking2V2 { UserId = userId, UserName = userName, Pokemon1 = pokemon1,Pokemon2 = pokemon2 });
                     }
-                    if (!string.IsNullOrEmpty(opponent.Pokemon2.Front_GIF ?? opponent.Pokemon2.ImageUrl))
-                    {
-                        await channel.SendMessageAsync(opponent.Pokemon2.Front_GIF ?? opponent.Pokemon2.ImageUrl);
-                    }
-
-                    await channel.SendMessageAsync("==========對上==========");
-
-                    if (!string.IsNullOrEmpty((pokemon1.Back_GIF ?? pokemon1.Back_ImageUrl) ?? pokemon1.ImageUrl))
-                    {
-                        await channel.SendMessageAsync((pokemon1.Back_GIF ?? pokemon1.Back_ImageUrl) ?? pokemon1.ImageUrl);
-                    }
-                    if (!string.IsNullOrEmpty((pokemon2.Back_GIF ?? pokemon2.Back_ImageUrl) ?? pokemon2.ImageUrl))
-                    {
-                        await channel.SendMessageAsync((pokemon2.Back_GIF ?? pokemon2.Back_ImageUrl) ?? pokemon2.ImageUrl);
-                    }
-
-                    return await Execute2V2BattleAsync(userId, userName, pokemon1, pokemon2, opponent.UserId, opponent.UserName, opponent.Pokemon1, opponent.Pokemon2);
+                    var (embed, component) = await Execute2V2BattleAsync(userId, userName, pokemon1, pokemon2, opponent.UserId, opponent.UserName, opponent.Pokemon1, opponent.Pokemon2);
+                    await opponentChannel.SendMessageAsync(embed: embed, components: component.Build());
+                    return (embed, component);
                 }
                 else
                 {
                     // 沒有對手，加入配對池
-                    await AddToMatchmaking2V2Async(userId, userName, pokemon1,pokemon2);
+                    await AddToMatchmaking2V2Async(userId, userName, pokemon1,pokemon2, channel.Id);
 
                     var embed = new EmbedBuilder()
                         .WithTitle("🔍 尋找對手中...")
@@ -1245,13 +1285,14 @@ namespace MusicBot2.Service
             }
         }
 
-        private async Task AddToMatchmakingAsync(ulong userId, string userName, PokeGamePokemon pokemon)
+        private async Task AddToMatchmakingAsync(ulong userId, string userName, PokeGamePokemon pokemon, ulong channelId)
         {
             var matchmaking = new BattleMatchmaking
             {
                 UserId = userId,
                 UserName = userName,
                 Pokemon = pokemon,
+                ChannelId = channelId,
                 SearchStartTime = DateTime.UtcNow
             };
 
@@ -1378,7 +1419,7 @@ namespace MusicBot2.Service
             }
         }
 
-        private async Task AddToMatchmaking2V2Async(ulong userId, string userName, PokeGamePokemon pokemon1, PokeGamePokemon pokemon2)
+        private async Task AddToMatchmaking2V2Async(ulong userId, string userName, PokeGamePokemon pokemon1, PokeGamePokemon pokemon2,ulong channel)
         {
             var matchmaking = new BattleMatchmaking2V2
             {
@@ -1386,6 +1427,7 @@ namespace MusicBot2.Service
                 UserName = userName,
                 Pokemon1 = pokemon1,
                 Pokemon2 = pokemon2,
+                ChannelId = channel,
                 SearchStartTime = DateTime.UtcNow
             };
 

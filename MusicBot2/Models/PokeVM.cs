@@ -179,6 +179,7 @@ namespace MusicBot2.Models
         public ulong UserId { get; set; }
         public string UserName { get; set; }
         public PokeGamePokemon Pokemon { get; set; }
+        public ulong ChannelId { get; set; }
         public DateTime SearchStartTime { get; set; }
     }
 
@@ -188,6 +189,7 @@ namespace MusicBot2.Models
         public string UserName { get; set; }
         public PokeGamePokemon Pokemon1 { get; set; }
         public PokeGamePokemon Pokemon2 { get; set; }
+        public ulong ChannelId { get; set; }
 
         public DateTime SearchStartTime { get; set; }
     }

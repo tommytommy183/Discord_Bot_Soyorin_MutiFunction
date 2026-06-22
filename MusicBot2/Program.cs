@@ -116,7 +116,7 @@ public class Program
                   )
             .AddSingleton<JikanAnimeService>()
             .AddSingleton<PokeGameService>(sp =>
-                new PokeGameService(redisConn, sp.GetRequiredService<OpenRouterService>())
+                new PokeGameService(redisConn, sp.GetRequiredService<OpenRouterService>(),_client)
                 )
               .BuildServiceProvider();
 
