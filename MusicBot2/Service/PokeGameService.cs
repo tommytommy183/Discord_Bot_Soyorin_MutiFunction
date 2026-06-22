@@ -549,7 +549,10 @@ namespace MusicBot2.Service
                         opponent.UserId, opponent.UserName, opponent.Pokemon);
 
                     // 在對方頻道發送對戰結果
-                    await opponentChannel.SendMessageAsync(embed: embed, components: component.Build());
+                    if(opponentChannel != null && opponentChannel.Id != channel.Id)
+                    {
+                        await opponentChannel.SendMessageAsync(embed: embed, components: component.Build());
+                    }
 
                     return (embed, component);
                 }
@@ -673,7 +676,11 @@ namespace MusicBot2.Service
                             new BattleMatchmaking2V2 { UserId = userId, UserName = userName, Pokemon1 = pokemon1,Pokemon2 = pokemon2 });
                     }
                     var (embed, component) = await Execute2V2BattleAsync(userId, userName, pokemon1, pokemon2, opponent.UserId, opponent.UserName, opponent.Pokemon1, opponent.Pokemon2);
-                    await opponentChannel.SendMessageAsync(embed: embed, components: component.Build());
+
+                    if (opponentChannel != null && opponentChannel.Id != channel.Id)
+                    {
+                        await opponentChannel.SendMessageAsync(embed: embed, components: component.Build());
+                    }
                     return (embed, component);
                 }
                 else
