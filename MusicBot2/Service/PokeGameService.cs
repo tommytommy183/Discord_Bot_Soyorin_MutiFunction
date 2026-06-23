@@ -1353,7 +1353,8 @@ namespace MusicBot2.Service
                         Participants = new List<TeamFightParticipant>(),
                         StartTime = DateTime.UtcNow,
                         ChannelId = channelId,
-                        IsActive = true
+                        IsActive = true,
+                        IsFighting = false
                     };
                 }
 
@@ -1462,6 +1463,16 @@ namespace MusicBot2.Service
                     return (errorEmbed, new ComponentBuilder());
                 }
 
+                if(currentBoss.IsFighting)
+                {
+                    var errorEmbed = new EmbedBuilder()
+                    .WithTitle("❌ 正在打架中")
+                    .WithDescription("請等待目前的團戰結束後再嘗試開始新的戰鬥！")
+                    .WithColor(Color.Red)
+                    .Build();
+                    return (errorEmbed, new ComponentBuilder());
+                }
+
                 //對戰前先丟一次Boss 和玩家 pokemon圖片
 
                 if (!string.IsNullOrEmpty(currentBoss.BossPokemon.Front_GIF ?? currentBoss.BossPokemon.ImageUrl))
@@ -1477,6 +1488,8 @@ namespace MusicBot2.Service
                         await channel.SendMessageAsync(participant.Pokemon.Back_GIF ?? participant.Pokemon.Back_ImageUrl ?? participant.Pokemon.ImageUrl);
                     }
                 }
+
+                currentBoss.IsFighting = true;
 
                 // 準備 AI 判斷的戰鬥資訊
                 var participantsInfo = string.Join("\n", currentBoss.Participants.Select((p, index) =>
@@ -1515,6 +1528,7 @@ namespace MusicBot2.Service
                 currentBoss.IsActive = false;
                 await SaveTeamFightBossAsync(currentBoss);
 
+                currentBoss.IsFighting = false;
                 if (trainersWin)
                 {
                     // 訓練師們獲勝，給所有參與者獎勵

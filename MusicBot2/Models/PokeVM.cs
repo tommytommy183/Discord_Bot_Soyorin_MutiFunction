@@ -216,6 +216,7 @@ namespace MusicBot2.Models
         public DateTime StartTime { get; set; }
         public ulong ChannelId { get; set; }
         public bool IsActive { get; set; }
+        public bool IsFighting { get; set; }
     }
 
     public class TeamFightParticipant
