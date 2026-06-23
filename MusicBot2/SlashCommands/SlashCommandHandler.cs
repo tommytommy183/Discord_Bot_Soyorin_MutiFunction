@@ -643,7 +643,7 @@ namespace MusicBot2.SlahCommands
         {
             await DeferAsync();
             var (embed, component) = await _pokeGameService.ListPokemonAsync(Context.User.Id, Context.User.Username);
-            await FollowupAsync(embed: embed, components: component.Build());
+            await FollowupAsync(embed: embed, components: component.Build(), ephemeral: true);
         }
 
         [SlashCommand("自定義pokemon", "自定義你的pokemon名稱")]
@@ -694,7 +694,7 @@ namespace MusicBot2.SlahCommands
         {
             await DeferAsync();
             var (embed, component) = await _pokeGameService.ReleasePokemonAsync(Context.User.Id, Context.User.Username, index);
-            await FollowupAsync(embed: embed, components: component.Build());
+            await FollowupAsync(embed: embed, components: component.Build(), ephemeral: true);
         }
 
         [SlashCommand("開始傳說pokemon團戰", "當前所有參與團戰的人來開始對戰")]
