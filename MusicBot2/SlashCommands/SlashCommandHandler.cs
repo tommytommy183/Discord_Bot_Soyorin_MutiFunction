@@ -701,13 +701,14 @@ namespace MusicBot2.SlahCommands
         public async Task StartPokemonTeamFightAsync()
         {
             await DeferAsync();
-            var (embed, component) = await _pokeGameService.StartTeamFightBattleAsync();
+            var channel = Context.Channel;
+            var (embed, component) = await _pokeGameService.StartTeamFightBattleAsync(channel);
             await FollowupAsync(embed: embed, components: component.Build());
         }
 
-        [SlashCommand("參與或開啟團戰", "參與已存在尚未開始的團戰，如果當前沒有則開啟新的一團")]
+        [SlashCommand("參與或開啟pokemon團戰", "參與已存在尚未開始的團戰，如果當前沒有則開啟新的一團")]
         public async Task JoinPokemonTeamFightAsync(
-            [Summary("編號", "要出戰的pokemon編號（從1開始）")] int index = 0)
+            [Summary("編號", "要出戰的pokemon編號（從1開始）")] int index)
         {
             await DeferAsync();
 

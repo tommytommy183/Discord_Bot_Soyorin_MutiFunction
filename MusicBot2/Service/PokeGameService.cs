@@ -10,6 +10,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
 using System.Reflection;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 
 namespace MusicBot2.Service
@@ -1760,6 +1761,7 @@ namespace MusicBot2.Service
                     .WithTitle("✅ 成功加入團戰！")
                     .WithDescription($"{userName} 的 **{selectedPokemon.CustomName ?? selectedPokemon.Name}** 已準備好戰鬥！")
                     .WithThumbnailUrl(currentBoss.BossPokemon.ImageUrl)
+                    .WithImageUrl(selectedPokemon.ImageUrl)
                     .WithColor(Color.Green)
                     .AddField("Boss", $"{currentBoss.BossPokemon.Name}")
                     .AddField("屬性", string.Join(", ", currentBoss.BossPokemon.Types), true)
@@ -1778,7 +1780,7 @@ namespace MusicBot2.Service
             }
         }
 
-        public async Task<(Embed embed, ComponentBuilder component)> StartTeamFightBattleAsync()
+        public async Task<(Embed embed, ComponentBuilder component)> StartTeamFightBattleAsync(IMessageChannel channel)
         {
             try
             {
@@ -1803,6 +1805,22 @@ namespace MusicBot2.Service
                         .WithColor(Color.Red)
                         .Build();
                     return (errorEmbed, new ComponentBuilder());
+                }
+
+                //對戰前先丟一次Boss 和玩家 pokemon圖片
+
+                if (!string.IsNullOrEmpty(currentBoss.BossPokemon.Front_GIF ?? currentBoss.BossPokemon.ImageUrl))
+                {
+                    await channel.SendMessageAsync(currentBoss.BossPokemon.Front_GIF ?? currentBoss.BossPokemon.ImageUrl);
+                }
+                await channel.SendMessageAsync("==========對上==========");
+
+                foreach(var participant in currentBoss.Participants)
+                {
+                    if (!string.IsNullOrEmpty(participant.Pokemon.Back_GIF ?? participant.Pokemon.Back_ImageUrl ?? participant.Pokemon.ImageUrl))
+                    {
+                        await channel.SendMessageAsync(participant.Pokemon.Back_GIF ?? participant.Pokemon.Back_ImageUrl ?? participant.Pokemon.ImageUrl);
+                    }
                 }
 
                 // 準備 AI 判斷的戰鬥資訊
