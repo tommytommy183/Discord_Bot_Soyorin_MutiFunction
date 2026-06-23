@@ -641,7 +641,7 @@ namespace MusicBot2.SlahCommands
         [SlashCommand("我的pokemon", "查看你的pokemon列表")]
         public async Task MyPokemonAsync()
         {
-            await DeferAsync();
+            await DeferAsync(ephemeral: true);
             var (embed, component) = await _pokeGameService.ListPokemonAsync(Context.User.Id, Context.User.Username);
             await FollowupAsync(embed: embed, components: component.Build(), ephemeral: true);
         }
@@ -692,7 +692,7 @@ namespace MusicBot2.SlahCommands
         public async Task ReleasePokemonAsync(
             [Summary("編號", "要釋放的pokemon編號（從1開始）")] int index)
         {
-            await DeferAsync();
+            await DeferAsync(ephemeral: true);
             var (embed, component) = await _pokeGameService.ReleasePokemonAsync(Context.User.Id, Context.User.Username, index);
             await FollowupAsync(embed: embed, components: component.Build(), ephemeral: true);
         }
