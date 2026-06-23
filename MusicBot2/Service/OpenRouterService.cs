@@ -352,8 +352,9 @@ namespace MusicBot2.Service
 
                             _ = SaveMemoryAsync();
                         }
+                        Console.WriteLine($"[OpenRouter] Model:{model}=> {Truncate(text, 30)}");
 
-                        return text + $"(model:{model})";
+                        return text;
                     }
                     catch (TaskCanceledException)
                     {
