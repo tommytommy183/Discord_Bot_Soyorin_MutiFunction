@@ -78,6 +78,8 @@ namespace MusicBot2.Models
         public List<PokeGenera> genera { get; set; }
         public List<PokeNames> names { get; set; }
         public List<FlavorTextEntries> flavor_text_entries { get; set; }
+        public bool is_legendary { get; set; }
+        public bool is_mythical { get; set; }
     }
 
     public class FlavorTextEntries
@@ -203,6 +205,26 @@ namespace MusicBot2.Models
         public string LoserName { get; set; }
         public PokeGamePokemon LoserPokemon { get; set; }
         public string BattleDescription { get; set; }
+    }
+
+    public class TeamFightBoss
+    {
+        public PokeGamePokemon BossPokemon { get; set; }
+        public int CurrentHP { get; set; }
+        public int MaxHP { get; set; }
+        public List<TeamFightParticipant> Participants { get; set; } = new List<TeamFightParticipant>();
+        public DateTime StartTime { get; set; }
+        public ulong ChannelId { get; set; }
+        public bool IsActive { get; set; }
+    }
+
+    public class TeamFightParticipant
+    {
+        public ulong UserId { get; set; }
+        public string UserName { get; set; }
+        public PokeGamePokemon Pokemon { get; set; }
+        public int DamageDealt { get; set; }
+        public DateTime JoinTime { get; set; }
     }
     #endregion
 

@@ -25,12 +25,15 @@ namespace MusicBot2.Service
         private static readonly Dictionary<ulong, PokeGamePlayer> _memoryPlayers = new Dictionary<ulong, PokeGamePlayer>();
         private static readonly Dictionary<ulong, BattleMatchmaking> _memoryMatchmaking = new Dictionary<ulong, BattleMatchmaking>();
         private static readonly Dictionary<ulong, BattleMatchmaking2V2> _memoryMatchmaking2V2 = new Dictionary<ulong, BattleMatchmaking2V2>();
-
+        private static TeamFightBoss _memoryTeamFightBoss = null;
+        private static List<int> _memoryLegendaryPokemonIds = new List<int>();
 
         private const string API_BASE_URL = "https://pokeapi.co/api/v2/";
         private const string PLAYER_DATA_KEY = "pokegame:player:";
         private const string MATCHMAKING_KEY = "pokegame:matchmaking";
         private const string MATCHMAKING_KEY_2V2 = "pokegame:matchmaking:2v2";
+        private const string TEAM_FIGHT_BOSS_KEY = "pokegame:teamfight:boss";
+        private const string LEGENDARY_POKEMON_KEY = "pokegame:legendary:ids";
 
         private readonly DiscordSocketClient _client;
 
@@ -70,6 +73,92 @@ namespace MusicBot2.Service
             {
                 _useRedis = false;
                 Console.WriteLine($"⚠️ Redis 連線失敗，使用記憶體儲存: {ex.Message}");
+            }
+
+            // 初始化傳說/神話 Pokemon 列表
+            _ = InitializeLegendaryPokemonAsync();
+        }
+
+        private async Task InitializeLegendaryPokemonAsync()
+        {
+            try
+            {
+                // 檢查是否已經初始化過
+                if (_useRedis)
+                {
+                    var existingData = await _redisDb.StringGetAsync(LEGENDARY_POKEMON_KEY);
+                    if (!existingData.IsNullOrEmpty)
+                    {
+                        Console.WriteLine("✅ 傳說/神話 Pokemon 列表已存在於 Redis");
+                        return;
+                    }
+                }
+                else if (_memoryLegendaryPokemonIds.Count > 0)
+                {
+                    Console.WriteLine("✅ 傳說/神話 Pokemon 列表已存在於記憶體");
+                    return;
+                }
+
+                Console.WriteLine("🔄 開始載入傳說/神話 Pokemon 列表...");
+                var legendaryIds = new List<int>();
+
+                // 獲取所有 Pokemon species
+                string url = $"{API_BASE_URL}pokemon-species?limit=10000&offset=0";
+                var response = await _httpClient.GetAsync(url);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    Console.WriteLine("❌ 無法獲取 Pokemon species 資料");
+                    return;
+                }
+
+                var content = await response.Content.ReadAsStringAsync();
+                var speciesList = JsonConvert.DeserializeObject<RandomResponse>(content);
+
+                int count = 0;
+                // 檢查每個 Pokemon 是否為傳說或神話
+                foreach (var species in speciesList.results)
+                {
+                    try
+                    {
+                        var speciesResponse = await _httpClient.GetAsync(species.url);
+                        if (speciesResponse.IsSuccessStatusCode)
+                        {
+                            var speciesContent = await speciesResponse.Content.ReadAsStringAsync();
+                            var speciesData = JsonConvert.DeserializeObject<PokeSpecies>(speciesContent);
+
+                            if (speciesData.is_legendary || speciesData.is_mythical)
+                            {
+                                legendaryIds.Add(speciesData.id);
+                                count++;
+                            }
+                        }
+
+                        // 避免太頻繁呼叫 API
+                        await Task.Delay(50);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"⚠️ 檢查 Pokemon {species.name} 時發生錯誤: {ex.Message}");
+                    }
+                }
+
+                // 儲存到 Redis 或記憶體
+                if (_useRedis)
+                {
+                    var data = JsonConvert.SerializeObject(legendaryIds);
+                    await _redisDb.StringSetAsync(LEGENDARY_POKEMON_KEY, data);
+                    Console.WriteLine($"✅ 已將 {count} 隻傳說/神話 Pokemon 儲存到 Redis");
+                }
+                else
+                {
+                    _memoryLegendaryPokemonIds = legendaryIds;
+                    Console.WriteLine($"✅ 已將 {count} 隻傳說/神話 Pokemon 儲存到記憶體");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"❌ 初始化傳說/神話 Pokemon 列表時發生錯誤: {ex.Message}");
             }
         }
 
@@ -1560,6 +1649,378 @@ namespace MusicBot2.Service
                 await Task.CompletedTask;
             }
         }
+
+        #region 團戰功能
+        public async Task<(Embed embed, ComponentBuilder component)> JoinOrCreateTeamFightAsync(ulong userId, string userName, int pokemonIndex, ulong channelId)
+        {
+            try
+            {
+                // 獲取玩家資料
+                var player = await GetPlayerDataAsync(userId, userName);
+                if (player.CaughtPokemon.Count == 0)
+                {
+                    var errorEmbed = new EmbedBuilder()
+                        .WithTitle("❌ 你還沒有 Pokemon")
+                        .WithDescription("請先使用 `/抓pokemon` 來獲得你的第一隻 Pokemon！")
+                        .WithColor(Color.Red)
+                        .Build();
+                    return (errorEmbed, new ComponentBuilder());
+                }
+
+                if (pokemonIndex < 0 || pokemonIndex >= player.CaughtPokemon.Count)
+                {
+                    var errorEmbed = new EmbedBuilder()
+                        .WithTitle("❌ Pokemon 編號錯誤")
+                        .WithDescription($"請選擇 0 到 {player.CaughtPokemon.Count - 1} 之間的 Pokemon！")
+                        .WithColor(Color.Red)
+                        .Build();
+                    return (errorEmbed, new ComponentBuilder());
+                }
+
+                var selectedPokemon = player.CaughtPokemon[pokemonIndex];
+
+                // 檢查是否已有等待中的團戰
+                var currentBoss = await GetCurrentTeamFightBossAsync();
+
+                if (currentBoss == null || !currentBoss.IsActive)
+                {
+                    // 沒有團戰，創建新的
+                    var bossPokemon = await GetRandomLegendaryPokemonAsync();
+                    if (bossPokemon == null)
+                    {
+                        var errorEmbed = new EmbedBuilder()
+                            .WithTitle("❌ 無法生成團戰 Boss")
+                            .WithDescription("傳說/神話 Pokemon 列表尚未載入完成，請稍後再試。")
+                            .WithColor(Color.Red)
+                            .Build();
+                        return (errorEmbed, new ComponentBuilder());
+                    }
+
+                    // 提升 Boss 的數值
+                    bossPokemon.HP = (int)(bossPokemon.HP * 5);
+                    bossPokemon.Attack = (int)(bossPokemon.Attack * 2);
+                    bossPokemon.Defense = (int)(bossPokemon.Defense * 2);
+                    bossPokemon.SpecialAttack = (int)(bossPokemon.SpecialAttack * 1.5);
+                    bossPokemon.SpecialDefense = (int)(bossPokemon.SpecialDefense * 1.5);
+                    bossPokemon.Speed = (int)(bossPokemon.Speed * 1.5);
+
+                    currentBoss = new TeamFightBoss
+                    {
+                        BossPokemon = bossPokemon,
+                        CurrentHP = bossPokemon.HP,
+                        MaxHP = bossPokemon.HP,
+                        Participants = new List<TeamFightParticipant>(),
+                        StartTime = DateTime.UtcNow,
+                        ChannelId = channelId,
+                        IsActive = true
+                    };
+                }
+
+                // 檢查團戰是否已超時（30 分鐘）
+                if ((DateTime.UtcNow - currentBoss.StartTime).TotalMinutes > 30)
+                {
+                    currentBoss.IsActive = false;
+                    await SaveTeamFightBossAsync(currentBoss);
+
+                    var timeoutEmbed = new EmbedBuilder()
+                        .WithTitle("❌ 上一場團戰已過期")
+                        .WithDescription("正在創建新的團戰...")
+                        .WithColor(Color.Red)
+                        .Build();
+
+                    // 遞迴呼叫創建新團戰
+                    return await JoinOrCreateTeamFightAsync(userId, userName, pokemonIndex, channelId);
+                }
+
+                // 檢查玩家是否已參與
+                if (currentBoss.Participants.Any(p => p.UserId == userId))
+                {
+                    var errorEmbed = new EmbedBuilder()
+                        .WithTitle("❌ 你已經參與了這場團戰")
+                        .WithDescription("等待其他玩家加入，或使用 `/開始傳說pokemon團戰` 開始戰鬥！")
+                        .WithColor(Color.Red)
+                        .Build();
+                    return (errorEmbed, new ComponentBuilder());
+                }
+
+                // 加入參與者
+                var participant = new TeamFightParticipant
+                {
+                    UserId = userId,
+                    UserName = userName,
+                    Pokemon = selectedPokemon,
+                    DamageDealt = 0,
+                    JoinTime = DateTime.UtcNow
+                };
+
+                currentBoss.Participants.Add(participant);
+                await SaveTeamFightBossAsync(currentBoss);
+
+                var embed = new EmbedBuilder()
+                    .WithTitle("✅ 成功加入團戰！")
+                    .WithDescription($"{userName} 的 **{selectedPokemon.CustomName ?? selectedPokemon.Name}** 已準備好戰鬥！")
+                    .WithThumbnailUrl(currentBoss.BossPokemon.ImageUrl)
+                    .WithColor(Color.Green)
+                    .AddField("Boss", $"{currentBoss.BossPokemon.Name}")
+                    .AddField("屬性", string.Join(", ", currentBoss.BossPokemon.Types), true)
+                    .AddField("目前參與人數", currentBoss.Participants.Count, true)
+                    .AddField("參與者", string.Join("\n", currentBoss.Participants.Select(p => 
+                        $"{p.UserName} - {p.Pokemon.CustomName ?? p.Pokemon.Name}")))
+                    .WithFooter("等待更多訓練師加入，或使用 `/開始傳說pokemon團戰` 開始戰鬥！")
+                    .WithCurrentTimestamp()
+                    .Build();
+
+                return (embed, new ComponentBuilder());
+            }
+            catch (Exception ex)
+            {
+                return (CommonHelper.BuildErrorResponse($"加入團戰時發生錯誤: {ex.Message}").Item2, new ComponentBuilder());
+            }
+        }
+
+        public async Task<(Embed embed, ComponentBuilder component)> StartTeamFightBattleAsync()
+        {
+            try
+            {
+                // 檢查是否有等待中的團戰
+                var currentBoss = await GetCurrentTeamFightBossAsync();
+                if (currentBoss == null || !currentBoss.IsActive)
+                {
+                    var errorEmbed = new EmbedBuilder()
+                        .WithTitle("❌ 目前沒有等待中的團戰")
+                        .WithDescription("請先使用 `/參與或開啟團戰` 來創建或加入團戰！")
+                        .WithColor(Color.Red)
+                        .Build();
+                    return (errorEmbed, new ComponentBuilder());
+                }
+
+                // 檢查參與人數
+                if (currentBoss.Participants.Count == 0)
+                {
+                    var errorEmbed = new EmbedBuilder()
+                        .WithTitle("❌ 沒有參與者")
+                        .WithDescription("需要至少一位訓練師參與戰鬥！")
+                        .WithColor(Color.Red)
+                        .Build();
+                    return (errorEmbed, new ComponentBuilder());
+                }
+
+                // 準備 AI 判斷的戰鬥資訊
+                var participantsInfo = string.Join("\n", currentBoss.Participants.Select((p, index) => 
+                    $"{index + 1}. {p.UserName} 的 {p.Pokemon.CustomName ?? p.Pokemon.Name} (真實名稱: {p.Pokemon.Name})" +
+                    $"\n   - 屬性: {string.Join(", ", p.Pokemon.Types)}" +
+                    $"\n   - 能力: HP:{p.Pokemon.HP}, 攻擊:{p.Pokemon.Attack}, 防禦:{p.Pokemon.Defense}, 特攻:{p.Pokemon.SpecialAttack}, 特防:{p.Pokemon.SpecialDefense}, 速度:{p.Pokemon.Speed}" +
+                    $"\n   - 是否為閃光: {(p.Pokemon.isShiny ? "是" : "否")}"));
+
+                string battlePrompt = $@"請模擬一場精彩的傳說級 Pokemon 團戰，並判斷勝負。
+
+Boss Pokemon：
+名稱: {currentBoss.BossPokemon.Name}
+屬性: {string.Join(", ", currentBoss.BossPokemon.Types)}
+能力: HP:{currentBoss.BossPokemon.HP}, 攻擊:{currentBoss.BossPokemon.Attack}, 防禦:{currentBoss.BossPokemon.Defense}, 特攻:{currentBoss.BossPokemon.SpecialAttack}, 特防:{currentBoss.BossPokemon.SpecialDefense}, 速度:{currentBoss.BossPokemon.Speed}
+
+挑戰者們：
+{participantsInfo}
+
+請根據以上數據和屬性相剋關係，判斷這場團戰的勝負。
+要求：
+1. 描述一段精彩的團戰過程（繁體中文）
+2. 要提到每個參與者的 Pokemon 的表現和使用的真實技能
+3. 有自訂名稱的就叫自訂名稱，沒有的就叫真實名稱
+4. 如果有閃光的 Pokemon，要提到閃光特效（但不影響戰鬥結果）
+5. 最後明確說明結果，格式為「勝者：[訓練師們/Boss]」
+6. 一定要公平，判斷誰會贏就誰會贏";
+
+                // 呼叫 AI 判斷對戰結果
+                var aiResponse = await _aiService.GenerateSimpleTextAsync(battlePrompt);
+
+                // 解析 AI 回應，判斷勝者
+                bool trainersWin = aiResponse.Contains("勝者：訓練師") || aiResponse.Contains("勝者：挑戰者") || 
+                                   (!aiResponse.Contains("勝者：Boss") && !aiResponse.Contains("勝者：" + currentBoss.BossPokemon.Name));
+
+                currentBoss.IsActive = false;
+                await SaveTeamFightBossAsync(currentBoss);
+
+                if (trainersWin)
+                {
+                    // 訓練師們獲勝，給所有參與者獎勵
+                    foreach (var p in currentBoss.Participants)
+                    {
+                        var participantPlayer = await GetPlayerDataAsync(p.UserId, p.UserName);
+                        participantPlayer.LastCatchDate = null; // 給一次抓寶機會
+                        participantPlayer.Wins++; // 增加勝場
+                        await SavePlayerDataAsync(participantPlayer);
+                    }
+
+                    var victoryEmbed = new EmbedBuilder()
+                        .WithTitle("🎉 男同幫們獲勝了🎉")
+                        .WithDescription(aiResponse)
+                        .WithThumbnailUrl(currentBoss.BossPokemon.ImageUrl)
+                        .WithColor(Color.Gold)
+                        .AddField("參與者", string.Join("\n", currentBoss.Participants.Select(p => 
+                            $"{p.UserName} - {p.Pokemon.CustomName ?? p.Pokemon.Name}")))
+                        .AddField("🎁 獎勵", "所有參與者獲得：\n✅ 一次額外抓 Pokemon 的機會\n✅ 勝場 +1")
+                        .WithCurrentTimestamp()
+                        .Build();
+
+                    return (victoryEmbed, new ComponentBuilder());
+                }
+                else
+                {
+                    // Boss 獲勝
+                    foreach (var p in currentBoss.Participants)
+                    {
+                        var participantPlayer = await GetPlayerDataAsync(p.UserId, p.UserName);
+                        participantPlayer.Losses++; // 增加敗場
+                        await SavePlayerDataAsync(participantPlayer);
+                    }
+
+                    var defeatEmbed = new EmbedBuilder()
+                        .WithTitle($"😢 {currentBoss.BossPokemon.Name} 太強大了...而且還沒有使出全力的樣子，就算沒有飛葉快刀也會贏，我甚至覺得有些對不起他")
+                        .WithDescription(aiResponse)
+                        .WithThumbnailUrl(currentBoss.BossPokemon.ImageUrl)
+                        .WithColor(Color.Red)
+                        .AddField("參與者", string.Join("\n", currentBoss.Participants.Select(p => 
+                            $"{p.UserName} - {p.Pokemon.CustomName ?? p.Pokemon.Name}")))
+                        .AddField("💔 結果", "所有參與者敗場 +1\n 慘遭2.5")
+                        .WithCurrentTimestamp()
+                        .Build();
+
+                    return (defeatEmbed, new ComponentBuilder());
+                }
+            }
+            catch (Exception ex)
+            {
+                return (CommonHelper.BuildErrorResponse($"開始團戰時發生錯誤: {ex.Message}").Item2, new ComponentBuilder());
+            }
+        }
+
+        private async Task<PokeGamePokemon> GetRandomLegendaryPokemonAsync()
+        {
+            try
+            {
+                List<int> legendaryIds;
+
+                // 從 Redis 或記憶體中獲取傳說 Pokemon ID 列表
+                if (_useRedis)
+                {
+                    var data = await _redisDb.StringGetAsync(LEGENDARY_POKEMON_KEY);
+                    if (data.IsNullOrEmpty)
+                        return null;
+
+                    legendaryIds = JsonConvert.DeserializeObject<List<int>>(data);
+                }
+                else
+                {
+                    legendaryIds = _memoryLegendaryPokemonIds;
+                }
+
+                if (legendaryIds == null || legendaryIds.Count == 0)
+                    return null;
+
+                // 隨機選一隻
+                Random random = new Random();
+                int randomId = legendaryIds[random.Next(legendaryIds.Count)];
+
+                // 獲取 Pokemon 資料
+                var response = await _httpClient.GetAsync($"{API_BASE_URL}pokemon/{randomId}");
+                if (!response.IsSuccessStatusCode)
+                    return null;
+
+                var content = await response.Content.ReadAsStringAsync();
+                var pokeData = JsonConvert.DeserializeObject<Pokemon>(content);
+
+                // 獲取中文名稱
+                var speciesResponse = await _httpClient.GetAsync(pokeData.species.url);
+                var speciesContent = await speciesResponse.Content.ReadAsStringAsync();
+                var speciesData = JsonConvert.DeserializeObject<PokeSpecies>(speciesContent);
+
+                var chineseName = speciesData.names.FirstOrDefault(n => n.language.name == "zh-hant")?.name
+                    ?? pokeData.species.name;
+
+                // Boss 不會是閃光
+                var pokemon = new PokeGamePokemon
+                {
+                    Id = pokeData.id,
+                    Name = chineseName,
+                    CustomName = null,
+                    ImageUrl = pokeData.sprites.other.official_artwork.front_default ?? pokeData.sprites.front_default,
+                    Back_ImageUrl = pokeData.sprites.back_default,
+                    HP = pokeData.stats.FirstOrDefault(s => s.stat.name == "hp")?.base_stat ?? 0,
+                    Attack = pokeData.stats.FirstOrDefault(s => s.stat.name == "attack")?.base_stat ?? 0,
+                    Defense = pokeData.stats.FirstOrDefault(s => s.stat.name == "defense")?.base_stat ?? 0,
+                    SpecialAttack = pokeData.stats.FirstOrDefault(s => s.stat.name == "special-attack")?.base_stat ?? 0,
+                    SpecialDefense = pokeData.stats.FirstOrDefault(s => s.stat.name == "special-defense")?.base_stat ?? 0,
+                    Speed = pokeData.stats.FirstOrDefault(s => s.stat.name == "speed")?.base_stat ?? 0,
+                    Types = pokeData.types.Select(t => t.type.name).ToList(),
+                    CaughtDate = DateTime.UtcNow,
+                    isShiny = false,
+                    EvolutionPoints = 0,
+                    EvolutionStage = 0,
+                    CanEvolve = false,
+                    NextEvolutionId = null,
+                    Front_GIF = pokeData.sprites.other.showdown.front_default,
+                    Back_GIF = pokeData.sprites.other.showdown.back_default
+                };
+
+                return pokemon;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"獲取隨機傳說 Pokemon 時發生錯誤: {ex.Message}");
+                return null;
+            }
+        }
+
+        private async Task<TeamFightBoss> GetCurrentTeamFightBossAsync()
+        {
+            if (_useRedis)
+            {
+                try
+                {
+                    var data = await _redisDb.StringGetAsync(TEAM_FIGHT_BOSS_KEY);
+                    if (data.IsNullOrEmpty)
+                        return null;
+
+                    return JsonConvert.DeserializeObject<TeamFightBoss>(data);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"⚠️ Redis 讀取團戰 Boss 失敗，切換到記憶體儲存: {ex.Message}");
+                    return _memoryTeamFightBoss;
+                }
+            }
+            else
+            {
+                return await Task.FromResult(_memoryTeamFightBoss);
+            }
+        }
+
+        private async Task SaveTeamFightBossAsync(TeamFightBoss boss)
+        {
+            if (_useRedis)
+            {
+                try
+                {
+                    var data = JsonConvert.SerializeObject(boss);
+                    await _redisDb.StringSetAsync(TEAM_FIGHT_BOSS_KEY, data);
+
+                    // 設定 30 分鐘過期
+                    await _redisDb.KeyExpireAsync(TEAM_FIGHT_BOSS_KEY, TimeSpan.FromMinutes(30));
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"⚠️ Redis 儲存團戰 Boss 失敗，切換到記憶體儲存: {ex.Message}");
+                    _memoryTeamFightBoss = boss;
+                }
+            }
+            else
+            {
+                _memoryTeamFightBoss = boss;
+                await Task.CompletedTask;
+            }
+        }
+        #endregion
         #endregion
     }
 }
