@@ -1488,8 +1488,9 @@ namespace MusicBot2.Service
                         await channel.SendMessageAsync(participant.Pokemon.Back_GIF ?? participant.Pokemon.Back_ImageUrl ?? participant.Pokemon.ImageUrl);
                     }
                 }
-
+                //改完立刻存
                 currentBoss.IsFighting = true;
+                await SaveTeamFightBossAsync(currentBoss);
 
                 // 準備 AI 判斷的戰鬥資訊
                 var participantsInfo = string.Join("\n", currentBoss.Participants.Select((p, index) =>
@@ -1526,9 +1527,8 @@ namespace MusicBot2.Service
                                    (!aiResponse.Contains("勝者：Boss") && !aiResponse.Contains("勝者：" + currentBoss.BossPokemon.Name));
 
                 currentBoss.IsActive = false;
-                await SaveTeamFightBossAsync(currentBoss);
-
                 currentBoss.IsFighting = false;
+                await SaveTeamFightBossAsync(currentBoss);
                 if (trainersWin)
                 {
                     // 訓練師們獲勝，給所有參與者獎勵
