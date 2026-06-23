@@ -1765,6 +1765,21 @@ namespace MusicBot2.Service
                     .WithColor(Color.Green)
                     .AddField("Boss", $"{currentBoss.BossPokemon.Name}")
                     .AddField("屬性", string.Join(", ", currentBoss.BossPokemon.Types), true)
+                    .AddField($"{selectedPokemon.CustomName ?? selectedPokemon.Name}的能力值:",
+                        $"HP: {selectedPokemon.HP}\n" +
+                        $"攻擊: {selectedPokemon.Attack}\n" +
+                        $"防禦: {selectedPokemon.Defense}\n" +
+                        $"特攻: {selectedPokemon.SpecialAttack}\n" +
+                        $"特防: {selectedPokemon.SpecialDefense}\n" +
+                        $"速度: {selectedPokemon.Speed}")
+                    .AddField($"{currentBoss.BossPokemon.Name}的能力值:",
+                        $"HP: {currentBoss.BossPokemon.HP}\n" +
+                        $"攻擊: {currentBoss.BossPokemon.Attack}\n" +
+                        $"防禦: {currentBoss.BossPokemon.Defense}\n" +
+                        $"特攻: {currentBoss.BossPokemon.SpecialAttack}\n" +
+                        $"特防: {currentBoss.BossPokemon.SpecialDefense}\n" +
+                        $"速度: {currentBoss.BossPokemon.Speed}")
+
                     .AddField("目前參與人數", currentBoss.Participants.Count, true)
                     .AddField("參與者", string.Join("\n", currentBoss.Participants.Select(p => 
                         $"{p.UserName} - {p.Pokemon.CustomName ?? p.Pokemon.Name}")))
