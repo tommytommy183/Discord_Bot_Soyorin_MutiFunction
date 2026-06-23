@@ -1717,8 +1717,8 @@ namespace MusicBot2.Service
                     };
                 }
 
-                // 檢查團戰是否已超時（30 分鐘）
-                if ((DateTime.UtcNow - currentBoss.StartTime).TotalMinutes > 30)
+                // 檢查團戰是否已超時（24 小時）
+                if ((DateTime.UtcNow - currentBoss.StartTime).TotalMinutes > 1440)
                 {
                     currentBoss.IsActive = false;
                     await SaveTeamFightBossAsync(currentBoss);
@@ -2023,8 +2023,8 @@ Boss Pokemon：
                     var data = JsonConvert.SerializeObject(boss);
                     await _redisDb.StringSetAsync(TEAM_FIGHT_BOSS_KEY, data);
 
-                    // 設定 30 分鐘過期
-                    await _redisDb.KeyExpireAsync(TEAM_FIGHT_BOSS_KEY, TimeSpan.FromMinutes(30));
+                    // 設定 24 小時過期
+                    await _redisDb.KeyExpireAsync(TEAM_FIGHT_BOSS_KEY, TimeSpan.FromMinutes(1440));
                 }
                 catch (Exception ex)
                 {
