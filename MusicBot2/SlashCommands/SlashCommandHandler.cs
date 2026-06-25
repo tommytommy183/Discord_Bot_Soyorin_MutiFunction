@@ -492,7 +492,8 @@ namespace MusicBot2.SlahCommands
     [Summary("自訂訊息", "你想要附加的訊息，選填，如果要的話，幫我以/me代表自己，/target代表你要發送的對象")] string message = ""
 )
         {
-            var channel = Context.Client.GetChannel(592716175461580800) as ISocketMessageChannel;
+            //var channel = Context.Client.GetChannel(592716175461580800) as ISocketMessageChannel;
+            var channel = Context.Channel as IMessageChannel;
             if (string.IsNullOrEmpty(message))
             {
                 await channel.SendMessageAsync($"{sender} 送光給 {target.Mention} ", allowedMentions: AllowedMentions.All);
