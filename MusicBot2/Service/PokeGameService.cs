@@ -1525,6 +1525,11 @@ HP為0就是真的死亡，不會再有後續動作
                 // 呼叫 AI 判斷對戰結果
                 var aiResponse = await _aiService.GenerateSimpleTextAsync(battlePrompt);
 
+                if(aiResponse == null)
+                {
+                    return (CommonHelper.BuildErrorResponse($"soyo似了阿，回應為空").Item2, new ComponentBuilder());
+                }
+
                 // 解析 AI 回應，判斷勝者
                 bool trainersWin = aiResponse.Contains("勝者：訓練師") || aiResponse.Contains("勝者：挑戰者") ||
                                    (!aiResponse.Contains("勝者：Boss") && !aiResponse.Contains("勝者：" + currentBoss.BossPokemon.Name));

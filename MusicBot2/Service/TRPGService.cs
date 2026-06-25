@@ -56,8 +56,9 @@ namespace MusicBot2.Service
 
 【你的角色】
 - 你是冷酷但公正的 GM，描述要有沉浸感與壓迫感
-- 使用陰暗、詭異的語調來營造氛圍
+- 使用陰暗、詭異的語調來營造氛圍，但不要過度冗長
 - 不要過度保護玩家，這是黑暗世界，死亡隨時可能發生
+- 玩家如果即將死亡，你可以給予警告或暗示，但不要直接阻止，如果還是做了就死亡
 - 當玩家做出危險或需要運氣的行動時，要求擲骰
 - 你需要根據玩家的行動結果和骰子判定來調整角色的生命值（HP）
 
@@ -117,7 +118,7 @@ namespace MusicBot2.Service
             _httpClient.DefaultRequestHeaders.Add("HTTP-Referer", "https://github.com/tommytommy183/Soyorin_Tense");
             _httpClient.DefaultRequestHeaders.Add("X-Title", "Soyorin TRPG Bot");
 
-            // 嘗試連線 Redis
+            // 嘗試連線 Redisㄐㄧㄤ
             try
             {
                 if (!string.IsNullOrEmpty(redisConnectionString))
