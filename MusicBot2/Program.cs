@@ -47,8 +47,9 @@ public class Program
     private GoogleAIStudioService _googleAIStudioService;
     private OpenRouterService _openRouterService;
     private SetTextService _setTextService;
+    private TRPGService _trpgService;
     private string _cookie;
-    
+
     #endregion
 
     #region 基礎設定
@@ -114,6 +115,9 @@ public class Program
             .AddSingleton<OpenRouterService>(sp =>
                   new OpenRouterService(openRouterApiKey)
                   )
+            .AddSingleton<TRPGService>(sp =>
+                  new TRPGService(openRouterApiKey, redisConn)
+                  )
             .AddSingleton<JikanAnimeService>()
             .AddSingleton<PokeGameService>(sp =>
                 new PokeGameService(redisConn, sp.GetRequiredService<OpenRouterService>(),_client)
@@ -123,6 +127,7 @@ public class Program
         _googleAIStudioService = _services.GetRequiredService<GoogleAIStudioService>();
         _openRouterService = _services.GetRequiredService<OpenRouterService>();
         _setTextService = _services.GetRequiredService<SetTextService>();
+        _trpgService = _services.GetRequiredService<TRPGService>();
 
         _client.MessageReceived += MessageReceivedHandler;
         _client.Log += Log;
@@ -523,6 +528,23 @@ public class Program
     public async Task MessageReceivedHandler(SocketMessage message)
     {
         if (message is not SocketUserMessage userMessage || message.Author.IsBot) return;
+
+        // 🎲 檢查是否在 TRPG 遊戲頻道中
+        var trpgUser = message.Author as SocketGuildUser;
+        if (trpgUser != null && await _trpgService.IsAdventureActiveAsync(message.Channel.Id))
+        {
+            // 如果訊息不是指令，則視為冒險行動
+            if (!message.Content.StartsWith("/"))
+            {
+                var response = await _trpgService.ProcessAdventureActionAsync(message.Channel.Id, trpgUser, message.Content);
+                if (!string.IsNullOrEmpty(response))
+                {
+                    await message.Channel.SendMessageAsync(response);
+                }
+                return;
+            }
+        }
+
         bool isMentioned = message.MentionedUsers.Any(u => u.Id == _client.CurrentUser.Id);
 
         if (isMentioned ||

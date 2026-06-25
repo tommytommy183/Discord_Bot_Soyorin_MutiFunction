@@ -33,8 +33,9 @@ namespace MusicBot2.SlahCommands
         private readonly JikanAnimeService _animeService;
         private readonly PokeService _pokeService;
         private readonly PokeGameService _pokeGameService;
+        private readonly TRPGService _trpgService;
 
-        public SlashCommandHandler(Program program, WordGuessingService wordService, MineGameService mineGameService, ElevenLabsService elevenLabsService, OldMaidService oldMaidService, RubiksCubeService rubiksCubeService, GoogleAIStudioService googleAIStudioService, RVC_Service rVC_Service, SetTextService setTextService, Game2048Service game2048Service, Game1A2BService game1A2BService, Pick2Service pick2Service, JikanAnimeService animeService, PokeService pokeService, PokeGameService pokeGameService)
+        public SlashCommandHandler(Program program, WordGuessingService wordService, MineGameService mineGameService, ElevenLabsService elevenLabsService, OldMaidService oldMaidService, RubiksCubeService rubiksCubeService, GoogleAIStudioService googleAIStudioService, RVC_Service rVC_Service, SetTextService setTextService, Game2048Service game2048Service, Game1A2BService game1A2BService, Pick2Service pick2Service, JikanAnimeService animeService, PokeService pokeService, PokeGameService pokeGameService, TRPGService trpgService)
         {
             _program = program;
             _wordService = wordService;
@@ -51,6 +52,7 @@ namespace MusicBot2.SlahCommands
             _animeService = animeService;
             _pokeService = pokeService;
             _pokeGameService = pokeGameService;
+            _trpgService = trpgService;
         }
         #region 音樂撥放相關
         [SlashCommand("播放音樂", "播放音樂")]
@@ -716,6 +718,61 @@ namespace MusicBot2.SlahCommands
             var channel = Context.Channel;
             var (embed, component) = await _pokeGameService.JoinOrCreateTeamFightAsync(Context.User.Id, Context.User.Username, index - 1, channel.Id);
             await FollowupAsync(embed: embed, components: component.Build());
+        }
+        #endregion
+
+        #region TRPG 黑暗奇幻冒險
+        [SlashCommand("開始冒險", "開始一個黑暗奇幻 TRPG 冒險（此頻道所有訊息將成為遊戲內容）")]
+        public async Task StartAdventureAsync()
+        {
+            await DeferAsync();
+            var user = Context.User as SocketGuildUser;
+            if (user == null)
+            {
+                await FollowupAsync("❌ 無法取得使用者資訊", ephemeral: true);
+                return;
+            }
+
+            var result = await _trpgService.StartAdventureAsync(Context.Channel.Id, user);
+            await FollowupAsync(result);
+        }
+
+        [SlashCommand("投骰", "投擲 20 面骰來判定行動結果")]
+        public async Task RollDiceAsync()
+        {
+            await DeferAsync();
+            var user = Context.User as SocketGuildUser;
+            if (user == null)
+            {
+                await FollowupAsync("❌ 無法取得使用者資訊", ephemeral: true);
+                return;
+            }
+
+            var result = await _trpgService.RollDiceAsync(Context.Channel.Id, user);
+            await FollowupAsync(result);
+        }
+
+        [SlashCommand("結束冒險", "結束當前頻道的 TRPG 冒險")]
+        public async Task EndAdventureAsync()
+        {
+            await DeferAsync();
+            var user = Context.User as SocketGuildUser;
+            if (user == null)
+            {
+                await FollowupAsync("❌ 無法取得使用者資訊", ephemeral: true);
+                return;
+            }
+
+            var result = await _trpgService.EndAdventureAsync(Context.Channel.Id, user);
+            await FollowupAsync(result);
+        }
+
+        [SlashCommand("冒險狀態", "查看當前冒險的狀態")]
+        public async Task AdventureStatusAsync()
+        {
+            await DeferAsync();
+            var result = await _trpgService.GetAdventureStatusAsync(Context.Channel.Id);
+            await FollowupAsync(result, ephemeral: true);
         }
         #endregion
     }
