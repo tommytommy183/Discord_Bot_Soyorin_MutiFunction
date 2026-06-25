@@ -250,8 +250,11 @@ namespace MusicBot2.Service
         /// </summary>
         public async Task<string> StartAdventureAsync(ulong channelId, SocketGuildUser user)
         {
+            Console.WriteLine($"[TRPG] 玩家 {user.Username} 嘗試在頻道 {channelId} 開始冒險");
+
             if (await GameExistsAsync(channelId))
             {
+                Console.WriteLine($"[TRPG] 頻道 {channelId} 已有進行中的冒險");
                 return "❌ 此頻道已有進行中的冒險！請先使用 /結束冒險 來結束當前遊戲。";
             }
 
@@ -264,8 +267,12 @@ namespace MusicBot2.Service
                 WaitingForDiceRoll = false
             };
 
+            Console.WriteLine($"[TRPG] 開始生成開場訊息...");
+
             // 生成開場
             var openingMessage = await GenerateOpeningAsync(user.DisplayName ?? user.Username);
+
+            Console.WriteLine($"[TRPG] 開場訊息生成完成");
 
             gameState.GameHistory.Add(new TRPGMessage
             {
@@ -278,7 +285,9 @@ namespace MusicBot2.Service
 
             await SaveGameStateAsync(channelId, gameState);
 
-            return $"🌑 **永夜國度 - 黑暗奇幻冒險開始**\n\n{openingMessage}\n\n💀 從現在開始，這個頻道的所有訊息都會成為冒險的一部分。\n🎲 當需要擲骰時，請使用 `/投骰` 指令。";
+            Console.WriteLine($"[TRPG] 冒險成功開始於頻道 {channelId}");
+
+            return $"🌑 **永夜國度 - 黑暗奇幻冒險開始**\n\n{openingMessage}\n\n💀 從現在開始，這個頻道的所有訊息都會成為冒險的一部分。\n👥 支援多人同時冒險！\n🎲 當需要擲骰時，請使用 `/投骰` 指令。";
         }
 
         /// <summary>
@@ -311,6 +320,8 @@ namespace MusicBot2.Service
                 return string.Empty;
             }
 
+            Console.WriteLine($"[TRPG] 玩家 {user.Username} 在頻道 {channelId} 進行行動: {message}");
+
             // 記錄玩家訊息
             gameState.GameHistory.Add(new TRPGMessage
             {
@@ -321,14 +332,22 @@ namespace MusicBot2.Service
                 Type = TRPGMessageType.PlayerAction
             });
 
-            // 如果正在等待擲骰，提醒玩家
+            // 如果正在等待擲骰，檢查是否為等待中的玩家
             if (gameState.WaitingForDiceRoll)
             {
-                return "⏳ 請先使用 `/投骰` 完成骰子判定，才能繼續冒險！";
+                // 如果是等待中的玩家，提醒他先擲骰
+                if (gameState.WaitingPlayerId == user.Id)
+                {
+                    return "⏳ 請先使用 `/投骰` 完成骰子判定，才能繼續冒險！";
+                }
+                // 如果是其他玩家，允許他們也進行行動（多玩家模式）
+                Console.WriteLine($"[TRPG] 其他玩家 {user.Username} 加入行動（目前等待 {gameState.WaitingPlayerId} 擲骰）");
             }
 
             // 生成 GM 回應
+            Console.WriteLine($"[TRPG] 開始生成 GM 回應...");
             var gmResponse = await GenerateGMResponseAsync(gameState, message, user);
+            Console.WriteLine($"[TRPG] GM 回應生成完成");
 
             // 記錄 GM 回應
             gameState.GameHistory.Add(new TRPGMessage
@@ -346,6 +365,7 @@ namespace MusicBot2.Service
                 gameState.WaitingForDiceRoll = true;
                 gameState.WaitingPlayerId = user.Id;
                 gameState.PendingDiceContext = message;
+                Console.WriteLine($"[TRPG] GM 要求玩家 {user.Username} 擲骰");
             }
 
             // 儲存更新後的狀態
@@ -359,27 +379,35 @@ namespace MusicBot2.Service
         /// </summary>
         public async Task<string> RollDiceAsync(ulong channelId, SocketGuildUser user)
         {
+            Console.WriteLine($"[TRPG] 玩家 {user.Username} 嘗試在頻道 {channelId} 擲骰");
+
             var gameState = await LoadGameStateAsync(channelId);
             if (gameState == null)
             {
+                Console.WriteLine($"[TRPG] 頻道 {channelId} 沒有進行中的冒險");
                 return "❌ 此頻道沒有進行中的冒險！請先使用 `/開始冒險` 開始遊戲。";
             }
 
             if (!gameState.WaitingForDiceRoll)
             {
+                Console.WriteLine($"[TRPG] 目前不需要擲骰");
                 return "❌ 當前不需要擲骰！等 GM 要求你擲骰時再使用此指令。";
             }
 
+            // 多玩家模式：檢查是否為等待擲骰的玩家
             if (gameState.WaitingPlayerId.HasValue && gameState.WaitingPlayerId.Value != user.Id)
             {
-                return "❌ 現在不是你擲骰的時候！";
+                Console.WriteLine($"[TRPG] 玩家 {user.Username} 不是當前等待擲骰的玩家（等待中: {gameState.WaitingPlayerId.Value}）");
+                return $"⏳ 目前等待的是其他玩家擲骰，請稍候。";
             }
 
             // 擲 D20
             int diceResult = _random.Next(1, 21);
+            Console.WriteLine($"[TRPG] 玩家 {user.Username} 擲出 {diceResult}");
 
             gameState.WaitingForDiceRoll = false;
             gameState.WaitingPlayerId = null;
+            gameState.PendingDiceContext = null;
 
             // 記錄骰子結果
             gameState.GameHistory.Add(new TRPGMessage
@@ -392,8 +420,12 @@ namespace MusicBot2.Service
                 DiceResult = diceResult
             });
 
+            Console.WriteLine($"[TRPG] 開始生成基於骰子結果的 GM 回應...");
+
             // 生成基於骰子結果的回應
             var gmResponse = await GenerateGMResponseWithDiceAsync(gameState, diceResult, user);
+
+            Console.WriteLine($"[TRPG] GM 回應生成完成");
 
             // 記錄 GM 回應
             gameState.GameHistory.Add(new TRPGMessage
@@ -410,6 +442,7 @@ namespace MusicBot2.Service
             {
                 gameState.WaitingForDiceRoll = true;
                 gameState.WaitingPlayerId = user.Id;
+                Console.WriteLine($"[TRPG] GM 再次要求玩家 {user.Username} 擲骰");
             }
 
             // 儲存更新後的狀態
@@ -423,6 +456,8 @@ namespace MusicBot2.Service
                 >= 6 => "❌",
                 _ => "💀"
             };
+
+            Console.WriteLine($"[TRPG] 擲骰處理完成");
 
             return $"🎲 {user.DisplayName ?? user.Username} 擲出了 **{diceResult}** {resultEmoji}\n\n🎭 **GM**: {gmResponse}";
         }
@@ -549,8 +584,9 @@ namespace MusicBot2.Service
             try
             {
                 const int maxRetry = 2;
-                HttpResponseMessage response = null;
+                HttpResponseMessage? response = null;
                 string responseBody = string.Empty;
+                bool hasSuccessfulResponse = false;
 
                 foreach (var model in _models)
                 {
@@ -569,17 +605,37 @@ namespace MusicBot2.Service
                             var json = JsonSerializer.Serialize(requestBody);
                             var content = new StringContent(json, Encoding.UTF8, "application/json");
 
+                            Console.WriteLine($"[TRPG] 嘗試使用模型: {model} (重試: {retry + 1}/{maxRetry})");
                             response = await _httpClient.PostAsync(ApiUrl, content);
                             responseBody = await response.Content.ReadAsStringAsync();
+
+                            if (response.IsSuccessStatusCode)
+                            {
+                                Console.WriteLine($"[TRPG] 模型 {model} 回應成功");
+                                hasSuccessfulResponse = true;
+                                break;
+                            }
+                            else
+                            {
+                                Console.WriteLine($"[TRPG] 模型 {model} 回應失敗: {response.StatusCode}");
+                            }
                         }
-                        catch
+                        catch (Exception ex)
                         {
-
+                            Console.WriteLine($"[TRPG] 模型 {model} 發生錯誤 (重試 {retry + 1}/{maxRetry}): {ex.Message}");
                         }
-
-
                     }
+
+                    if (hasSuccessfulResponse)
+                        break;
                 }
+
+                if (response == null || !hasSuccessfulResponse)
+                {
+                    Console.WriteLine($"[TRPG] 所有模型都失敗了");
+                    return "黑暗吞噬了你的感知...（所有 AI 模型都無法回應）";
+                }
+
                 if (!response.IsSuccessStatusCode)
                 {
                     Console.WriteLine($"[TRPG] API Error: {response.StatusCode} - {responseBody}");
@@ -593,14 +649,17 @@ namespace MusicBot2.Service
                 {
                     var message = choices[0].GetProperty("message");
                     var text = message.GetProperty("content").GetString() ?? "";
+                    Console.WriteLine($"[TRPG] GM 回應生成成功，長度: {text.Length}");
                     return CleanResponse(text);
                 }
 
+                Console.WriteLine($"[TRPG] 無法從回應中解析內容");
                 return "黑暗中傳來模糊的低語...（無法解析 GM 回應）";
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[TRPG] Exception: {ex.Message}");
+                Console.WriteLine($"[TRPG] CallOpenRouterAsync Exception: {ex.Message}");
+                Console.WriteLine($"[TRPG] StackTrace: {ex.StackTrace}");
                 return "永夜的詛咒阻擋了你的感知...（發生錯誤）";
             }
         }
