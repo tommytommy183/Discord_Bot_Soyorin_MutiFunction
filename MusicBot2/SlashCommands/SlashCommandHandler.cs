@@ -737,6 +737,21 @@ namespace MusicBot2.SlahCommands
             await FollowupAsync(result);
         }
 
+        [SlashCommand("加入冒險", "加入當前頻道進行中的 TRPG 冒險")]
+        public async Task JoinAdventureAsync()
+        {
+            await DeferAsync();
+            var user = Context.User as SocketGuildUser;
+            if (user == null)
+            {
+                await FollowupAsync("❌ 無法取得使用者資訊", ephemeral: true);
+                return;
+            }
+
+            var result = await _trpgService.JoinAdventureAsync(Context.Channel.Id, user);
+            await FollowupAsync(result);
+        }
+
         [SlashCommand("投骰", "投擲 20 面骰來判定行動結果")]
         public async Task RollDiceAsync()
         {

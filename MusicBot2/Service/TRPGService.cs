@@ -296,11 +296,19 @@ namespace MusicBot2.Service
                 Type = TRPGMessageType.GMNarration
             });
 
+            // 創建者自動加入冒險
+            var creatorCharacter = gameState.GetOrCreateCharacter(user.Id, user.DisplayName ?? user.Username);
+            Console.WriteLine($"[TRPG] 創建者 {user.Username} 自動加入冒險，初始 HP: {creatorCharacter.CurrentHP}/{creatorCharacter.MaxHP}");
+
             await SaveGameStateAsync(channelId, gameState);
 
             Console.WriteLine($"[TRPG] 冒險成功開始於頻道 {channelId}");
 
-            return $"🌑 **永夜國度 - 黑暗奇幻冒險開始**\n\n{openingMessage}\n\n💀 從現在開始，這個頻道的所有訊息都會成為冒險的一部分。\n👥 支援多人同時冒險！\n🎲 當需要擲骰時，請使用 `/投骰` 指令。";
+            return $"🌑 **永夜國度 - 黑暗奇幻冒險開始**\n\n{openingMessage}\n\n" +
+                   $"💀 從現在開始，這個頻道的所有訊息都會成為冒險的一部分。\n" +
+                   $"👥 其他玩家請使用 `/加入冒險` 指令來加入遊戲！\n" +
+                   $"🎲 當需要擲骰時，請使用 `/投骰` 指令。\n\n" +
+                   $"✅ {user.DisplayName ?? user.Username} 已加入冒險 ({creatorCharacter.CurrentHP}/{creatorCharacter.MaxHP} HP)";
         }
 
         /// <summary>
@@ -335,8 +343,16 @@ namespace MusicBot2.Service
 
             Console.WriteLine($"[TRPG] 玩家 {user.Username} 在頻道 {channelId} 進行行動: {message}");
 
+            // 檢查玩家是否已經加入冒險
+            if (!gameState.Characters.ContainsKey(user.Id))
+            {
+                Console.WriteLine($"[TRPG] 玩家 {user.Username} 尚未加入冒險");
+                return $"❌ {user.DisplayName ?? user.Username}，你還沒有加入這場冒險！\n" +
+                       $"💡 請使用 `/加入冒險` 指令來加入遊戲。";
+            }
+
             // 確保角色存在（自動加入冒險）
-            var character = gameState.GetOrCreateCharacter(user.Id, user.DisplayName ?? user.Username);
+            var character = gameState.Characters[user.Id];
 
             // 檢查角色是否還活著
             if (!character.IsAlive)
@@ -495,6 +511,56 @@ namespace MusicBot2.Service
             Console.WriteLine($"[TRPG] 擲骰處理完成");
 
             return $"🎲 {user.DisplayName ?? user.Username} 擲出了 **{diceResult}** {resultEmoji}\n\n🎭 **GM**: {gmResponse}{statusInfo}";
+        }
+
+        /// <summary>
+        /// 加入冒險
+        /// </summary>
+        public async Task<string> JoinAdventureAsync(ulong channelId, SocketGuildUser user)
+        {
+            Console.WriteLine($"[TRPG] 玩家 {user.Username} 嘗試加入頻道 {channelId} 的冒險");
+
+            var gameState = await LoadGameStateAsync(channelId);
+            if (gameState == null)
+            {
+                Console.WriteLine($"[TRPG] 頻道 {channelId} 沒有進行中的冒險");
+                return "❌ 此頻道沒有進行中的冒險！請等待有人使用 `/開始冒險` 來開啟遊戲。";
+            }
+
+            if (!gameState.IsActive)
+            {
+                return "❌ 此冒險已經結束！";
+            }
+
+            // 檢查玩家是否已經加入
+            if (gameState.Characters.ContainsKey(user.Id))
+            {
+                var existingCharacter = gameState.Characters[user.Id];
+                return $"⚠️ {user.DisplayName ?? user.Username}，你已經在這場冒險中了！\n" +
+                       $"💊 當前狀態: {existingCharacter.CurrentHP}/{existingCharacter.MaxHP} HP {existingCharacter.GetHealthStatus()}";
+            }
+
+            // 創建新角色
+            var character = gameState.GetOrCreateCharacter(user.Id, user.DisplayName ?? user.Username);
+
+            // 記錄系統訊息
+            gameState.GameHistory.Add(new TRPGMessage
+            {
+                UserId = 0,
+                UserName = "System",
+                Message = $"{user.DisplayName ?? user.Username} 加入了冒險",
+                Timestamp = DateTime.UtcNow,
+                Type = TRPGMessageType.SystemMessage
+            });
+
+            await SaveGameStateAsync(channelId, gameState);
+
+            Console.WriteLine($"[TRPG] 玩家 {user.Username} 成功加入冒險，HP: {character.CurrentHP}/{character.MaxHP}");
+
+            return $"✅ **{user.DisplayName ?? user.Username} 加入了冒險！**\n\n" +
+                   $"💊 初始狀態: {character.CurrentHP}/{character.MaxHP} HP {character.GetHealthStatus()}\n" +
+                   $"🌑 你踏入了永夜國度的黑暗之中...\n\n" +
+                   $"💡 現在你可以直接在頻道中輸入文字來進行冒險，當需要擲骰時請使用 `/投骰` 指令。";
         }
 
         /// <summary>
