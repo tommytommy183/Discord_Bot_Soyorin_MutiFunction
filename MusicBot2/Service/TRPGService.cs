@@ -28,8 +28,6 @@ namespace MusicBot2.Service
         private const string ApiUrl = "https://openrouter.ai/api/v1/chat/completions";
         private readonly string[] _models =
         {
-            "nvidia/nemotron-3-ultra-550b-a55b:free",
-            "poolside/laguna-m.1:free",
             "openai/gpt-oss-120b:free",
             "google/gemma-4-31b-it:free",
             "meta-llama/llama-3.3-70b-instruct:free",
@@ -37,7 +35,6 @@ namespace MusicBot2.Service
             "qwen/qwen3-next-80b-a3b-instruct:free",
             "minimax/minimax-m2.5:free",
             "openrouter/owl-alpha",
-            "poolside/laguna-xs.2:free",
             "poolside/laguna-m.1:free",
             "moonshotai/kimi-k2.6:free",
             "google/gemma-4-26b-a4b-it:free",
@@ -99,7 +96,7 @@ namespace MusicBot2.Service
             _apiKey = apiKey;
             _httpClient = new HttpClient
             {
-                Timeout = TimeSpan.FromSeconds(60)
+                Timeout = TimeSpan.FromSeconds(30)
             };
             _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
             _httpClient.DefaultRequestHeaders.Add("HTTP-Referer", "https://github.com/tommytommy183/Soyorin_Tense");
