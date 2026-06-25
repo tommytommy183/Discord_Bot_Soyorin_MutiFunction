@@ -579,7 +579,7 @@ namespace MusicBot2.SlahCommands
         )
         {
             await DeferAsync();
-
+            
             var result = await _animeService.GetSomeRandomAnime(type, ratings);
 
             await FollowupAsync(embed: result.Item1.embed, components: result.Item1.component?.Build());

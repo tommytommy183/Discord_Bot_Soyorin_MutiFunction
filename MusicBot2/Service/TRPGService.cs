@@ -59,10 +59,12 @@ namespace MusicBot2.Service
 - 使用陰暗、詭異的語調來營造氛圍
 - 不要過度保護玩家，這是黑暗世界，死亡隨時可能發生
 - 當玩家做出危險或需要運氣的行動時，要求擲骰
+- 你需要根據玩家的行動結果和骰子判定來調整角色的生命值（HP）
 
 【遊戲規則】
 1. 使用 D20 系統（20面骰）
-2. 當玩家嘗試以下行動時，必須要求擲骰：
+2. 每個角色有 100 點生命值（HP），當 HP 降到 0 時角色死亡
+3. 當玩家嘗試以下行動時，必須要求擲骰：
    - 戰鬥攻擊或閃避
    - 察覺隱藏的危險
    - 說服、欺騙、威嚇他人
@@ -70,11 +72,24 @@ namespace MusicBot2.Service
    - 攀爬、跳躍等體能挑戰
    - 解除陷阱、開鎖等技巧挑戰
 
-3. 難度判定標準：
-   - 1：大失敗（嚴重後果）
-   - 2-9：失敗（有負面影響）
-   - 10-19：成功
-   - 20：大成功（額外好處）
+4. 難度判定標準：
+   - 1：大失敗（嚴重後果，可能受到 20-30 點傷害）
+   - 2-9：失敗（有負面影響，可能受到 10-20 點傷害）
+   - 10-19：成功（無傷害或輕微傷害 0-10 點）
+   - 20：大成功（額外好處，可能恢復 10-20 點生命值）
+
+5. 生命值變動指引：
+   - 戰鬥失敗：依敵人強度造成 10-30 點傷害
+   - 陷阱觸發：10-25 點傷害
+   - 環境危險（跌落、灼傷等）：5-20 點傷害
+   - 治療、休息：恢復 10-30 點生命值
+   - 致命攻擊（大失敗）：30-50 點傷害
+
+【生命值通知格式】
+當玩家的生命值發生變化時，你必須在回應中明確說明：
+- 如果受傷：「你受到了 X 點傷害」或「敵人重擊了你，造成 X 點傷害」
+- 如果治療：「你恢復了 X 點生命值」或「你感到身體逐漸恢復，治癒 X 點生命值」
+- 系統會自動更新玩家的實際 HP 數值
 
 【重要指示】
 - 當需要擲骰時，你必須停下來，明確告訴玩家「請擲骰（輸入 /投骰）」，並說明這次擲骰是為了判定什麼
@@ -319,6 +334,15 @@ namespace MusicBot2.Service
 
             Console.WriteLine($"[TRPG] 玩家 {user.Username} 在頻道 {channelId} 進行行動: {message}");
 
+            // 確保角色存在（自動加入冒險）
+            var character = gameState.GetOrCreateCharacter(user.Id, user.DisplayName ?? user.Username);
+
+            // 檢查角色是否還活著
+            if (!character.IsAlive)
+            {
+                return $"💀 {character.UserName} 已經死亡，無法進行行動。請等待冒險結束或使用管理指令復活。";
+            }
+
             // 記錄玩家訊息
             gameState.GameHistory.Add(new TRPGMessage
             {
@@ -346,6 +370,9 @@ namespace MusicBot2.Service
             var gmResponse = await GenerateGMResponseAsync(gameState, message, user);
             Console.WriteLine($"[TRPG] GM 回應生成完成");
 
+            // 解析並處理生命值變化
+            ProcessHealthChanges(gameState, gmResponse);
+
             // 記錄 GM 回應
             gameState.GameHistory.Add(new TRPGMessage
             {
@@ -368,7 +395,10 @@ namespace MusicBot2.Service
             // 儲存更新後的狀態
             await SaveGameStateAsync(channelId, gameState);
 
-            return $"🎭 **GM**: {gmResponse}";
+            // 附加角色狀態
+            var statusInfo = $"\n\n💊 {character.UserName}: {character.CurrentHP}/{character.MaxHP} HP {character.GetHealthStatus()}";
+
+            return $"🎭 **GM**: {gmResponse}{statusInfo}";
         }
 
         /// <summary>
@@ -424,6 +454,9 @@ namespace MusicBot2.Service
 
             Console.WriteLine($"[TRPG] GM 回應生成完成");
 
+            // 解析並處理生命值變化
+            ProcessHealthChanges(gameState, gmResponse);
+
             // 記錄 GM 回應
             gameState.GameHistory.Add(new TRPGMessage
             {
@@ -454,9 +487,13 @@ namespace MusicBot2.Service
                 _ => "💀"
             };
 
+            // 獲取玩家角色
+            var character = gameState.GetOrCreateCharacter(user.Id, user.DisplayName ?? user.Username);
+            var statusInfo = $"\n\n💊 {character.UserName}: {character.CurrentHP}/{character.MaxHP} HP {character.GetHealthStatus()}";
+
             Console.WriteLine($"[TRPG] 擲骰處理完成");
 
-            return $"🎲 {user.DisplayName ?? user.Username} 擲出了 **{diceResult}** {resultEmoji}\n\n🎭 **GM**: {gmResponse}";
+            return $"🎲 {user.DisplayName ?? user.Username} 擲出了 **{diceResult}** {resultEmoji}\n\n🎭 **GM**: {gmResponse}{statusInfo}";
         }
 
         /// <summary>
@@ -501,11 +538,27 @@ namespace MusicBot2.Service
             var playerActions = gameState.GameHistory.Count(m => m.Type == TRPGMessageType.PlayerAction);
             var diceRolls = gameState.GameHistory.Count(m => m.Type == TRPGMessageType.DiceRoll);
 
-            return $"🌑 **冒險狀態**\n\n" +
+            var statusText = $"🌑 **冒險狀態**\n\n" +
                    $"⏱️ 已進行: {duration.Hours} 小時 {duration.Minutes} 分鐘\n" +
                    $"📝 玩家行動: {playerActions} 次\n" +
                    $"🎲 擲骰次數: {diceRolls} 次\n" +
-                   $"⚠️ 等待擲骰: {(gameState.WaitingForDiceRoll ? "是" : "否")}";
+                   $"⚠️ 等待擲骰: {(gameState.WaitingForDiceRoll ? "是" : "否")}\n\n";
+
+            // 添加所有角色狀態
+            if (gameState.Characters.Count > 0)
+            {
+                statusText += "👥 **冒險者狀態**\n";
+                foreach (var character in gameState.Characters.Values.OrderByDescending(c => c.CurrentHP))
+                {
+                    statusText += $"{character.GetHealthStatus()} {character.UserName}: {character.CurrentHP}/{character.MaxHP} HP ({character.GetHealthDescription()})\n";
+                }
+            }
+            else
+            {
+                statusText += "👥 **冒險者狀態**: 尚無冒險者\n";
+            }
+
+            return statusText;
         }
 
         /// <summary>
@@ -517,6 +570,13 @@ namespace MusicBot2.Service
             {
                 new { role = "system", content = DarkFantasySystemPrompt }
             };
+
+            // 加入當前所有角色的血量資訊
+            if (gameState.Characters.Count > 0)
+            {
+                var charactersStatus = gameState.GetCharactersStatusSummary();
+                messages.Add(new { role = "system", content = $"【當前冒險者狀態】\n{charactersStatus}" });
+            }
 
             // 加入最近的遊戲歷史（最多 10 條）
             var recentHistory = gameState.GameHistory.TakeLast(10).ToList();
@@ -537,7 +597,8 @@ namespace MusicBot2.Service
             }
 
             // 加入當前玩家訊息
-            messages.Add(new { role = "user", content = $"{user.DisplayName ?? user.Username}: {playerMessage}" });
+            var character = gameState.GetOrCreateCharacter(user.Id, user.DisplayName ?? user.Username);
+            messages.Add(new { role = "user", content = $"{user.DisplayName ?? user.Username} ({character.CurrentHP}/{character.MaxHP} HP): {playerMessage}" });
 
             return await CallOpenRouterAsync(messages);
         }
@@ -551,6 +612,13 @@ namespace MusicBot2.Service
             {
                 new { role = "system", content = DarkFantasySystemPrompt }
             };
+
+            // 加入當前所有角色的血量資訊
+            if (gameState.Characters.Count > 0)
+            {
+                var charactersStatus = gameState.GetCharactersStatusSummary();
+                messages.Add(new { role = "system", content = $"【當前冒險者狀態】\n{charactersStatus}" });
+            }
 
             // 加入最近的遊戲歷史
             var recentHistory = gameState.GameHistory.TakeLast(10).ToList();
@@ -569,6 +637,10 @@ namespace MusicBot2.Service
                     messages.Add(new { role = "user", content = $"骰子結果: {msg.DiceResult}" });
                 }
             }
+
+            // 加入當前玩家及骰子結果
+            var character = gameState.GetOrCreateCharacter(user.Id, user.DisplayName ?? user.Username);
+            messages.Add(new { role = "user", content = $"{user.DisplayName ?? user.Username} ({character.CurrentHP}/{character.MaxHP} HP) 擲骰結果: {diceResult}" });
 
             return await CallOpenRouterAsync(messages);
         }
@@ -682,6 +754,79 @@ namespace MusicBot2.Service
             }
 
             return text.Trim();
+        }
+
+        /// <summary>
+        /// 處理生命值變化（從 GM 回應中解析）
+        /// </summary>
+        private void ProcessHealthChanges(TRPGGameState gameState, string gmResponse)
+        {
+            try
+            {
+                // 匹配傷害：「受到了 X 點傷害」、「造成 X 點傷害」等
+                var damagePatterns = new[]
+                {
+                    @"受到(?:了)?[\s]*(\d+)[\s]*點傷害",
+                    @"造成(?:了)?[\s]*(\d+)[\s]*點傷害",
+                    @"損失(?:了)?[\s]*(\d+)[\s]*點生命值",
+                    @"失去(?:了)?[\s]*(\d+)[\s]*HP",
+                    @"扣除(?:了)?[\s]*(\d+)[\s]*(?:點)?血量"
+                };
+
+                // 匹配治療：「恢復了 X 點生命值」、「治癒 X 點生命值」等
+                var healPatterns = new[]
+                {
+                    @"恢復(?:了)?[\s]*(\d+)[\s]*點生命值",
+                    @"治癒(?:了)?[\s]*(\d+)[\s]*點生命值",
+                    @"治療(?:了)?[\s]*(\d+)[\s]*點生命值",
+                    @"回復(?:了)?[\s]*(\d+)[\s]*點生命值",
+                    @"增加(?:了)?[\s]*(\d+)[\s]*HP"
+                };
+
+                // 檢查傷害
+                foreach (var pattern in damagePatterns)
+                {
+                    var match = Regex.Match(gmResponse, pattern);
+                    if (match.Success && int.TryParse(match.Groups[1].Value, out int damage))
+                    {
+                        // 找到最後一個行動的玩家
+                        var lastPlayerAction = gameState.GameHistory
+                            .Where(m => m.Type == TRPGMessageType.PlayerAction || m.Type == TRPGMessageType.DiceRoll)
+                            .LastOrDefault();
+
+                        if (lastPlayerAction != null && gameState.Characters.TryGetValue(lastPlayerAction.UserId, out var character))
+                        {
+                            character.TakeDamage(damage);
+                            Console.WriteLine($"[TRPG] {character.UserName} 受到 {damage} 點傷害，剩餘 HP: {character.CurrentHP}/{character.MaxHP}");
+                        }
+                        break;
+                    }
+                }
+
+                // 檢查治療
+                foreach (var pattern in healPatterns)
+                {
+                    var match = Regex.Match(gmResponse, pattern);
+                    if (match.Success && int.TryParse(match.Groups[1].Value, out int healing))
+                    {
+                        // 找到最後一個行動的玩家
+                        var lastPlayerAction = gameState.GameHistory
+                            .Where(m => m.Type == TRPGMessageType.PlayerAction || m.Type == TRPGMessageType.DiceRoll)
+                            .LastOrDefault();
+
+                        if (lastPlayerAction != null && gameState.Characters.TryGetValue(lastPlayerAction.UserId, out var character))
+                        {
+                            character.Heal(healing);
+                            Console.WriteLine($"[TRPG] {character.UserName} 恢復 {healing} 點生命值，當前 HP: {character.CurrentHP}/{character.MaxHP}");
+                        }
+                        break;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[TRPG] ProcessHealthChanges 錯誤: {ex.Message}");
+            }
         }
 
         /// <summary>
