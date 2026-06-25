@@ -46,7 +46,7 @@ namespace MusicBot2.Models
                 return "目前沒有角色";
 
             var lines = Characters.Values.Select(c => 
-                $"- {c.UserName}: {c.CurrentHP}/{c.MaxHP} HP {c.GetHealthStatus()}");
+                $"- {c.UserName}: {c.CurrentHP}/{c.MaxHP} HP");
             return string.Join("\n", lines);
         }
     }
@@ -61,6 +61,8 @@ namespace MusicBot2.Models
         public int CurrentHP { get; set; } = 100;
         public int MaxHP { get; set; } = 100;
         public DateTime LastActionTime { get; set; } = DateTime.UtcNow;
+
+        public List<InventoryItem> Inventory { get; set; } = new List<InventoryItem>();
 
         /// <summary>
         /// 受到傷害
@@ -114,6 +116,63 @@ namespace MusicBot2.Models
                 _ => "已死亡"
             };
         }
+
+        /// <summary>
+        /// 添加物品到背包
+        /// </summary>
+        public void AddItem(string itemName, string description)
+        {
+            Inventory.Add(new InventoryItem
+            {
+                Name = itemName,
+                Description = description,
+                AcquiredTime = DateTime.UtcNow
+            });
+        }
+
+        /// <summary>
+        /// 從背包移除物品
+        /// </summary>
+        public bool RemoveItem(string itemName)
+        {
+            var item = Inventory.FirstOrDefault(i => i.Name.Equals(itemName, StringComparison.OrdinalIgnoreCase));
+            if (item != null)
+            {
+                Inventory.Remove(item);
+                return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// 檢查是否擁有物品
+        /// </summary>
+        public bool HasItem(string itemName)
+        {
+            return Inventory.Any(i => i.Name.Equals(itemName, StringComparison.OrdinalIgnoreCase));
+        }
+
+        /// <summary>
+        /// 獲取背包內容摘要
+        /// </summary>
+        public string GetInventorySummary()
+        {
+            if (Inventory.Count == 0)
+                return "背包是空的";
+
+            return string.Join("\n", Inventory.Select((item, index) => 
+                $"{index + 1}. {item.Name} - {item.Description}"));
+        }
+    }
+
+    /// <summary>
+    /// 背包物品
+    /// </summary>
+    public class InventoryItem
+    {
+        public string Name { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+        public DateTime AcquiredTime { get; set; }
     }
 
     /// <summary>

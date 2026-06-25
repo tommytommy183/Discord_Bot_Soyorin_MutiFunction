@@ -789,6 +789,21 @@ namespace MusicBot2.SlahCommands
             var result = await _trpgService.GetAdventureStatusAsync(Context.Channel.Id);
             await FollowupAsync(result, ephemeral: true);
         }
+
+        [SlashCommand("查看背包", "查看你的背包物品")]
+        public async Task ViewInventoryAsync()
+        {
+            await DeferAsync();
+            var user = Context.User as SocketGuildUser;
+            if (user == null)
+            {
+                await FollowupAsync("❌ 無法取得使用者資訊", ephemeral: true);
+                return;
+            }
+
+            var result = await _trpgService.GetInventoryAsync(Context.Channel.Id, user);
+            await FollowupAsync(result, ephemeral: true);
+        }
         #endregion
     }
 }

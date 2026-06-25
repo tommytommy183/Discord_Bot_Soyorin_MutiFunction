@@ -60,12 +60,13 @@ namespace MusicBot2.Service
 - 不要過度保護玩家，這是黑暗世界，死亡隨時可能發生
 - 玩家如果即將死亡，你可以給予警告或暗示，但不要直接阻止，如果還是做了就死亡
 - 當玩家做出危險或需要運氣的行動時，要求擲骰
-- 你需要根據玩家的行動結果和骰子判定來調整角色的生命值（HP）
+- 你需要根據玩家的行動結果和骰子判定來調整角色的生命值（HP）和背包物品
 
 【遊戲規則】
 1. 使用 D20 系統（20面骰）
 2. 每個角色有 100 點生命值（HP），當 HP 降到 0 時角色死亡
-3. 當玩家嘗試以下行動時，必須要求擲骰：
+3. 每個角色都有背包可以存放物品
+4. 當玩家嘗試以下行動時，必須要求擲骰：
    - 戰鬥攻擊或閃避
    - 察覺隱藏的危險
    - 說服、欺騙、威嚇他人
@@ -73,18 +74,37 @@ namespace MusicBot2.Service
    - 攀爬、跳躍等體能挑戰
    - 解除陷阱、開鎖等技巧挑戰
 
-4. 難度判定標準：
+5. 難度判定標準：
    - 1：大失敗
    - 2-5：失敗
    - 6-19：成功
    - 20：大成功
 
-5. 生命值變動指引：
+6. 生命值變動指引：
    - 戰鬥失敗：依敵人強度造成 10-30 點傷害
    - 陷阱觸發：10-25 點傷害
    - 環境危險（跌落、灼傷等）：5-20 點傷害
    - 治療、休息：恢復 10-30 點生命值
    - 致命攻擊（大失敗）：30-50 點傷害
+
+【物品管理規則】
+1. 物品獲取：當玩家成功完成任務、探索、擊敗敵人或發現寶箱時，可以獲得物品
+2. 物品使用：玩家可以使用背包中的物品（如藥水、武器、工具等）
+3. 物品掉落：當玩家失敗、被攻擊或發生意外時，可能會掉落物品
+4. 物品遺失：特定情況下（如被偷竊、自願丟棄）會失去物品
+
+【物品通知格式】
+當物品狀態改變時，你必須明確說明：
+- 獲得物品：「你獲得了【物品名稱】（簡短描述物品用途）」
+- 使用物品：「你使用了【物品名稱】（描述使用效果）」
+- 掉落物品：「你掉落了【物品名稱】」
+- 遺失物品：「你失去了【物品名稱】」
+
+範例：
+- 「你獲得了【治療藥水】（可恢復 30 點生命值）」
+- 「你使用了【繩索】（幫助你安全下降）」
+- 「你掉落了【鐵劍】（在戰鬥中被擊飛）」
+- 「你失去了【魔法卷軸】（被火焰燒毀）」
 
 【生命值通知格式】
 當玩家的生命值發生變化時，你必須在回應中明確說明：
@@ -390,6 +410,9 @@ namespace MusicBot2.Service
             // 解析並處理生命值變化
             ProcessHealthChanges(gameState, gmResponse);
 
+            // 解析並處理物品變化
+            ProcessInventoryChanges(gameState, gmResponse);
+
             // 記錄 GM 回應
             gameState.GameHistory.Add(new TRPGMessage
             {
@@ -413,7 +436,7 @@ namespace MusicBot2.Service
             await SaveGameStateAsync(channelId, gameState);
 
             // 附加角色狀態
-            var statusInfo = $"\n\n💊 {character.UserName}: {character.CurrentHP}/{character.MaxHP} HP {character.GetHealthStatus()}";
+            var statusInfo = $"\n\n{character.UserName}: {character.CurrentHP}/{character.MaxHP} HP";
 
             return $"🎭 **GM**: {gmResponse}{statusInfo}";
         }
@@ -474,6 +497,9 @@ namespace MusicBot2.Service
             // 解析並處理生命值變化
             ProcessHealthChanges(gameState, gmResponse);
 
+            // 解析並處理物品變化
+            ProcessInventoryChanges(gameState, gmResponse);
+
             // 記錄 GM 回應
             gameState.GameHistory.Add(new TRPGMessage
             {
@@ -506,7 +532,7 @@ namespace MusicBot2.Service
 
             // 獲取玩家角色
             var character = gameState.GetOrCreateCharacter(user.Id, user.DisplayName ?? user.Username);
-            var statusInfo = $"\n\n💊 {character.UserName}: {character.CurrentHP}/{character.MaxHP} HP {character.GetHealthStatus()}";
+            var statusInfo = $"\n\n {character.UserName}: {character.CurrentHP}/{character.MaxHP} HP";
 
             Console.WriteLine($"[TRPG] 擲骰處理完成");
 
@@ -537,7 +563,7 @@ namespace MusicBot2.Service
             {
                 var existingCharacter = gameState.Characters[user.Id];
                 return $"⚠️ {user.DisplayName ?? user.Username}，你已經在這場冒險中了！\n" +
-                       $"💊 當前狀態: {existingCharacter.CurrentHP}/{existingCharacter.MaxHP} HP {existingCharacter.GetHealthStatus()}";
+                       $"💊 當前狀態: {existingCharacter.CurrentHP}/{existingCharacter.MaxHP} HP";
             }
 
             // 創建新角色
@@ -558,7 +584,7 @@ namespace MusicBot2.Service
             Console.WriteLine($"[TRPG] 玩家 {user.Username} 成功加入冒險，HP: {character.CurrentHP}/{character.MaxHP}");
 
             return $"✅ **{user.DisplayName ?? user.Username} 加入了冒險！**\n\n" +
-                   $"💊 初始狀態: {character.CurrentHP}/{character.MaxHP} HP {character.GetHealthStatus()}\n" +
+                   $"💊 初始狀態: {character.CurrentHP}/{character.MaxHP} HP\n" +
                    $"🌑 你踏入了永夜國度的黑暗之中...\n\n" +
                    $"💡 現在你可以直接在頻道中輸入文字來進行冒險，當需要擲骰時請使用 `/投骰` 指令。";
         }
@@ -617,7 +643,7 @@ namespace MusicBot2.Service
                 statusText += "👥 **冒險者狀態**\n";
                 foreach (var character in gameState.Characters.Values.OrderByDescending(c => c.CurrentHP))
                 {
-                    statusText += $"{character.GetHealthStatus()} {character.UserName}: {character.CurrentHP}/{character.MaxHP} HP ({character.GetHealthDescription()})\n";
+                    statusText += $"{character.UserName}: {character.CurrentHP}/{character.MaxHP} HP ({character.GetHealthDescription()})\n";
                 }
             }
             else
@@ -665,7 +691,10 @@ namespace MusicBot2.Service
 
             // 加入當前玩家訊息
             var character = gameState.GetOrCreateCharacter(user.Id, user.DisplayName ?? user.Username);
-            messages.Add(new { role = "user", content = $"{user.DisplayName ?? user.Username} ({character.CurrentHP}/{character.MaxHP} HP): {playerMessage}" });
+            var inventoryInfo = character.Inventory.Count > 0 
+                ? $"背包: {character.GetInventorySummary()}"
+                : "背包: 空";
+            messages.Add(new { role = "user", content = $"{user.DisplayName ?? user.Username} ({character.CurrentHP}/{character.MaxHP} HP, {inventoryInfo}): {playerMessage}" });
 
             return await CallOpenRouterAsync(messages);
         }
@@ -707,7 +736,10 @@ namespace MusicBot2.Service
 
             // 加入當前玩家及骰子結果
             var character = gameState.GetOrCreateCharacter(user.Id, user.DisplayName ?? user.Username);
-            messages.Add(new { role = "user", content = $"{user.DisplayName ?? user.Username} ({character.CurrentHP}/{character.MaxHP} HP) 擲骰結果: {diceResult}" });
+            var inventoryInfo = character.Inventory.Count > 0 
+                ? $"背包: {character.GetInventorySummary()}"
+                : "背包: 空";
+            messages.Add(new { role = "user", content = $"{user.DisplayName ?? user.Username} ({character.CurrentHP}/{character.MaxHP} HP, {inventoryInfo}) 擲骰結果: {diceResult}" });
 
             return await CallOpenRouterAsync(messages);
         }
@@ -897,6 +929,74 @@ namespace MusicBot2.Service
         }
 
         /// <summary>
+        /// 處理物品變化（從 GM 回應中解析）
+        /// </summary>
+        private void ProcessInventoryChanges(TRPGGameState gameState, string gmResponse)
+        {
+            try
+            {
+                // 找到最後一個行動的玩家
+                var lastPlayerAction = gameState.GameHistory
+                    .Where(m => m.Type == TRPGMessageType.PlayerAction || m.Type == TRPGMessageType.DiceRoll)
+                    .LastOrDefault();
+
+                if (lastPlayerAction == null || !gameState.Characters.TryGetValue(lastPlayerAction.UserId, out var character))
+                    return;
+
+                // 匹配獲得物品：「你獲得了【物品名稱】（描述）」
+                var gainPattern = @"你獲得了【([^】]+)】(?:\(|（)([^)）]+)(?:\)|）)";
+                var gainMatches = Regex.Matches(gmResponse, gainPattern);
+                foreach (Match match in gainMatches)
+                {
+                    string itemName = match.Groups[1].Value.Trim();
+                    string itemDesc = match.Groups[2].Value.Trim();
+                    character.AddItem(itemName, itemDesc);
+                    Console.WriteLine($"[TRPG] {character.UserName} 獲得物品: {itemName} - {itemDesc}");
+                }
+
+                // 匹配使用物品：「你使用了【物品名稱】」
+                var usePattern = @"你使用了【([^】]+)】";
+                var useMatches = Regex.Matches(gmResponse, usePattern);
+                foreach (Match match in useMatches)
+                {
+                    string itemName = match.Groups[1].Value.Trim();
+                    if (character.RemoveItem(itemName))
+                    {
+                        Console.WriteLine($"[TRPG] {character.UserName} 使用了物品: {itemName}");
+                    }
+                }
+
+                // 匹配掉落物品：「你掉落了【物品名稱】」
+                var dropPattern = @"你掉落了【([^】]+)】";
+                var dropMatches = Regex.Matches(gmResponse, dropPattern);
+                foreach (Match match in dropMatches)
+                {
+                    string itemName = match.Groups[1].Value.Trim();
+                    if (character.RemoveItem(itemName))
+                    {
+                        Console.WriteLine($"[TRPG] {character.UserName} 掉落了物品: {itemName}");
+                    }
+                }
+
+                // 匹配失去物品：「你失去了【物品名稱】」或「你遺失了【物品名稱】」
+                var losePattern = @"你(?:失去|遺失)了【([^】]+)】";
+                var loseMatches = Regex.Matches(gmResponse, losePattern);
+                foreach (Match match in loseMatches)
+                {
+                    string itemName = match.Groups[1].Value.Trim();
+                    if (character.RemoveItem(itemName))
+                    {
+                        Console.WriteLine($"[TRPG] {character.UserName} 失去了物品: {itemName}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[TRPG] ProcessInventoryChanges 錯誤: {ex.Message}");
+            }
+        }
+
+        /// <summary>
         /// 檢查回應中是否包含擲骰請求
         /// </summary>
         private bool ContainsDiceRequest(string text)
@@ -905,6 +1005,29 @@ namespace MusicBot2.Service
                    text.Contains("輸入 /投骰") ||
                    text.Contains("擲骰判定") ||
                    Regex.IsMatch(text, @"判定[:：]");
+        }
+
+        /// <summary>
+        /// 查看背包
+        /// </summary>
+        public async Task<string> GetInventoryAsync(ulong channelId, SocketGuildUser user)
+        {
+            var gameState = await LoadGameStateAsync(channelId);
+            if (gameState == null)
+            {
+                return "❌ 此頻道沒有進行中的冒險！";
+            }
+
+            if (!gameState.Characters.TryGetValue(user.Id, out var character))
+            {
+                return "❌ 你還沒有加入這場冒險！請使用 `/加入冒險` 指令。";
+            }
+
+            var inventorySummary = character.GetInventorySummary();
+
+            return $"🎒 **{character.UserName} 的背包**\n\n" +
+                   $"{inventorySummary}\n\n" +
+                   $"📊 物品數量: {character.Inventory.Count}";
         }
 
         /// <summary>
