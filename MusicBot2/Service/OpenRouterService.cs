@@ -199,6 +199,34 @@ namespace MusicBot2.Service
             const int maxRetry = 2;
             var systemPrompt = string.IsNullOrWhiteSpace(request.SystemInstruction) ? Persona : request.SystemInstruction;
 
+            string repliedText = repliedMessage.Content;
+
+            if (string.IsNullOrWhiteSpace(repliedText))
+            {
+                var sb = new StringBuilder();
+
+                foreach (var embed in repliedMessage.Embeds)
+                {
+                    if (!string.IsNullOrWhiteSpace(embed.Title))
+                        sb.AppendLine($"標題：{embed.Title}");
+
+                    if (!string.IsNullOrWhiteSpace(embed.Description))
+                        sb.AppendLine(embed.Description);
+
+                    foreach (var field in embed.Fields)
+                    {
+                        sb.AppendLine($"{field.Name}：{field.Value}");
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(embed.Footer?.Text))
+                        sb.AppendLine($"Footer：{embed.Footer?.Text}");
+                }
+
+                repliedText = sb.ToString();
+            }
+
+
+
             foreach (var model in _models)
             {
                 for (int retry = 0; retry < maxRetry; retry++)
@@ -234,7 +262,10 @@ namespace MusicBot2.Service
                                                     ?? repliedMessage.Author?.Username
                                                     ?? "某人";
 
-                            userMessageWithName = $"使用者名稱: {displayName}\n 回覆了 {repliedAuthorName} 的這條訊息: {repliedMessage.Content}\n訊息: {request.UserMessage}";
+                            userMessageWithName =
+                                $"使用者名稱: {displayName}\n" +
+                                $"回覆了 {repliedAuthorName} 的這條訊息:\n{repliedText}\n" +
+                                $"訊息: {request.UserMessage}";
                         }
                         messages.Add(new OpenRouterMessage { Role = "user", Content = userMessageWithName });
 
