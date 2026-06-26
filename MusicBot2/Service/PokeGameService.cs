@@ -10,6 +10,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
 using System.Reflection;
+using System.Security.Cryptography.X509Certificates;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 
@@ -563,9 +564,11 @@ namespace MusicBot2.Service
                 player.CaughtPokemon.RemoveAt(pokemonIndex - 1);
                 await SavePlayerDataAsync(player);
 
+                string discriptionText = "";
+
                 var embed = new EmbedBuilder()
                     .WithTitle("👋 釋放pokemon")
-                    .WithDescription($"你釋放了 **{pokemonName}**！\n他將會記住你 他將會找到你 他將會回來草飼你")
+                    .WithDescription($"你釋放了 **{pokemonName}**！\n {GetRandomReleasePokemonText()}")
                     .WithThumbnailUrl(pokemon.ImageUrl)
                     .WithColor(Color.Blue)
                     .WithFooter($"目前剩餘 {player.CaughtPokemon.Count} 隻pokemon")
@@ -577,6 +580,39 @@ namespace MusicBot2.Service
             {
                 return (CommonHelper.BuildErrorResponse($"釋放pokemon時發生錯誤: {ex.Message}").Item2, new ComponentBuilder());
             }
+        }
+
+
+        public string GetRandomReleasePokemonText()
+        {
+            Random random = new Random();
+            List<string> randomTextList = new List<string>
+            {
+                "他將會記住你 他將會找到你 他將會回來草飼你",
+                "今日因，明日果，等級100再來找你",
+                "牠沒有哭，只是開始記你的IP，他會回來的",
+                "恭喜，你成功培養了一位未來的Boss",
+                "多年後，野外將多出一隻專門堵你的寶可夢",
+                "牠已加入『被放生者互助會』",
+                "牠離開了，但每逢深夜都會想起你的所作所為",
+                "你失去了一隻Pokemon，也多了一個潛在敵人",
+                "牠已經在 Google 搜尋：『如何向訓練家復仇』",
+                "牠花了三秒接受現實，剩下的一生都在想怎麼弄你",
+                "牠加入了火箭隊。這都是你的錯",
+                "恭喜解鎖成就：製造一名反派",
+                "牠的劇情，現在才正式開始",
+                "因為不是真正的夥伴而被逐出訓練家隊伍，流落到邊境展開慢活人生",
+                "從此開啟了回復術士的重啟人生",
+                "你沒資格阿你沒資格",
+                "他最後加入了芒果醬樂團",
+                "被放生後他被抓去鼎王煮掉了，這都是你害的",
+                "從此你將再也抓不到任何會閃的pokemon",
+                "牠詛咒你從此拉屎都一定沒有衛生紙",
+                "牠說牠也受不了你整天對著牠鹿管，馬上跑走了"
+            };
+
+            string returnText = randomTextList[random.Next(randomTextList.Count)];
+            return returnText;
         }
         #endregion
 

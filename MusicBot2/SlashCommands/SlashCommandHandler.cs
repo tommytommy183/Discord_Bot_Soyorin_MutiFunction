@@ -697,7 +697,7 @@ namespace MusicBot2.SlahCommands
         {
             await DeferAsync(ephemeral: true);
             var (embed, component) = await _pokeGameService.ReleasePokemonAsync(Context.User.Id, Context.User.Username, index);
-            await FollowupAsync(embed: embed, components: component.Build(), ephemeral: true);
+            await FollowupAsync(embed: embed, components: component.Build());
         }
 
         [SlashCommand("開始傳說pokemon團戰", "當前所有參與團戰的人來開始對戰")]
