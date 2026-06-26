@@ -107,11 +107,21 @@ namespace MusicBot2.Service
 - 「你失去了【魔法卷軸】（被火焰燒毀）」
 
 【生命值通知格式】
-當玩家的生命值發生變化時，你必須在回應中明確說明：
-- 如果受傷：「你受到了 X 點傷害」或「敵人重擊了你，造成 X 點傷害」
-- 如果治療：「你恢復了 X 點生命值」或「你感到身體逐漸恢復，治癒 X 點生命值」
+⚠️ 重要：只有在「實際發生」的情況下才說明血量變化，不要在描述物品效果時觸發！
+
+當玩家的生命值「實際發生」變化時，你必須在回應中明確說明：
+- 如果受傷（已發生）：「你受到了 X 點傷害」或「敵人重擊了你，造成 X 點傷害」
+- 如果治療（已發生）：「你使用了【物品名稱】，恢復了 X 點生命值」
 - 系統會自動更新玩家的實際 HP 數值
 - 血量異動一定要照格式說明，就算死亡也要寫扣除的血量
+
+❌ 錯誤示範（只是描述物品，不應該觸發血量變化）：
+- 「這個治療藥水可以恢復 30 點生命值」
+- 「如果你喝下這瓶藥水，將會恢復 20 點生命值」
+
+✅ 正確示範（實際使用物品，應該觸發血量變化）：
+- 「你使用了【治療藥水】，恢復了 30 點生命值」
+- 「你喝下藥水，感到傷口逐漸癒合，恢復了 20 點生命值」
 
 【重要指示】
 - 當需要擲骰時，你必須停下來，明確告訴玩家「請擲骰（輸入 /投骰）」，並說明這次擲骰是為了判定什麼
@@ -863,63 +873,65 @@ namespace MusicBot2.Service
         {
             try
             {
-                // 匹配傷害：「受到了 X 點傷害」、「造成 X 點傷害」等
+                // 找到最後一個行動的玩家
+                var lastPlayerAction = gameState.GameHistory
+                    .Where(m => m.Type == TRPGMessageType.PlayerAction || m.Type == TRPGMessageType.DiceRoll)
+                    .LastOrDefault();
+
+                if (lastPlayerAction == null)
+                    return;
+
+                if (!gameState.Characters.TryGetValue(lastPlayerAction.UserId, out var character))
+                    return;
+
+                // 排除只是描述物品效果的句子（包含「可以」、「能夠」等詞）
+                var descriptionKeywords = new[] { "可以", "能夠", "可", "會", "將會", "將", "能" };
+
+                // 匹配傷害：「你受到了 X 點傷害」等（必須是「你」開頭，確保是針對玩家的行動）
                 var damagePatterns = new[]
                 {
-                    @"受到(?:了)?[\s]*(\d+)[\s]*點傷害",
-                    @"造成(?:了)?[\s]*(\d+)[\s]*點傷害",
-                    @"損失(?:了)?[\s]*(\d+)[\s]*點生命值",
-                    @"失去(?:了)?[\s]*(\d+)[\s]*HP",
+                    @"你受到(?:了)?[\s]*(\d+)[\s]*點傷害",
+                    @"(?:敵人|怪物|它|他)(?:對你)?造成(?:了)?[\s]*(\d+)[\s]*點傷害",
+                    @"你損失(?:了)?[\s]*(\d+)[\s]*點生命值",
+                    @"你失去(?:了)?[\s]*(\d+)[\s]*HP",
                     @"扣除(?:了)?[\s]*(\d+)[\s]*(?:點)?血量"
                 };
 
-                // 匹配治療：「恢復了 X 點生命值」、「治癒 X 點生命值」等
-                var healPatterns = new[]
-                {
-                    @"恢復(?:了)?[\s]*(\d+)[\s]*點生命值",
-                    @"治癒(?:了)?[\s]*(\d+)[\s]*點生命值",
-                    @"治療(?:了)?[\s]*(\d+)[\s]*點生命值",
-                    @"回復(?:了)?[\s]*(\d+)[\s]*點生命值",
-                    @"增加(?:了)?[\s]*(\d+)[\s]*HP"
-                };
+                // 匹配治療：只在明確使用物品的情境下才觸發
+                // 例如：「你使用了【治療藥水】，恢復了 30 點生命值」
+                var healWithItemPattern = @"你使用了【[^】]+】[^。]*(?:恢復|治癒|治療|回復|增加)(?:了)?[\s]*(\d+)[\s]*點?(?:生命值|HP)";
+                var healMatch = Regex.Match(gmResponse, healWithItemPattern);
 
-                // 檢查傷害
+                if (healMatch.Success && int.TryParse(healMatch.Groups[1].Value, out int healing))
+                {
+                    // 確保不是在描述物品效果
+                    var matchText = healMatch.Value;
+                    bool isDescription = descriptionKeywords.Any(keyword => matchText.Contains(keyword));
+
+                    if (!isDescription)
+                    {
+                        character.Heal(healing);
+                        Console.WriteLine($"[TRPG] {character.UserName} 使用物品恢復 {healing} 點生命值，當前 HP: {character.CurrentHP}/{character.MaxHP}");
+                        return; // 處理完治療就返回，避免重複處理
+                    }
+                }
+
+                // 檢查傷害（不受物品描述影響）
                 foreach (var pattern in damagePatterns)
                 {
                     var match = Regex.Match(gmResponse, pattern);
                     if (match.Success && int.TryParse(match.Groups[1].Value, out int damage))
                     {
-                        // 找到最後一個行動的玩家
-                        var lastPlayerAction = gameState.GameHistory
-                            .Where(m => m.Type == TRPGMessageType.PlayerAction || m.Type == TRPGMessageType.DiceRoll)
-                            .LastOrDefault();
+                        // 確保不是在描述物品效果或未來可能發生的事
+                        var fullSentence = ExtractSentence(gmResponse, match.Index);
+                        bool isDescription = descriptionKeywords.Any(keyword => fullSentence.Contains(keyword));
 
-                        if (lastPlayerAction != null && gameState.Characters.TryGetValue(lastPlayerAction.UserId, out var character))
+                        if (!isDescription)
                         {
                             character.TakeDamage(damage);
                             Console.WriteLine($"[TRPG] {character.UserName} 受到 {damage} 點傷害，剩餘 HP: {character.CurrentHP}/{character.MaxHP}");
+                            break;
                         }
-                        break;
-                    }
-                }
-
-                // 檢查治療
-                foreach (var pattern in healPatterns)
-                {
-                    var match = Regex.Match(gmResponse, pattern);
-                    if (match.Success && int.TryParse(match.Groups[1].Value, out int healing))
-                    {
-                        // 找到最後一個行動的玩家
-                        var lastPlayerAction = gameState.GameHistory
-                            .Where(m => m.Type == TRPGMessageType.PlayerAction || m.Type == TRPGMessageType.DiceRoll)
-                            .LastOrDefault();
-
-                        if (lastPlayerAction != null && gameState.Characters.TryGetValue(lastPlayerAction.UserId, out var character))
-                        {
-                            character.Heal(healing);
-                            Console.WriteLine($"[TRPG] {character.UserName} 恢復 {healing} 點生命值，當前 HP: {character.CurrentHP}/{character.MaxHP}");
-                        }
-                        break;
                     }
                 }
             }
@@ -930,7 +942,29 @@ namespace MusicBot2.Service
         }
 
         /// <summary>
+        /// 從文字中提取包含指定位置的句子
+        /// </summary>
+        private string ExtractSentence(string text, int position)
+        {
+            var sentenceEnd = new[] { '。', '！', '？', '\n', '.' };
+
+            int start = position;
+            while (start > 0 && !sentenceEnd.Contains(text[start - 1]))
+                start--;
+
+            int end = position;
+            while (end < text.Length && !sentenceEnd.Contains(text[end]))
+                end++;
+
+            if (end > start)
+                return text.Substring(start, end - start);
+
+            return text;
+        }
+
+        /// <summary>
         /// 處理物品變化（從 GM 回應中解析）
+        /// 注意：物品的使用和移除會在這裡處理，但血量變化在 ProcessHealthChanges 中處理
         /// </summary>
         private void ProcessInventoryChanges(TRPGGameState gameState, string gmResponse)
         {
@@ -956,6 +990,7 @@ namespace MusicBot2.Service
                 }
 
                 // 匹配使用物品：「你使用了【物品名稱】」
+                // 注意：使用物品會移除物品，但血量變化由 ProcessHealthChanges 處理
                 var usePattern = @"你使用了【([^】]+)】";
                 var useMatches = Regex.Matches(gmResponse, usePattern);
                 foreach (Match match in useMatches)
@@ -963,7 +998,11 @@ namespace MusicBot2.Service
                     string itemName = match.Groups[1].Value.Trim();
                     if (character.RemoveItem(itemName))
                     {
-                        Console.WriteLine($"[TRPG] {character.UserName} 使用了物品: {itemName}");
+                        Console.WriteLine($"[TRPG] {character.UserName} 使用了物品: {itemName}（物品已從背包移除）");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"[TRPG] 警告: {character.UserName} 嘗試使用不存在的物品: {itemName}");
                     }
                 }
 
