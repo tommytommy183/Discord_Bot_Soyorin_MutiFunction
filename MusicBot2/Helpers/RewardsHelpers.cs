@@ -77,11 +77,11 @@ namespace MusicBot2.Helpers
             Dictionary<int, string> reward = rewardsCompareList.OrderBy(x => random.Next()).ToDictionary(x => x.Key, x => x.Value);
 
             
-            //如果人在頻道，又抽到有音樂的獎勵，就直接撥音樂
-            if (user?.VoiceChannel != null && videoCompareList.ContainsKey(reward.Keys.First()))
-            {
-                await PlayRewardsMusicAsync(reward.Keys.First(), channel, user);
-            }
+            //如果人在頻道，又抽到有音樂的獎勵，就直接撥音樂，現在為了節省流量，先註解
+            //if (user?.VoiceChannel != null && videoCompareList.ContainsKey(reward.Keys.First()))
+            //{
+            //    await PlayRewardsMusicAsync(reward.Keys.First(), channel, user);
+            //}
 
             return reward.Values.First();
         }
