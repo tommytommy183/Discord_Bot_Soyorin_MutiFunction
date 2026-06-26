@@ -695,7 +695,7 @@ namespace MusicBot2.SlahCommands
         public async Task ReleasePokemonAsync(
             [Summary("編號", "要釋放的pokemon編號（從1開始）")] int index)
         {
-            await DeferAsync(ephemeral: true);
+            await DeferAsync();
             var (embed, component) = await _pokeGameService.ReleasePokemonAsync(Context.User.Id, Context.User.Username, index);
             await FollowupAsync(embed: embed, components: component.Build());
         }
