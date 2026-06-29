@@ -199,9 +199,9 @@ namespace MusicBot2.Service
             const int maxRetry = 2;
             var systemPrompt = string.IsNullOrWhiteSpace(request.SystemInstruction) ? Persona : request.SystemInstruction;
 
-            string repliedText = repliedMessage.Content;
+            string repliedText = repliedMessage == null ? "" : repliedMessage.Content;
 
-            if (string.IsNullOrWhiteSpace(repliedText))
+            if (string.IsNullOrWhiteSpace(repliedText) && repliedMessage != null)
             {
                 var sb = new StringBuilder();
 
