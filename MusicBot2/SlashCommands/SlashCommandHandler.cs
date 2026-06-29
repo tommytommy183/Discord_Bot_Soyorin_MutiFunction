@@ -700,6 +700,21 @@ namespace MusicBot2.SlahCommands
             await FollowupAsync(embed: embed, components: component.Build());
         }
 
+        [SlashCommand("交換一隻pokemon", "交換一隻pokemon(兩方都使用此指令才會成功交換)")]
+        public async Task ExchangePokemonAsync(
+            [Summary("編號", "要交換的pokemon編號（從1開始）")] int index,
+            [Summary("要交換的人", "要交換的人")] IUser target)
+        {
+            await DeferAsync();
+            var (embed, component) = await _pokeGameService.InitiateExchangeAsync(
+                Context.User.Id, 
+                Context.User.Username, 
+                index, 
+                target, 
+                Context.Channel);
+            await FollowupAsync(embed: embed, components: component.Build());
+        }
+
         [SlashCommand("開始傳說pokemon團戰", "當前所有參與團戰的人來開始對戰")]
         public async Task StartPokemonTeamFightAsync()
         {

@@ -391,6 +391,63 @@ public class Program
                     });
                 }
             }
+            else if (component.Data.CustomId.StartsWith("poke_exchange_"))
+            {
+                await component.DeferAsync();
+
+                var pokeGameService = _services.GetService<PokeGameService>();
+
+                if (component.Data.CustomId.Contains("_accept_"))
+                {
+                    // 接受交換 - 顯示選擇Pokemon的按鈕
+                    var parts = component.Data.CustomId.Split(new[] { "_accept_" }, StringSplitOptions.None);
+                    if (parts.Length == 2)
+                    {
+                        string exchangeKey = parts[1];
+                        var (embed, newComponent, _) = await pokeGameService.HandleExchangeResponseAsync(component, exchangeKey, true);
+
+                        await component.ModifyOriginalResponseAsync(msg =>
+                        {
+                            msg.Embed = embed;
+                            msg.Components = newComponent?.Build();
+                        });
+                    }
+                }
+                else if (component.Data.CustomId.Contains("_reject_"))
+                {
+                    // 拒絕交換
+                    var parts = component.Data.CustomId.Split(new[] { "_reject_" }, StringSplitOptions.None);
+                    if (parts.Length == 2)
+                    {
+                        string exchangeKey = parts[1];
+                        var (embed, newComponent, _) = await pokeGameService.HandleExchangeResponseAsync(component, exchangeKey, false);
+
+                        await component.ModifyOriginalResponseAsync(msg =>
+                        {
+                            msg.Embed = embed;
+                            msg.Components = newComponent?.Build();
+                        });
+                    }
+                }
+                else if (component.Data.CustomId.Contains("_select_"))
+                {
+                    // 選擇Pokemon完成交換
+                    var parts = component.Data.CustomId.Replace("poke_exchange_select_", "").Split('_');
+                    if (parts.Length >= 2)
+                    {
+                        string exchangeKey = string.Join("_", parts.Take(parts.Length - 1));
+                        int pokemonIndex = int.Parse(parts[parts.Length - 1]);
+
+                        var (embed, newComponent, _) = await pokeGameService.HandleExchangeResponseAsync(component, exchangeKey, true, pokemonIndex);
+
+                        await component.ModifyOriginalResponseAsync(msg =>
+                        {
+                            msg.Embed = embed;
+                            msg.Components = newComponent?.Build();
+                        });
+                    }
+                }
+            }
             else if (component.Data.CustomId.StartsWith("1a2b_"))
             {
                 var parts = component.Data.CustomId.Split('_');

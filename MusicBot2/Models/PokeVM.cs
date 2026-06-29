@@ -227,6 +227,19 @@ namespace MusicBot2.Models
         public int DamageDealt { get; set; }
         public DateTime JoinTime { get; set; }
     }
+
+    public class PokemonExchangeRequest
+    {
+        public ulong RequesterId { get; set; }
+        public string RequesterName { get; set; }
+        public int RequesterPokemonIndex { get; set; }
+        public PokeGamePokemon RequesterPokemon { get; set; }
+        public ulong TargetId { get; set; }
+        public string TargetName { get; set; }
+        public ulong ChannelId { get; set; }
+        public ulong MessageId { get; set; }
+        public DateTime RequestTime { get; set; }
+    }
     #endregion
 
 
