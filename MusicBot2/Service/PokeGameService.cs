@@ -752,40 +752,31 @@ namespace MusicBot2.Service
                     return (errorEmbed, new ComponentBuilder(), -1);
                 }
 
-                // 確認是目標用戶在回應
-                if (interaction.User.Id != request.TargetId)
+                // === 階段 1: 對方回應（接受/拒絕） ===
+                if (interaction.User.Id == request.TargetId && !request.TargetSelected)
                 {
-                    var errorEmbed = new EmbedBuilder()
-                        .WithTitle("❌ 無效的操作")
-                        .WithDescription("只有被邀請交換的人才能回應這個請求")
-                        .WithColor(Color.Red)
-                        .Build();
-                    return (errorEmbed, new ComponentBuilder(), -1);
-                }
+                    // 拒絕交換
+                    if (!isAccepted)
+                    {
+                        _exchangeRequests.Remove(exchangeKey);
 
-                // 拒絕交換
-                if (!isAccepted)
-                {
-                    _exchangeRequests.Remove(exchangeKey);
+                        var rejectEmbed = new EmbedBuilder()
+                            .WithTitle("❌ 交換已拒絕")
+                            .WithDescription($"**{request.TargetName}** 拒絕了交換請求")
+                            .WithColor(Color.Red)
+                            .WithCurrentTimestamp()
+                            .Build();
 
-                    var rejectEmbed = new EmbedBuilder()
-                        .WithTitle("❌ 交換已拒絕")
-                        .WithDescription($"**{request.TargetName}** 拒絕了交換請求")
-                        .WithColor(Color.Red)
-                        .WithCurrentTimestamp()
-                        .Build();
+                        return (rejectEmbed, new ComponentBuilder(), -1);
+                    }
 
-                    return (rejectEmbed, new ComponentBuilder(), -1);
-                }
-
-                // 接受交換 - 需要選擇Pokemon
-                if (targetPokemonIndex == null)
-                {
+                    // 接受交換 - 顯示選擇 Pokemon 的介面
                     var targetPlayer = await GetPlayerDataAsync(request.TargetId, request.TargetName);
 
                     var selectEmbed = new EmbedBuilder()
                         .WithTitle("✅ 請選擇要交換的Pokemon")
                         .WithDescription($"**{request.RequesterName}** 提供: **{request.RequesterPokemon.CustomName ?? request.RequesterPokemon.Name}**\n\n請從你的Pokemon中選擇一隻來交換：")
+                        .WithThumbnailUrl(request.RequesterPokemon.ImageUrl)
                         .WithColor(Color.Green);
 
                     for (int i = 0; i < targetPlayer.CaughtPokemon.Count; i++)
@@ -793,79 +784,151 @@ namespace MusicBot2.Service
                         var p = targetPlayer.CaughtPokemon[i];
                         var name = p.CustomName ?? p.Name;
                         var shinyIcon = p.isShiny ? "✨" : "";
-                        selectEmbed.AddField($"{i + 1}. {name} {shinyIcon}", 
-                            $"屬性: {string.Join(", ", p.Types)}\nHP: {p.HP} | 攻: {p.Attack} | 防: {p.Defense}", 
+                        selectEmbed.AddField($"{i + 1}. {name} {shinyIcon}",
+                            $"屬性: {string.Join(", ", p.Types)}\nHP: {p.HP} | 攻: {p.Attack} | 防: {p.Defense}",
                             inline: true);
                     }
 
-                    // 創建選擇按鈕（最多25個按鈕，5行x5列）
+                    // 創建選擇按鈕
                     var selectComponent = new ComponentBuilder();
                     int pokemonCount = targetPlayer.CaughtPokemon.Count;
 
                     for (int i = 0; i < Math.Min(pokemonCount, 25); i++)
                     {
-                        if (i > 0 && i % 5 == 0)
-                        {
-                            // 每5個按鈕換一行
-                        }
                         selectComponent.WithButton($"{i + 1}", $"poke_exchange_select_{exchangeKey}_{i}", ButtonStyle.Primary);
                     }
 
                     return (selectEmbed.Build(), selectComponent, -1);
                 }
 
-                // 執行交換
-                var requesterPlayer = await GetPlayerDataAsync(request.RequesterId, request.RequesterName);
-                var targetPlayerFinal = await GetPlayerDataAsync(request.TargetId, request.TargetName);
-
-                // 驗證Pokemon還存在
-                if (request.RequesterPokemonIndex >= requesterPlayer.CaughtPokemon.Count)
+                // === 階段 2: 對方選擇 Pokemon ===
+                if (interaction.User.Id == request.TargetId && !request.TargetSelected && targetPokemonIndex.HasValue)
                 {
+                    var targetPlayerFinal = await GetPlayerDataAsync(request.TargetId, request.TargetName);
+
+                    if (targetPokemonIndex.Value >= targetPlayerFinal.CaughtPokemon.Count)
+                    {
+                        var errorEmbed = new EmbedBuilder()
+                            .WithTitle("❌ 無效的Pokemon編號")
+                            .WithDescription("選擇的Pokemon不存在")
+                            .WithColor(Color.Red)
+                            .Build();
+                        return (errorEmbed, new ComponentBuilder(), -1);
+                    }
+
+                    // 儲存對方選擇的 Pokemon
+                    request.TargetPokemonIndex = targetPokemonIndex.Value;
+                    request.TargetPokemon = targetPlayerFinal.CaughtPokemon[targetPokemonIndex.Value];
+                    request.TargetSelected = true;
+
+                    _exchangeRequests[exchangeKey] = request;
+
+                    // 創建確認按鈕（給發起者確認）
+                    var confirmComponent = new ComponentBuilder()
+                        .WithButton("✅ 接受交換", $"poke_exchange_confirm_{exchangeKey}", ButtonStyle.Success)
+                        .WithButton("❌ 拒絕交換", $"poke_exchange_cancel_{exchangeKey}", ButtonStyle.Danger);
+
+                    var confirmEmbed = new EmbedBuilder()
+                        .WithTitle("🔄 等待發起者確認")
+                        .WithDescription($"**{request.TargetName}** 已選擇要交換的Pokemon！\n\n請 **{request.RequesterName}** 確認是否要交換：")
+                        .AddField($"{request.RequesterName} 提供",
+                            $"**{request.RequesterPokemon.CustomName ?? request.RequesterPokemon.Name}** {(request.RequesterPokemon.isShiny ? "✨" : "")}\n" +
+                            $"屬性: {string.Join(", ", request.RequesterPokemon.Types)}\n" +
+                            $"HP: {request.RequesterPokemon.HP} | 攻: {request.RequesterPokemon.Attack} | 防: {request.RequesterPokemon.Defense}",
+                            inline: true)
+                        .AddField($"{request.TargetName} 提供",
+                            $"**{request.TargetPokemon.CustomName ?? request.TargetPokemon.Name}** {(request.TargetPokemon.isShiny ? "✨" : "")}\n" +
+                            $"屬性: {string.Join(", ", request.TargetPokemon.Types)}\n" +
+                            $"HP: {request.TargetPokemon.HP} | 攻: {request.TargetPokemon.Attack} | 防: {request.TargetPokemon.Defense}",
+                            inline: true)
+                        .WithColor(Color.Blue)
+                        .WithFooter($"請 {request.RequesterName} 確認")
+                        .WithCurrentTimestamp()
+                        .Build();
+
+                    return (confirmEmbed, confirmComponent, targetPokemonIndex.Value);
+                }
+
+                // === 階段 3: 發起者確認或取消 ===
+                if (interaction.User.Id == request.RequesterId && request.TargetSelected)
+                {
+                    // 發起者取消交換
+                    if (!isAccepted)
+                    {
+                        _exchangeRequests.Remove(exchangeKey);
+
+                        var cancelEmbed = new EmbedBuilder()
+                            .WithTitle("❌ 交換已取消")
+                            .WithDescription($"**{request.RequesterName}** 取消了交換")
+                            .WithColor(Color.Red)
+                            .WithCurrentTimestamp()
+                            .Build();
+
+                        return (cancelEmbed, new ComponentBuilder(), -1);
+                    }
+
+                    // 執行交換
+                    var requesterPlayer = await GetPlayerDataAsync(request.RequesterId, request.RequesterName);
+                    var targetPlayerConfirm = await GetPlayerDataAsync(request.TargetId, request.TargetName);
+
+                    // 驗證Pokemon還存在
+                    if (request.RequesterPokemonIndex >= requesterPlayer.CaughtPokemon.Count)
+                    {
+                        _exchangeRequests.Remove(exchangeKey);
+                        var errorEmbed = new EmbedBuilder()
+                            .WithTitle("❌ 交換失敗")
+                            .WithDescription("發起者的Pokemon已不存在")
+                            .WithColor(Color.Red)
+                            .Build();
+                        return (errorEmbed, new ComponentBuilder(), -1);
+                    }
+
+                    if (request.TargetPokemonIndex.Value >= targetPlayerConfirm.CaughtPokemon.Count)
+                    {
+                        _exchangeRequests.Remove(exchangeKey);
+                        var errorEmbed = new EmbedBuilder()
+                            .WithTitle("❌ 交換失敗")
+                            .WithDescription("對方的Pokemon已不存在")
+                            .WithColor(Color.Red)
+                            .Build();
+                        return (errorEmbed, new ComponentBuilder(), -1);
+                    }
+
+                    // 交換Pokemon
+                    var requesterPokemon = requesterPlayer.CaughtPokemon[request.RequesterPokemonIndex];
+                    var targetPokemon = targetPlayerConfirm.CaughtPokemon[request.TargetPokemonIndex.Value];
+
+                    requesterPlayer.CaughtPokemon[request.RequesterPokemonIndex] = targetPokemon;
+                    targetPlayerConfirm.CaughtPokemon[request.TargetPokemonIndex.Value] = requesterPokemon;
+
+                    await SavePlayerDataAsync(requesterPlayer);
+                    await SavePlayerDataAsync(targetPlayerConfirm);
+
                     _exchangeRequests.Remove(exchangeKey);
-                    var errorEmbed = new EmbedBuilder()
-                        .WithTitle("❌ 交換失敗")
-                        .WithDescription("發起者的Pokemon已不存在")
-                        .WithColor(Color.Red)
+
+                    var successEmbed = new EmbedBuilder()
+                        .WithTitle("✅ 交換成功！")
+                        .WithDescription($"**{request.RequesterName}** 和 **{request.TargetName}** 成功交換了Pokemon！")
+                        .AddField($"{request.RequesterName} 獲得",
+                            $"**{targetPokemon.CustomName ?? targetPokemon.Name}** {(targetPokemon.isShiny ? "✨" : "")}",
+                            inline: true)
+                        .AddField($"{request.TargetName} 獲得",
+                            $"**{requesterPokemon.CustomName ?? requesterPokemon.Name}** {(requesterPokemon.isShiny ? "✨" : "")}",
+                            inline: true)
+                        .WithColor(Color.Gold)
+                        .WithCurrentTimestamp()
                         .Build();
-                    return (errorEmbed, new ComponentBuilder(), -1);
+
+                    return (successEmbed, new ComponentBuilder(), request.TargetPokemonIndex.Value);
                 }
 
-                if (targetPokemonIndex.Value >= targetPlayerFinal.CaughtPokemon.Count)
-                {
-                    var errorEmbed = new EmbedBuilder()
-                        .WithTitle("❌ 無效的Pokemon編號")
-                        .WithDescription("選擇的Pokemon不存在")
-                        .WithColor(Color.Red)
-                        .Build();
-                    return (errorEmbed, new ComponentBuilder(), -1);
-                }
-
-                // 交換Pokemon
-                var requesterPokemon = requesterPlayer.CaughtPokemon[request.RequesterPokemonIndex];
-                var targetPokemon = targetPlayerFinal.CaughtPokemon[targetPokemonIndex.Value];
-
-                requesterPlayer.CaughtPokemon[request.RequesterPokemonIndex] = targetPokemon;
-                targetPlayerFinal.CaughtPokemon[targetPokemonIndex.Value] = requesterPokemon;
-
-                await SavePlayerDataAsync(requesterPlayer);
-                await SavePlayerDataAsync(targetPlayerFinal);
-
-                _exchangeRequests.Remove(exchangeKey);
-
-                var successEmbed = new EmbedBuilder()
-                    .WithTitle("✅ 交換成功！")
-                    .WithDescription($"**{request.RequesterName}** 和 **{request.TargetName}** 成功交換了Pokemon！")
-                    .AddField($"{request.RequesterName} 獲得", 
-                        $"**{targetPokemon.CustomName ?? targetPokemon.Name}** {(targetPokemon.isShiny ? "✨" : "")}", 
-                        inline: true)
-                    .AddField($"{request.TargetName} 獲得", 
-                        $"**{requesterPokemon.CustomName ?? requesterPokemon.Name}** {(requesterPokemon.isShiny ? "✨" : "")}", 
-                        inline: true)
-                    .WithColor(Color.Gold)
-                    .WithCurrentTimestamp()
+                // 無效的操作
+                var invalidEmbed = new EmbedBuilder()
+                    .WithTitle("❌ 無效的操作")
+                    .WithDescription("你沒有權限執行此操作")
+                    .WithColor(Color.Red)
                     .Build();
-
-                return (successEmbed, new ComponentBuilder(), targetPokemonIndex.Value);
+                return (invalidEmbed, new ComponentBuilder(), -1);
             }
             catch (Exception ex)
             {

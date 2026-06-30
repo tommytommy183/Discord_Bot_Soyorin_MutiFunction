@@ -399,7 +399,7 @@ public class Program
 
                 if (component.Data.CustomId.Contains("_accept_"))
                 {
-                    // 接受交換 - 顯示選擇Pokemon的按鈕
+                    // 對方接受交換 - 顯示選擇Pokemon的按鈕
                     var parts = component.Data.CustomId.Split(new[] { "_accept_" }, StringSplitOptions.None);
                     if (parts.Length == 2)
                     {
@@ -415,7 +415,7 @@ public class Program
                 }
                 else if (component.Data.CustomId.Contains("_reject_"))
                 {
-                    // 拒絕交換
+                    // 對方拒絕交換
                     var parts = component.Data.CustomId.Split(new[] { "_reject_" }, StringSplitOptions.None);
                     if (parts.Length == 2)
                     {
@@ -431,7 +431,7 @@ public class Program
                 }
                 else if (component.Data.CustomId.Contains("_select_"))
                 {
-                    // 選擇Pokemon完成交換
+                    // 對方選擇Pokemon - 顯示給發起者確認
                     var parts = component.Data.CustomId.Replace("poke_exchange_select_", "").Split('_');
                     if (parts.Length >= 2)
                     {
@@ -439,6 +439,38 @@ public class Program
                         int pokemonIndex = int.Parse(parts[parts.Length - 1]);
 
                         var (embed, newComponent, _) = await pokeGameService.HandleExchangeResponseAsync(component, exchangeKey, true, pokemonIndex);
+
+                        await component.ModifyOriginalResponseAsync(msg =>
+                        {
+                            msg.Embed = embed;
+                            msg.Components = newComponent?.Build();
+                        });
+                    }
+                }
+                else if (component.Data.CustomId.Contains("_confirm_"))
+                {
+                    // 發起者確認交換 - 執行交換
+                    var parts = component.Data.CustomId.Split(new[] { "_confirm_" }, StringSplitOptions.None);
+                    if (parts.Length == 2)
+                    {
+                        string exchangeKey = parts[1];
+                        var (embed, newComponent, _) = await pokeGameService.HandleExchangeResponseAsync(component, exchangeKey, true);
+
+                        await component.ModifyOriginalResponseAsync(msg =>
+                        {
+                            msg.Embed = embed;
+                            msg.Components = newComponent?.Build();
+                        });
+                    }
+                }
+                else if (component.Data.CustomId.Contains("_cancel_"))
+                {
+                    // 發起者取消交換
+                    var parts = component.Data.CustomId.Split(new[] { "_cancel_" }, StringSplitOptions.None);
+                    if (parts.Length == 2)
+                    {
+                        string exchangeKey = parts[1];
+                        var (embed, newComponent, _) = await pokeGameService.HandleExchangeResponseAsync(component, exchangeKey, false);
 
                         await component.ModifyOriginalResponseAsync(msg =>
                         {

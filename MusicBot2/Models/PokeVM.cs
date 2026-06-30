@@ -236,6 +236,9 @@ namespace MusicBot2.Models
         public PokeGamePokemon RequesterPokemon { get; set; }
         public ulong TargetId { get; set; }
         public string TargetName { get; set; }
+        public int? TargetPokemonIndex { get; set; }  // 對方選擇的 Pokemon 編號
+        public PokeGamePokemon TargetPokemon { get; set; }  // 對方選擇的 Pokemon
+        public bool TargetSelected { get; set; }  // 對方是否已選擇
         public ulong ChannelId { get; set; }
         public ulong MessageId { get; set; }
         public DateTime RequestTime { get; set; }
