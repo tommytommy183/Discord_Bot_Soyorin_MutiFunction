@@ -823,30 +823,17 @@ namespace MusicBot2.Service
 
                     _exchangeRequests[exchangeKey] = request;
 
-                    // 創建確認按鈕（給發起者確認）
-                    var confirmComponent = new ComponentBuilder()
-                        .WithButton("✅ 接受交換", $"poke_exchange_confirm_{exchangeKey}", ButtonStyle.Success)
-                        .WithButton("❌ 拒絕交換", $"poke_exchange_cancel_{exchangeKey}", ButtonStyle.Danger);
-
-                    var confirmEmbed = new EmbedBuilder()
-                        .WithTitle("🔄 等待發起者確認")
-                        .WithDescription($"**{request.TargetName}** 已選擇要交換的Pokemon！\n\n請 **{request.RequesterName}** 確認是否要交換：")
-                        .AddField($"{request.RequesterName} 提供",
-                            $"**{request.RequesterPokemon.CustomName ?? request.RequesterPokemon.Name}** {(request.RequesterPokemon.isShiny ? "✨" : "")}\n" +
-                            $"屬性: {string.Join(", ", request.RequesterPokemon.Types)}\n" +
-                            $"HP: {request.RequesterPokemon.HP} | 攻: {request.RequesterPokemon.Attack} | 防: {request.RequesterPokemon.Defense}",
-                            inline: true)
-                        .AddField($"{request.TargetName} 提供",
-                            $"**{request.TargetPokemon.CustomName ?? request.TargetPokemon.Name}** {(request.TargetPokemon.isShiny ? "✨" : "")}\n" +
-                            $"屬性: {string.Join(", ", request.TargetPokemon.Types)}\n" +
-                            $"HP: {request.TargetPokemon.HP} | 攻: {request.TargetPokemon.Attack} | 防: {request.TargetPokemon.Defense}",
-                            inline: true)
-                        .WithColor(Color.Blue)
-                        .WithFooter($"請 {request.RequesterName} 確認")
+                    // 通知對方已選擇完成（這個訊息給目標用戶看）
+                    var targetConfirmEmbed = new EmbedBuilder()
+                        .WithTitle("✅ 已選擇Pokemon")
+                        .WithDescription($"你選擇了 **{request.TargetPokemon.CustomName ?? request.TargetPokemon.Name}**！\n\n等待 **{request.RequesterName}** 確認交換...")
+                        .WithThumbnailUrl(request.TargetPokemon.ImageUrl)
+                        .WithColor(Color.Green)
                         .WithCurrentTimestamp()
                         .Build();
 
-                    return (confirmEmbed, confirmComponent, targetPokemonIndex.Value);
+                    // 使用 -2 作為特殊標記，表示需要發送確認訊息給發起者
+                    return (targetConfirmEmbed, new ComponentBuilder(), -2);
                 }
 
                 // === 階段 3: 發起者確認或取消 ===
@@ -933,6 +920,52 @@ namespace MusicBot2.Service
             catch (Exception ex)
             {
                 return (CommonHelper.BuildErrorResponse($"處理交換回應時發生錯誤: {ex.Message}").Item2, new ComponentBuilder(), -1);
+            }
+        }
+
+        // 發送確認訊息給發起者
+        public async Task<(Embed embed, ComponentBuilder component)> GetRequesterConfirmationMessageAsync(string exchangeKey)
+        {
+            try
+            {
+                if (!_exchangeRequests.TryGetValue(exchangeKey, out var request))
+                {
+                    var errorEmbed = new EmbedBuilder()
+                        .WithTitle("❌ 交換請求已過期")
+                        .WithDescription("這個交換請求已經過期或已被處理")
+                        .WithColor(Color.Red)
+                        .Build();
+                    return (errorEmbed, new ComponentBuilder());
+                }
+
+                // 創建確認按鈕（給發起者確認）
+                var confirmComponent = new ComponentBuilder()
+                    .WithButton("✅ 接受交換", $"poke_exchange_confirm_{exchangeKey}", ButtonStyle.Success)
+                    .WithButton("❌ 拒絕交換", $"poke_exchange_cancel_{exchangeKey}", ButtonStyle.Danger);
+
+                var confirmEmbed = new EmbedBuilder()
+                    .WithTitle("🔄 等待你確認交換")
+                    .WithDescription($"**{request.TargetName}** 已選擇要交換的Pokemon！\n\n請確認是否要交換：")
+                    .AddField($"{request.RequesterName} 提供",
+                        $"**{request.RequesterPokemon.CustomName ?? request.RequesterPokemon.Name}** {(request.RequesterPokemon.isShiny ? "✨" : "")}\n" +
+                        $"屬性: {string.Join(", ", request.RequesterPokemon.Types)}\n" +
+                        $"HP: {request.RequesterPokemon.HP} | 攻: {request.RequesterPokemon.Attack} | 防: {request.RequesterPokemon.Defense}",
+                        inline: true)
+                    .AddField($"{request.TargetName} 提供",
+                        $"**{request.TargetPokemon.CustomName ?? request.TargetPokemon.Name}** {(request.TargetPokemon.isShiny ? "✨" : "")}\n" +
+                        $"屬性: {string.Join(", ", request.TargetPokemon.Types)}\n" +
+                        $"HP: {request.TargetPokemon.HP} | 攻: {request.TargetPokemon.Attack} | 防: {request.TargetPokemon.Defense}",
+                        inline: true)
+                    .WithColor(Color.Blue)
+                    .WithFooter($"請確認是否接受此交換")
+                    .WithCurrentTimestamp()
+                    .Build();
+
+                return (confirmEmbed, confirmComponent);
+            }
+            catch (Exception ex)
+            {
+                return (CommonHelper.BuildErrorResponse($"取得確認訊息時發生錯誤: {ex.Message}").Item2, new ComponentBuilder());
             }
         }
         #endregion

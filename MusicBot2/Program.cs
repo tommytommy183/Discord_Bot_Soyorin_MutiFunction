@@ -438,13 +438,51 @@ public class Program
                         string exchangeKey = string.Join("_", parts.Take(parts.Length - 1));
                         int pokemonIndex = int.Parse(parts[parts.Length - 1]);
 
-                        var (embed, newComponent, _) = await pokeGameService.HandleExchangeResponseAsync(component, exchangeKey, true, pokemonIndex);
+                        var (embed, newComponent, resultCode) = await pokeGameService.HandleExchangeResponseAsync(component, exchangeKey, true, pokemonIndex);
 
+                        // 更新目標用戶的訊息
                         await component.ModifyOriginalResponseAsync(msg =>
                         {
                             msg.Embed = embed;
                             msg.Components = newComponent?.Build();
                         });
+
+                        // 如果 resultCode == -2，表示需要發送確認訊息給發起者
+                        if (resultCode == -2)
+                        {
+                            var (requesterEmbed, requesterComponent) = await pokeGameService.GetRequesterConfirmationMessageAsync(exchangeKey);
+
+                            // 取得發起者的 userId（從 exchangeKey 解析）
+                            var keyParts = exchangeKey.Split('_');
+                            if (keyParts.Length == 2 && ulong.TryParse(keyParts[0], out ulong requesterId))
+                            {
+                                var requester = await _client.GetUserAsync(requesterId);
+                                if (requester != null)
+                                {
+                                    try
+                                    {
+                                        // 發送私訊給發起者
+                                        var dmChannel = await requester.CreateDMChannelAsync();
+                                        await dmChannel.SendMessageAsync(
+                                            embed: requesterEmbed,
+                                            components: requesterComponent?.Build()
+                                        );
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        Console.WriteLine($"⚠️ 無法發送私訊給發起者: {ex.Message}");
+
+                                        // 如果私訊失敗，在原頻道發送訊息
+                                        var channel = component.Channel;
+                                        await channel.SendMessageAsync(
+                                            $"<@{requesterId}>",
+                                            embed: requesterEmbed,
+                                            components: requesterComponent?.Build()
+                                        );
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
                 else if (component.Data.CustomId.Contains("_confirm_"))
