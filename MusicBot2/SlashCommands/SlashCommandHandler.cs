@@ -510,8 +510,24 @@ namespace MusicBot2.SlahCommands
                 return;
             }
 
-            var result = _openRouterService.GetChannelSummaryAsync(Context.Channel.Id.ToString());
-            await FollowupAsync(result.ToString(), ephemeral: true);
+            var result = await _openRouterService.GetChannelSummaryAsync(Context.Channel.Id.ToString());
+            await FollowupAsync(result, ephemeral: true);
+        }
+
+        [SlashCommand("強制生成對話摘要for豬頭馬又only", "生成對話摘要for馬又only")]
+        public async Task ForceGenerateAISummary()
+        {
+            //我的id 415032840925741056
+            await DeferAsync();
+            string userID = Context.User.Id.ToString();
+            if (userID != myDiscordId)
+            {
+                await FollowupAsync("不給你用不給你用 好蒿爽爽爽爽", ephemeral: true);
+                return;
+            }
+
+            var result = await _openRouterService.ForceGenerateSummaryAsync(Context.Channel.Id.ToString());
+            await FollowupAsync("生成成功", ephemeral: true);
         }
         #endregion
 
