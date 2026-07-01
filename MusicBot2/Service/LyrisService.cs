@@ -73,7 +73,18 @@ namespace MusicBot2.Service
             {
                 var encodedTrack = HttpUtility.UrlEncode(trackName);
                 var encodedArtist = HttpUtility.UrlEncode(artistName);
-                var url = $"{API_BASE_URL}/get?track_name={encodedTrack}&artist_name={encodedArtist}";
+
+                string url = string.Empty;
+
+                if(string.IsNullOrEmpty(encodedArtist))
+                {
+                    url = $"{API_BASE_URL}/search?track_name={encodedTrack}";
+                }
+                else
+                {
+                    url = $"{API_BASE_URL}/get?track_name={encodedTrack}&artist_name={encodedArtist}";
+                }
+
 
                 if (!string.IsNullOrWhiteSpace(albumName))
                 {

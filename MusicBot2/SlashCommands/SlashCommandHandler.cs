@@ -903,7 +903,7 @@ namespace MusicBot2.SlahCommands
         [SlashCommand("顯示同步歌詞", "顯示帶時間戳的歌詞")]
         public async Task ShowSyncedLyricsAsync(
             [Summary("歌名", "歌曲名稱")] string trackName,
-            [Summary("歌手", "歌手名稱")] string artistName)
+            [Summary("歌手", "歌手名稱")] string artistName = "")
         {
             await DeferAsync();
 
@@ -941,10 +941,10 @@ namespace MusicBot2.SlahCommands
             }
         }
 
-        [SlashCommand("測試播放同步歌詞", "測試播放同步歌詞(不需要音樂)")]
+        [SlashCommand("測試播放同步歌詞", "播放同步歌詞(手動控制模式，使用按鈕切換前後句)")]
         public async Task TestPlaySyncedLyricsAsync(
             [Summary("歌名", "歌曲名稱")] string trackName,
-            [Summary("歌手", "歌手名稱")] string artistName)
+            [Summary("歌手", "歌手名稱")] string artistName = "")
         {
             await DeferAsync();
 
@@ -958,7 +958,7 @@ namespace MusicBot2.SlahCommands
 
                 if (success)
                 {
-                    await FollowupAsync($"✅ 已開始播放 **{trackName}** 的同步歌詞", ephemeral: true);
+                    await FollowupAsync($"✅ 已開始播放 **{trackName}** 的同步歌詞（使用按鈕控制前後句）", ephemeral: true);
                 }
                 else
                 {

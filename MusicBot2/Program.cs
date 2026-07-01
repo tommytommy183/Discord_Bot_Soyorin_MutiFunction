@@ -511,6 +511,12 @@ public class Program
                     }
                 }
             }
+            // 處理歌詞控制按鈕
+            else if (component.Data.CustomId.StartsWith("lyrics_"))
+            {
+                var lyricsDisplayService = _services.GetService<LyricsDisplayService>();
+                await lyricsDisplayService.HandleButtonAsync(component);
+            }
         }
         else if (interaction is SocketModal modal)
         {
