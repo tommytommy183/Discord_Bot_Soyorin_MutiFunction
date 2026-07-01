@@ -1,4 +1,4 @@
-using Discord;
+ï»¿using Discord;
 using Discord.WebSocket;
 using MusicBot2.Models;
 using System;
@@ -21,32 +21,32 @@ namespace MusicBot2.Service
         }
 
         /// <summary>
-        /// ¶}©lÅã¥Ü¦P¨Bºqµü
+        /// é–‹å§‹é¡¯ç¤ºåŒæ­¥æ­Œè©
         /// </summary>
         public async Task<bool> StartLyricsDisplayAsync(ulong channelId, string trackName, string artistName, IMessageChannel messageChannel)
         {
             try
             {
-                // Àò¨úºqµü
+                // ç²å–æ­Œè©
                 var lyrics = await _lyrisService.GetLyricsAsync(trackName, artistName);
                 if (lyrics == null || string.IsNullOrWhiteSpace(lyrics.syncedLyrics))
                 {
-                    await messageChannel.SendMessageAsync($"?? §ä¤£¨ì **{trackName}** ªº¦P¨Bºqµü");
+                    await messageChannel.SendMessageAsync($"âš ï¸ æ‰¾ä¸åˆ° **{trackName}** çš„åŒæ­¥æ­Œè©");
                     return false;
                 }
 
-                // ¸ÑªR¦P¨Bºqµü
+                // è§£æåŒæ­¥æ­Œè©
                 var syncedLines = _lyrisService.ParseSyncedLyrics(lyrics.syncedLyrics);
                 if (syncedLines.Count == 0)
                 {
-                    await messageChannel.SendMessageAsync($"?? ºqµü®æ¦¡¿ù»~");
+                    await messageChannel.SendMessageAsync($"âš ï¸ æ­Œè©æ ¼å¼éŒ¯èª¤");
                     return false;
                 }
 
-                // °±¤î²{¦³ªººqµüÅã¥Ü¡]¦pªG¦³¡^
+                // åœæ­¢ç¾æœ‰çš„æ­Œè©é¡¯ç¤ºï¼ˆå¦‚æœæœ‰ï¼‰
                 StopLyricsDisplay(channelId);
 
-                // ³Ğ«Ø·sªººqµü·|¸Ü
+                // å‰µå»ºæ–°çš„æ­Œè©æœƒè©±
                 var session = new LyricsSession
                 {
                     TrackName = lyrics.trackName,
@@ -59,30 +59,30 @@ namespace MusicBot2.Service
 
                 _activeSessions[channelId] = session;
 
-                // µo°eªì©l°T®§
+                // ç™¼é€åˆå§‹è¨Šæ¯
                 var initialEmbed = new EmbedBuilder()
-                    .WithTitle($"?? {lyrics.trackName}")
-                    .WithDescription($"**{lyrics.artistName}**\n\n_·Ç³Æ¶}©l¼½©ñºqµü..._")
+                    .WithTitle($"ğŸµ {lyrics.trackName}")
+                    .WithDescription($"**{lyrics.artistName}**\n\n_æº–å‚™é–‹å§‹æ’­æ”¾æ­Œè©..._")
                     .WithColor(Color.Blue)
-                    .WithFooter("ºqµü¦P¨B¤¤")
+                    .WithFooter("æ­Œè©åŒæ­¥ä¸­")
                     .Build();
 
                 session.LyricsMessage = await messageChannel.SendMessageAsync(embed: initialEmbed);
 
-                // ±Ò°Êºqµü§ó·s¥ô°È
+                // å•Ÿå‹•æ­Œè©æ›´æ–°ä»»å‹™
                 _ = Task.Run(() => UpdateLyricsAsync(channelId, session));
 
                 return true;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[LYRICS ERROR] ±Ò°ÊºqµüÅã¥Ü¥¢±Ñ: {ex.Message}");
+                Console.WriteLine($"[LYRICS ERROR] å•Ÿå‹•æ­Œè©é¡¯ç¤ºå¤±æ•—: {ex.Message}");
                 return false;
             }
         }
 
         /// <summary>
-        /// °±¤îÅã¥Üºqµü
+        /// åœæ­¢é¡¯ç¤ºæ­Œè©
         /// </summary>
         public void StopLyricsDisplay(ulong channelId)
         {
@@ -94,7 +94,7 @@ namespace MusicBot2.Service
         }
 
         /// <summary>
-        /// §ó·sºqµüÅã¥Ü
+        /// æ›´æ–°æ­Œè©é¡¯ç¤º
         /// </summary>
         private async Task UpdateLyricsAsync(ulong channelId, LyricsSession session)
         {
@@ -109,10 +109,10 @@ namespace MusicBot2.Service
                     var elapsed = DateTime.UtcNow - session.StartTime;
                     var currentLine = session.SyncedLines[currentLineIndex];
 
-                    // ÀË¬d¬O§_¨ì¹F·í«e¦æªº®É¶¡
+                    // æª¢æŸ¥æ˜¯å¦åˆ°é”ç•¶å‰è¡Œçš„æ™‚é–“
                     if (elapsed >= currentLine.timestamp)
                     {
-                        // ¥u¦b®É¶¡ÅÜ¤Æ¶W¹L 2 ¬í®É§ó·s¡AÁ×§K¹L©óÀWÁc
+                        // åªåœ¨æ™‚é–“è®ŠåŒ–è¶…é 2 ç§’æ™‚æ›´æ–°ï¼Œé¿å…éæ–¼é »ç¹
                         if ((DateTime.UtcNow - lastUpdateTime).TotalSeconds >= 2)
                         {
                             await UpdateLyricsMessageAsync(session, currentLineIndex);
@@ -122,27 +122,27 @@ namespace MusicBot2.Service
                     }
                     else
                     {
-                        // µ¥«İ¨ì¤U¤@¦æªº®É¶¡
+                        // ç­‰å¾…åˆ°ä¸‹ä¸€è¡Œçš„æ™‚é–“
                         var delay = currentLine.timestamp - elapsed;
-                        if (delay.TotalMilliseconds > 0 && delay.TotalMilliseconds < 10000) // ³Ì¦hµ¥10¬í
+                        if (delay.TotalMilliseconds > 0 && delay.TotalMilliseconds < 10000) // æœ€å¤šç­‰10ç§’
                         {
                             await Task.Delay(delay, cancellationToken);
                         }
                         else
                         {
-                            await Task.Delay(100, cancellationToken); // µu¼È©µ¿ğ
+                            await Task.Delay(100, cancellationToken); // çŸ­æš«å»¶é²
                         }
                     }
                 }
 
-                // ºq¦±µ²§ô
+                // æ­Œæ›²çµæŸ
                 if (!cancellationToken.IsCancellationRequested)
                 {
                     var finalEmbed = new EmbedBuilder()
-                        .WithTitle($"?? {session.TrackName}")
-                        .WithDescription($"**{session.ArtistName}**\n\n_ºq¦±¤wµ²§ô_")
+                        .WithTitle($"ğŸµ {session.TrackName}")
+                        .WithDescription($"**{session.ArtistName}**\n\n_æ­Œæ›²å·²çµæŸ_")
                         .WithColor(Color.Green)
-                        .WithFooter("·PÁÂ²âÅ¥")
+                        .WithFooter("æ„Ÿè¬è†è½")
                         .Build();
 
                     if (session.LyricsMessage != null)
@@ -153,11 +153,11 @@ namespace MusicBot2.Service
             }
             catch (OperationCanceledException)
             {
-                // ¥¿±`¨ú®ø¡A¤£»İ­n³B²z
+                // æ­£å¸¸å–æ¶ˆï¼Œä¸éœ€è¦è™•ç†
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[LYRICS ERROR] §ó·sºqµü®Éµo¥Í¿ù»~: {ex.Message}");
+                Console.WriteLine($"[LYRICS ERROR] æ›´æ–°æ­Œè©æ™‚ç™¼ç”ŸéŒ¯èª¤: {ex.Message}");
             }
             finally
             {
@@ -166,7 +166,7 @@ namespace MusicBot2.Service
         }
 
         /// <summary>
-        /// §ó·sºqµü°T®§
+        /// æ›´æ–°æ­Œè©è¨Šæ¯
         /// </summary>
         private async Task UpdateLyricsMessageAsync(LyricsSession session, int currentLineIndex)
         {
@@ -174,7 +174,7 @@ namespace MusicBot2.Service
             {
                 if (session.LyricsMessage == null) return;
 
-                // Åã¥Ü«e«á´X¦æºqµü
+                // é¡¯ç¤ºå‰å¾Œå¹¾è¡Œæ­Œè©
                 const int contextLines = 3;
                 var startIndex = Math.Max(0, currentLineIndex - contextLines);
                 var endIndex = Math.Min(session.SyncedLines.Count - 1, currentLineIndex + contextLines);
@@ -185,38 +185,39 @@ namespace MusicBot2.Service
                     var line = session.SyncedLines[i];
                     if (i == currentLineIndex)
                     {
-                        // ·í«e¦æ¥Î²ÊÅé©M¯S®í²Å¸¹¼Ğ°O
-                        lyricsText += $"**? {line.line}**\n";
+                        // ç•¶å‰è¡Œç”¨ç²—é«”å’Œç‰¹æ®Šç¬¦è™Ÿæ¨™è¨˜
+                        lyricsText += $"**â–º {line.line}**\n";
                     }
                     else if (i == currentLineIndex - 1 || i == currentLineIndex + 1)
                     {
-                        // «e«á¤@¦æµy·L±j½Õ
+                        // å‰å¾Œä¸€è¡Œç¨å¾®å¼·èª¿
                         lyricsText += $"  {line.line}\n";
                     }
                     else
                     {
-                        // ¨ä¥L¦æ²H¤ÆÅã¥Ü
+                        // å…¶ä»–è¡Œæ·¡åŒ–é¡¯ç¤º
                         lyricsText += $"  _{line.line}_\n";
                     }
                 }
 
                 var embed = new EmbedBuilder()
-                    .WithTitle($"?? {session.TrackName}")
+                    .WithTitle($"ğŸµ {session.TrackName}")
                     .WithDescription($"**{session.ArtistName}**\n\n{lyricsText}")
                     .WithColor(Color.Purple)
-                    .WithFooter($"²Ä {currentLineIndex + 1}/{session.SyncedLines.Count} ¦æ")
+                    .WithFooter($"ç¬¬ {currentLineIndex + 1}/{session.SyncedLines.Count} è¡Œ")
                     .Build();
 
                 await session.LyricsMessage.ModifyAsync(msg => msg.Embed = embed);
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[LYRICS ERROR] §ó·sºqµü°T®§¥¢±Ñ: {ex.Message}");
+                Console.WriteLine($"[LYRICS ERROR] æ›´æ–°æ­Œè©è¨Šæ¯å¤±æ•—: {ex.Message}");
             }
         }
 
+
         /// <summary>
-        /// ºqµü·|¸ÜÃş
+        /// æ­Œè©æœƒè©±é¡
         /// </summary>
         private class LyricsSession
         {
