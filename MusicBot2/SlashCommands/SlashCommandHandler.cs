@@ -34,8 +34,10 @@ namespace MusicBot2.SlahCommands
         private readonly PokeService _pokeService;
         private readonly PokeGameService _pokeGameService;
         private readonly TRPGService _trpgService;
+        private readonly LyrisService _lyrisService;
+        private readonly LyricsDisplayService _lyricsDisplayService;
 
-        public SlashCommandHandler(Program program, WordGuessingService wordService, MineGameService mineGameService, ElevenLabsService elevenLabsService, OldMaidService oldMaidService, RubiksCubeService rubiksCubeService, GoogleAIStudioService googleAIStudioService, RVC_Service rVC_Service, SetTextService setTextService, Game2048Service game2048Service, Game1A2BService game1A2BService, Pick2Service pick2Service, JikanAnimeService animeService, PokeService pokeService, PokeGameService pokeGameService, TRPGService trpgService)
+        public SlashCommandHandler(Program program, WordGuessingService wordService, MineGameService mineGameService, ElevenLabsService elevenLabsService, OldMaidService oldMaidService, RubiksCubeService rubiksCubeService, GoogleAIStudioService googleAIStudioService, RVC_Service rVC_Service, SetTextService setTextService, Game2048Service game2048Service, Game1A2BService game1A2BService, Pick2Service pick2Service, JikanAnimeService animeService, PokeService pokeService, PokeGameService pokeGameService, TRPGService trpgService, LyrisService lyrisService, LyricsDisplayService lyricsDisplayService)
         {
             _program = program;
             _wordService = wordService;
@@ -53,6 +55,8 @@ namespace MusicBot2.SlahCommands
             _pokeService = pokeService;
             _pokeGameService = pokeGameService;
             _trpgService = trpgService;
+            _lyrisService = lyrisService;
+            _lyricsDisplayService = lyricsDisplayService;
         }
         #region 音樂撥放相關
         [SlashCommand("播放音樂", "播放音樂")]
@@ -818,6 +822,160 @@ namespace MusicBot2.SlahCommands
 
             var result = await _trpgService.GetInventoryAsync(Context.Channel.Id, user);
             await FollowupAsync(result, ephemeral: true);
+        }
+        #endregion
+
+        #region 歌詞相關
+        [SlashCommand("查歌詞", "根據歌名和歌手查詢歌詞")]
+        public async Task SearchLyricsAsync(
+            [Summary("歌名", "歌曲名稱")] string trackName,
+            [Summary("歌手", "歌手名稱(選填)")] string artistName = null)
+        {
+            await DeferAsync();
+
+            try
+            {
+                var results = await _lyrisService.SearchLyricsAsync(trackName, artistName);
+
+                if (results == null || results.Count == 0)
+                {
+                    await FollowupAsync($"❌ 找不到歌曲: {trackName}" + (artistName != null ? $" - {artistName}" : ""));
+                    return;
+                }
+
+                var firstResult = results[0];
+                var embed = new EmbedBuilder()
+                    .WithTitle($"🎵 {firstResult.trackName}")
+                    .WithDescription(_lyrisService.FormatLyrics(firstResult.plainLyrics, 4000))
+                    .WithColor(Color.Blue)
+                    .AddField("歌手", firstResult.artistName ?? "未知", true)
+                    .AddField("專輯", firstResult.albumName ?? "未知", true)
+                    .AddField("長度", $"{firstResult.duration / 60}:{firstResult.duration % 60:D2}", true)
+                    .WithFooter($"歌詞 ID: {firstResult.id}");
+
+                if (firstResult.instrumental)
+                {
+                    embed.AddField("⚠️", "此曲為純音樂，無歌詞");
+                }
+
+                await FollowupAsync(embed: embed.Build());
+            }
+            catch (Exception ex)
+            {
+                await FollowupAsync($"❌ 發生錯誤: {ex.Message}");
+            }
+        }
+
+        [SlashCommand("查歌手歌曲", "根據歌手查詢所有歌曲")]
+        public async Task SearchArtistSongsAsync(
+            [Summary("歌手", "歌手名稱")] string artistName)
+        {
+            await DeferAsync();
+
+            try
+            {
+                var results = await _lyrisService.SearchLyricsAsync("", artistName);
+
+                if (results == null || results.Count == 0)
+                {
+                    await FollowupAsync($"❌ 找不到歌手: {artistName} 的歌曲");
+                    return;
+                }
+
+                var songList = string.Join("\n", results.Take(15).Select((r, i) => 
+                    $"{i + 1}. **{r.trackName}** - {r.artistName}" + 
+                    (r.albumName != null ? $" ({r.albumName})" : "")));
+
+                var embed = new EmbedBuilder()
+                    .WithTitle($"🎤 {artistName} 的歌曲")
+                    .WithDescription(songList)
+                    .WithColor(Color.Purple)
+                    .WithFooter($"共找到 {results.Count} 首歌曲，顯示前 15 首");
+
+                await FollowupAsync(embed: embed.Build());
+            }
+            catch (Exception ex)
+            {
+                await FollowupAsync($"❌ 發生錯誤: {ex.Message}");
+            }
+        }
+
+        [SlashCommand("顯示同步歌詞", "顯示帶時間戳的歌詞")]
+        public async Task ShowSyncedLyricsAsync(
+            [Summary("歌名", "歌曲名稱")] string trackName,
+            [Summary("歌手", "歌手名稱")] string artistName)
+        {
+            await DeferAsync();
+
+            try
+            {
+                var result = await _lyrisService.GetLyricsAsync(trackName, artistName);
+
+                if (result == null)
+                {
+                    await FollowupAsync($"❌ 找不到歌曲: {trackName} - {artistName}");
+                    return;
+                }
+
+                if (string.IsNullOrWhiteSpace(result.syncedLyrics))
+                {
+                    await FollowupAsync($"❌ 此歌曲沒有同步歌詞，請使用 /查歌詞 查看一般歌詞");
+                    return;
+                }
+
+                var syncedLines = _lyrisService.ParseSyncedLyrics(result.syncedLyrics);
+                var formattedLyrics = string.Join("\n", syncedLines.Take(50).Select(l => 
+                    $"`[{l.timestamp:mm\\:ss}]` {l.line}"));
+
+                var embed = new EmbedBuilder()
+                    .WithTitle($"🎵 {result.trackName} - {result.artistName}")
+                    .WithDescription(_lyrisService.FormatLyrics(formattedLyrics, 4000))
+                    .WithColor(Color.Green)
+                    .WithFooter($"同步歌詞 | 共 {syncedLines.Count} 行");
+
+                await FollowupAsync(embed: embed.Build());
+            }
+            catch (Exception ex)
+            {
+                await FollowupAsync($"❌ 發生錯誤: {ex.Message}");
+            }
+        }
+
+        [SlashCommand("測試播放同步歌詞", "測試播放同步歌詞(不需要音樂)")]
+        public async Task TestPlaySyncedLyricsAsync(
+            [Summary("歌名", "歌曲名稱")] string trackName,
+            [Summary("歌手", "歌手名稱")] string artistName)
+        {
+            await DeferAsync();
+
+            try
+            {
+                var success = await _lyricsDisplayService.StartLyricsDisplayAsync(
+                    Context.Channel.Id,
+                    trackName,
+                    artistName,
+                    Context.Channel);
+
+                if (success)
+                {
+                    await FollowupAsync($"✅ 已開始播放 **{trackName}** 的同步歌詞", ephemeral: true);
+                }
+                else
+                {
+                    await FollowupAsync($"❌ 無法開始播放歌詞", ephemeral: true);
+                }
+            }
+            catch (Exception ex)
+            {
+                await FollowupAsync($"❌ 發生錯誤: {ex.Message}", ephemeral: true);
+            }
+        }
+
+        [SlashCommand("停止歌詞顯示", "停止當前頻道的歌詞顯示")]
+        public async Task StopLyricsDisplayAsync()
+        {
+            _lyricsDisplayService.StopLyricsDisplay(Context.Channel.Id);
+            await RespondAsync("✅ 已停止歌詞顯示", ephemeral: true);
         }
         #endregion
     }

@@ -122,6 +122,8 @@ public class Program
             .AddSingleton<PokeGameService>(sp =>
                 new PokeGameService(redisConn, sp.GetRequiredService<OpenRouterService>(),_client)
                 )
+            .AddSingleton<LyrisService>()
+            .AddSingleton<LyricsDisplayService>()
               .BuildServiceProvider();
 
         _googleAIStudioService = _services.GetRequiredService<GoogleAIStudioService>();
