@@ -27,20 +27,13 @@ namespace MusicBot2.Service
         /// <summary>
         /// 創建歌詞控制按鈕
         /// </summary>
-        private ComponentBuilder CreateLyricsButtons(ulong channelId, int currentLine, int totalLines, bool isAutoMode)
+        private ComponentBuilder CreateLyricsButtons(ulong channelId, int currentLine, int totalLines)
         {
             var builder = new ComponentBuilder();
 
-            // 第一排：上一句和下一句
-            builder.WithButton("⬅️ 上一句", $"lyrics_prev_{channelId}", ButtonStyle.Primary, disabled: currentLine <= 0 || isAutoMode)
-                   .WithButton("下一句 ➡️", $"lyrics_next_{channelId}", ButtonStyle.Primary, disabled: currentLine >= totalLines - 1 || isAutoMode);
-
-            // 第二排：自動/手動模式切換
-            var modeButton = isAutoMode
-                ? new ButtonBuilder("⏸️ 手動模式", $"lyrics_manual_{channelId}", ButtonStyle.Secondary)
-                : new ButtonBuilder("▶️ 自動模式", $"lyrics_auto_{channelId}", ButtonStyle.Success);
-
-            builder.AddRow(new ActionRowBuilder().WithButton(modeButton));
+            // 上一句和下一句按鈕
+            builder.WithButton("⬅️ 上一句", $"lyrics_prev_{channelId}", ButtonStyle.Primary, disabled: currentLine <= 0)
+                   .WithButton("下一句 ➡️", $"lyrics_next_{channelId}", ButtonStyle.Primary, disabled: currentLine >= totalLines - 1);
 
             return builder;
         }
@@ -54,8 +47,7 @@ namespace MusicBot2.Service
             {
                 var session = kvp.Value;
 
-                // 只在自動模式下更新
-                if (!session.IsAutoMode || session.StartTime == null)
+                if (session.StartTime == null)
                     continue;
 
                 try
@@ -92,9 +84,9 @@ namespace MusicBot2.Service
         }
 
         /// <summary>
-        /// 開始顯示同步歌詞（支援自動和手動模式）
+        /// 開始顯示同步歌詞（自動播放模式）
         /// </summary>
-        public async Task<bool> StartLyricsDisplayAsync(ulong channelId, string trackName, string artistName, IMessageChannel messageChannel, bool autoMode = true)
+        public async Task<bool> StartLyricsDisplayAsync(ulong channelId, string trackName, string artistName, IMessageChannel messageChannel)
         {
             try
             {
@@ -117,7 +109,7 @@ namespace MusicBot2.Service
                 // 停止現有的歌詞顯示（如果有）
                 StopLyricsDisplay(channelId);
 
-                // 創建新的歌詞會話
+                // 創建新的歌詞會話（始終自動模式）
                 var session = new LyricsSession
                 {
                     TrackName = lyrics.trackName,
@@ -126,8 +118,7 @@ namespace MusicBot2.Service
                     MessageChannel = messageChannel,
                     CurrentLineIndex = 0,
                     IsJapanese = DetectJapanese(syncedLines),
-                    IsAutoMode = autoMode,
-                    StartTime = autoMode ? DateTime.UtcNow : null
+                    StartTime = DateTime.UtcNow
                 };
 
                 _activeSessions[channelId] = session;
@@ -195,37 +186,12 @@ namespace MusicBot2.Service
                 if (parts.Length != 3)
                     return false;
 
-                var action = parts[1]; // "prev", "next", "auto", or "manual"
+                var action = parts[1]; // "prev" or "next"
                 var channelId = ulong.Parse(parts[2]);
 
                 if (!_activeSessions.TryGetValue(channelId, out var session))
                 {
                     await component.RespondAsync("⚠️ 找不到歌詞會話，請重新開始", ephemeral: true);
-                    return true;
-                }
-
-                // 處理模式切換
-                if (action == "auto")
-                {
-                    session.IsAutoMode = true;
-                    session.StartTime = DateTime.UtcNow;
-                    await UpdateLyricsMessageAsync(session, session.CurrentLineIndex);
-                    await component.DeferAsync();
-                    return true;
-                }
-                else if (action == "manual")
-                {
-                    session.IsAutoMode = false;
-                    session.StartTime = null;
-                    await UpdateLyricsMessageAsync(session, session.CurrentLineIndex);
-                    await component.DeferAsync();
-                    return true;
-                }
-
-                // 手動模式下才能切換行
-                if (session.IsAutoMode)
-                {
-                    await component.RespondAsync("⚠️ 請先切換到手動模式", ephemeral: true);
                     return true;
                 }
 
@@ -240,8 +206,14 @@ namespace MusicBot2.Service
                     newIndex = Math.Min(session.SyncedLines.Count - 1, session.CurrentLineIndex + 1);
                 }
 
-                // 更新當前行
-                session.CurrentLineIndex = newIndex;
+                // 調整播放時間到新的行的時間戳
+                if (newIndex < session.SyncedLines.Count)
+                {
+                    var targetTimestamp = session.SyncedLines[newIndex].timestamp;
+                    // 重新設定開始時間，使得當前經過時間等於目標時間戳
+                    session.StartTime = DateTime.UtcNow - targetTimestamp;
+                    session.CurrentLineIndex = newIndex;
+                }
 
                 // 更新訊息
                 await UpdateLyricsMessageAsync(session, newIndex);
@@ -301,15 +273,14 @@ namespace MusicBot2.Service
                     }
                 }
 
-                var mode = session.IsAutoMode ? "自動同步" : "手動控制";
-                var footerText = $"第 {currentLineIndex + 1}/{session.SyncedLines.Count} 行 | {mode}";
+                var footerText = $"第 {currentLineIndex + 1}/{session.SyncedLines.Count} 行";
 
                 if (isJapanese)
                 {
                     footerText += " | 日文歌詞：片假名ᐧひらがな / 漢字ᐧ˙";
                 }
 
-                if (session.IsAutoMode && session.StartTime != null)
+                if (session.StartTime != null)
                 {
                     var elapsed = DateTime.UtcNow - session.StartTime.Value;
                     footerText += $" | {elapsed:mm\\:ss}";
@@ -318,11 +289,11 @@ namespace MusicBot2.Service
                 var embed = new EmbedBuilder()
                     .WithTitle($"🎵 {session.TrackName}")
                     .WithDescription($"**{session.ArtistName}**\n\n{lyricsText}")
-                    .WithColor(session.IsAutoMode ? Color.Green : Color.Purple)
+                    .WithColor(Color.Green)
                     .WithFooter(footerText)
                     .Build();
 
-                var components = CreateLyricsButtons(session.MessageChannel.Id, currentLineIndex, session.SyncedLines.Count, session.IsAutoMode);
+                var components = CreateLyricsButtons(session.MessageChannel.Id, currentLineIndex, session.SyncedLines.Count);
 
                 if (session.LyricsMessage == null)
                 {
@@ -357,7 +328,6 @@ namespace MusicBot2.Service
             public IUserMessage LyricsMessage { get; set; }
             public int CurrentLineIndex { get; set; }
             public bool IsJapanese { get; set; }
-            public bool IsAutoMode { get; set; }
             public DateTime? StartTime { get; set; }
         }
     }

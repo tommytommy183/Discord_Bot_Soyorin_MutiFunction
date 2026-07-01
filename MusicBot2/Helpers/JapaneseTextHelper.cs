@@ -1,4 +1,4 @@
-using System;
+ï»¿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -9,17 +9,17 @@ namespace MusicBot2.Helpers
     public static class JapaneseTextHelper
     {
         /// <summary>
-        /// ÀË´ú¦r²Å¬O§_¬°º~¦r¡]¤é¤åº~¦r½d³ò¡^
+        /// æª¢æ¸¬å­—ç¬¦æ˜¯å¦ç‚ºæ¼¢å­—ï¼ˆæ—¥æ–‡æ¼¢å­—ç¯„åœï¼‰
         /// </summary>
         public static bool IsKanji(char c)
         {
-            return (c >= 0x4E00 && c <= 0x9FFF) ||  // CJK²Î¤@ªí·N¤å¦r
-                   (c >= 0x3400 && c <= 0x4DBF) ||  // CJK²Î¤@ªí·N¤å¦rÂX®iA
-                   (c >= 0xF900 && c <= 0xFAFF);    // CJK¬Û®eªí·N¤å¦r
+            return (c >= 0x4E00 && c <= 0x9FFF) ||  // CJKçµ±ä¸€è¡¨æ„æ–‡å­—
+                   (c >= 0x3400 && c <= 0x4DBF) ||  // CJKçµ±ä¸€è¡¨æ„æ–‡å­—æ“´å±•A
+                   (c >= 0xF900 && c <= 0xFAFF);    // CJKç›¸å®¹è¡¨æ„æ–‡å­—
         }
 
         /// <summary>
-        /// ÀË´ú¦r²Å¬O§_¬°¥­°²¦W
+        /// æª¢æ¸¬å­—ç¬¦æ˜¯å¦ç‚ºå¹³å‡å
         /// </summary>
         public static bool IsHiragana(char c)
         {
@@ -27,7 +27,7 @@ namespace MusicBot2.Helpers
         }
 
         /// <summary>
-        /// ÀË´ú¦r²Å¬O§_¬°¤ù°²¦W
+        /// æª¢æ¸¬å­—ç¬¦æ˜¯å¦ç‚ºç‰‡å‡å
         /// </summary>
         public static bool IsKatakana(char c)
         {
@@ -35,7 +35,7 @@ namespace MusicBot2.Helpers
         }
 
         /// <summary>
-        /// ±N¤ù°²¦WÂà´«¬°¥­°²¦W
+        /// å°‡ç‰‡å‡åè½‰æ›ç‚ºå¹³å‡å
         /// </summary>
         public static string KatakanaToHiragana(string text)
         {
@@ -47,7 +47,7 @@ namespace MusicBot2.Helpers
             {
                 if (IsKatakana(c))
                 {
-                    // ¤ù°²¦WÂà¥­°²¦W¡G´î¥h0x60
+                    // ç‰‡å‡åè½‰å¹³å‡åï¼šæ¸›å»0x60
                     sb.Append((char)(c - 0x60));
                 }
                 else
@@ -59,7 +59,7 @@ namespace MusicBot2.Helpers
         }
 
         /// <summary>
-        /// ÀË´ú¦r²Å¦ê¬O§_¥]§t¤é¤å¦r²Å
+        /// æª¢æ¸¬å­—ç¬¦ä¸²æ˜¯å¦åŒ…å«æ—¥æ–‡å­—ç¬¦
         /// </summary>
         public static bool ContainsJapanese(string text)
         {
@@ -70,8 +70,8 @@ namespace MusicBot2.Helpers
         }
 
         /// <summary>
-        /// ±Nºqµü¦æ¼Ğ°O»İ­nÅª­µªº³¡¤À¡]º~¦r©M¤ù°²¦W¡^
-        /// ¥Ñ©ó¨S¦³§¹¾ãªº§ÎºA¤ÀªR¡A§Ú­Ì¥u¼Ğ°O¦r²ÅÃş«¬
+        /// å°‡æ­Œè©è¡Œæ¨™è¨˜éœ€è¦è®€éŸ³çš„éƒ¨åˆ†ï¼ˆæ¼¢å­—å’Œç‰‡å‡åï¼‰
+        /// ç”±æ–¼æ²’æœ‰å®Œæ•´çš„å½¢æ…‹åˆ†æï¼Œæˆ‘å€‘åªæ¨™è¨˜å­—ç¬¦é¡å‹
         /// </summary>
         public static string MarkJapaneseText(string text)
         {
@@ -88,7 +88,7 @@ namespace MusicBot2.Helpers
 
                 if (IsKanji(c))
                 {
-                    // ²MªÅ¤ù°²¦W½w½Ä
+                    // æ¸…ç©ºç‰‡å‡åç·©è¡
                     if (katakanaBuffer.Length > 0)
                     {
                         sb.Append($"[{katakanaBuffer}]");
@@ -98,7 +98,7 @@ namespace MusicBot2.Helpers
                 }
                 else if (IsKatakana(c))
                 {
-                    // ²MªÅº~¦r½w½Ä
+                    // æ¸…ç©ºæ¼¢å­—ç·©è¡
                     if (kanjiBuffer.Length > 0)
                     {
                         sb.Append($"[{kanjiBuffer}]");
@@ -108,7 +108,7 @@ namespace MusicBot2.Helpers
                 }
                 else
                 {
-                    // ²MªÅ©Ò¦³½w½Ä
+                    // æ¸…ç©ºæ‰€æœ‰ç·©è¡
                     if (kanjiBuffer.Length > 0)
                     {
                         sb.Append($"[{kanjiBuffer}]");
@@ -123,7 +123,7 @@ namespace MusicBot2.Helpers
                 }
             }
 
-            // ²MªÅ³Ñ¾l½w½Ä
+            // æ¸…ç©ºå‰©é¤˜ç·©è¡
             if (kanjiBuffer.Length > 0)
             {
                 sb.Append($"[{kanjiBuffer}]");
@@ -137,8 +137,8 @@ namespace MusicBot2.Helpers
         }
 
         /// <summary>
-        /// Â²¤Æª©¡G±Nºqµü¤¤ªº¤ù°²¦WÂà´«¬°¥­°²¦W¨Ã¼Ğµù
-        /// ¨Ò¦p¡G???? ¡÷ ????(????)
+        /// ç°¡åŒ–ç‰ˆï¼šå°‡æ­Œè©ä¸­çš„ç‰‡å‡åè½‰æ›ç‚ºå¹³å‡åä¸¦æ¨™è¨»
+        /// ä¾‹å¦‚ï¼šã‚«ã‚¿ã‚«ãƒŠ â†’ ã‚«ã‚¿ã‚«ãƒŠ(ã‹ãŸã‹ãª)
         /// </summary>
         public static string AddKatakanaFurigana(string text)
         {
@@ -157,12 +157,12 @@ namespace MusicBot2.Helpers
 
                 if (IsKanji(c))
                 {
-                    // ¥ı³B²z¤ù°²¦W½w½Ä
+                    // å…ˆè™•ç†ç‰‡å‡åç·©è¡
                     if (katakanaBuffer.Length > 0)
                     {
                         string katakana = katakanaBuffer.ToString();
                         string hiragana = KatakanaToHiragana(katakana);
-                        sb.Append($"{katakana}?{hiragana}");
+                        sb.Append($"{katakana}á§{hiragana}");
                         katakanaBuffer.Clear();
                     }
                     kanjiBuffer.Append(c);
@@ -170,11 +170,11 @@ namespace MusicBot2.Helpers
                 }
                 else if (IsKatakana(c))
                 {
-                    // ¥ı³B²zº~¦r½w½Ä
+                    // å…ˆè™•ç†æ¼¢å­—ç·©è¡
                     if (kanjiBuffer.Length > 0)
                     {
                         string kanji = kanjiBuffer.ToString();
-                        sb.Append($"{kanji}?£»");
+                        sb.Append($"{kanji}á§Ë™");
                         kanjiBuffer.Clear();
                         isKanjiMode = false;
                     }
@@ -182,11 +182,11 @@ namespace MusicBot2.Helpers
                 }
                 else
                 {
-                    // ²MªÅ©Ò¦³½w½Ä
+                    // æ¸…ç©ºæ‰€æœ‰ç·©è¡
                     if (kanjiBuffer.Length > 0)
                     {
                         string kanji = kanjiBuffer.ToString();
-                        sb.Append($"{kanji}?£»");
+                        sb.Append($"{kanji}á§Ë™");
                         kanjiBuffer.Clear();
                         isKanjiMode = false;
                     }
@@ -194,31 +194,31 @@ namespace MusicBot2.Helpers
                     {
                         string katakana = katakanaBuffer.ToString();
                         string hiragana = KatakanaToHiragana(katakana);
-                        sb.Append($"{katakana}?{hiragana}");
+                        sb.Append($"{katakana}á§{hiragana}");
                         katakanaBuffer.Clear();
                     }
                     sb.Append(c);
                 }
             }
 
-            // ³B²zµ²§Àªº½w½Ä
+            // è™•ç†çµå°¾çš„ç·©è¡
             if (kanjiBuffer.Length > 0)
             {
                 string kanji = kanjiBuffer.ToString();
-                sb.Append($"{kanji}?£»");
+                sb.Append($"{kanji}á§Ë™");
             }
             if (katakanaBuffer.Length > 0)
             {
                 string katakana = katakanaBuffer.ToString();
                 string hiragana = KatakanaToHiragana(katakana);
-                sb.Append($"{katakana}?{hiragana}");
+                sb.Append($"{katakana}á§{hiragana}");
             }
 
             return sb.ToString();
         }
 
         /// <summary>
-        /// ÀË´ú»y¨¥¬O§_¬°¤é¤å
+        /// æª¢æ¸¬èªè¨€æ˜¯å¦ç‚ºæ—¥æ–‡
         /// </summary>
         public static bool IsLikelyJapanese(string text)
         {
@@ -240,7 +240,7 @@ namespace MusicBot2.Helpers
                 }
             }
 
-            // ¦pªG¶W¹L30%¬O¤é¤å¦r²Å¡A§P©w¬°¤é¤å
+            // å¦‚æœè¶…é30%æ˜¯æ—¥æ–‡å­—ç¬¦ï¼Œåˆ¤å®šç‚ºæ—¥æ–‡
             return totalCharCount > 0 && (japaneseCharCount / (double)totalCharCount) > 0.3;
         }
     }
