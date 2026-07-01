@@ -67,7 +67,7 @@ namespace MusicBot2.Service
         /// <param name="albumName">The name of the album (optional)</param>
         /// <param name="duration">Duration in seconds (optional)</param>
         /// <returns>The best matching lyrics result</returns>
-        public async Task<LyricsResponse> GetLyricsAsync(string trackName, string artistName, string albumName = null, int? duration = null)
+        public async Task<LyricsResponse> GetLyricsAsync(string trackName, string artistName, string albumName = null, double? duration = null)
         {
             try
             {

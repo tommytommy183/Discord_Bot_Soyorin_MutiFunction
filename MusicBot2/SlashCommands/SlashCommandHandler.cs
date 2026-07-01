@@ -850,7 +850,7 @@ namespace MusicBot2.SlahCommands
                     .WithColor(Color.Blue)
                     .AddField("歌手", firstResult.artistName ?? "未知", true)
                     .AddField("專輯", firstResult.albumName ?? "未知", true)
-                    .AddField("長度", $"{firstResult.duration / 60}:{firstResult.duration % 60:D2}", true)
+                    .AddField("長度", $"{(int)(firstResult.duration / 60)}:{(int)(firstResult.duration % 60):D2}", true)
                     .WithFooter($"歌詞 ID: {firstResult.id}");
 
                 if (firstResult.instrumental)

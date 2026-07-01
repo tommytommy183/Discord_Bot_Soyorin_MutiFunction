@@ -12,7 +12,7 @@ namespace MusicBot2.Models
         public string trackName { get; set; }
         public string artistName { get; set; }
         public string albumName { get; set; }
-        public int duration { get; set; }
+        public double duration { get; set; }
         public bool instrumental { get; set; }
         public string plainLyrics { get; set; }
         public string syncedLyrics { get; set; }
