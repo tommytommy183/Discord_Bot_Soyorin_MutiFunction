@@ -1,6 +1,7 @@
-using Discord;
+ï»¿using Discord;
 using Discord.WebSocket;
 using MusicBot2.Models;
+using MusicBot2.Helpers;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -21,82 +22,107 @@ namespace MusicBot2.Service
         }
 
         /// <summary>
-        /// ³Ğ«Øºqµü±±¨î«ö¶s
+        /// å‰µå»ºæ­Œè©æ§åˆ¶æŒ‰éˆ•
         /// </summary>
         private ComponentBuilder CreateLyricsButtons(ulong channelId, int currentLine, int totalLines)
         {
             var builder = new ComponentBuilder();
 
-            // ²Ä¤@±Æ¡G¤W¤@¥y©M¤U¤@¥y
-            builder.WithButton("?? ¤W¤@¥y", $"lyrics_prev_{channelId}", ButtonStyle.Primary, disabled: currentLine <= 0)
-                   .WithButton("¤U¤@¥y ??", $"lyrics_next_{channelId}", ButtonStyle.Primary, disabled: currentLine >= totalLines - 1);
+            // ç¬¬ä¸€æ’ï¼šä¸Šä¸€å¥å’Œä¸‹ä¸€å¥
+            builder.WithButton("â¬…ï¸ ä¸Šä¸€å¥", $"lyrics_prev_{channelId}", ButtonStyle.Primary, disabled: currentLine <= 0)
+                   .WithButton("ä¸‹ä¸€å¥ â¡ï¸", $"lyrics_next_{channelId}", ButtonStyle.Primary, disabled: currentLine >= totalLines - 1);
 
             return builder;
         }
 
         /// <summary>
-        /// ¶}©lÅã¥Ü¦P¨Bºqµü¡]¤â°Ê±±¨î¼Ò¦¡¡^
+        /// é–‹å§‹é¡¯ç¤ºåŒæ­¥æ­Œè©ï¼ˆæ‰‹å‹•æ§åˆ¶æ¨¡å¼ï¼‰
         /// </summary>
         public async Task<bool> StartLyricsDisplayAsync(ulong channelId, string trackName, string artistName, IMessageChannel messageChannel)
         {
             try
             {
-                // Àò¨úºqµü
+                // ç²å–æ­Œè©
                 var lyrics = await _lyrisService.GetLyricsAsync(trackName, artistName);
                 if (lyrics == null || string.IsNullOrWhiteSpace(lyrics.syncedLyrics))
                 {
-                    await messageChannel.SendMessageAsync($"?? §ä¤£¨ì **{trackName}** ªº¦P¨Bºqµü");
+                    await messageChannel.SendMessageAsync($"âš ï¸ æ‰¾ä¸åˆ° **{trackName}** çš„åŒæ­¥æ­Œè©");
                     return false;
                 }
 
-                // ¸ÑªR¦P¨Bºqµü
+                // è§£æåŒæ­¥æ­Œè©
                 var syncedLines = _lyrisService.ParseSyncedLyrics(lyrics.syncedLyrics);
                 if (syncedLines.Count == 0)
                 {
-                    await messageChannel.SendMessageAsync($"?? ºqµü®æ¦¡¿ù»~");
+                    await messageChannel.SendMessageAsync($"âš ï¸ æ­Œè©æ ¼å¼éŒ¯èª¤");
                     return false;
                 }
 
-                // °±¤î²{¦³ªººqµüÅã¥Ü¡]¦pªG¦³¡^
+                // åœæ­¢ç¾æœ‰çš„æ­Œè©é¡¯ç¤ºï¼ˆå¦‚æœæœ‰ï¼‰
                 StopLyricsDisplay(channelId);
 
-                // ³Ğ«Ø·sªººqµü·|¸Ü
+                // å‰µå»ºæ–°çš„æ­Œè©æœƒè©±
                 var session = new LyricsSession
                 {
                     TrackName = lyrics.trackName,
                     ArtistName = lyrics.artistName,
                     SyncedLines = syncedLines,
                     MessageChannel = messageChannel,
-                    CurrentLineIndex = 0
+                    CurrentLineIndex = 0,
+                    IsJapanese = DetectJapanese(syncedLines)
                 };
 
                 _activeSessions[channelId] = session;
 
-                // µo°eªì©l°T®§
+                // ç™¼é€åˆå§‹è¨Šæ¯
                 await UpdateLyricsMessageAsync(session, 0);
 
                 return true;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[LYRICS ERROR] ±Ò°ÊºqµüÅã¥Ü¥¢±Ñ: {ex.Message}");
+                Console.WriteLine($"[LYRICS ERROR] å•Ÿå‹•æ­Œè©é¡¯ç¤ºå¤±æ•—: {ex.Message}");
                 return false;
             }
         }
 
         /// <summary>
-        /// °±¤îÅã¥Üºqµü
+        /// åœæ­¢é¡¯ç¤ºæ­Œè©
         /// </summary>
         public void StopLyricsDisplay(ulong channelId)
         {
             if (_activeSessions.TryRemove(channelId, out var session))
             {
-                // ²M²z¸ê·½¡]¦pªG¦³ªº¸Ü¡^
+                // æ¸…ç†è³‡æºï¼ˆå¦‚æœæœ‰çš„è©±ï¼‰
             }
         }
 
         /// <summary>
-        /// ³B²z«ö¶sÂIÀ»¨Æ¥ó
+        /// æª¢æ¸¬æ­Œè©æ˜¯å¦ç‚ºæ—¥æ–‡
+        /// </summary>
+        private bool DetectJapanese(List<(TimeSpan timestamp, string line)> lines)
+        {
+            if (lines == null || lines.Count == 0)
+                return false;
+
+            // æª¢æŸ¥å‰10è¡Œæ­Œè©
+            int checkCount = Math.Min(10, lines.Count);
+            int japaneseLines = 0;
+
+            for (int i = 0; i < checkCount; i++)
+            {
+                if (JapaneseTextHelper.IsLikelyJapanese(lines[i].line))
+                {
+                    japaneseLines++;
+                }
+            }
+
+            // å¦‚æœè¶…éä¸€åŠçš„è¡ŒåŒ…å«æ—¥æ–‡ï¼Œåˆ¤å®šç‚ºæ—¥æ–‡æ­Œè©
+            return japaneseLines > checkCount / 2;
+        }
+
+        /// <summary>
+        /// è™•ç†æŒ‰éˆ•é»æ“Šäº‹ä»¶
         /// </summary>
         public async Task<bool> HandleButtonAsync(SocketMessageComponent component)
         {
@@ -116,11 +142,11 @@ namespace MusicBot2.Service
 
                 if (!_activeSessions.TryGetValue(channelId, out var session))
                 {
-                    await component.RespondAsync("?? §ä¤£¨ìºqµü·|¸Ü¡A½Ğ­«·s¶}©l", ephemeral: true);
+                    await component.RespondAsync("âš ï¸ æ‰¾ä¸åˆ°æ­Œè©æœƒè©±ï¼Œè«‹é‡æ–°é–‹å§‹", ephemeral: true);
                     return true;
                 }
 
-                // ­pºâ·sªº¦æ¯Á¤Ş
+                // è¨ˆç®—æ–°çš„è¡Œç´¢å¼•
                 int newIndex = session.CurrentLineIndex;
                 if (action == "prev")
                 {
@@ -131,10 +157,10 @@ namespace MusicBot2.Service
                     newIndex = Math.Min(session.SyncedLines.Count - 1, session.CurrentLineIndex + 1);
                 }
 
-                // §ó·s·í«e¦æ
+                // æ›´æ–°ç•¶å‰è¡Œ
                 session.CurrentLineIndex = newIndex;
 
-                // §ó·s°T®§
+                // æ›´æ–°è¨Šæ¯
                 await UpdateLyricsMessageAsync(session, newIndex);
                 await component.DeferAsync();
 
@@ -142,62 +168,79 @@ namespace MusicBot2.Service
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[LYRICS ERROR] ³B²z«ö¶s¥¢±Ñ: {ex.Message}");
-                await component.RespondAsync("? ³B²z«ö¶s®Éµo¥Í¿ù»~", ephemeral: true);
+                Console.WriteLine($"[LYRICS ERROR] è™•ç†æŒ‰éˆ•å¤±æ•—: {ex.Message}");
+                await component.RespondAsync("âŒ è™•ç†æŒ‰éˆ•æ™‚ç™¼ç”ŸéŒ¯èª¤", ephemeral: true);
                 return true;
             }
         }
 
         /// <summary>
-        /// §ó·sºqµü°T®§
+        /// æ›´æ–°æ­Œè©è¨Šæ¯
         /// </summary>
         private async Task UpdateLyricsMessageAsync(LyricsSession session, int currentLineIndex)
         {
             try
             {
-                // Åã¥Ü«e«á´X¦æºqµü
+                // é¡¯ç¤ºå‰å¾Œå¹¾è¡Œæ­Œè©
                 const int contextLines = 3;
                 var startIndex = Math.Max(0, currentLineIndex - contextLines);
                 var endIndex = Math.Min(session.SyncedLines.Count - 1, currentLineIndex + contextLines);
+
+                // æª¢æ¸¬æ˜¯å¦ç‚ºæ—¥æ–‡æ­Œè©
+                bool isJapanese = session.IsJapanese;
 
                 var lyricsText = "";
                 for (int i = startIndex; i <= endIndex; i++)
                 {
                     var line = session.SyncedLines[i];
+                    string displayLine = line.line;
+
+                    // å¦‚æœæ˜¯æ—¥æ–‡æ­Œè©ï¼Œç‚ºç‰‡å‡åæ·»åŠ å¹³å‡åæ¨™è¨»
+                    if (isJapanese && !string.IsNullOrWhiteSpace(displayLine))
+                    {
+                        displayLine = JapaneseTextHelper.AddKatakanaFurigana(displayLine);
+                    }
+
                     if (i == currentLineIndex)
                     {
-                        // ·í«e¦æ¥Î²ÊÅé©M¯S®í²Å¸¹¼Ğ°O
-                        lyricsText += $"**? {line.line}**\n";
+                        // ç•¶å‰è¡Œç”¨ç²—é«”å’Œç‰¹æ®Šç¬¦è™Ÿæ¨™è¨˜
+                        lyricsText += $"**â–º {displayLine}**\n";
                     }
                     else if (i == currentLineIndex - 1 || i == currentLineIndex + 1)
                     {
-                        // «e«á¤@¦æµy·L±j½Õ
-                        lyricsText += $"  {line.line}\n";
+                        // å‰å¾Œä¸€è¡Œç¨å¾®å¼·èª¿
+                        lyricsText += $"  {displayLine}\n";
                     }
                     else
                     {
-                        // ¨ä¥L¦æ²H¤ÆÅã¥Ü
-                        lyricsText += $"  _{line.line}_\n";
+                        // å…¶ä»–è¡Œæ·¡åŒ–é¡¯ç¤º
+                        lyricsText += $"  _{displayLine}_\n";
                     }
                 }
 
+                var footerText = $"ç¬¬ {currentLineIndex + 1}/{session.SyncedLines.Count} è¡Œ | ä½¿ç”¨æŒ‰éˆ•æ‰‹å‹•æ§åˆ¶";
+                if (isJapanese)
+                {
+                    footerText += " | æ—¥æ–‡æ­Œè©ï¼šç‰‡å‡å(å¹³å‡å)";
+                }
+
                 var embed = new EmbedBuilder()
-                    .WithTitle($"?? {session.TrackName}")
+                    .WithTitle($"ğŸµ {session.TrackName}")
                     .WithDescription($"**{session.ArtistName}**\n\n{lyricsText}")
                     .WithColor(Color.Purple)
-                    .WithFooter($"²Ä {currentLineIndex + 1}/{session.SyncedLines.Count} ¦æ | ¨Ï¥Î«ö¶s¤â°Ê±±¨î")
+                    .WithFooter(footerText)
                     .Build();
 
                 var components = CreateLyricsButtons(session.MessageChannel.Id, currentLineIndex, session.SyncedLines.Count);
 
                 if (session.LyricsMessage == null)
                 {
-                    // ²Ä¤@¦¸³Ğ«Ø°T®§
+                    // ç¬¬ä¸€æ¬¡å‰µå»ºè¨Šæ¯
                     session.LyricsMessage = await session.MessageChannel.SendMessageAsync(embed: embed, components: components.Build());
                 }
                 else
                 {
-                    // §ó·s²{¦³°T®§
+                    // æ›´æ–°ç¾æœ‰è¨Šæ¯
                     await session.LyricsMessage.ModifyAsync(msg =>
                     {
                         msg.Embed = embed;
@@ -207,12 +250,12 @@ namespace MusicBot2.Service
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[LYRICS ERROR] §ó·sºqµü°T®§¥¢±Ñ: {ex.Message}");
+                Console.WriteLine($"[LYRICS ERROR] æ›´æ–°æ­Œè©è¨Šæ¯å¤±æ•—: {ex.Message}");
             }
         }
 
         /// <summary>
-        /// ºqµü·|¸ÜÃş
+        /// æ­Œè©æœƒè©±é¡
         /// </summary>
         private class LyricsSession
         {
@@ -222,6 +265,7 @@ namespace MusicBot2.Service
             public IMessageChannel MessageChannel { get; set; }
             public IUserMessage LyricsMessage { get; set; }
             public int CurrentLineIndex { get; set; }
+            public bool IsJapanese { get; set; }
         }
     }
 }
