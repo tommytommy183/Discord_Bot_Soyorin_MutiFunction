@@ -42,12 +42,14 @@ namespace MusicBot2.Service
         private readonly string[] _models =
         {
             "openrouter/owl-alpha",
-            "deepseek/deepseek-v4-flash:free",
-            "qwen/qwen3-next-80b-a3b-instruct:free",
-            "minimax/minimax-m2.5:free",
-            "poolside/laguna-xs.2:free",
-            "poolside/laguna-m.1:free",
+            "nvidia/nemotron-3-ultra-550b-a55b:free",
+            //"deepseek/deepseek-v4-flash:free",  這幾個沒有成功傳出去過
+            //"qwen/qwen3-next-80b-a3b-instruct:free",
+            //"minimax/minimax-m2.5:free",
+            //"poolside/laguna-xs.2:free",   這兩個會用超級奇怪的中國用語講話
+            //"poolside/laguna-m.1:free",
             "moonshotai/kimi-k2.6:free",
+            "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
             "google/gemma-4-26b-a4b-it:free",
             "liquid/lfm-2.5-1.2b-thinking:free",
             "openai/gpt-oss-120b:free",
