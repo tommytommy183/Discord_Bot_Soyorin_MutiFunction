@@ -41,10 +41,10 @@ namespace MusicBot2.Service
         // 所以後面排了幾個走不同 provider 的模型作保底。
         private readonly string[] _models =
         {
+            "openrouter/owl-alpha",
             "deepseek/deepseek-v4-flash:free",
             "qwen/qwen3-next-80b-a3b-instruct:free",
             "minimax/minimax-m2.5:free",
-            "openrouter/owl-alpha",
             "poolside/laguna-xs.2:free",
             "poolside/laguna-m.1:free",
             "moonshotai/kimi-k2.6:free",
