@@ -75,8 +75,9 @@ namespace MusicBot2.Service
                 var encodedArtist = HttpUtility.UrlEncode(artistName);
 
                 string url = string.Empty;
+                bool useSearchEndpoint = string.IsNullOrEmpty(encodedArtist);
 
-                if(string.IsNullOrEmpty(encodedArtist))
+                if(useSearchEndpoint)
                 {
                     url = $"{API_BASE_URL}/search?track_name={encodedTrack}";
                 }
@@ -105,9 +106,20 @@ namespace MusicBot2.Service
                 }
 
                 var content = await response.Content.ReadAsStringAsync();
-                var result = JsonConvert.DeserializeObject<LyricsResponse>(content);
 
-                return result;
+                // Handle different response types based on endpoint used
+                if (useSearchEndpoint)
+                {
+                    // /search endpoint returns an array
+                    var results = JsonConvert.DeserializeObject<List<LyricsResponse>>(content);
+                    return results?.FirstOrDefault();
+                }
+                else
+                {
+                    // /get endpoint returns a single object
+                    var result = JsonConvert.DeserializeObject<LyricsResponse>(content);
+                    return result;
+                }
             }
             catch (Exception ex)
             {
