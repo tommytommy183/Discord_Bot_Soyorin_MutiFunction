@@ -148,33 +148,70 @@ namespace MusicBot2.Helpers
             var sb = new StringBuilder();
             var katakanaBuffer = new StringBuilder();
 
+            var kanjiBuffer = new StringBuilder();
+            bool isKanjiMode = false;
+
             for (int i = 0; i < text.Length; i++)
             {
                 char c = text[i];
 
-                if (IsKatakana(c))
+                if (IsKanji(c))
                 {
-                    katakanaBuffer.Append(c);
-                }
-                else
-                {
+                    // 先處理片假名緩衝
                     if (katakanaBuffer.Length > 0)
                     {
                         string katakana = katakanaBuffer.ToString();
                         string hiragana = KatakanaToHiragana(katakana);
-                        sb.Append($"{katakana}({hiragana})");
+                        sb.Append($"{katakana}?{hiragana}");
+                        katakanaBuffer.Clear();
+                    }
+                    kanjiBuffer.Append(c);
+                    isKanjiMode = true;
+                }
+                else if (IsKatakana(c))
+                {
+                    // 先處理漢字緩衝
+                    if (kanjiBuffer.Length > 0)
+                    {
+                        string kanji = kanjiBuffer.ToString();
+                        sb.Append($"{kanji}?˙");
+                        kanjiBuffer.Clear();
+                        isKanjiMode = false;
+                    }
+                    katakanaBuffer.Append(c);
+                }
+                else
+                {
+                    // 清空所有緩衝
+                    if (kanjiBuffer.Length > 0)
+                    {
+                        string kanji = kanjiBuffer.ToString();
+                        sb.Append($"{kanji}?˙");
+                        kanjiBuffer.Clear();
+                        isKanjiMode = false;
+                    }
+                    if (katakanaBuffer.Length > 0)
+                    {
+                        string katakana = katakanaBuffer.ToString();
+                        string hiragana = KatakanaToHiragana(katakana);
+                        sb.Append($"{katakana}?{hiragana}");
                         katakanaBuffer.Clear();
                     }
                     sb.Append(c);
                 }
             }
 
-            // 處理結尾的片假名
+            // 處理結尾的緩衝
+            if (kanjiBuffer.Length > 0)
+            {
+                string kanji = kanjiBuffer.ToString();
+                sb.Append($"{kanji}?˙");
+            }
             if (katakanaBuffer.Length > 0)
             {
                 string katakana = katakanaBuffer.ToString();
                 string hiragana = KatakanaToHiragana(katakana);
-                sb.Append($"{katakana}({hiragana})");
+                sb.Append($"{katakana}?{hiragana}");
             }
 
             return sb.ToString();

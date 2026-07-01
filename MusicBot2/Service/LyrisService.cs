@@ -83,7 +83,7 @@ namespace MusicBot2.Service
                 }
                 else
                 {
-                    url = $"{API_BASE_URL}/get?track_name={encodedTrack}&artist_name={encodedArtist}";
+                    url = $"{API_BASE_URL}/search?track_name={encodedTrack}&artist_name={encodedArtist}";
                 }
 
 
@@ -112,13 +112,19 @@ namespace MusicBot2.Service
                 {
                     // /search endpoint returns an array
                     var results = JsonConvert.DeserializeObject<List<LyricsResponse>>(content);
-                    return results?.FirstOrDefault();
+                    // 優先選擇有同步歌詞的結果，如果沒有則選擇有純文字歌詞的
+                    return results?.FirstOrDefault(r => !string.IsNullOrWhiteSpace(r.syncedLyrics))
+                        ?? results?.FirstOrDefault(r => !string.IsNullOrWhiteSpace(r.plainLyrics))
+                        ?? results?.FirstOrDefault();
                 }
                 else
                 {
                     // /get endpoint returns a single object
-                    var result = JsonConvert.DeserializeObject<LyricsResponse>(content);
-                    return result;
+                    var results = JsonConvert.DeserializeObject<List<LyricsResponse>>(content);
+                    // search endpoint 也會返回陣列，同樣優先選擇有同步歌詞的
+                    return results?.FirstOrDefault(r => !string.IsNullOrWhiteSpace(r.syncedLyrics))
+                        ?? results?.FirstOrDefault(r => !string.IsNullOrWhiteSpace(r.plainLyrics))
+                        ?? results?.FirstOrDefault();
                 }
             }
             catch (Exception ex)
