@@ -341,7 +341,15 @@ namespace MusicBot2.Service
         /// </summary>
         public async Task<string> GenerateTextAsync(GeminiRequestVM request, SocketGuildUser user, bool saveToMemory = true, string channelKey = null, IMessage? repliedMessage = null)
         {
-            channelKey ??= user?.Guild?.Id.ToString() ?? "global";
+            // 使用頻道 ID 作為 key，讓每個頻道有獨立的對話記憶
+            // 注意：如果 repliedMessage 存在，優先使用其 Channel.Id
+            if (string.IsNullOrEmpty(channelKey))
+            {
+                if (repliedMessage != null)
+                    channelKey = repliedMessage.Channel.Id.ToString();
+                else
+                    channelKey = "global";
+            }
 
             const int maxRetry = 2;
             var systemPrompt = string.IsNullOrWhiteSpace(request.SystemInstruction) ? Persona : request.SystemInstruction;
@@ -739,6 +747,11 @@ namespace MusicBot2.Service
         public async Task<bool> ForceGenerateSummaryAsync(string channelKey)
         {
             var history = GetHistory(channelKey);
+
+            Console.WriteLine($"[OpenRouter Summary Debug] channelKey={channelKey}");
+            Console.WriteLine($"[OpenRouter Summary Debug] 字典中的所有 key: {string.Join(", ", _channelHistories.Keys)}");
+            Console.WriteLine($"[OpenRouter Summary Debug] 找到的歷史記錄數: {history.Count}");
+
             if (history.Count < 3)
             {
                 Console.WriteLine($"[OpenRouter Summary] 訊息太少無法生成摘要 (目前:{history.Count}, 需要至少:3)");
