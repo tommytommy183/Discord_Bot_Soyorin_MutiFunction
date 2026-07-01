@@ -527,7 +527,14 @@ namespace MusicBot2.SlahCommands
             }
 
             var result = await _openRouterService.ForceGenerateSummaryAsync(Context.Channel.Id.ToString());
-            await FollowupAsync("生成成功", ephemeral: true);
+            if (result)
+            {
+                await FollowupAsync("✅ 生成成功！", ephemeral: true);
+            }
+            else
+            {
+                await FollowupAsync("❌ 生成失敗，可能是對話訊息太少（至少需要 3 則）或 API 回應異常。請查看 Console 輸出以了解詳情。", ephemeral: true);
+            }
         }
         #endregion
 

@@ -249,16 +249,22 @@ namespace MusicBot2.Service
             return recent;
         }
 
-        private async Task<bool> TryGenerateSummaryAsync(string channelKey)
+        private async Task<bool> TryGenerateSummaryAsync(string channelKey, bool force = false)
         {
             try
             {
                 var history = GetHistory(channelKey);
-                if (history.Count < SummaryTriggerCount)
-                    return false;
 
-                // 檢查是否已經有摘要，且自從上次摘要後新增的訊息不到觸發閾值
-                if (_channelSummaries.TryGetValue(channelKey, out var existingSummary))
+                // 如果是強制生成，只需要至少 3 則訊息
+                int minRequired = force ? 3 : SummaryTriggerCount;
+                if (history.Count < minRequired)
+                {
+                    Console.WriteLine($"[OpenRouter Summary] 訊息數量不足 (需要:{minRequired}, 目前:{history.Count})");
+                    return false;
+                }
+
+                // 如果不是強制生成，檢查是否已經有摘要，且自從上次摘要後新增的訊息不到觸發閾值
+                if (!force && _channelSummaries.TryGetValue(channelKey, out var existingSummary))
                 {
                     int newMessagesSinceLastSummary = history.Count - existingSummary.MessageCount;
                     if (newMessagesSinceLastSummary < SummaryTriggerCount)
@@ -301,6 +307,8 @@ namespace MusicBot2.Service
 
                     await SaveSummariesAsync();
                     Console.WriteLine($"[OpenRouter Summary] 摘要已生成並儲存 (ch:{channelKey})");
+                    Console.WriteLine($"[OpenRouter Summary] 摘要內容預覽: {Truncate(summaryText, 100)}");
+                    Console.WriteLine($"[OpenRouter Summary] 目前字典中有 {_channelSummaries.Count} 個頻道摘要");
 
                     // 生成摘要後，可選擇清理舊對話（保留最近的）
                     if (history.Count > MaxRecentMessages)
@@ -311,6 +319,11 @@ namespace MusicBot2.Service
                     }
 
                     return true;
+                }
+                else
+                {
+                    Console.WriteLine($"[OpenRouter Summary Error] 生成的摘要為空");
+                    return false;
                 }
             }
             catch (Exception ex)
@@ -533,7 +546,7 @@ namespace MusicBot2.Service
                             {
                                 try
                                 {
-                                    await TryGenerateSummaryAsync(channelKey);
+                                    await TryGenerateSummaryAsync(channelKey, force: false);
                                 }
                                 catch (Exception ex)
                                 {
@@ -726,14 +739,16 @@ namespace MusicBot2.Service
         public async Task<bool> ForceGenerateSummaryAsync(string channelKey)
         {
             var history = GetHistory(channelKey);
-            if (history.Count < 5)
+            if (history.Count < 3)
             {
+                Console.WriteLine($"[OpenRouter Summary] 訊息太少無法生成摘要 (目前:{history.Count}, 需要至少:3)");
                 return false;
             }
 
             // 暫時移除現有摘要以強制重新生成
             _channelSummaries.Remove(channelKey);
-            return await TryGenerateSummaryAsync(channelKey);
+            Console.WriteLine($"[OpenRouter Summary] 強制生成摘要 (ch:{channelKey}, msgs:{history.Count})");
+            return await TryGenerateSummaryAsync(channelKey, force: true);
         }
 
         private static string CleanResponse(string text)
