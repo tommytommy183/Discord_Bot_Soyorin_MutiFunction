@@ -511,7 +511,7 @@ namespace MusicBot2.SlahCommands
             }
 
             var result = _openRouterService.GetChannelSummaryAsync(Context.Channel.Id.ToString());
-            await FollowupAsync("上傳成功", ephemeral: true);
+            await FollowupAsync(result.ToString(), ephemeral: true);
         }
         #endregion
 
