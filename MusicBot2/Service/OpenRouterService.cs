@@ -27,14 +27,17 @@ namespace MusicBot2.Service
         private readonly string _apiKey;
         private readonly HttpClient _httpClient;
         private readonly string _memoryFilePath = Path.Combine("TxtFolder", "AI_Memory_OpenRouter.txt");
+        private readonly string _summaryFilePath = Path.Combine("TxtFolder", "AI_Summary_OpenRouter.txt");
 
         // 以「頻道」為單位分開存對話
         private Dictionary<string, List<ConversationMessage>> _channelHistories = new();
+        private Dictionary<string, ConversationSummary> _channelSummaries = new();
         private readonly SemaphoreSlim _saveLock = new(1, 1);
 
         private const int MaxRecentMessages = 20;
         private const int MaxTotalMessages = 80;
         private const int MaxContextChars = 6000;
+        private const int SummaryTriggerCount = 30; // 每 30 則訊息生成一次摘要
 
         // 依優先順序嘗試的模型 (免費；當主要 provider 被 upstream rate-limit 時自動 fallback)
         // 註: 同樣經由 Venice provider 的模型（如 Venice / Llama 3.3 70b free 在部分帳號）會共用 rate-limit，
@@ -91,6 +94,7 @@ namespace MusicBot2.Service
             _httpClient.DefaultRequestHeaders.Add("X-Title", "Soyorin Discord Bot");
 
             LoadMemory();
+            LoadSummaries();
         }
 
         #region Memory Persistence
@@ -116,6 +120,29 @@ namespace MusicBot2.Service
             {
                 Console.WriteLine($"[OpenRouter Memory Error] 載入記憶失敗: {ex.Message}");
                 _channelHistories = new();
+            }
+        }
+
+        private void LoadSummaries()
+        {
+            try
+            {
+                if (!File.Exists(_summaryFilePath)) return;
+
+                var json = File.ReadAllText(_summaryFilePath, Encoding.UTF8);
+                if (string.IsNullOrWhiteSpace(json)) return;
+
+                var dict = JsonSerializer.Deserialize<Dictionary<string, ConversationSummary>>(json);
+                if (dict != null)
+                {
+                    _channelSummaries = dict;
+                    Console.WriteLine($"[OpenRouter Summary] 已載入 {_channelSummaries.Count} 個頻道的摘要");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[OpenRouter Summary Error] 載入摘要失敗: {ex.Message}");
+                _channelSummaries = new();
             }
         }
 
@@ -149,18 +176,53 @@ namespace MusicBot2.Service
             }
         }
 
+        private async Task SaveSummariesAsync()
+        {
+            await _saveLock.WaitAsync();
+            try
+            {
+                var directory = Path.GetDirectoryName(_summaryFilePath);
+                if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
+                {
+                    Directory.CreateDirectory(directory);
+                }
+
+                var options = new JsonSerializerOptions
+                {
+                    WriteIndented = true,
+                    Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+                };
+
+                var json = JsonSerializer.Serialize(_channelSummaries, options);
+                await File.WriteAllTextAsync(_summaryFilePath, json, Encoding.UTF8);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[OpenRouter Summary Error] 儲存摘要失敗: {ex.Message}");
+            }
+            finally
+            {
+                _saveLock.Release();
+            }
+        }
+
         public async Task ClearMemoryAsync(string channelKey = null)
         {
             if (string.IsNullOrEmpty(channelKey))
             {
                 _channelHistories.Clear();
+                _channelSummaries.Clear();
             }
-            else if (_channelHistories.ContainsKey(channelKey))
+            else
             {
-                _channelHistories.Remove(channelKey);
+                if (_channelHistories.ContainsKey(channelKey))
+                    _channelHistories.Remove(channelKey);
+                if (_channelSummaries.ContainsKey(channelKey))
+                    _channelSummaries.Remove(channelKey);
             }
             await SaveMemoryAsync();
-            Console.WriteLine($"[OpenRouter Memory] 對話記憶已清除 ({channelKey ?? "ALL"})");
+            await SaveSummariesAsync();
+            Console.WriteLine($"[OpenRouter Memory] 對話記憶與摘要已清除 ({channelKey ?? "ALL"})");
         }
 
         private List<ConversationMessage> GetHistory(string channelKey)
@@ -185,6 +247,78 @@ namespace MusicBot2.Service
                 recent.RemoveAt(0);
             }
             return recent;
+        }
+
+        private async Task<bool> TryGenerateSummaryAsync(string channelKey)
+        {
+            try
+            {
+                var history = GetHistory(channelKey);
+                if (history.Count < SummaryTriggerCount)
+                    return false;
+
+                // 檢查是否已經有摘要，且自從上次摘要後新增的訊息不到觸發閾值
+                if (_channelSummaries.TryGetValue(channelKey, out var existingSummary))
+                {
+                    int newMessagesSinceLastSummary = history.Count - existingSummary.MessageCount;
+                    if (newMessagesSinceLastSummary < SummaryTriggerCount)
+                        return false;
+                }
+
+                Console.WriteLine($"[OpenRouter Summary] 開始生成摘要 (ch:{channelKey}, msgs:{history.Count})");
+
+                var recentForSummary = history.Skip(Math.Max(0, history.Count - 40)).ToList();
+                var conversationText = new StringBuilder();
+                conversationText.AppendLine("請為以下對話生成一個簡潔的摘要，包含：");
+                conversationText.AppendLine("1. 對話的主要話題和重點");
+                conversationText.AppendLine("2. 重要的資訊或決定");
+                conversationText.AppendLine("3. 對話參與者的情緒或態度");
+                conversationText.AppendLine("4. 任何未解決的問題或後續行動");
+                conversationText.AppendLine();
+                conversationText.AppendLine("對話內容：");
+                conversationText.AppendLine();
+
+                foreach (var msg in recentForSummary)
+                {
+                    var role = msg.Role == "model" ? "爽世" : msg.UserName;
+                    conversationText.AppendLine($"[{msg.Timestamp:HH:mm}] {role}: {msg.Text}");
+                }
+
+                conversationText.AppendLine();
+                conversationText.AppendLine("請用繁體中文回答，摘要不超過 300 字。");
+
+                string summaryText = await GenerateSimpleTextAsync(conversationText.ToString());
+
+                if (!string.IsNullOrWhiteSpace(summaryText))
+                {
+                    _channelSummaries[channelKey] = new ConversationSummary
+                    {
+                        ChannelKey = channelKey,
+                        Summary = summaryText,
+                        CreatedAt = DateTime.Now,
+                        MessageCount = history.Count
+                    };
+
+                    await SaveSummariesAsync();
+                    Console.WriteLine($"[OpenRouter Summary] 摘要已生成並儲存 (ch:{channelKey})");
+
+                    // 生成摘要後，可選擇清理舊對話（保留最近的）
+                    if (history.Count > MaxRecentMessages)
+                    {
+                        _channelHistories[channelKey] = history.Skip(history.Count - MaxRecentMessages).ToList();
+                        await SaveMemoryAsync();
+                        Console.WriteLine($"[OpenRouter Memory] 已清理舊對話，保留最近 {MaxRecentMessages} 則");
+                    }
+
+                    return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[OpenRouter Summary Error] 生成摘要失敗: {ex.Message}");
+            }
+
+            return false;
         }
 
         #endregion
@@ -237,6 +371,17 @@ namespace MusicBot2.Service
                         {
                             new() { Role = "system", Content = systemPrompt }
                         };
+
+                        // 如果有摘要，加入作為背景資訊
+                        if (_channelSummaries.TryGetValue(channelKey, out var summary))
+                        {
+                            var summaryContext = $"\n\n【先前對話摘要】\n{summary.Summary}\n（摘要時間：{summary.CreatedAt:yyyy/MM/dd HH:mm}）\n";
+                            messages.Add(new OpenRouterMessage
+                            {
+                                Role = "system",
+                                Content = summaryContext
+                            });
+                        }
 
                         // 歷史對話：把 model 角色轉成 assistant
                         var recentMessages = GetRecentMessages(channelKey);
@@ -382,6 +527,19 @@ namespace MusicBot2.Service
                             }
 
                             _ = SaveMemoryAsync();
+
+                            // 嘗試生成摘要（不阻塞回應）
+                            _ = Task.Run(async () =>
+                            {
+                                try
+                                {
+                                    await TryGenerateSummaryAsync(channelKey);
+                                }
+                                catch (Exception ex)
+                                {
+                                    Console.WriteLine($"[OpenRouter Summary Error] 背景生成摘要失敗: {ex.Message}");
+                                }
+                            });
                         }
                         Console.WriteLine($"[OpenRouter] Model:{model}=> {Truncate(text, 30)}");
 
@@ -521,19 +679,61 @@ namespace MusicBot2.Service
         }
         public string GetMemorySummary(string channelKey = null)
         {
-            if (_channelHistories.Count == 0) return "目前沒有對話記憶";
+            if (_channelHistories.Count == 0 && _channelSummaries.Count == 0)
+                return "目前沒有對話記憶或摘要";
 
             if (!string.IsNullOrEmpty(channelKey))
             {
-                if (!_channelHistories.TryGetValue(channelKey, out var hist) || hist.Count == 0)
-                    return $"頻道 {channelKey} 沒有對話記憶";
+                var sb = new StringBuilder();
 
-                return $"頻道 {channelKey}: {hist.Count} 條 (user:{hist.Count(m => m.Role == "user")} / model:{hist.Count(m => m.Role == "model")})";
+                if (_channelHistories.TryGetValue(channelKey, out var hist) && hist.Count > 0)
+                {
+                    sb.AppendLine($"頻道 {channelKey}: {hist.Count} 條訊息 (user:{hist.Count(m => m.Role == "user")} / model:{hist.Count(m => m.Role == "model")})");
+                }
+                else
+                {
+                    sb.AppendLine($"頻道 {channelKey}: 沒有對話記憶");
+                }
+
+                if (_channelSummaries.TryGetValue(channelKey, out var summary))
+                {
+                    sb.AppendLine($"\n最近摘要 ({summary.CreatedAt:yyyy/MM/dd HH:mm}):");
+                    sb.AppendLine(summary.Summary);
+                }
+                else
+                {
+                    sb.AppendLine("\n尚無對話摘要");
+                }
+
+                return sb.ToString().TrimEnd();
             }
 
             var totalUser = _channelHistories.Values.SelectMany(v => v).Count(m => m.Role == "user");
             var totalModel = _channelHistories.Values.SelectMany(v => v).Count(m => m.Role == "model");
-            return $"共 {_channelHistories.Count} 個頻道，user:{totalUser} / model:{totalModel}";
+            return $"共 {_channelHistories.Count} 個頻道，user:{totalUser} / model:{totalModel}\n摘要數量: {_channelSummaries.Count} 個頻道";
+        }
+
+        public async Task<string> GetChannelSummaryAsync(string channelKey)
+        {
+            if (_channelSummaries.TryGetValue(channelKey, out var summary))
+            {
+                return $"【對話摘要】\n生成時間：{summary.CreatedAt:yyyy/MM/dd HH:mm}\n對話數量：{summary.MessageCount} 則\n\n{summary.Summary}";
+            }
+
+            return "此頻道尚無對話摘要";
+        }
+
+        public async Task<bool> ForceGenerateSummaryAsync(string channelKey)
+        {
+            var history = GetHistory(channelKey);
+            if (history.Count < 5)
+            {
+                return false;
+            }
+
+            // 暫時移除現有摘要以強制重新生成
+            _channelSummaries.Remove(channelKey);
+            return await TryGenerateSummaryAsync(channelKey);
         }
 
         private static string CleanResponse(string text)

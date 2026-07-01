@@ -37,4 +37,20 @@ namespace MusicBot2.Models
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string[] Stop { get; set; }
     }
+
+    public class ConversationMessage
+    {
+        public string Role { get; set; }
+        public string Text { get; set; }
+        public DateTime Timestamp { get; set; }
+        public string UserName { get; set; }
+    }
+
+    public class ConversationSummary
+    {
+        public string ChannelKey { get; set; }
+        public string Summary { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public int MessageCount { get; set; }
+    }
 }

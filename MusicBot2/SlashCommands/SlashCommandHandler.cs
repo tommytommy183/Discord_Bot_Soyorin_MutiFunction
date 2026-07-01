@@ -36,8 +36,10 @@ namespace MusicBot2.SlahCommands
         private readonly TRPGService _trpgService;
         private readonly LyrisService _lyrisService;
         private readonly LyricsDisplayService _lyricsDisplayService;
+        private readonly OpenRouterService _openRouterService;
+        private readonly string myDiscordId = "415032840925741056";
 
-        public SlashCommandHandler(Program program, WordGuessingService wordService, MineGameService mineGameService, ElevenLabsService elevenLabsService, OldMaidService oldMaidService, RubiksCubeService rubiksCubeService, GoogleAIStudioService googleAIStudioService, RVC_Service rVC_Service, SetTextService setTextService, Game2048Service game2048Service, Game1A2BService game1A2BService, Pick2Service pick2Service, JikanAnimeService animeService, PokeService pokeService, PokeGameService pokeGameService, TRPGService trpgService, LyrisService lyrisService, LyricsDisplayService lyricsDisplayService)
+        public SlashCommandHandler(Program program, WordGuessingService wordService, MineGameService mineGameService, ElevenLabsService elevenLabsService, OldMaidService oldMaidService, RubiksCubeService rubiksCubeService, GoogleAIStudioService googleAIStudioService, RVC_Service rVC_Service, SetTextService setTextService, Game2048Service game2048Service, Game1A2BService game1A2BService, Pick2Service pick2Service, JikanAnimeService animeService, PokeService pokeService, PokeGameService pokeGameService, TRPGService trpgService, LyrisService lyrisService, LyricsDisplayService lyricsDisplayService, OpenRouterService openRouterService)
         {
             _program = program;
             _wordService = wordService;
@@ -57,6 +59,7 @@ namespace MusicBot2.SlahCommands
             _trpgService = trpgService;
             _lyrisService = lyrisService;
             _lyricsDisplayService = lyricsDisplayService;
+            _openRouterService = openRouterService;
         }
         #region 音樂撥放相關
         [SlashCommand("播放音樂", "播放音樂")]
@@ -480,12 +483,34 @@ namespace MusicBot2.SlahCommands
     )
         {
             await DeferAsync();
+            string userID = Context.User.Id.ToString();
+            if (userID != myDiscordId)
+            {
+                await FollowupAsync("不給你看不給你看 好蒿爽爽爽爽", ephemeral: true);
+                return;
+            }
             var result = await _wordService.SetWord(file);
             if (!result)
             {
                 await FollowupAsync("上傳失敗，請確保檔案格式正確且內容不為空", ephemeral: true);
                 return;
             }
+            await FollowupAsync("上傳成功", ephemeral: true);
+        }
+
+        [SlashCommand("查看對話摘要for豬頭馬又only", "查看對話摘要for馬又only")]
+        public async Task CheckAISummary()
+        {
+            //我的id 415032840925741056
+            await DeferAsync();
+            string userID = Context.User.Id.ToString();
+            if(userID != myDiscordId)
+            {
+                await FollowupAsync("不給你看不給你看 好蒿爽爽爽爽", ephemeral: true);
+                return;
+            }
+
+            var result = _openRouterService.GetChannelSummaryAsync(Context.Channel.Id.ToString());
             await FollowupAsync("上傳成功", ephemeral: true);
         }
         #endregion
