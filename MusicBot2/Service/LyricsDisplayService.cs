@@ -117,7 +117,7 @@ namespace MusicBot2.Service
                     SyncedLines = syncedLines,
                     MessageChannel = messageChannel,
                     CurrentLineIndex = 0,
-                    IsJapanese = DetectJapanese(syncedLines),
+                    IsJapanese = false,
                     StartTime = DateTime.UtcNow
                 };
 
@@ -250,11 +250,11 @@ namespace MusicBot2.Service
                     var line = session.SyncedLines[i];
                     string displayLine = line.line;
 
-                    // 如果是日文歌詞，為片假名添加平假名標註
-                    if (isJapanese && !string.IsNullOrWhiteSpace(displayLine))
-                    {
-                        displayLine = JapaneseTextHelper.AddKatakanaFurigana(displayLine);
-                    }
+                    //// 如果是日文歌詞，為片假名添加平假名標註
+                    //if (isJapanese && !string.IsNullOrWhiteSpace(displayLine))
+                    //{
+                    //    displayLine = JapaneseTextHelper.AddKatakanaFurigana(displayLine);
+                    //}
 
                     if (i == currentLineIndex)
                     {
