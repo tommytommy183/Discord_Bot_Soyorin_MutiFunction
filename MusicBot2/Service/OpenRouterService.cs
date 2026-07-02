@@ -314,7 +314,7 @@ namespace MusicBot2.Service
             return list;
         }
 
-        private string GetChannelSummary(string channelKey)
+        public string GetChannelSummary(string channelKey)
         {
             _channelSummaries.TryGetValue(channelKey, out var summary);
             return summary;

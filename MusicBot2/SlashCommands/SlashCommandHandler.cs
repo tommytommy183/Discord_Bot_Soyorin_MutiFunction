@@ -25,6 +25,7 @@ namespace MusicBot2.SlahCommands
         private readonly OldMaidService _oldMaidService;
         private readonly RubiksCubeService _rubiksCubeService;
         private readonly GoogleAIStudioService _googleAIStudioService;
+        private readonly OpenRouterService _openRouterService;
         private readonly RVC_Service _rVC_Service;
         private readonly SetTextService _setTextService;
         private readonly Game2048Service _game2048Service;
@@ -37,7 +38,7 @@ namespace MusicBot2.SlahCommands
         private readonly LyrisService _lyrisService;
         private readonly LyricsDisplayService _lyricsDisplayService;
 
-        public SlashCommandHandler(Program program, WordGuessingService wordService, MineGameService mineGameService, ElevenLabsService elevenLabsService, OldMaidService oldMaidService, RubiksCubeService rubiksCubeService, GoogleAIStudioService googleAIStudioService, RVC_Service rVC_Service, SetTextService setTextService, Game2048Service game2048Service, Game1A2BService game1A2BService, Pick2Service pick2Service, JikanAnimeService animeService, PokeService pokeService, PokeGameService pokeGameService, TRPGService trpgService, LyrisService lyrisService, LyricsDisplayService lyricsDisplayService)
+        public SlashCommandHandler(Program program, WordGuessingService wordService, MineGameService mineGameService, ElevenLabsService elevenLabsService, OldMaidService oldMaidService, RubiksCubeService rubiksCubeService, GoogleAIStudioService googleAIStudioService, OpenRouterService openRouterService, RVC_Service rVC_Service, SetTextService setTextService, Game2048Service game2048Service, Game1A2BService game1A2BService, Pick2Service pick2Service, JikanAnimeService animeService, PokeService pokeService, PokeGameService pokeGameService, TRPGService trpgService, LyrisService lyrisService, LyricsDisplayService lyricsDisplayService)
         {
             _program = program;
             _wordService = wordService;
@@ -47,6 +48,7 @@ namespace MusicBot2.SlahCommands
             _oldMaidService = oldMaidService;
             _rubiksCubeService = rubiksCubeService;
             _googleAIStudioService = googleAIStudioService;
+            _openRouterService = openRouterService;
             _rVC_Service = rVC_Service;
             _game2048Service = game2048Service;
             _game1A2BService = game1A2BService;
@@ -435,16 +437,44 @@ namespace MusicBot2.SlahCommands
             );
         }
 
-        [SlashCommand("soyo記憶消除", "清除 Soyo 的記憶")]
+        [SlashCommand("soyo記憶消除", "清除 Soyo 的記憶（包含對話摘要）")]
         public async Task ClearSoyoMemory(
-    [Summary("頻道", "要清除記憶的頻道")] string channelKey = null
+    [Summary("頻道", "要清除記憶的頻道（留空 = 全部）")] string channelKey = null
 )
         {
             await DeferAsync();
 
             await _googleAIStudioService.ClearMemoryAsync(channelKey);
+            await _openRouterService.ClearMemoryAsync(channelKey);
 
-            await FollowupAsync($"已清除 Soyo 的記憶 ({channelKey ?? "全部頻道"})");
+            await FollowupAsync($"已清除 Soyo 的記憶與對話摘要 ({channelKey ?? "全部頻道"})");
+        }
+
+        [SlashCommand("soyo對話摘要", "查看目前整理出來的對話摘要")]
+        public async Task GetSoyoSummary(
+    [Summary("頻道", "要查看的頻道 key（留空 = 目前頻道）")] string channelKey = null
+)
+        {
+            await DeferAsync();
+
+            channelKey ??= Context.Guild?.Id.ToString() ?? "global";
+            var summary = _openRouterService.GetChannelSummary(channelKey);
+
+            if (string.IsNullOrEmpty(summary))
+            {
+                await FollowupAsync($"頻道 `{channelKey}` 目前沒有對話摘要（對話量還不夠多，或尚未觸發摘要整理）");
+                return;
+            }
+
+            var embed = new EmbedBuilder()
+                .WithTitle("📝 Soyo 的對話摘要")
+                .WithDescription(summary)
+                .WithColor(Color.Purple)
+                .WithFooter($"頻道 key: {channelKey}")
+                .WithCurrentTimestamp()
+                .Build();
+
+            await FollowupAsync(embed: embed);
         }
         #endregion
 
