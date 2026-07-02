@@ -451,13 +451,11 @@ namespace MusicBot2.SlahCommands
         }
 
         [SlashCommand("soyo對話摘要", "查看目前整理出來的對話摘要")]
-        public async Task GetSoyoSummary(
-    [Summary("頻道", "要查看的頻道 key（留空 = 目前頻道）")] string channelKey = null
-)
+        public async Task GetSoyoSummary()
         {
             await DeferAsync();
 
-            channelKey ??= Context.Guild?.Id.ToString() ?? "global";
+            string channelKey = Context.Guild?.Id.ToString() ?? "global";
             var summary = _openRouterService.GetChannelSummary(channelKey);
 
             if (string.IsNullOrEmpty(summary))
