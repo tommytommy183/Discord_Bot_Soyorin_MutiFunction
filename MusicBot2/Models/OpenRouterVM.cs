@@ -36,5 +36,18 @@ namespace MusicBot2.Models
         [JsonPropertyName("stop")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string[] Stop { get; set; }
+
+        [JsonPropertyName("plugins")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public List<OpenRouterPlugin> Plugins { get; set; }
+    }
+
+    public class OpenRouterPlugin
+    {
+        [JsonPropertyName("id")]
+        public string Id { get; set; }
+
+        [JsonPropertyName("max_results")]
+        public int MaxResults { get; set; }
     }
 }

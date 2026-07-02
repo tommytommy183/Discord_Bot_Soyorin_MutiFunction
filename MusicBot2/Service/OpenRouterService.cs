@@ -2,6 +2,7 @@
 using Discord.WebSocket;
 using MusicBot2.Models;
 using RiotSharp.Endpoints.StatusEndpoint;
+using StackExchange.Redis;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -27,14 +28,25 @@ namespace MusicBot2.Service
         private readonly string _apiKey;
         private readonly HttpClient _httpClient;
         private readonly string _memoryFilePath = Path.Combine("TxtFolder", "AI_Memory_OpenRouter.txt");
+        private readonly string _summaryFilePath = Path.Combine("TxtFolder", "AI_Summary_OpenRouter.txt");
+
+        // Redis 持久化
+        private readonly IDatabase _redisDb;
+        private readonly bool _useRedis;
+        private const string HISTORIES_REDIS_KEY = "chat:all_histories";
+        private const string SUMMARIES_REDIS_KEY = "chat:all_summaries";
 
         // 以「頻道」為單位分開存對話
         private Dictionary<string, List<ConversationMessage>> _channelHistories = new();
+        private Dictionary<string, string> _channelSummaries = new();
         private readonly SemaphoreSlim _saveLock = new(1, 1);
+        private readonly HashSet<string> _summarizingChannels = new();
 
-        private const int MaxRecentMessages = 20;
-        private const int MaxTotalMessages = 80;
-        private const int MaxContextChars = 6000;
+        private const int MaxRecentMessages = 8;
+        private const int MaxTotalMessages = 30;
+        private const int MaxContextChars = 2500;
+        private const int SummarizeChunkSize = 20;
+        private const int MaxMessageStoreLength = 300;
 
         // 依優先順序嘗試的模型 (免費；當主要 provider 被 upstream rate-limit 時自動 fallback)
         // 註: 同樣經由 Venice provider 的模型（如 Venice / Llama 3.3 70b free 在部分帳號）會共用 rate-limit，
@@ -43,6 +55,29 @@ namespace MusicBot2.Service
         {
             "openrouter/owl-alpha",
             "nvidia/nemotron-3-ultra-550b-a55b:free",
+            "nvidia/nemotron-3-super-120b-a12b:free",
+            "google/gemma-4-26b-a4b-it:free",
+            "moonshotai/kimi-k2.6:free",
+            "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
+            "liquid/lfm-2.5-1.2b-thinking:free",
+            "openai/gpt-oss-120b:free",
+            "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+            "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
+            "nousresearch/hermes-3-llama-3.1-405b:free"
+            //"deepseek/deepseek-v4-flash:free",  這幾個沒有成功傳出去過
+            //"qwen/qwen3-next-80b-a3b-instruct:free",
+            //"minimax/minimax-m2.5:free",
+            //"poolside/laguna-xs.2:free",   這兩個會用超級奇怪的中國用語講話
+            //"poolside/laguna-m.1:free",
+        };
+
+        //無記憶對話的模型順序
+        private readonly string[] _modelsForSimpleText =
+        {
+            "openai/gpt-oss-120b:free",
+            "openai/gpt-oss-20b:free",
+            "google/gemma-4-26b-a4b-it:free",
+            "nvidia/nemotron-3-ultra-550b-a55b:free",
             //"deepseek/deepseek-v4-flash:free",  這幾個沒有成功傳出去過
             //"qwen/qwen3-next-80b-a3b-instruct:free",
             //"minimax/minimax-m2.5:free",
@@ -50,11 +85,11 @@ namespace MusicBot2.Service
             //"poolside/laguna-m.1:free",
             "moonshotai/kimi-k2.6:free",
             "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
-            "google/gemma-4-26b-a4b-it:free",
             "liquid/lfm-2.5-1.2b-thinking:free",
-            "openai/gpt-oss-120b:free",
             "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
             "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
+            "openrouter/owl-alpha",
+            "nousresearch/hermes-3-llama-3.1-405b:free"
         };
 
         private const string Persona = @"你是「長崎爽世（Soyo）」——MyGO!!!!! 的貝斯手，個性溫柔、有禮貌、稍微毒舌但不傷人，珍惜朋友。
@@ -80,7 +115,7 @@ namespace MusicBot2.Service
 訊息: xxx
 請根據使用者名稱判斷對話對象並自然回應。回應時不要套用這個格式，直接講話。";
 
-        public OpenRouterService(string apiKey)
+        public OpenRouterService(string apiKey, string redisConnectionString = null)
         {
             _apiKey = apiKey;
             _httpClient = new HttpClient
@@ -92,6 +127,26 @@ namespace MusicBot2.Service
             _httpClient.DefaultRequestHeaders.Add("HTTP-Referer", "https://github.com/tommytommy183/Soyorin_Tense");
             _httpClient.DefaultRequestHeaders.Add("X-Title", "Soyorin Discord Bot");
 
+            if (!string.IsNullOrEmpty(redisConnectionString))
+            {
+                try
+                {
+                    var options = ConfigurationOptions.Parse(redisConnectionString);
+                    options.ConnectTimeout = 10000;
+                    options.AbortOnConnectFail = false;
+                    options.ConnectRetry = 3;
+                    var redis = ConnectionMultiplexer.Connect(options);
+                    _redisDb = redis.GetDatabase();
+                    _useRedis = true;
+                    Console.WriteLine("✅ [OpenRouter] Redis 連線成功");
+                }
+                catch (Exception ex)
+                {
+                    _useRedis = false;
+                    Console.WriteLine($"⚠️ [OpenRouter] Redis 連線失敗，使用檔案儲存: {ex.Message}");
+                }
+            }
+
             LoadMemory();
         }
 
@@ -99,25 +154,68 @@ namespace MusicBot2.Service
 
         private void LoadMemory()
         {
+            // 優先從 Redis 載入
+            if (_useRedis)
+            {
+                try
+                {
+                    var histJson = _redisDb.StringGet(HISTORIES_REDIS_KEY);
+                    if (!histJson.IsNullOrEmpty)
+                    {
+                        var dict = JsonSerializer.Deserialize<Dictionary<string, List<ConversationMessage>>>(histJson.ToString());
+                        if (dict != null) _channelHistories = dict;
+                    }
+
+                    var sumJson = _redisDb.StringGet(SUMMARIES_REDIS_KEY);
+                    if (!sumJson.IsNullOrEmpty)
+                    {
+                        var sums = JsonSerializer.Deserialize<Dictionary<string, string>>(sumJson.ToString());
+                        if (sums != null) _channelSummaries = sums;
+                    }
+
+                    var total = _channelHistories.Values.Sum(v => v.Count);
+                    Console.WriteLine($"[OpenRouter Memory] Redis 載入 {_channelHistories.Count} 個頻道、{total} 條記錄、{_channelSummaries.Count} 個摘要");
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[OpenRouter Memory] Redis 載入失敗，改用檔案: {ex.Message}");
+                }
+            }
+
+            // 從 txt 載入（備援）
             try
             {
-                if (!File.Exists(_memoryFilePath)) return;
-
-                var json = File.ReadAllText(_memoryFilePath, Encoding.UTF8);
-                if (string.IsNullOrWhiteSpace(json)) return;
-
-                var dict = JsonSerializer.Deserialize<Dictionary<string, List<ConversationMessage>>>(json);
-                if (dict != null)
+                if (File.Exists(_memoryFilePath))
                 {
-                    _channelHistories = dict;
-                    var total = _channelHistories.Values.Sum(v => v.Count);
-                    Console.WriteLine($"[OpenRouter Memory] 已載入 {_channelHistories.Count} 個頻道、共 {total} 條對話記錄");
+                    var json = File.ReadAllText(_memoryFilePath, Encoding.UTF8);
+                    if (!string.IsNullOrWhiteSpace(json))
+                    {
+                        var dict = JsonSerializer.Deserialize<Dictionary<string, List<ConversationMessage>>>(json);
+                        if (dict != null)
+                        {
+                            _channelHistories = dict;
+                            var total = _channelHistories.Values.Sum(v => v.Count);
+                            Console.WriteLine($"[OpenRouter Memory] 檔案載入 {_channelHistories.Count} 個頻道、{total} 條記錄");
+                        }
+                    }
+                }
+
+                if (File.Exists(_summaryFilePath))
+                {
+                    var json = File.ReadAllText(_summaryFilePath, Encoding.UTF8);
+                    if (!string.IsNullOrWhiteSpace(json))
+                    {
+                        var sums = JsonSerializer.Deserialize<Dictionary<string, string>>(json);
+                        if (sums != null) _channelSummaries = sums;
+                    }
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[OpenRouter Memory Error] 載入記憶失敗: {ex.Message}");
+                Console.WriteLine($"[OpenRouter Memory Error] 載入失敗: {ex.Message}");
                 _channelHistories = new();
+                _channelSummaries = new();
             }
         }
 
@@ -126,28 +224,59 @@ namespace MusicBot2.Service
             await _saveLock.WaitAsync();
             try
             {
-                var directory = Path.GetDirectoryName(_memoryFilePath);
-                if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
+                var jsonOptions = new JsonSerializerOptions
                 {
-                    Directory.CreateDirectory(directory);
-                }
-
-                var options = new JsonSerializerOptions
-                {
-                    WriteIndented = true,
+                    WriteIndented = false,
                     Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
                 };
 
-                var json = JsonSerializer.Serialize(_channelHistories, options);
-                await File.WriteAllTextAsync(_memoryFilePath, json, Encoding.UTF8);
+                var histJson = JsonSerializer.Serialize(_channelHistories, jsonOptions);
+
+                if (_useRedis)
+                {
+                    await _redisDb.StringSetAsync(HISTORIES_REDIS_KEY, histJson);
+                }
+                else
+                {
+                    var dir = Path.GetDirectoryName(_memoryFilePath);
+                    if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
+                    await File.WriteAllTextAsync(_memoryFilePath, histJson, Encoding.UTF8);
+                }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[OpenRouter Memory Error] 儲存記憶失敗: {ex.Message}");
+                Console.WriteLine($"[OpenRouter Memory Error] 儲存失敗: {ex.Message}");
             }
             finally
             {
                 _saveLock.Release();
+            }
+        }
+
+        private async Task SaveSummariesAsync()
+        {
+            try
+            {
+                var jsonOptions = new JsonSerializerOptions
+                {
+                    Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+                };
+                var json = JsonSerializer.Serialize(_channelSummaries, jsonOptions);
+
+                if (_useRedis)
+                {
+                    await _redisDb.StringSetAsync(SUMMARIES_REDIS_KEY, json);
+                }
+                else
+                {
+                    var dir = Path.GetDirectoryName(_summaryFilePath);
+                    if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
+                    await File.WriteAllTextAsync(_summaryFilePath, json, Encoding.UTF8);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[OpenRouter Memory Error] 摘要儲存失敗: {ex.Message}");
             }
         }
 
@@ -156,12 +285,15 @@ namespace MusicBot2.Service
             if (string.IsNullOrEmpty(channelKey))
             {
                 _channelHistories.Clear();
+                _channelSummaries.Clear();
             }
-            else if (_channelHistories.ContainsKey(channelKey))
+            else
             {
                 _channelHistories.Remove(channelKey);
+                _channelSummaries.Remove(channelKey);
             }
             await SaveMemoryAsync();
+            await SaveSummariesAsync();
             Console.WriteLine($"[OpenRouter Memory] 對話記憶已清除 ({channelKey ?? "ALL"})");
         }
 
@@ -173,6 +305,12 @@ namespace MusicBot2.Service
                 _channelHistories[channelKey] = list;
             }
             return list;
+        }
+
+        private string GetChannelSummary(string channelKey)
+        {
+            _channelSummaries.TryGetValue(channelKey, out var summary);
+            return summary;
         }
 
         private List<ConversationMessage> GetRecentMessages(string channelKey)
@@ -189,6 +327,53 @@ namespace MusicBot2.Service
             return recent;
         }
 
+        // 當 history 太長時，把舊對話用 AI 摘要後丟掉，避免每次送太多 token
+        private async Task SummarizeIfNeededAsync(string channelKey)
+        {
+            var history = GetHistory(channelKey);
+            if (history.Count <= MaxTotalMessages) return;
+            if (_summarizingChannels.Contains(channelKey)) return;
+
+            _summarizingChannels.Add(channelKey);
+            try
+            {
+                var toSummarize = history.Take(SummarizeChunkSize).ToList();
+
+                var sb = new StringBuilder();
+                sb.AppendLine("請用100字以內的繁體中文，摘要以下對話的重點（保留重要人名、話題、關鍵事件），不要加任何開場白，直接輸出摘要：");
+                foreach (var msg in toSummarize)
+                {
+                    var speaker = msg.Role == "model" ? "爽世" : (msg.UserName ?? "使用者");
+                    sb.AppendLine($"{speaker}: {Truncate(msg.Text, 80)}");
+                }
+
+                var newSummary = await GenerateSimpleTextAsync(sb.ToString());
+
+                if (!string.IsNullOrWhiteSpace(newSummary))
+                {
+                    var existing = GetChannelSummary(channelKey);
+                    var combined = string.IsNullOrEmpty(existing)
+                        ? newSummary
+                        : $"{existing}\n（後來）{Truncate(newSummary, 200)}";
+
+                    _channelSummaries[channelKey] = Truncate(combined, 500);
+                    _channelHistories[channelKey] = history.Skip(SummarizeChunkSize).ToList();
+
+                    _ = SaveMemoryAsync();
+                    _ = SaveSummariesAsync();
+                    Console.WriteLine($"[OpenRouter Memory] 頻道 {channelKey} 已摘要 {SummarizeChunkSize} 則對話");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[OpenRouter Memory] 摘要失敗: {ex.Message}");
+            }
+            finally
+            {
+                _summarizingChannels.Remove(channelKey);
+            }
+        }
+
         #endregion
 
         /// <summary>
@@ -199,7 +384,11 @@ namespace MusicBot2.Service
             channelKey ??= user?.Guild?.Id.ToString() ?? "global";
 
             const int maxRetry = 2;
-            var systemPrompt = string.IsNullOrWhiteSpace(request.SystemInstruction) ? Persona : request.SystemInstruction;
+            var basePersona = string.IsNullOrWhiteSpace(request.SystemInstruction) ? Persona : request.SystemInstruction;
+            var summary = GetChannelSummary(channelKey);
+            var systemPrompt = string.IsNullOrEmpty(summary)
+                ? basePersona
+                : basePersona + $"\n\n[過去對話摘要]\n{summary}";
 
             string repliedText = repliedMessage == null ? "" : repliedMessage.Content;
 
@@ -278,7 +467,8 @@ namespace MusicBot2.Service
                             Temperature = request.Temperature,
                             TopP = request.TopP,
                             MaxTokens = request.MaxOutputTokens > 0 ? request.MaxOutputTokens : 512,
-                            Stop = new[] { "使用者名稱:", "\n使用者名稱" }
+                            Stop = new[] { "使用者名稱:", "\n使用者名稱" },
+                            Plugins = new List<OpenRouterPlugin> { new OpenRouterPlugin { Id = "web", MaxResults = 3 } }
                         };
 
                         var jsonOptions = new JsonSerializerOptions
@@ -364,26 +554,20 @@ namespace MusicBot2.Service
                             history.Add(new ConversationMessage
                             {
                                 Role = "user",
-                                Text = userMessageWithName,
+                                Text = Truncate(userMessageWithName, MaxMessageStoreLength),
                                 Timestamp = DateTime.Now,
                                 UserName = displayName
                             });
                             history.Add(new ConversationMessage
                             {
                                 Role = "model",
-                                Text = text,
+                                Text = Truncate(text, MaxMessageStoreLength),
                                 Timestamp = DateTime.Now,
                                 UserName = "爽世"
                             });
 
-                            if (history.Count > MaxTotalMessages)
-                            {
-                                _channelHistories[channelKey] = history
-                                    .Skip(history.Count - MaxTotalMessages)
-                                    .ToList();
-                            }
-
                             _ = SaveMemoryAsync();
+                            _ = SummarizeIfNeededAsync(channelKey);
                         }
                         Console.WriteLine($"[OpenRouter] Model:{model}=> {Truncate(text, 30)}");
 
@@ -410,7 +594,7 @@ namespace MusicBot2.Service
         {
             const int maxRetry = 2;
 
-            foreach (var model in _models)
+            foreach (var model in _modelsForSimpleText)
             {
                 for (int retry = 0; retry < maxRetry; retry++)
                 {

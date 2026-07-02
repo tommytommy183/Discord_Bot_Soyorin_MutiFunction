@@ -113,7 +113,7 @@ public class Program
                 new GoogleAIStudioService(googleAIStudioApiKey, googleAIStudioApiKey2)
                 )
             .AddSingleton<OpenRouterService>(sp =>
-                  new OpenRouterService(openRouterApiKey)
+                  new OpenRouterService(openRouterApiKey, redisConn)
                   )
             .AddSingleton<TRPGService>(sp =>
                   new TRPGService(openRouterApiKey, redisConn)
