@@ -1,4 +1,5 @@
-﻿using MusicBot2.Models;
+﻿using MusicBot2.Helpers;
+using MusicBot2.Models;
 using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
@@ -49,6 +50,18 @@ namespace MusicBot2.Service
 
                 var content = await response.Content.ReadAsStringAsync();
                 var results = JsonConvert.DeserializeObject<List<LyricsResponse>>(content);
+
+                if (results != null)
+                {
+                    foreach (var result in results)
+                    {
+                        if (!string.IsNullOrWhiteSpace(result.plainLyrics) &&
+                            JapaneseTextHelper.IsLikelyJapanese(result.plainLyrics))
+                        {
+                            result.plainLyrics = JapaneseTextHelper.AddFuriganaToLyrics(result.plainLyrics);
+                        }
+                    }
+                }
 
                 return results;
             }

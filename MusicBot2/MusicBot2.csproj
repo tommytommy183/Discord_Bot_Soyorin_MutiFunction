@@ -26,6 +26,7 @@
 		<PackageReference Include="Sodium.Core" Version="1.4.1" />
 		<PackageReference Include="StackExchange.Redis" Version="2.13.1" />
 		<PackageReference Include="NAudio" Version="2.3.0" />
+		<PackageReference Include="NMeCab.Core" Version="0.10.0" />
 	</ItemGroup>
 	<ItemGroup>
 	  <None Update="appsettings.json">
