@@ -1415,6 +1415,126 @@ HP為0就是真的死亡，不會再有後續動作
             }
         }
 
+        // 計算屬性克制關係的輔助方法
+        private string CalculateTypeAdvantage(List<string> attackerTypes, List<string> defenderTypes)
+        {
+            // 定義屬性克制關係
+            var superEffective = new Dictionary<string, List<string>>
+            {
+                ["normal"] = new List<string>(),
+                ["fire"] = new List<string> { "grass", "ice", "bug", "steel" },
+                ["water"] = new List<string> { "fire", "ground", "rock" },
+                ["electric"] = new List<string> { "water", "flying" },
+                ["grass"] = new List<string> { "water", "ground", "rock" },
+                ["ice"] = new List<string> { "grass", "ground", "flying", "dragon" },
+                ["fighting"] = new List<string> { "normal", "ice", "rock", "dark", "steel" },
+                ["poison"] = new List<string> { "grass", "fairy" },
+                ["ground"] = new List<string> { "fire", "electric", "poison", "rock", "steel" },
+                ["flying"] = new List<string> { "grass", "fighting", "bug" },
+                ["psychic"] = new List<string> { "fighting", "poison" },
+                ["bug"] = new List<string> { "grass", "psychic", "dark" },
+                ["rock"] = new List<string> { "fire", "ice", "flying", "bug" },
+                ["ghost"] = new List<string> { "psychic", "ghost" },
+                ["dragon"] = new List<string> { "dragon" },
+                ["dark"] = new List<string> { "psychic", "ghost" },
+                ["steel"] = new List<string> { "ice", "rock", "fairy" },
+                ["fairy"] = new List<string> { "fighting", "dragon", "dark" }
+            };
+
+            var notVeryEffective = new Dictionary<string, List<string>>
+            {
+                ["normal"] = new List<string> { "rock", "steel" },
+                ["fire"] = new List<string> { "fire", "water", "rock", "dragon" },
+                ["water"] = new List<string> { "water", "grass", "dragon" },
+                ["electric"] = new List<string> { "electric", "grass", "dragon" },
+                ["grass"] = new List<string> { "fire", "grass", "poison", "flying", "bug", "dragon", "steel" },
+                ["ice"] = new List<string> { "fire", "water", "ice", "steel" },
+                ["fighting"] = new List<string> { "poison", "flying", "psychic", "bug", "fairy" },
+                ["poison"] = new List<string> { "poison", "ground", "rock", "ghost" },
+                ["ground"] = new List<string> { "grass", "bug" },
+                ["flying"] = new List<string> { "electric", "rock", "steel" },
+                ["psychic"] = new List<string> { "psychic", "steel" },
+                ["bug"] = new List<string> { "fire", "fighting", "poison", "flying", "ghost", "steel", "fairy" },
+                ["rock"] = new List<string> { "fighting", "ground", "steel" },
+                ["ghost"] = new List<string> { "dark" },
+                ["dragon"] = new List<string> { "steel" },
+                ["dark"] = new List<string> { "fighting", "dark", "fairy" },
+                ["steel"] = new List<string> { "fire", "water", "electric", "steel" },
+                ["fairy"] = new List<string> { "fire", "poison", "steel" }
+            };
+
+            var immunity = new Dictionary<string, List<string>>
+            {
+                ["normal"] = new List<string> { "ghost" },
+                ["fighting"] = new List<string> { "ghost" },
+                ["poison"] = new List<string> { "steel" },
+                ["ground"] = new List<string> { "flying" },
+                ["ghost"] = new List<string> { "normal" },
+                ["electric"] = new List<string> { "ground" },
+                ["psychic"] = new List<string> { "dark" },
+                ["dragon"] = new List<string> { "fairy" }
+            };
+
+            var result = new System.Text.StringBuilder();
+            result.AppendLine($"玩家1的屬性: {string.Join(", ", attackerTypes)}");
+            result.AppendLine($"玩家2的屬性: {string.Join(", ", defenderTypes)}");
+            result.AppendLine();
+
+            // 計算玩家1攻擊玩家2的效果
+            result.AppendLine("【玩家1 → 玩家2】");
+            double player1Multiplier = 1.0;
+            foreach (var atkType in attackerTypes)
+            {
+                foreach (var defType in defenderTypes)
+                {
+                    if (immunity.ContainsKey(atkType) && immunity[atkType].Contains(defType))
+                    {
+                        player1Multiplier = 0;
+                        result.AppendLine($"  ❌ {atkType} 對 {defType} 無效 (0x)");
+                    }
+                    else if (superEffective.ContainsKey(atkType) && superEffective[atkType].Contains(defType))
+                    {
+                        player1Multiplier *= 2.0;
+                        result.AppendLine($"  ✅ {atkType} 對 {defType} 效果絕佳 (2x)");
+                    }
+                    else if (notVeryEffective.ContainsKey(atkType) && notVeryEffective[atkType].Contains(defType))
+                    {
+                        player1Multiplier *= 0.5;
+                        result.AppendLine($"  ⚠️ {atkType} 對 {defType} 效果不好 (0.5x)");
+                    }
+                }
+            }
+            result.AppendLine($"  總倍率: {player1Multiplier}x");
+            result.AppendLine();
+
+            // 計算玩家2攻擊玩家1的效果
+            result.AppendLine("【玩家2 → 玩家1】");
+            double player2Multiplier = 1.0;
+            foreach (var atkType in defenderTypes)
+            {
+                foreach (var defType in attackerTypes)
+                {
+                    if (immunity.ContainsKey(atkType) && immunity[atkType].Contains(defType))
+                    {
+                        player2Multiplier = 0;
+                        result.AppendLine($"  ❌ {atkType} 對 {defType} 無效 (0x)");
+                    }
+                    else if (superEffective.ContainsKey(atkType) && superEffective[atkType].Contains(defType))
+                    {
+                        player2Multiplier *= 2.0;
+                        result.AppendLine($"  ✅ {atkType} 對 {defType} 效果絕佳 (2x)");
+                    }
+                    else if (notVeryEffective.ContainsKey(atkType) && notVeryEffective[atkType].Contains(defType))
+                    {
+                        player2Multiplier *= 0.5;
+                        result.AppendLine($"  ⚠️ {atkType} 對 {defType} 效果不好 (0.5x)");
+                    }
+                }
+            }
+            result.AppendLine($"  總倍率: {player2Multiplier}x");
+
+            return result.ToString();
+        }
 
         private async Task<(Embed embed, ComponentBuilder component)> ExecuteBattleAsync(
     ulong player1Id, string player1Name, PokeGamePokemon pokemon1,
@@ -1422,6 +1542,9 @@ HP為0就是真的死亡，不會再有後續動作
         {
             try
             {
+                // 計算屬性克制關係
+                var typeAdvantageInfo = CalculateTypeAdvantage(pokemon1.Types, pokemon2.Types);
+
                 // 準備對戰資訊給 AI 判斷
                 string battlePrompt = $@"請模擬一場精彩的pokemon對戰，並判斷勝負。
 
@@ -1438,11 +1561,30 @@ HP為0就是真的死亡，不會再有後續動作
    - 特攻: {pokemon2.SpecialAttack}, 特防: {pokemon2.SpecialDefense}, 速度: {pokemon2.Speed}
    - 是否為閃光: {(pokemon2.isShiny ? "是" : "否")}
 
+【屬性克制分析】
+{typeAdvantageInfo}
+
+【判斷規則】
+1. 屬性克制關係：
+   - 效果絕佳 (2x傷害)：攻擊方屬性剋制防守方
+   - 效果不好 (0.5x傷害)：攻擊方屬性被防守方抵抗
+   - 無效 (0x傷害)：攻擊方屬性完全無效
+   - 普通 (1x傷害)：無特殊克制關係
+   - 雙屬性時傷害倍率會相乘（例如：水系攻擊地面/岩石 = 2x × 2x = 4x）
+
+2. 綜合判斷因素：
+   - 能力值差異（HP、攻擊、防禦、特攻、特防、速度）
+   - 屬性克制優勢（這是最重要的因素！）
+   - 速度優勢（先手攻擊的優勢）
+
 請根據以上數據和屬性相剋關係，判斷誰會獲勝，並用繁體中文描述一段精彩的對戰過程。
-要以該pokemon真實的技能來敘述，期間有自訂名稱的話就要叫自訂名稱，沒有的話就叫真實名稱。
-如果是閃光的，對話中要提到閃光的特效，但閃光完全不影響戰鬥結果。
-HP為0就是真的死亡，不會再有後續動作
-最後請在描述的最後一行明確說明勝者是誰，格式為「勝者：[玩家名稱]」";
+要求：
+- 要以該pokemon真實的技能來敘述
+- 有自訂名稱就叫自訂名稱，沒有就叫真實名稱
+- 如果是閃光的，要提到閃光特效（但不影響戰鬥結果）
+- 必須考慮屬性克制關係！如果某方有明顯的屬性優勢（2x以上），這應該是決定勝負的關鍵因素
+- HP為0就是真的死亡，不會再有後續動作
+- 最後請在描述的最後一行明確說明勝者是誰，格式為「勝者：[玩家名稱]」";
 
                 // 呼叫 AI 判斷對戰結果
                 var aiResponse = await _aiService.GenerateSimpleTextAsync(battlePrompt);
