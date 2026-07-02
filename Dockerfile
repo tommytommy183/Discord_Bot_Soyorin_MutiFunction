@@ -82,9 +82,7 @@ RUN apt-get update && \
         libsodium23 \
         libopus0 \
         libssl3 \
-        ca-certificates \
-        mecab \
-        mecab-ipadic-utf8 && \
+        ca-certificates && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 

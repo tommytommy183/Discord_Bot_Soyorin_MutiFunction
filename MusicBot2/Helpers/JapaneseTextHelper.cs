@@ -242,6 +242,7 @@ namespace MusicBot2.Helpers
 
                 var paths = new[]
                 {
+                    AppContext.BaseDirectory,  // LibNMeCab.IpaDicBin 部署在此
                     Environment.GetEnvironmentVariable("MECAB_DIC_DIR"),
                     "/var/lib/mecab/dic/debian-utf8",
                     "/usr/share/mecab/dic/ipadic",
@@ -252,7 +253,7 @@ namespace MusicBot2.Helpers
                 {
                     try
                     {
-                        _mecabTagger = MeCabIpaDicTagger.Open(path);
+                        _mecabTagger = MeCabIpaDicTagger.Create(path);
                         Console.WriteLine($"[JapaneseTextHelper] MeCab 初始化成功: {path}");
                         return _mecabTagger;
                     }
