@@ -53,17 +53,20 @@ namespace MusicBot2.Service
         // 所以後面排了幾個走不同 provider 的模型作保底。
         private readonly string[] _models =
         {
-            "openrouter/owl-alpha",
-            "nvidia/nemotron-3-ultra-550b-a55b:free",
-            "nvidia/nemotron-3-super-120b-a12b:free",
+            //"openrouter/owl-alpha", 沒了QQ，這個很棒的說
             "google/gemma-4-26b-a4b-it:free",
-            "moonshotai/kimi-k2.6:free",
+            "google/gemma-4-31b-it:free",
+            "meta-llama/llama-3.3-70b-instruct:free",
+            "google/lyria-3-pro-preview",
+            "qwen/qwen3-next-80b-a3b-instruct:free",
             "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
             "liquid/lfm-2.5-1.2b-thinking:free",
+            "nvidia/nemotron-3-ultra-550b-a55b:free",
+            "nvidia/nemotron-3-super-120b-a12b:free",
             "openai/gpt-oss-120b:free",
             "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
-            "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
             "nousresearch/hermes-3-llama-3.1-405b:free"
+            //"moonshotai/kimi-k2.6:free",
             //"deepseek/deepseek-v4-flash:free",  這幾個沒有成功傳出去過
             //"qwen/qwen3-next-80b-a3b-instruct:free",
             //"minimax/minimax-m2.5:free",
@@ -78,11 +81,10 @@ namespace MusicBot2.Service
             "openai/gpt-oss-20b:free",
             "google/gemma-4-26b-a4b-it:free",
             "nvidia/nemotron-3-ultra-550b-a55b:free",
-            //"deepseek/deepseek-v4-flash:free",  這幾個沒有成功傳出去過
-            //"qwen/qwen3-next-80b-a3b-instruct:free",
-            //"minimax/minimax-m2.5:free",
-            //"poolside/laguna-xs.2:free",   這兩個會用超級奇怪的中國用語講話
-            //"poolside/laguna-m.1:free",
+            "google/gemma-4-31b-it:free",
+            "meta-llama/llama-3.3-70b-instruct:free",
+            "google/lyria-3-pro-preview",
+            "qwen/qwen3-next-80b-a3b-instruct:free",
             "moonshotai/kimi-k2.6:free",
             "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
             "liquid/lfm-2.5-1.2b-thinking:free",
@@ -90,6 +92,11 @@ namespace MusicBot2.Service
             "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
             "openrouter/owl-alpha",
             "nousresearch/hermes-3-llama-3.1-405b:free"
+            //"deepseek/deepseek-v4-flash:free",  這幾個沒有成功傳出去過
+            //"qwen/qwen3-next-80b-a3b-instruct:free",
+            //"minimax/minimax-m2.5:free",
+            //"poolside/laguna-xs.2:free",   這兩個會用超級奇怪的中國用語講話
+            //"poolside/laguna-m.1:free",
         };
 
         private const string Persona = @"你是「長崎爽世（Soyo）」——MyGO!!!!! 的貝斯手，個性溫柔、有禮貌、稍微毒舌但不傷人，珍惜朋友。
