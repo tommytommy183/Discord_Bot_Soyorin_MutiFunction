@@ -491,7 +491,7 @@ namespace MusicBot2.Service
                             TopP = request.TopP,
                             MaxTokens = request.MaxOutputTokens > 0 ? request.MaxOutputTokens : 512,
                             Stop = new[] { "使用者名稱:", "\n使用者名稱" },
-                            Plugins = new List<OpenRouterPlugin> { new OpenRouterPlugin { Id = "web", MaxResults = 3 } }
+                            //Plugins = new List<OpenRouterPlugin> { new OpenRouterPlugin { Id = "web", MaxResults = 3 } }
                         };
 
                         var jsonOptions = new JsonSerializerOptions
