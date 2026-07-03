@@ -1,5 +1,6 @@
 ﻿using Discord;
 using Discord.WebSocket;
+using ElevenLabs.Models;
 using MusicBot2.Models;
 using RiotSharp.Endpoints.StatusEndpoint;
 using StackExchange.Redis;
@@ -43,7 +44,7 @@ namespace MusicBot2.Service
         private readonly HashSet<string> _summarizingChannels = new();
 
         private const int MaxRecentMessages = 8;
-        private const int MaxTotalMessages = 30;
+        private const int MaxTotalMessages = 10;
         private const int MaxContextChars = 2500;
         private const int SummarizeChunkSize = 20;
         private const int MaxMessageStoreLength = 300;
@@ -502,6 +503,9 @@ namespace MusicBot2.Service
 
                         Console.WriteLine($"[OpenRouter] ch:{channelKey} model:{model} msgs:{messages.Count}");
 
+                        Console.WriteLine($"[OpenRouter] Request:{json}");
+
+
                         var response = await _httpClient.PostAsync(
                             "https://openrouter.ai/api/v1/chat/completions",
                             new StringContent(json, Encoding.UTF8, "application/json")
@@ -590,7 +594,7 @@ namespace MusicBot2.Service
                             _ = SaveMemoryAsync();
                             _ = SummarizeIfNeededAsync(channelKey);
                         }
-                        Console.WriteLine($"[OpenRouter] Model:{model}=> {Truncate(text, 30)}");
+                        Console.WriteLine($"[OpenRouter] Model:{model}=> {text}");
 
                         return text;
                     }
@@ -748,6 +752,10 @@ namespace MusicBot2.Service
             if (string.IsNullOrWhiteSpace(text)) return text;
 
             text = text.Trim();
+
+            // 移除 reasoning model 的思考區塊（Qwen3、Nemotron reasoning 等）
+            text = Regex.Replace(text, @"<think>[\s\S]*?</think>", "", RegexOptions.IgnoreCase);
+            text = Regex.Replace(text, @"<thinking>[\s\S]*?</thinking>", "", RegexOptions.IgnoreCase);
 
             text = Regex.Replace(text, @"^\s*[\[\(【]?\s*(爽世|soyo|Soyo|SOYO|長崎爽世)\s*[\]\)】]?\s*[:：]\s*", "");
             text = Regex.Replace(text, @"\*[^*\n]{1,40}\*", "");
