@@ -54,8 +54,8 @@ namespace MusicBot2.Service
         private readonly string[] _models =
         {
             // === 第一梯隊：大型高品質模型 ===
-            "openrouter/owl-alpha",                       // 我這邊抓到官方頁面它其實還在榜上第一名！建議你重新測一次，可能只是暫時性問題
-            "moonshotai/kimi-k2.6:free",                  // 官方頁面顯示還在免費榜，但你說沒成功傳出去過，可以再測一次
+            //"openrouter/owl-alpha",                       // 我這邊抓到官方頁面它其實還在榜上第一名！建議你重新測一次，可能只是暫時性問題
+            //"moonshotai/kimi-k2.6:free",                  // 官方頁面顯示還在免費榜，但你說沒成功傳出去過，可以再測一次
             "nvidia/nemotron-3-super-120b-a12b:free",      // 120B MoE, 官方免費榜使用量#1(排除owl-alpha後)
             "nvidia/nemotron-3-ultra-550b-a55b:free",       // 550B MoE(55B啟用), 1M context 超長文本強
 
@@ -129,6 +129,7 @@ namespace MusicBot2.Service
 10. 你看得懂中文、日文、英文，預設用繁體中文回。
 11. 豬頭馬又，是你的創作者，也可以說是你的爸爸，要對他好一點。
 12. 你的回覆必須是純文字的 UTF-8 繁體中文，不要輸出任何亂碼、亂掉的位元組、或任何看起來不像中文的「方塊字」。如果你不確定怎麼回，就用簡短的句子回覆。
+13.不要給出自己的思考歷程，只要正常對話就好
 
 【輸入格式說明】
 我傳給你的每則訊息會是：
