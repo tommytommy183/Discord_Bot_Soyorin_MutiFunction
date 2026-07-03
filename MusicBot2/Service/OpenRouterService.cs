@@ -28,6 +28,7 @@ namespace MusicBot2.Service
     {
         private readonly string _apiKey;
         private readonly HttpClient _httpClient;
+        private readonly MediaWikiService _wikiService;
         private readonly string _memoryFilePath = Path.Combine("TxtFolder", "AI_Memory_OpenRouter.txt");
         private readonly string _summaryFilePath = Path.Combine("TxtFolder", "AI_Summary_OpenRouter.txt");
 
@@ -55,7 +56,7 @@ namespace MusicBot2.Service
         private readonly string[] _models =
         {
             // === 第一梯隊：大型高品質模型 ===
-            //"openrouter/owl-alpha",                       // 我這邊抓到官方頁面它其實還在榜上第一名！建議你重新測一次，可能只是暫時性問題
+            "openrouter/owl-alpha",                       // 我這邊抓到官方頁面它其實還在榜上第一名！建議你重新測一次，可能只是暫時性問題
             //"moonshotai/kimi-k2.6:free",                  // 官方頁面顯示還在免費榜，但你說沒成功傳出去過，可以再測一次
             "nvidia/nemotron-3-super-120b-a12b:free",      // 120B MoE, 官方免費榜使用量#1(排除owl-alpha後)
             "nvidia/nemotron-3-ultra-550b-a55b:free",       // 550B MoE(55B啟用), 1M context 超長文本強
@@ -138,9 +139,32 @@ namespace MusicBot2.Service
 訊息: xxx
 請根據使用者名稱判斷對話對象並自然回應。回應時不要套用這個格式，直接講話。";
 
+        // Tool definition：讓模型知道可以呼叫 wiki 查詢
+        private static readonly List<OpenRouterTool> _tools = new()
+        {
+            new OpenRouterTool
+            {
+                Function = new OpenRouterFunctionDef
+                {
+                    Name = "search_wiki",
+                    Description = "搜尋維基百科獲取事實資訊。當你需要查詢人物、地點、事件、作品等客觀知識時使用。不要用來查天氣或即時資訊。",
+                    Parameters = new
+                    {
+                        type = "object",
+                        properties = new
+                        {
+                            query = new { type = "string", description = "搜尋關鍵字，用繁體中文或日文" }
+                        },
+                        required = new[] { "query" }
+                    }
+                }
+            }
+        };
+
         public OpenRouterService(string apiKey, string redisConnectionString = null)
         {
             _apiKey = apiKey;
+            _wikiService = new MediaWikiService();
             _httpClient = new HttpClient
             {
                 Timeout = TimeSpan.FromSeconds(60)
@@ -483,6 +507,11 @@ namespace MusicBot2.Service
                         }
                         messages.Add(new OpenRouterMessage { Role = "user", Content = userMessageWithName });
 
+                        var jsonOptions = new JsonSerializerOptions
+                        {
+                            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+                        };
+
                         var apiRequest = new OpenRouterChatRequest
                         {
                             Model = model,
@@ -491,80 +520,83 @@ namespace MusicBot2.Service
                             TopP = request.TopP,
                             MaxTokens = request.MaxOutputTokens > 0 ? request.MaxOutputTokens : 512,
                             Stop = new[] { "使用者名稱:", "\n使用者名稱" },
-                            //Plugins = new List<OpenRouterPlugin> { new OpenRouterPlugin { Id = "web", MaxResults = 3 } }
+                            Tools = _tools,
+                            ToolChoice = "auto"
                         };
-
-                        var jsonOptions = new JsonSerializerOptions
-                        {
-                            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-                        };
-
-                        var json = JsonSerializer.Serialize(apiRequest, jsonOptions);
 
                         Console.WriteLine($"[OpenRouter] ch:{channelKey} model:{model} msgs:{messages.Count}");
 
-                        Console.WriteLine($"[OpenRouter] Request:{json}");
+                        // ── 第一次 API call ────────────────────────────────
+                        var r1 = await CallOnceAsync(apiRequest, jsonOptions, model, retry);
+                        if (r1.ShouldBreak) break;
+                        if (r1.ShouldContinue) continue;
 
+                        string text = r1.Text;
 
-                        var response = await _httpClient.PostAsync(
-                            "https://openrouter.ai/api/v1/chat/completions",
-                            new StringContent(json, Encoding.UTF8, "application/json")
-                        );
-
-                        var resultJson = await ReadAsUtf8StringAsync(response);
-
-                        if (!response.IsSuccessStatusCode)
+                        // ── Tool calling：模型決定查 wiki ──────────────────
+                        if (r1.ToolCalls != null && r1.ToolCalls.Count > 0)
                         {
-                            Console.WriteLine($"[OpenRouter Error] Model:{model} Retry:{retry} Status:{(int)response.StatusCode} => {Truncate(resultJson, 400)}");
-
-                            int status = (int)response.StatusCode;
-
-                            // 429：上游限流；嘗試讀 retry_after_seconds，且最多等一次後就換下一個模型
-                            if (status == 429)
+                            messages.Add(new OpenRouterMessage
                             {
-                                int waitMs = ParseRetryAfterMs(resultJson, response);
-                                if (retry == 0 && waitMs > 0 && waitMs <= 5000)
+                                Role = "assistant",
+                                ToolCalls = r1.ToolCalls
+                            });
+
+                            foreach (var tc in r1.ToolCalls)
+                            {
+                                if (tc.Function?.Name != "search_wiki") continue;
+
+                                string wikiQuery = null;
+                                try
                                 {
-                                    await Task.Delay(waitMs);
-                                    continue;
+                                    using var argDoc = JsonDocument.Parse(tc.Function.Arguments ?? "{}");
+                                    if (argDoc.RootElement.TryGetProperty("query", out var qEl))
+                                        wikiQuery = qEl.GetString();
                                 }
-                                break; // 換下一個 model
+                                catch { }
+
+                                string toolContent;
+                                if (!string.IsNullOrWhiteSpace(wikiQuery))
+                                {
+                                    Console.WriteLine($"[OpenRouter] wiki 查詢: {wikiQuery}");
+                                    var wikiRes = await _wikiService.SearchAsync(wikiQuery);
+                                    toolContent = wikiRes.Found
+                                        ? $"【{wikiRes.Title}】（{wikiRes.Lang} 維基）\n{wikiRes.Extract}"
+                                        : $"查無資料：{wikiRes.ErrorMessage}";
+                                }
+                                else
+                                {
+                                    toolContent = "查詢參數缺失";
+                                }
+
+                                messages.Add(new OpenRouterMessage
+                                {
+                                    Role = "tool",
+                                    ToolCallId = tc.Id,
+                                    Name = "search_wiki",
+                                    Content = toolContent
+                                });
                             }
 
-                            if (status == 503 || status == 500 || status == 502 || status == 504)
-                            {
-                                await Task.Delay(800 * (retry + 1));
-                                continue;
-                            }
+                            // ── 第二次 API call（帶 wiki 結果，不再提供 tool 避免無限循環）──
+                            apiRequest.Messages = messages;
+                            apiRequest.Tools = null;
+                            apiRequest.ToolChoice = null;
 
-                            if (status == 404) break;
-                            break;
-                        }
-
-                        using var doc = JsonDocument.Parse(resultJson);
-                        if (!doc.RootElement.TryGetProperty("choices", out var choices) || choices.GetArrayLength() == 0)
-                        {
-                            Console.WriteLine($"[OpenRouter] 空回應: {Truncate(resultJson, 400)}");
-                            break;
-                        }
-
-                        var choice = choices[0];
-                        string finishReason = choice.TryGetProperty("finish_reason", out var fr) ? fr.GetString() : null;
-
-                        string text = null;
-                        if (choice.TryGetProperty("message", out var msgEl) &&
-                            msgEl.TryGetProperty("content", out var contentEl))
-                        {
-                            text = contentEl.GetString();
+                            var r2 = await CallOnceAsync(apiRequest, jsonOptions, model, retry);
+                            if (r2.ShouldBreak) break;
+                            if (r2.ShouldContinue) continue;
+                            text = r2.Text;
                         }
 
                         if (string.IsNullOrWhiteSpace(text))
                         {
-                            if (string.Equals(finishReason, "length", StringComparison.OrdinalIgnoreCase))
+                            if (string.Equals(r1.FinishReason, "length", StringComparison.OrdinalIgnoreCase))
                                 break;
+                            break;
                         }
 
-                        // 部分實驗/小參數 free model 會吐出亂碼 (UTF-8 被誤解為 Big5 的 mojibake 或一堆 \uFFFD)，直接換下一個 model
+                        // 部分實驗/小參數 free model 會吐出亂碼，直接換下一個 model
                         if (IsLikelyMojibake(text))
                         {
                             Console.WriteLine($"[OpenRouter] 偵測到亂碼回應 (model:{model})，換下一個模型: {Truncate(text, 80)}");
@@ -747,6 +779,88 @@ namespace MusicBot2.Service
             return $"共 {_channelHistories.Count} 個頻道，user:{totalUser} / model:{totalModel}";
         }
 
+        private record ApiCallResult(
+            string Text,
+            bool ShouldBreak,
+            bool ShouldContinue,
+            List<OpenRouterToolCall> ToolCalls,
+            string FinishReason);
+
+        private async Task<ApiCallResult> CallOnceAsync(
+            OpenRouterChatRequest apiRequest,
+            JsonSerializerOptions jsonOptions,
+            string model,
+            int retry)
+        {
+            var json = JsonSerializer.Serialize(apiRequest, jsonOptions);
+            HttpResponseMessage response;
+            try
+            {
+                response = await _httpClient.PostAsync(
+                    "https://openrouter.ai/api/v1/chat/completions",
+                    new StringContent(json, Encoding.UTF8, "application/json")
+                );
+            }
+            catch (TaskCanceledException)
+            {
+                Console.WriteLine($"[OpenRouter Timeout] Model:{model} Retry:{retry}");
+                await Task.Delay(500 * (retry + 1));
+                return new ApiCallResult(null, false, true, null, null);
+            }
+
+            var resultJson = await ReadAsUtf8StringAsync(response);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                Console.WriteLine($"[OpenRouter Error] Model:{model} Retry:{retry} Status:{(int)response.StatusCode} => {Truncate(resultJson, 400)}");
+                int status = (int)response.StatusCode;
+
+                if (status == 429)
+                {
+                    int waitMs = ParseRetryAfterMs(resultJson, response);
+                    if (retry == 0 && waitMs > 0 && waitMs <= 5000)
+                    {
+                        await Task.Delay(waitMs);
+                        return new ApiCallResult(null, false, true, null, null);
+                    }
+                    return new ApiCallResult(null, true, false, null, null);
+                }
+                if (status is 503 or 500 or 502 or 504)
+                {
+                    await Task.Delay(800 * (retry + 1));
+                    return new ApiCallResult(null, false, true, null, null);
+                }
+                return new ApiCallResult(null, true, false, null, null);
+            }
+
+            using var doc = JsonDocument.Parse(resultJson);
+            if (!doc.RootElement.TryGetProperty("choices", out var choices) || choices.GetArrayLength() == 0)
+            {
+                Console.WriteLine($"[OpenRouter] 空回應: {Truncate(resultJson, 400)}");
+                return new ApiCallResult(null, true, false, null, null);
+            }
+
+            var choice = choices[0];
+            string finishReason = choice.TryGetProperty("finish_reason", out var fr) ? fr.GetString() : null;
+
+            // 檢查 tool_calls
+            List<OpenRouterToolCall> toolCalls = null;
+            if (choice.TryGetProperty("message", out var msgEl2) &&
+                msgEl2.TryGetProperty("tool_calls", out var tcEl) &&
+                tcEl.ValueKind == JsonValueKind.Array && tcEl.GetArrayLength() > 0)
+            {
+                toolCalls = JsonSerializer.Deserialize<List<OpenRouterToolCall>>(tcEl.GetRawText(), jsonOptions);
+            }
+
+            string text = null;
+            if (choice.TryGetProperty("message", out var msgEl) &&
+                msgEl.TryGetProperty("content", out var contentEl))
+            {
+                text = contentEl.GetString();
+            }
+
+            return new ApiCallResult(text, false, false, toolCalls, finishReason);
+        }
         private static string CleanResponse(string text)
         {
             if (string.IsNullOrWhiteSpace(text)) return text;
