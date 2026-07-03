@@ -139,26 +139,10 @@ namespace MusicBot2.Service
 訊息: xxx
 請根據使用者名稱判斷對話對象並自然回應。回應時不要套用這個格式，直接講話。";
 
-        // Tool definition：讓模型知道可以呼叫 wiki 查詢
-        private static readonly List<OpenRouterTool> _tools = new()
+        private static readonly string[] WikiTriggerKeywords =
         {
-            new OpenRouterTool
-            {
-                Function = new OpenRouterFunctionDef
-                {
-                    Name = "search_wiki",
-                    Description = "搜尋維基百科獲取事實資訊。當你需要查詢人物、地點、事件、作品等客觀知識時使用。不要用來查天氣或即時資訊。",
-                    Parameters = new
-                    {
-                        type = "object",
-                        properties = new
-                        {
-                            query = new { type = "string", description = "搜尋關鍵字，用繁體中文或日文" }
-                        },
-                        required = new[] { "query" }
-                    }
-                }
-            }
+            "查詢", "找尋", "尋找", "上網查", "上網搜", "搜尋", "查一下", "找一下",
+            "查查", "查看", "找找", "幫我查", "幫我找", "搜索", "幫查", "幫找"
         };
 
         public OpenRouterService(string apiKey, string redisConnectionString = null)
@@ -433,9 +417,29 @@ namespace MusicBot2.Service
             const int maxRetry = 2;
             var basePersona = string.IsNullOrWhiteSpace(request.SystemInstruction) ? Persona : request.SystemInstruction;
             var summary = GetChannelSummary(channelKey);
+            // 偵測查詢意圖，若有就先查 wiki 注入背景資料
+            var wikiQuery = ExtractWikiQuery(request.UserMessage);
+            string wikiContext = null;
+            if (wikiQuery != null)
+            {
+                try
+                {
+                    Console.WriteLine($"[OpenRouter] 偵測到查詢意圖，wiki 查詢: {wikiQuery}");
+                    var wikiRes = await _wikiService.SearchAsync(wikiQuery);
+                    if (wikiRes.Found)
+                        wikiContext = $"[背景資料 - 維基百科]\n【{wikiRes.Title}】\n{wikiRes.Extract}";
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[OpenRouter] wiki 查詢失敗: {ex.Message}");
+                }
+            }
+
             var systemPrompt = string.IsNullOrEmpty(summary)
                 ? basePersona
                 : basePersona + $"\n\n[過去對話摘要]\n{summary}";
+            if (wikiContext != null)
+                systemPrompt += $"\n\n{wikiContext}";
 
             string repliedText = repliedMessage == null ? "" : repliedMessage.Content;
 
@@ -519,79 +523,20 @@ namespace MusicBot2.Service
                             Temperature = request.Temperature,
                             TopP = request.TopP,
                             MaxTokens = request.MaxOutputTokens > 0 ? request.MaxOutputTokens : 512,
-                            Stop = new[] { "使用者名稱:", "\n使用者名稱" },
-                            Tools = _tools,
-                            ToolChoice = "auto"
+                            Stop = new[] { "使用者名稱:", "\n使用者名稱" }
                         };
 
                         Console.WriteLine($"[OpenRouter] ch:{channelKey} model:{model} msgs:{messages.Count}");
 
-                        // ── 第一次 API call ────────────────────────────────
-                        var r1 = await CallOnceAsync(apiRequest, jsonOptions, model, retry);
-                        if (r1.ShouldBreak) break;
-                        if (r1.ShouldContinue) continue;
+                        var r = await CallOnceAsync(apiRequest, jsonOptions, model, retry);
+                        if (r.ShouldBreak) break;
+                        if (r.ShouldContinue) continue;
 
-                        string text = r1.Text;
-
-                        // ── Tool calling：模型決定查 wiki ──────────────────
-                        if (r1.ToolCalls != null && r1.ToolCalls.Count > 0)
-                        {
-                            messages.Add(new OpenRouterMessage
-                            {
-                                Role = "assistant",
-                                ToolCalls = r1.ToolCalls
-                            });
-
-                            foreach (var tc in r1.ToolCalls)
-                            {
-                                if (tc.Function?.Name != "search_wiki") continue;
-
-                                string wikiQuery = null;
-                                try
-                                {
-                                    using var argDoc = JsonDocument.Parse(tc.Function.Arguments ?? "{}");
-                                    if (argDoc.RootElement.TryGetProperty("query", out var qEl))
-                                        wikiQuery = qEl.GetString();
-                                }
-                                catch { }
-
-                                string toolContent;
-                                if (!string.IsNullOrWhiteSpace(wikiQuery))
-                                {
-                                    Console.WriteLine($"[OpenRouter] wiki 查詢: {wikiQuery}");
-                                    var wikiRes = await _wikiService.SearchAsync(wikiQuery);
-                                    toolContent = wikiRes.Found
-                                        ? $"【{wikiRes.Title}】（{wikiRes.Lang} 維基）\n{wikiRes.Extract}"
-                                        : $"查無資料：{wikiRes.ErrorMessage}";
-                                }
-                                else
-                                {
-                                    toolContent = "查詢參數缺失";
-                                }
-
-                                messages.Add(new OpenRouterMessage
-                                {
-                                    Role = "tool",
-                                    ToolCallId = tc.Id,
-                                    Name = "search_wiki",
-                                    Content = toolContent
-                                });
-                            }
-
-                            // ── 第二次 API call（帶 wiki 結果，不再提供 tool 避免無限循環）──
-                            apiRequest.Messages = messages;
-                            apiRequest.Tools = null;
-                            apiRequest.ToolChoice = null;
-
-                            var r2 = await CallOnceAsync(apiRequest, jsonOptions, model, retry);
-                            if (r2.ShouldBreak) break;
-                            if (r2.ShouldContinue) continue;
-                            text = r2.Text;
-                        }
+                        string text = r.Text;
 
                         if (string.IsNullOrWhiteSpace(text))
                         {
-                            if (string.Equals(r1.FinishReason, "length", StringComparison.OrdinalIgnoreCase))
+                            if (string.Equals(r.FinishReason, "length", StringComparison.OrdinalIgnoreCase))
                                 break;
                             break;
                         }
@@ -861,6 +806,33 @@ namespace MusicBot2.Service
 
             return new ApiCallResult(text, false, false, toolCalls, finishReason);
         }
+        /// <summary>
+        /// 若訊息含查詢意圖關鍵字，解析出要搜尋的詞。
+        /// 優先抓括號/書名號內的文字，否則去掉觸發詞後取剩餘文字。
+        /// </summary>
+        private static string ExtractWikiQuery(string message)
+        {
+            if (string.IsNullOrWhiteSpace(message)) return null;
+            if (!WikiTriggerKeywords.Any(k => message.Contains(k, StringComparison.OrdinalIgnoreCase))) return null;
+
+            // 優先取引號/書名號內容
+            var bracketMatch = Regex.Match(message, @"[《「『\[""'](.+?)[》」』\]""']");
+            if (bracketMatch.Success)
+            {
+                var q = bracketMatch.Groups[1].Value.Trim();
+                if (q.Length >= 2) return q;
+            }
+
+            // 去掉觸發詞，再清掉常見問句助詞
+            var cleaned = message;
+            foreach (var kw in WikiTriggerKeywords.OrderByDescending(k => k.Length))
+                cleaned = cleaned.Replace(kw, " ", StringComparison.OrdinalIgnoreCase);
+            cleaned = Regex.Replace(cleaned, @"(幫我|請你?|一下|相關|資料|資訊|給我|甚麼|什麼|是誰|在哪|怎麼|如何|的?事情?|介紹)", "");
+            cleaned = cleaned.Trim(' ', '?', '？', '!', '！', '。', ',', '，');
+
+            return cleaned.Length >= 2 ? cleaned : null;
+        }
+
         private static string CleanResponse(string text)
         {
             if (string.IsNullOrWhiteSpace(text)) return text;
