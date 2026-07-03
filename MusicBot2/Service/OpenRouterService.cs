@@ -54,12 +54,14 @@ namespace MusicBot2.Service
         private readonly string[] _models =
         {
             //"openrouter/owl-alpha", 沒了QQ，這個很棒的說
-            "google/gemma-4-26b-a4b-it:free",
-            "google/gemma-4-31b-it:free",
             "meta-llama/llama-3.3-70b-instruct:free",
-            "google/lyria-3-pro-preview",
+            "meta-llama/llama-3.2-3b-instruct:free",
             "qwen/qwen3-next-80b-a3b-instruct:free",
             "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
+            "google/gemma-4-26b-a4b-it:free",
+            "google/gemma-4-31b-it:free",
+            "google/lyria-3-pro-preview",
+            "meta-llama/llama-3.3-70b-instruct:free",
             "liquid/lfm-2.5-1.2b-thinking:free",
             "nvidia/nemotron-3-ultra-550b-a55b:free",
             "nvidia/nemotron-3-super-120b-a12b:free",
@@ -542,7 +544,6 @@ namespace MusicBot2.Service
                         if (string.IsNullOrWhiteSpace(text))
                         {
                             if (string.Equals(finishReason, "length", StringComparison.OrdinalIgnoreCase))
-                                return "（嗯…等等，我再想一下）";
                             break;
                         }
 
