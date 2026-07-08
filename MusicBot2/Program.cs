@@ -102,6 +102,7 @@ public class Program
             .AddSingleton<Game2048Service>()
             .AddSingleton<Pick2Service>()
             .AddSingleton<PokeService>()
+            .AddSingleton<UselessApiService>()
             .AddSingleton<RVC_Service>()
             .AddSingleton<SetTextService>(setTextService)
             .AddSingleton<ElevenLabsService>(sp =>

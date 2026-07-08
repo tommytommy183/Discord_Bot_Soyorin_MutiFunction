@@ -37,8 +37,9 @@ namespace MusicBot2.SlahCommands
         private readonly TRPGService _trpgService;
         private readonly LyrisService _lyrisService;
         private readonly LyricsDisplayService _lyricsDisplayService;
+        private readonly UselessApiService _uselessApiService;
 
-        public SlashCommandHandler(Program program, WordGuessingService wordService, MineGameService mineGameService, ElevenLabsService elevenLabsService, OldMaidService oldMaidService, RubiksCubeService rubiksCubeService, GoogleAIStudioService googleAIStudioService, OpenRouterService openRouterService, RVC_Service rVC_Service, SetTextService setTextService, Game2048Service game2048Service, Game1A2BService game1A2BService, Pick2Service pick2Service, JikanAnimeService animeService, PokeService pokeService, PokeGameService pokeGameService, TRPGService trpgService, LyrisService lyrisService, LyricsDisplayService lyricsDisplayService)
+        public SlashCommandHandler(Program program, WordGuessingService wordService, MineGameService mineGameService, ElevenLabsService elevenLabsService, OldMaidService oldMaidService, RubiksCubeService rubiksCubeService, GoogleAIStudioService googleAIStudioService, OpenRouterService openRouterService, RVC_Service rVC_Service, SetTextService setTextService, Game2048Service game2048Service, Game1A2BService game1A2BService, Pick2Service pick2Service, JikanAnimeService animeService, PokeService pokeService, PokeGameService pokeGameService, TRPGService trpgService, LyrisService lyrisService, LyricsDisplayService lyricsDisplayService, UselessApiService uselessApiService)
         {
             _program = program;
             _wordService = wordService;
@@ -59,6 +60,7 @@ namespace MusicBot2.SlahCommands
             _trpgService = trpgService;
             _lyrisService = lyrisService;
             _lyricsDisplayService = lyricsDisplayService;
+            _uselessApiService = uselessApiService;
         }
         #region 音樂撥放相關
         [SlashCommand("播放音樂", "播放音樂")]
@@ -611,7 +613,7 @@ namespace MusicBot2.SlahCommands
         )
         {
             await DeferAsync();
-            
+
             var result = await _animeService.GetSomeRandomAnime(type, ratings);
 
             await FollowupAsync(embed: result.Item1.embed, components: result.Item1.component?.Build());
@@ -739,10 +741,10 @@ namespace MusicBot2.SlahCommands
         {
             await DeferAsync();
             var (embed, component) = await _pokeGameService.InitiateExchangeAsync(
-                Context.User.Id, 
-                Context.User.Username, 
-                index, 
-                target, 
+                Context.User.Id,
+                Context.User.Username,
+                index,
+                target,
                 Context.Channel);
             await FollowupAsync(embed: embed, components: component.Build());
         }
@@ -910,8 +912,8 @@ namespace MusicBot2.SlahCommands
                     return;
                 }
 
-                var songList = string.Join("\n", results.Take(15).Select((r, i) => 
-                    $"{i + 1}. **{r.trackName}** - {r.artistName}" + 
+                var songList = string.Join("\n", results.Take(15).Select((r, i) =>
+                    $"{i + 1}. **{r.trackName}** - {r.artistName}" +
                     (r.albumName != null ? $" ({r.albumName})" : "")));
 
                 var embed = new EmbedBuilder()
@@ -952,7 +954,7 @@ namespace MusicBot2.SlahCommands
                 }
 
                 var syncedLines = _lyrisService.ParseSyncedLyrics(result.syncedLyrics);
-                var formattedLyrics = string.Join("\n", syncedLines.Take(50).Select(l => 
+                var formattedLyrics = string.Join("\n", syncedLines.Take(50).Select(l =>
                     $"`[{l.timestamp:mm\\:ss}]` {l.line}"));
 
                 var embed = new EmbedBuilder()
@@ -1004,6 +1006,25 @@ namespace MusicBot2.SlahCommands
         {
             _lyricsDisplayService.StopLyricsDisplay(Context.Channel.Id);
             await RespondAsync("✅ 已停止歌詞顯示", ephemeral: true);
+        }
+        #endregion
+
+        #region 無用api
+        [SlashCommand("無用小功能", "各種無用小功能")]
+        public async Task UselessApiAsync(
+            [Summary("功能", "功能_不輸入則隨機")]
+        [Choice("查克莫里士隨機史詩", 1)]
+        [Choice("隨機貓咪冷知識", 2)]
+        [Choice("隨機狗勾", 3)]
+        [Choice("隨機中文名言", 4)]
+        [Choice("隨機鴨子", 5)]
+        [Choice("隨機狐狸", 6)]
+        int type = 0)
+        {
+            await DeferAsync();
+            var user = Context.User as SocketGuildUser;
+            string res = await _uselessApiService.GetUselessApiAsync(type);
+            await FollowupAsync(res, ephemeral: true);
         }
         #endregion
     }
