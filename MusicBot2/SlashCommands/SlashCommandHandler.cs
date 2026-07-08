@@ -1020,6 +1020,8 @@ namespace MusicBot2.SlahCommands
         [Choice("隨機鴨子", 5)]
         [Choice("隨機狐狸", 6)]
         [Choice("隨機冷知識", 7)]
+        [Choice("隨機動畫句子", 8)]
+        [Choice("隨機遊戲句子", 9)]
         int type = 0)
         {
             await DeferAsync();

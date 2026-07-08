@@ -23,7 +23,7 @@ namespace MusicBot2.Service
             if(type == 0)
             {
                 var random = new Random();
-                type = random.Next(1, 7); 
+                type = random.Next(1, 9); 
             }
 
 
@@ -43,6 +43,11 @@ namespace MusicBot2.Service
                     return await GetFoxPicAsync();
                 case 7:
                     return await GetUselessFactsAsync();
+                case 8:
+                    return await GetHitokotoAnimeAsync();
+                case 9:
+                    return await GetHitokotoGameAsync();
+
                 default:
                     return "爆炸摟";
             }
@@ -113,6 +118,26 @@ namespace MusicBot2.Service
             var responseContent = await response.Content.ReadAsStringAsync();
             var res = JsonConvert.DeserializeObject<UselessFact>(responseContent);
             return res?.text ?? "爆炸摟";
+        }
+
+        public async Task<string> GetHitokotoAnimeAsync()
+        {
+            var response = await _httpClient.GetAsync("https://v1.hitokoto.cn/?c=a");
+            if (!response.IsSuccessStatusCode)
+                return "爆炸摟";
+            var responseContent = await response.Content.ReadAsStringAsync();
+            var res = JsonConvert.DeserializeObject<Hitokoto>(responseContent);
+            return res?.hitokoto + "..." + res?.from_who;
+        }
+
+        public async Task<string> GetHitokotoGameAsync()
+        {
+            var response = await _httpClient.GetAsync("https://v1.hitokoto.cn/?c=c");
+            if (!response.IsSuccessStatusCode)
+                return "爆炸摟";
+            var responseContent = await response.Content.ReadAsStringAsync();
+            var res = JsonConvert.DeserializeObject<Hitokoto>(responseContent);
+            return res?.hitokoto + "..." + res?.from_who;
         }
     }
 }
