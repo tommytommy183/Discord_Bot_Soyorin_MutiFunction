@@ -37,4 +37,9 @@ namespace MusicBot2.Models
     {
         public string image { get; set; }
     }
+
+    public class UselessFact
+    {
+        public string text { get; set; }
+    }
 }

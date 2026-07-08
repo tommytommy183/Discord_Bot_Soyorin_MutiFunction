@@ -23,7 +23,7 @@ namespace MusicBot2.Service
             if(type == 0)
             {
                 var random = new Random();
-                type = random.Next(1, 2); 
+                type = random.Next(1, 7); 
             }
 
 
@@ -41,6 +41,8 @@ namespace MusicBot2.Service
                     return await GetDuckPicAsync();
                 case 6:
                     return await GetFoxPicAsync();
+                case 7:
+                    return await GetUselessFactsAsync();
                 default:
                     return "爆炸摟";
             }
@@ -103,5 +105,14 @@ namespace MusicBot2.Service
             return res?.image ?? "爆炸摟";
         }
 
+        public async Task<string> GetUselessFactsAsync()
+        {
+            var response = await _httpClient.GetAsync("https://uselessfacts.jsph.pl/api/v2/facts/random");
+            if (!response.IsSuccessStatusCode)
+                return "爆炸摟";
+            var responseContent = await response.Content.ReadAsStringAsync();
+            var res = JsonConvert.DeserializeObject<UselessFact>(responseContent);
+            return res?.text ?? "爆炸摟";
+        }
     }
 }

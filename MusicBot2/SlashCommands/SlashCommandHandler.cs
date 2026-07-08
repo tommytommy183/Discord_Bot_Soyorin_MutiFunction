@@ -1013,12 +1013,13 @@ namespace MusicBot2.SlahCommands
         [SlashCommand("無用小功能", "各種無用小功能")]
         public async Task UselessApiAsync(
             [Summary("功能", "功能_不輸入則隨機")]
-        [Choice("查克莫里士隨機史詩", 1)]
+        [Choice("隨機查克莫里士史詩", 1)]
         [Choice("隨機貓咪冷知識", 2)]
         [Choice("隨機狗勾", 3)]
         [Choice("隨機中文名言", 4)]
         [Choice("隨機鴨子", 5)]
         [Choice("隨機狐狸", 6)]
+        [Choice("隨機冷知識", 7)]
         int type = 0)
         {
             await DeferAsync();
