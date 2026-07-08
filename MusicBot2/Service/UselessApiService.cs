@@ -91,16 +91,16 @@ namespace MusicBot2.Service
                 return "爆炸摟";
             var responseContent = await response.Content.ReadAsStringAsync();
             var res = JsonConvert.DeserializeObject<Duck>(responseContent);
-            return res?.url + "..." + res?.url;
+            return res?.url ?? "爆炸摟";
         }
         public async Task<string> GetFoxPicAsync()
         {
-            var response = await _httpClient.GetAsync("https://random-d.uk/api/random");
+            var response = await _httpClient.GetAsync("https://randomfox.ca/floof/");
             if (!response.IsSuccessStatusCode)
                 return "爆炸摟";
             var responseContent = await response.Content.ReadAsStringAsync();
             var res = JsonConvert.DeserializeObject<Fox>(responseContent);
-            return res?.image + "..." + res?.image;
+            return res?.image ?? "爆炸摟";
         }
 
     }
