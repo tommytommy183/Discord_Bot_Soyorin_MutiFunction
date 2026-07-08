@@ -56,7 +56,7 @@ namespace MusicBot2.Service
         private readonly string[] _models =
         {
             // === 第0梯隊：短時間內免費 ===
-            "tencent/hy3:free",
+            //"tencent/hy3:free",
 
 
 
