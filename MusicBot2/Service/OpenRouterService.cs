@@ -61,7 +61,7 @@ namespace MusicBot2.Service
 
 
             // === 第一梯隊：大型高品質模型 ===
-            "nvidia/nemotron-3.5-content-safety:free",
+            //"nvidia/nemotron-3.5-content-safety:free",
             //"openrouter/owl-alpha",                       // 我這邊抓到官方頁面它其實還在榜上第一名！建議你重新測一次，可能只是暫時性問題
             //"moonshotai/kimi-k2.6:free",                  // 官方頁面顯示還在免費榜，但你說沒成功傳出去過，可以再測一次
             "google/gemma-4-26b-a4b-it:free",
