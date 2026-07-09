@@ -28,13 +28,16 @@ namespace MusicBot2.Service
                 foodType = random.Next(1, 10);
             }
 
-            List<Food> chosenFood = foodList.Where(f => f.type == foodType).ToList();
+            List<Food> chosenFoodList = foodList.Where(f => f.type == foodType).ToList();
 
-            if(foodType == 10)
+            Food chosenFood = chosenFoodList[new Random().Next(chosenFoodList.Count)];
+
+
+            if (foodType == 10)
             {
-                return $"今晚，{user.DisplayName} 想來點他最喜歡的食物: {chosenFood}，如果 {user.DisplayName} 沒有買來直播開吃的話，他就再也不會抓到閃的pokemon";
+                return $"今晚，{user.DisplayName} 想來點他最喜歡的食物: {chosenFood.food}，如果 {user.DisplayName} 沒有買來直播開吃的話，他就再也不會抓到閃的pokemon";
             }
-            return $"今晚，{user.DisplayName} 想來點 {chosenFood}";
+            return $"今晚，{user.DisplayName} 想來點 {chosenFood.food}";
         }
 
         public async Task<string> GetUselessApiAsync(int type)
