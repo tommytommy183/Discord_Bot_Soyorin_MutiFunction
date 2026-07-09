@@ -1056,7 +1056,7 @@ namespace MusicBot2.SlahCommands
         #endregion
 
         #region 產出圖片相關
-        [SlashCommand("AI產出圖片", "AI產出圖片")]
+        [SlashCommand("產出圖片", "產出圖片")]
         public async Task GenerateAIImageAsync(
             [Summary("提示詞", "提示詞")] string prompt)
         {
