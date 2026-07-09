@@ -10,6 +10,7 @@ using MusicBot2.Models;
 using MusicBot2.Service;
 using RiotSharp.Misc;
 using System.ComponentModel;
+using System.IO;
 using System.Net.Http;
 using System.Xml.Linq;
 using static System.Net.Mime.MediaTypeNames;
@@ -38,8 +39,9 @@ namespace MusicBot2.SlahCommands
         private readonly LyrisService _lyrisService;
         private readonly LyricsDisplayService _lyricsDisplayService;
         private readonly UselessApiService _uselessApiService;
+        private readonly AIImageService _aiImageService;
 
-        public SlashCommandHandler(Program program, WordGuessingService wordService, MineGameService mineGameService, ElevenLabsService elevenLabsService, OldMaidService oldMaidService, RubiksCubeService rubiksCubeService, GoogleAIStudioService googleAIStudioService, OpenRouterService openRouterService, RVC_Service rVC_Service, SetTextService setTextService, Game2048Service game2048Service, Game1A2BService game1A2BService, Pick2Service pick2Service, JikanAnimeService animeService, PokeService pokeService, PokeGameService pokeGameService, TRPGService trpgService, LyrisService lyrisService, LyricsDisplayService lyricsDisplayService, UselessApiService uselessApiService)
+        public SlashCommandHandler(Program program, WordGuessingService wordService, MineGameService mineGameService, ElevenLabsService elevenLabsService, OldMaidService oldMaidService, RubiksCubeService rubiksCubeService, GoogleAIStudioService googleAIStudioService, OpenRouterService openRouterService, RVC_Service rVC_Service, SetTextService setTextService, Game2048Service game2048Service, Game1A2BService game1A2BService, Pick2Service pick2Service, JikanAnimeService animeService, PokeService pokeService, PokeGameService pokeGameService, TRPGService trpgService, LyrisService lyrisService, LyricsDisplayService lyricsDisplayService, UselessApiService uselessApiService, AIImageService aiImageService)
         {
             _program = program;
             _wordService = wordService;
@@ -61,6 +63,7 @@ namespace MusicBot2.SlahCommands
             _lyrisService = lyrisService;
             _lyricsDisplayService = lyricsDisplayService;
             _uselessApiService = uselessApiService;
+            _aiImageService = aiImageService;
         }
         #region 音樂撥放相關
         [SlashCommand("播放音樂", "播放音樂")]
@@ -1027,7 +1030,7 @@ namespace MusicBot2.SlahCommands
             await DeferAsync();
             var user = Context.User as SocketGuildUser;
             string res = await _uselessApiService.GetUselessApiAsync(type);
-            await FollowupAsync(res, ephemeral: true);
+            await FollowupAsync(res);
         }
 
         [SlashCommand("今晚你想來點", "幫你屌決定一波今天吃甚麼")]
@@ -1049,6 +1052,29 @@ namespace MusicBot2.SlahCommands
             var user = Context.User as SocketGuildUser;
             string res = await _uselessApiService.GetRandomFoodApIAsync(user,type);
             await FollowupAsync(res);
+        }
+        #endregion
+
+        #region 產出圖片相關
+        [SlashCommand("AI產出圖片", "AI產出圖片")]
+        public async Task GenerateAIImageAsync(
+            [Summary("提示詞", "提示詞")] string prompt)
+        {
+            await DeferAsync();
+
+            try
+            {
+                using var imageStream = await _aiImageService.GenerateImageAsync(prompt);
+
+                await FollowupWithFileAsync(
+                    imageStream,
+                    "ai-image.png"
+                );
+            }
+            catch (Exception ex)
+            {
+                await FollowupAsync($"產生圖片失敗：{ex.Message}");
+            }
         }
         #endregion
     }
