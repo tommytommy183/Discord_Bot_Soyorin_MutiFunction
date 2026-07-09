@@ -668,10 +668,12 @@ namespace MusicBot2.Service
                             text = contentEl.GetString();
                         }
 
-                        Console.WriteLine($"[OpenRouter] Model:{model}=> {text}");
 
 
                         if (string.IsNullOrWhiteSpace(text)) break;
+
+                        Console.WriteLine($"[OpenRouter] Model:{model}=> {text}");
+
 
                         return text;
                     }

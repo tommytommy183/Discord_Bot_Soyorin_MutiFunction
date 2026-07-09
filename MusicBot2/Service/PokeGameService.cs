@@ -74,7 +74,7 @@ namespace MusicBot2.Service
             catch (Exception ex)
             {
                 _useRedis = false;
-                Console.WriteLine($"⚠️ Redis 連線失敗，使用記憶體儲存: {ex.Message}");
+                Console.WriteLine($"⚠️ Redis 連線失敗，使用記憶體儲存: {ex}");
             }
 
             // 初始化傳說/神話 Pokemon 列表
@@ -141,7 +141,7 @@ namespace MusicBot2.Service
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine($"⚠️ 檢查 Pokemon {species.name} 時發生錯誤: {ex.Message}");
+                        Console.WriteLine($"⚠️ 檢查 Pokemon {species.name} 時發生錯誤: {ex}");
                     }
                 }
 
@@ -160,7 +160,7 @@ namespace MusicBot2.Service
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"❌ 初始化傳說/神話 Pokemon 列表時發生錯誤: {ex.Message}");
+                Console.WriteLine($"❌ 初始化傳說/神話 Pokemon 列表時發生錯誤: {ex}");
             }
         }
 
@@ -224,7 +224,7 @@ namespace MusicBot2.Service
             }
             catch (Exception ex)
             {
-                return (CommonHelper.BuildErrorResponse($"抓pokemon時發生錯誤: {ex.Message}").Item2, new ComponentBuilder());
+                return (CommonHelper.BuildErrorResponse($"抓pokemon時發生錯誤: {ex}").Item2, new ComponentBuilder());
             }
         }
 
@@ -321,7 +321,7 @@ namespace MusicBot2.Service
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"檢查進化鏈時發生錯誤: {ex.Message}");
+                Console.WriteLine($"檢查進化鏈時發生錯誤: {ex}");
             }
         }
 
@@ -420,7 +420,7 @@ namespace MusicBot2.Service
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"進化時發生錯誤: {ex.Message}");
+                Console.WriteLine($"進化時發生錯誤: {ex}");
                 return pokemon;
             }
         }
@@ -469,7 +469,7 @@ namespace MusicBot2.Service
             }
             catch (Exception ex)
             {
-                return (CommonHelper.BuildErrorResponse($"自定義pokemon時發生錯誤: {ex.Message}").Item2, new ComponentBuilder());
+                return (CommonHelper.BuildErrorResponse($"自定義pokemon時發生錯誤: {ex}").Item2, new ComponentBuilder());
             }
         }
 
@@ -517,7 +517,7 @@ namespace MusicBot2.Service
             }
             catch (Exception ex)
             {
-                return (CommonHelper.BuildErrorResponse($"列出pokemon時發生錯誤: {ex.Message}").Item2, new ComponentBuilder());
+                return (CommonHelper.BuildErrorResponse($"列出pokemon時發生錯誤: {ex}").Item2, new ComponentBuilder());
             }
         }
 
@@ -578,7 +578,7 @@ namespace MusicBot2.Service
             }
             catch (Exception ex)
             {
-                return (CommonHelper.BuildErrorResponse($"釋放pokemon時發生錯誤: {ex.Message}").Item2, new ComponentBuilder());
+                return (CommonHelper.BuildErrorResponse($"釋放pokemon時發生錯誤: {ex}").Item2, new ComponentBuilder());
             }
         }
 
@@ -729,7 +729,7 @@ namespace MusicBot2.Service
             }
             catch (Exception ex)
             {
-                return (CommonHelper.BuildErrorResponse($"發起交換時發生錯誤: {ex.Message}").Item2, new ComponentBuilder());
+                return (CommonHelper.BuildErrorResponse($"發起交換時發生錯誤: {ex}").Item2, new ComponentBuilder());
             }
         }
 
@@ -932,7 +932,7 @@ namespace MusicBot2.Service
             }
             catch (Exception ex)
             {
-                return (CommonHelper.BuildErrorResponse($"處理交換回應時發生錯誤: {ex.Message}").Item2, new ComponentBuilder(), -1);
+                return (CommonHelper.BuildErrorResponse($"處理交換回應時發生錯誤: {ex}").Item2, new ComponentBuilder(), -1);
             }
         }
         #endregion
@@ -1020,7 +1020,7 @@ namespace MusicBot2.Service
             }
             catch (Exception ex)
             {
-                return (CommonHelper.BuildErrorResponse($"開始對戰搜尋時發生錯誤: {ex.Message}").Item2, new ComponentBuilder());
+                return (CommonHelper.BuildErrorResponse($"開始對戰搜尋時發生錯誤: {ex}").Item2, new ComponentBuilder());
             }
         }
 
@@ -1149,7 +1149,7 @@ namespace MusicBot2.Service
             }
             catch (Exception ex)
             {
-                return (CommonHelper.BuildErrorResponse($"開始對戰搜尋時發生錯誤: {ex.Message}").Item2, new ComponentBuilder());
+                return (CommonHelper.BuildErrorResponse($"開始對戰搜尋時發生錯誤: {ex}").Item2, new ComponentBuilder());
             }
         }
         private async Task<(Embed embed, ComponentBuilder component)> Execute2V2BattleAsync(
@@ -1412,7 +1412,7 @@ HP為0就是真的死亡，不會再有後續動作
             }
             catch (Exception ex)
             {
-                return (CommonHelper.BuildErrorResponse($"執行對戰時發生錯誤: {ex.Message}").Item2, new ComponentBuilder());
+                return (CommonHelper.BuildErrorResponse($"執行對戰時發生錯誤: {ex}").Item2, new ComponentBuilder());
             }
         }
 
@@ -1746,7 +1746,7 @@ HP為0就是真的死亡，不會再有後續動作
             }
             catch (Exception ex)
             {
-                return (CommonHelper.BuildErrorResponse($"執行對戰時發生錯誤: {ex.Message}").Item2, new ComponentBuilder());
+                return (CommonHelper.BuildErrorResponse($"執行對戰時發生錯誤: {ex}").Item2, new ComponentBuilder());
             }
         }
         // 測試用對戰 - 生成假對手
@@ -1790,7 +1790,7 @@ HP為0就是真的死亡，不會再有後續動作
             }
             catch (Exception ex)
             {
-                return (CommonHelper.BuildErrorResponse($"測試對戰時發生錯誤: {ex.Message}").Item2, new ComponentBuilder());
+                return (CommonHelper.BuildErrorResponse($"測試對戰時發生錯誤: {ex}").Item2, new ComponentBuilder());
             }
         }
         #endregion
@@ -1936,7 +1936,7 @@ HP為0就是真的死亡，不會再有後續動作
             }
             catch (Exception ex)
             {
-                return (CommonHelper.BuildErrorResponse($"加入團戰時發生錯誤: {ex.Message}").Item2, new ComponentBuilder());
+                return (CommonHelper.BuildErrorResponse($"加入團戰時發生錯誤: {ex}").Item2, new ComponentBuilder());
             }
         }
 
@@ -2090,7 +2090,7 @@ HP為0就是真的死亡，不會再有後續動作
             }
             catch (Exception ex)
             {
-                return (CommonHelper.BuildErrorResponse($"開始團戰時發生錯誤: {ex.Message}").Item2, new ComponentBuilder());
+                return (CommonHelper.BuildErrorResponse($"開始團戰時發生錯誤: {ex}").Item2, new ComponentBuilder());
             }
         }
 
@@ -2166,7 +2166,7 @@ HP為0就是真的死亡，不會再有後續動作
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"獲取隨機傳說 Pokemon 時發生錯誤: {ex.Message}");
+                Console.WriteLine($"獲取隨機傳說 Pokemon 時發生錯誤: {ex}");
                 return null;
             }
         }
@@ -2185,7 +2185,7 @@ HP為0就是真的死亡，不會再有後續動作
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"⚠️ Redis 讀取團戰 Boss 失敗，切換到記憶體儲存: {ex.Message}");
+                    Console.WriteLine($"⚠️ Redis 讀取團戰 Boss 失敗，切換到記憶體儲存: {ex}");
                     return _memoryTeamFightBoss;
                 }
             }
@@ -2209,7 +2209,7 @@ HP為0就是真的死亡，不會再有後續動作
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"⚠️ Redis 儲存團戰 Boss 失敗，切換到記憶體儲存: {ex.Message}");
+                    Console.WriteLine($"⚠️ Redis 儲存團戰 Boss 失敗，切換到記憶體儲存: {ex}");
                     _memoryTeamFightBoss = boss;
                 }
             }
@@ -2249,7 +2249,7 @@ HP為0就是真的死亡，不會再有後續動作
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"⚠️ Redis 讀取失敗，切換到記憶體儲存: {ex.Message}");
+                    Console.WriteLine($"⚠️ Redis 讀取失敗，切換到記憶體儲存: {ex}");
                     // Redis 失敗時降級到記憶體儲存
                     if (!_memoryPlayers.ContainsKey(userId))
                     {
@@ -2299,7 +2299,7 @@ HP為0就是真的死亡，不會再有後續動作
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"⚠️ Redis 寫入失敗，切換到記憶體儲存: {ex.Message}");
+                    Console.WriteLine($"⚠️ Redis 寫入失敗，切換到記憶體儲存: {ex}");
                     // Redis 失敗時降級到記憶體儲存
                     _memoryPlayers[player.UserId] = player;
                 }
@@ -2335,7 +2335,7 @@ HP為0就是真的死亡，不會再有後續動作
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"⚠️ Redis 配對寫入失敗，切換到記憶體儲存: {ex.Message}");
+                    Console.WriteLine($"⚠️ Redis 配對寫入失敗，切換到記憶體儲存: {ex}");
                     // Redis 失敗時降級到記憶體儲存
                     _memoryMatchmaking[userId] = matchmaking;
                 }
@@ -2374,7 +2374,7 @@ HP為0就是真的死亡，不會再有後續動作
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"⚠️ Redis 配對讀取失敗，切換到記憶體儲存: {ex.Message}");
+                    Console.WriteLine($"⚠️ Redis 配對讀取失敗，切換到記憶體儲存: {ex}");
                     // Redis 失敗時降級到記憶體儲存
                     var expiredKeys = new List<ulong>();
                     foreach (var kvp in _memoryMatchmaking)
@@ -2433,7 +2433,7 @@ HP為0就是真的死亡，不會再有後續動作
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"⚠️ Redis 配對刪除失敗，切換到記憶體儲存: {ex.Message}");
+                    Console.WriteLine($"⚠️ Redis 配對刪除失敗，切換到記憶體儲存: {ex}");
                     // Redis 失敗時降級到記憶體儲存
                     _memoryMatchmaking.Remove(userId);
                 }
@@ -2470,7 +2470,7 @@ HP為0就是真的死亡，不會再有後續動作
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"⚠️ Redis 配對寫入失敗，切換到記憶體儲存: {ex.Message}");
+                    Console.WriteLine($"⚠️ Redis 配對寫入失敗，切換到記憶體儲存: {ex}");
                     // Redis 失敗時降級到記憶體儲存
                     _memoryMatchmaking2V2[userId] = matchmaking;
                 }
@@ -2509,7 +2509,7 @@ HP為0就是真的死亡，不會再有後續動作
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"⚠️ Redis 配對讀取失敗，切換到記憶體儲存: {ex.Message}");
+                    Console.WriteLine($"⚠️ Redis 配對讀取失敗，切換到記憶體儲存: {ex}");
                     // Redis 失敗時降級到記憶體儲存
                     var expiredKeys = new List<ulong>();
                     foreach (var kvp in _memoryMatchmaking2V2)
@@ -2568,7 +2568,7 @@ HP為0就是真的死亡，不會再有後續動作
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"⚠️ Redis 配對刪除失敗，切換到記憶體儲存: {ex.Message}");
+                    Console.WriteLine($"⚠️ Redis 配對刪除失敗，切換到記憶體儲存: {ex}");
                     // Redis 失敗時降級到記憶體儲存
                     _memoryMatchmaking2V2.Remove(userId);
                 }
