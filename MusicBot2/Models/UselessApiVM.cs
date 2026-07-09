@@ -42,4 +42,10 @@ namespace MusicBot2.Models
     {
         public string text { get; set; }
     }
+
+    public class Food
+    {
+        public int type { get; set; }
+        public string food { get; set; }
+    }
 }

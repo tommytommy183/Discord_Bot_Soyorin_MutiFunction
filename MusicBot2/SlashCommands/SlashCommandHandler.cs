@@ -1029,6 +1029,27 @@ namespace MusicBot2.SlahCommands
             string res = await _uselessApiService.GetUselessApiAsync(type);
             await FollowupAsync(res, ephemeral: true);
         }
+
+        [SlashCommand("今晚你想來點", "幫你屌決定一波今天吃甚麼")]
+        public async Task GetFoodAsync(
+    [Summary("類型", "類型")]
+    [Choice("台式", 1)]
+    [Choice("中式", 2)]
+    [Choice("日式", 3)]
+    [Choice("韓式", 4)]
+    [Choice("西式", 5)]
+    [Choice("港式", 6)]
+    [Choice("東南亞", 7)]
+    [Choice("鍋物", 8)]
+    [Choice("甜點", 9)]
+    [Choice("神秘食物", 10)]
+        int type = 0)
+        {
+            await DeferAsync();
+            var user = Context.User as SocketGuildUser;
+            string res = await _uselessApiService.GetRandomFoodApIAsync(user,type);
+            await FollowupAsync(res);
+        }
         #endregion
     }
 }
