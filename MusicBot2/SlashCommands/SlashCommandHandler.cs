@@ -1058,13 +1058,15 @@ namespace MusicBot2.SlahCommands
         #region 產出圖片相關
         [SlashCommand("產出圖片", "產出圖片")]
         public async Task GenerateAIImageAsync(
-            [Summary("提示詞", "提示詞")] string prompt)
+            [Summary("提示詞", "提示詞")] string prompt,
+            [Summary("使用模型", "使用模型_預設loremflickr")][Choice("loremflickr", "loremflickr")][Choice("pollinations", "pollinations")] string model
+            )
         {
             await DeferAsync();
 
             try
             {
-                using var imageStream = await _aiImageService.GenerateImageAsync(prompt);
+                using var imageStream = await _aiImageService.GenerateImageAsync(prompt,model);
 
                 await FollowupWithFileAsync(
                     imageStream,

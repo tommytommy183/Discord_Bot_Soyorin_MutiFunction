@@ -10,18 +10,31 @@ namespace MusicBot2.Service
     public class AIImageService
     {
         private readonly HttpClient _httpClient;
-        public AIImageService() 
+        public AIImageService()
         {
             _httpClient = new HttpClient();
         }
-
+        //https://loremflickr.com/800/600/anime
         //GET https://image.pollinations.ai/prompt/一隻可愛的柴犬坐在草地上
 
-        public async Task<Stream> GenerateImageAsync(string prompt)
+        public async Task<Stream> GenerateImageAsync(string prompt, string model)
         {
             string encodedPrompt = WebUtility.UrlEncode(prompt);
+            string url = "";
 
-            string url =
+            switch (model)
+            {
+                case "loremflickr":
+                    url = $"https://loremflickr.com/800/600/{encodedPrompt}";
+                    break;
+                case "pollinations":
+                    url = $"https://image.pollinations.ai/prompt/{encodedPrompt}?model=flux";
+                    break;
+                default:
+                    break;
+            }
+
+            url =
                 $"https://image.pollinations.ai/prompt/{encodedPrompt}?model=flux";
 
 

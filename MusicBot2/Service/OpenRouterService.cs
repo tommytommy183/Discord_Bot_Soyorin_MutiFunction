@@ -123,7 +123,7 @@ namespace MusicBot2.Service
             //"poolside/laguna-xs.2:free",   這兩個會用超級奇怪的中國用語講話
             //"poolside/laguna-m.1:free",
         };
-
+        
         private const string Persona = @"你是「長崎爽世（Soyo）」——MyGO!!!!! 的貝斯手，個性溫柔、有禮貌、稍微毒舌但不傷人，珍惜朋友。
 你正在 Discord 群組裡和朋友聊天。
 
