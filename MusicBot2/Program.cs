@@ -6,6 +6,7 @@ using Discord.WebSocket;
 using InstagramApiSharp.Classes;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using MusicBot2.Helpers;
 using MusicBot2.Service;
 using NAudio.CoreAudioApi;
 using NAudio.Wave;
@@ -102,6 +103,7 @@ public class Program
             .AddSingleton<Game2048Service>()
             .AddSingleton<Pick2Service>()
             .AddSingleton<PokeService>()
+            .AddSingleton<ValorantService>()
             .AddSingleton<AIImageService>()
             .AddSingleton<UselessApiService>()
             .AddSingleton<RVC_Service>()
@@ -395,6 +397,25 @@ public class Program
                     });
                 }
             }
+            else if (component.Data.CustomId.StartsWith("valorant_answer_"))
+            {
+                // 處理 Valorant 答題按鈕 - 開啟 Modal
+                var parts = component.Data.CustomId.Split('_');
+                if (parts.Length == 3 && parts[2] != "ability")
+                {
+                    // 猜角色圖片
+                    ulong userId = ulong.Parse(parts[2]);
+                    var valorantService = _services.GetService<ValorantService>();
+                    await valorantService.ShowAnswerModalAsync(component, userId);
+                }
+                else if (parts.Length == 4 && parts[2] == "ability")
+                {
+                    // 猜技能名稱
+                    ulong channelId = ulong.Parse(parts[3]);
+                    var valorantService = _services.GetService<ValorantService>();
+                    await valorantService.ShowAbilityModalAsync(component, channelId);
+                }
+            }
             else if (component.Data.CustomId.StartsWith("poke_exchange_"))
             {
                 await component.DeferAsync();
@@ -567,6 +588,79 @@ public class Program
                             .WithDescription("找不到遊戲，請重新開始！")
                             .Build();
                         await modal.RespondAsync(embed: errorEmbed, ephemeral: true);
+                    }
+                }
+            }
+            // 處理 Valorant Modal 提交
+            else if (modal.Data.CustomId.StartsWith("valorant_modal_"))
+            {
+                var parts = modal.Data.CustomId.Split('_');
+                if (parts.Length == 4)
+                {
+                    string modalType = parts[2]; // "agent" 或 "ability"
+                    var valorantService = _services.GetService<ValorantService>();
+
+                    if (modalType == "agent")
+                    {
+                        // 猜角色圖片
+                        ulong userId = ulong.Parse(parts[3]);
+                        var result = await valorantService.HandleAgentModalSubmitAsync(modal, userId);
+
+                        if (result.isError)
+                        {
+                            // 答錯 → ephemeral，只有自己看到
+                            await modal.RespondAsync(embed: result.Item1.embed, ephemeral: true);
+                        }
+                        else
+                        {
+                            // 答對 → Defer，不產生任何新訊息
+                            await modal.DeferAsync();
+
+                            if (result.messageId != 0)
+                            {
+                                var gameMessage = await modal.Channel.GetMessageAsync(result.messageId);
+                                if (gameMessage is IUserMessage userMsg)
+                                {
+                                    await userMsg.ModifyAsync(msg =>
+                                    {
+                                        msg.Embed = result.Item1.embed;
+                                        msg.Components = result.Item1.component?.Build();
+                                    });
+                                }
+                            }
+                        }
+                    }
+                    else if (modalType == "ability")
+                    {
+                        // 猜技能名稱
+                        ulong channelId = ulong.Parse(parts[3]);
+                        var result = await valorantService.HandleAbilityModalSubmitAsync(modal, channelId);
+
+                        if (result.isCorrect)
+                        {
+                            // 答對 → 公開發送訊息
+                            await modal.DeferAsync();
+
+                            var rewardText = await RewardsHelpers.GetRandomRewards(modal.Channel, modal.User as SocketGuildUser);
+
+                            var successEmbed = new EmbedBuilder()
+                                .WithTitle("🎉 答對了！")
+                                .WithColor(Color.Green)
+                                .WithDescription($"**{modal.User.Mention}**{CommonHelper.GetUserFace(modal.User.Id.ToString())} 答對了！")
+                                .AddField("正確答案", result.correctAnswer, inline: true)
+                                .AddField("所屬角色", result.agentName, inline: true)
+                                .AddField("獎勵", rewardText)
+                                .WithTimestamp(DateTimeOffset.Now)
+                                .Build();
+
+                            await modal.Channel.SendMessageAsync(embed: successEmbed);
+                        }
+                        else
+                        {
+                            // 答錯 → 公開發送錯誤訊息
+                            await modal.DeferAsync();
+                            await modal.Channel.SendMessageAsync($"❌ **{modal.User.Mention}** 猜錯了！答案是：**{result.message}**");
+                        }
                     }
                 }
             }

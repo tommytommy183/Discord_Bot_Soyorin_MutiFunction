@@ -35,13 +35,14 @@ namespace MusicBot2.SlahCommands
         private readonly JikanAnimeService _animeService;
         private readonly PokeService _pokeService;
         private readonly PokeGameService _pokeGameService;
+        private readonly ValorantService _valorantService;
         private readonly TRPGService _trpgService;
         private readonly LyrisService _lyrisService;
         private readonly LyricsDisplayService _lyricsDisplayService;
         private readonly UselessApiService _uselessApiService;
         private readonly AIImageService _aiImageService;
 
-        public SlashCommandHandler(Program program, WordGuessingService wordService, MineGameService mineGameService, ElevenLabsService elevenLabsService, OldMaidService oldMaidService, RubiksCubeService rubiksCubeService, GoogleAIStudioService googleAIStudioService, OpenRouterService openRouterService, RVC_Service rVC_Service, SetTextService setTextService, Game2048Service game2048Service, Game1A2BService game1A2BService, Pick2Service pick2Service, JikanAnimeService animeService, PokeService pokeService, PokeGameService pokeGameService, TRPGService trpgService, LyrisService lyrisService, LyricsDisplayService lyricsDisplayService, UselessApiService uselessApiService, AIImageService aiImageService)
+        public SlashCommandHandler(Program program, WordGuessingService wordService, MineGameService mineGameService, ElevenLabsService elevenLabsService, OldMaidService oldMaidService, RubiksCubeService rubiksCubeService, GoogleAIStudioService googleAIStudioService, OpenRouterService openRouterService, RVC_Service rVC_Service, SetTextService setTextService, Game2048Service game2048Service, Game1A2BService game1A2BService, Pick2Service pick2Service, JikanAnimeService animeService, PokeService pokeService, PokeGameService pokeGameService, ValorantService valorantService, TRPGService trpgService, LyrisService lyrisService, LyricsDisplayService lyricsDisplayService, UselessApiService uselessApiService, AIImageService aiImageService)
         {
             _program = program;
             _wordService = wordService;
@@ -59,6 +60,7 @@ namespace MusicBot2.SlahCommands
             _animeService = animeService;
             _pokeService = pokeService;
             _pokeGameService = pokeGameService;
+            _valorantService = valorantService;
             _trpgService = trpgService;
             _lyrisService = lyrisService;
             _lyricsDisplayService = lyricsDisplayService;
@@ -770,6 +772,34 @@ namespace MusicBot2.SlahCommands
             var channel = Context.Channel;
             var (embed, component) = await _pokeGameService.JoinOrCreateTeamFightAsync(Context.User.Id, Context.User.Username, index - 1, channel.Id);
             await FollowupAsync(embed: embed, components: component.Build());
+        }
+        #endregion
+
+        #region Valorant相關
+        [SlashCommand("猜猜我是誰瓦學弟ver", "根據角色圖片輪廓猜Valorant角色")]
+        public async Task GuessValorantAgentAsync()
+        {
+            await DeferAsync();
+            var ((component, embed), silhouette) = await _valorantService.StartGuessAgentImageAsync(Context.User.Id);
+
+            if (silhouette != null)
+            {
+                var message = await FollowupWithFileAsync(silhouette, "silhouette.png", embed: embed, components: component.Build());
+                _valorantService.SetMessageId(Context.User.Id, message.Id, true);
+            }
+            else
+            {
+                await FollowupAsync(embed: embed, components: component.Build());
+            }
+        }
+
+        [SlashCommand("猜猜這哪招瓦學弟ver", "根據技能圖示和描述猜Valorant技能名稱")]
+        public async Task GuessValorantAbilityAsync()
+        {
+            await DeferAsync();
+            var (component, embed) = await _valorantService.StartGuessAbilityNameAsync(Context.Channel.Id);
+            var message = await FollowupAsync(embed: embed, components: component.Build());
+            _valorantService.SetMessageId(Context.Channel.Id, message.Id, false);
         }
         #endregion
 

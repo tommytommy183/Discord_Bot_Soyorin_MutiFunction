@@ -92,5 +92,32 @@ namespace MusicBot2.Helpers
                 Color = Color.Red
             }.Build();
         }
+
+        //user 圖片排除 581407603658326016 -> 茹
+        public static string GetUserFace(string userID)
+        {
+            switch (userID)
+            {
+                case "325482625127153664":
+                    return "<:325482625127153664:1526117110667804836>";
+                    break;
+                case "415032840925741056":
+                    return "<:415032840925741056:1526117153307103282>";
+                    break;
+                case "404439235290988544":
+                    return "<:404439235290988544:1526117155127562320>";
+                    break;
+                case "540922644267270154":
+                    return "<:540922644267270154:1526117156641706044>";
+                    break;
+                case "541105947435859978":
+                    return "<:541105947435859978:1526117158831001742>";
+                    break;
+                default:
+                    return "";
+                    break;
+            }
+        }
+
     }
 }
