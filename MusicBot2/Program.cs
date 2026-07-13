@@ -680,6 +680,7 @@ public class Program
             {
                 result = await _openRouterService.GenerateTextAsync(message.Content, talker, true, channelKey);
                 await message.Channel.SendMessageAsync(result);
+                return; // 已處理完畢，直接返回
 
                 //result = await _googleAIStudioService.GenerateTextAsync(message.Content, talker, true, channelKey);
                 //await message.Channel.SendMessageAsync(result);

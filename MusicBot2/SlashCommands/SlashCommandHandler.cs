@@ -780,12 +780,12 @@ namespace MusicBot2.SlahCommands
         public async Task GuessValorantAgentAsync()
         {
             await DeferAsync();
-            var ((component, embed), silhouette) = await _valorantService.StartGuessAgentImageAsync(Context.User.Id);
+            var ((component, embed), silhouette) = await _valorantService.StartGuessAgentImageAsync(Context.Channel.Id);
 
             if (silhouette != null)
             {
                 var message = await FollowupWithFileAsync(silhouette, "silhouette.png", embed: embed, components: component.Build());
-                _valorantService.SetMessageId(Context.User.Id, message.Id, true);
+                _valorantService.SetMessageId(Context.Channel.Id, message.Id, true);
             }
             else
             {
@@ -807,9 +807,18 @@ namespace MusicBot2.SlahCommands
         {
             await DeferAsync();
             var user = Context.User as SocketGuildUser;
-            var (isCorrect, embed, correctName) = await _valorantService.HandleAgentAnswerAsync(Context.User.Id, answer, user, Context.Channel);
+            var (isCorrect, embed, correctName) = await _valorantService.HandleAgentAnswerAsync(Context.Channel.Id, answer, user, Context.Channel);
 
-            await FollowupAsync(embed: embed);
+            if (isCorrect)
+            {
+                // 答對了 → 公開發送訊息
+                await FollowupAsync(embed: embed);
+            }
+            else
+            {
+                // 答錯了 → 公開發送錯誤訊息
+                await FollowupAsync(embed: embed);
+            }
         }
 
         [SlashCommand("回答valorant技能", "回答猜技能遊戲")]

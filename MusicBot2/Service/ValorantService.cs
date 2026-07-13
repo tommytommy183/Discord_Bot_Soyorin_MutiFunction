@@ -32,9 +32,9 @@ namespace MusicBot2.Service
         private Dictionary<string, string> _nameMapping = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
-        /// 開始猜 Valorant 角色圖片遊戲
+        /// 開始猜 Valorant 角色圖片遊戲（所有人都可以猜）
         /// </summary>
-        public async Task<((ComponentBuilder component, Embed embed), Stream silhouette)> StartGuessAgentImageAsync(ulong userId)
+        public async Task<((ComponentBuilder component, Embed embed), Stream silhouette)> StartGuessAgentImageAsync(ulong channelId)
         {
             try
             {
@@ -59,8 +59,8 @@ namespace MusicBot2.Service
                 // 隨機選擇正確答案
                 var correctAgent = playableAgents[random.Next(playableAgents.Count)];
 
-                // 儲存遊戲狀態
-                _activeImageGames[userId] = new ValorantGameSession
+                // 儲存遊戲狀態（使用 channelId 而不是 userId，讓所有人都能猜）
+                _activeImageGames[channelId] = new ValorantGameSession
                 {
                     CorrectAgent = correctAgent,
                     IsImageMode = true
@@ -78,7 +78,7 @@ namespace MusicBot2.Service
                     .WithDescription("我是誰?\n\n請使用指令回答：`/回答valorant角色 答案:[角色名稱]`\n中文英文都可以！")
                     .WithColor(Discord.Color.Red)
                     .WithImageUrl("attachment://silhouette.png")
-                    .WithFooter($"遊戲ID: {userId}")
+                    .WithFooter($"頻道ID: {channelId}")
                     .WithCurrentTimestamp();
 
                 return ((componentBuilder, embedBuilder.Build()), silhouette);
@@ -199,64 +199,15 @@ namespace MusicBot2.Service
         #endregion
 
         #region 共用
-        /// <summary>
-        /// 處理角色猜謎答案（Slash Command）
-        /// </summary>
-        public async Task<(Embed embed, bool isCorrect, string correctAnswer)> HandleAgentAnswerAsync(ulong userId, string userAnswer)
-        {
-            // 檢查是否有遊戲進行中
-            if (!_activeImageGames.ContainsKey(userId))
-            {
-                var errorEmbed = new EmbedBuilder()
-                    .WithTitle("⚠️ 提示")
-                    .WithColor(Discord.Color.Orange)
-                    .WithDescription("找不到你的遊戲！請先使用 `/猜猜我是誰瓦學弟ver` 開始遊戲。")
-                    .Build();
-                return (errorEmbed, false, "");
-            }
 
-            var session = _activeImageGames[userId];
-            var correctAgent = session.CorrectAgent;
-
-            // 檢查答案（支援中英文，不區分大小寫）
-            bool isCorrect = string.Equals(userAnswer.Trim(), correctAgent.displayName, StringComparison.OrdinalIgnoreCase);
-
-            if (isCorrect)
-            {
-                // 答對了 - 移除遊戲狀態
-                _activeImageGames.Remove(userId);
-
-                var successEmbed = new EmbedBuilder()
-                    .WithTitle("🎉 答對了！")
-                    .WithColor(Discord.Color.Green)
-                    .WithDescription($"正確答案就是 **{correctAgent.displayName}**！")
-                    .AddField("角色定位", correctAgent.role?.displayName ?? "未知", inline: true)
-                    .WithImageUrl(correctAgent.fullPortrait)
-                    .WithTimestamp(DateTimeOffset.Now)
-                    .Build();
-
-                return (successEmbed, true, correctAgent.displayName);
-            }
-            else
-            {
-                // 答錯了 - 遊戲繼續
-                var errorEmbed = new EmbedBuilder()
-                    .WithTitle("❌ 答錯了！")
-                    .WithColor(Discord.Color.Red)
-                    .WithDescription($"你的答案：**{userAnswer}**\n\n請再試一次！使用 `/回答valorant角色 答案:[角色名稱]`")
-                    .Build();
-
-                return (errorEmbed, false, "");
-            }
-        }
 
         /// <summary>
         /// 處理角色圖片答案（slash command）
         /// </summary>
-        public async Task<(bool isCorrect, Embed embed, string? correctName)> HandleAgentAnswerAsync(ulong userId, string userAnswer, SocketGuildUser user, ISocketMessageChannel channel)
+        public async Task<(bool isCorrect, Embed embed, string? correctName)> HandleAgentAnswerAsync(ulong channelId, string userAnswer, SocketGuildUser user, ISocketMessageChannel channel)
         {
             // 檢查是否有遊戲進行中
-            if (!_activeImageGames.ContainsKey(userId))
+            if (!_activeImageGames.ContainsKey(channelId))
             {
                 var errorEmbed = new EmbedBuilder()
                     .WithTitle("⚠️ 提示")
@@ -266,7 +217,7 @@ namespace MusicBot2.Service
                 return (false, errorEmbed, null);
             }
 
-            var session = _activeImageGames[userId];
+            var session = _activeImageGames[channelId];
             userAnswer = userAnswer.Trim();
 
             // 檢查答案（支援中英文，不區分大小寫）
@@ -275,7 +226,7 @@ namespace MusicBot2.Service
             if (isCorrect)
             {
                 // 答對了
-                _activeImageGames.Remove(userId);
+                _activeImageGames.Remove(channelId);
 
                 var rewardText = await RewardsHelpers.GetRandomRewards(channel, user);
 
