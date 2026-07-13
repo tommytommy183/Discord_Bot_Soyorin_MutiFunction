@@ -801,6 +801,57 @@ namespace MusicBot2.SlahCommands
             var message = await FollowupAsync(embed: embed, components: component.Build());
             _valorantService.SetMessageId(Context.Channel.Id, message.Id, false);
         }
+
+        [SlashCommand("回答valorant角色", "回答猜角色遊戲")]
+        public async Task AnswerValorantAgentAsync([Summary("答案", "輸入角色名稱（中文或英文都可以）")] string answer)
+        {
+            await DeferAsync();
+            var user = Context.User as SocketGuildUser;
+            var (isCorrect, embed, correctName) = await _valorantService.HandleAgentAnswerAsync(Context.User.Id, answer, user, Context.Channel);
+
+            await FollowupAsync(embed: embed);
+        }
+
+        [SlashCommand("回答valorant技能", "回答猜技能遊戲")]
+        public async Task AnswerValorantAbilityAsync([Summary("答案", "輸入技能名稱（中文或英文都可以）")] string answer)
+        {
+            await DeferAsync();
+            var user = Context.User as SocketGuildUser;
+            var (isCorrect, wrongAnswer, correctAnswer, agentName) = await _valorantService.HandleAbilityAnswerAsync(Context.Channel.Id, answer);
+
+            if (isCorrect)
+            {
+                // 答對了 → 公開發送訊息
+                var rewardText = await RewardsHelpers.GetRandomRewards(Context.Channel, user);
+
+                var successEmbed = new EmbedBuilder()
+                    .WithTitle("🎉 答對了！")
+                    .WithColor(Color.Green)
+                    .WithDescription($"**{user.Mention}**{CommonHelper.GetUserFace(user.Id.ToString())} 答對了！")
+                    .AddField("正確答案", correctAnswer, inline: true)
+                    .AddField("所屬角色", agentName, inline: true)
+                    .AddField("獎勵", rewardText)
+                    .WithTimestamp(DateTimeOffset.Now)
+                    .Build();
+
+                await FollowupAsync(embed: successEmbed);
+            }
+            else if (wrongAnswer != null)
+            {
+                // 答錯了 → 公開發送錯誤訊息
+                await FollowupAsync($"❌ **{user.Mention}** {CommonHelper.GetUserFace(user.Id.ToString())} 猜錯了！答案：**{wrongAnswer}**");
+            }
+            else
+            {
+                // 找不到遊戲
+                var errorEmbed = new EmbedBuilder()
+                    .WithTitle("⚠️ 提示")
+                    .WithColor(Color.Orange)
+                    .WithDescription("找不到遊戲，請先使用 `/猜猜這哪招瓦學弟ver` 開始遊戲！")
+                    .Build();
+                await FollowupAsync(embed: errorEmbed, ephemeral: true);
+            }
+        }
         #endregion
 
         #region TRPG 黑暗奇幻冒險

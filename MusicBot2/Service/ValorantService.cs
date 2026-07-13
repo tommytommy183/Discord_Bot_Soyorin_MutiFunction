@@ -28,6 +28,9 @@ namespace MusicBot2.Service
         private readonly Dictionary<ulong, ValorantGameSession> _activeImageGames = new Dictionary<ulong, ValorantGameSession>();
         private readonly Dictionary<ulong, ValorantGameSession> _activeAbilityGames = new Dictionary<ulong, ValorantGameSession>();
 
+        // 中英文名稱映射（從 API 動態獲取）
+        private Dictionary<string, string> _nameMapping = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
         /// <summary>
         /// 開始猜 Valorant 角色圖片遊戲
         /// </summary>
@@ -66,17 +69,16 @@ namespace MusicBot2.Service
                 // 塗黑圖片（保留白色部分）
                 var silhouette = await MakeBlackSilhouette(correctAgent.fullPortrait);
 
-                // 建立按鈕
-                var componentBuilder = new ComponentBuilder()
-                    .WithButton("📝 輸入答案", $"valorant_answer_{userId}", ButtonStyle.Primary);
+                // 不顯示按鈕，提示使用 slash command
+                var componentBuilder = new ComponentBuilder();
 
                 // 建立 Embed
                 var embedBuilder = new EmbedBuilder()
                     .WithTitle("🎮 各位瓦學弟們 猜猜這是哪個角色？")
-                    .WithDescription("我是誰?")
+                    .WithDescription("我是誰?\n\n請使用指令回答：`/回答valorant角色 答案:[角色名稱]`\n中文英文都可以！")
                     .WithColor(Discord.Color.Red)
                     .WithImageUrl("attachment://silhouette.png")
-                    .WithFooter("請點擊下方按鈕輸入角色名稱")
+                    .WithFooter($"遊戲ID: {userId}")
                     .WithCurrentTimestamp();
 
                 return ((componentBuilder, embedBuilder.Build()), silhouette);
@@ -175,17 +177,16 @@ namespace MusicBot2.Service
                     IsImageMode = false
                 };
 
-                // 建立按鈕
-                var componentBuilder = new ComponentBuilder()
-                    .WithButton("📝 輸入技能名稱", $"valorant_answer_ability_{channelId}", ButtonStyle.Primary);
+                // 不顯示按鈕
+                var componentBuilder = new ComponentBuilder();
 
                 // 建立 Embed
                 var embedBuilder = new EmbedBuilder()
                     .WithTitle("🎮 猜猜這個技能叫什麼名字？")
-                    .WithDescription($"**角色：** {correctAgent.displayName}\n**技能類型：** {randomAbility.slot}\n\n{randomAbility.description}")
+                    .WithDescription($"**角色：** {correctAgent.displayName}\n**技能類型：** {randomAbility.slot}\n\n{randomAbility.description}\n\n請使用指令回答：`/回答valorant技能 答案:[技能名稱]`\n中文英文都可以！")
                     .WithColor(Discord.Color.Red)
                     .WithThumbnailUrl(randomAbility.displayIcon)
-                    .WithFooter("所有人都可以點擊按鈕輸入技能名稱來猜！")
+                    .WithFooter($"頻道ID: {channelId}")
                     .WithCurrentTimestamp();
 
                 return (componentBuilder, embedBuilder.Build());
@@ -199,43 +200,9 @@ namespace MusicBot2.Service
 
         #region 共用
         /// <summary>
-        /// 處理按鈕點擊 - 開啟 Modal（猜角色圖片）
+        /// 處理角色猜謎答案（Slash Command）
         /// </summary>
-        public async Task ShowAnswerModalAsync(SocketMessageComponent component, ulong userId)
-        {
-            var modal = new ModalBuilder()
-                .WithTitle("輸入你的答案")
-                .WithCustomId($"valorant_modal_agent_{userId}")
-                .AddTextInput("請輸入角色名稱", "answer_input",
-                    placeholder: "例如：Jett, Sage, Phoenix...",
-                    minLength: 2,
-                    maxLength: 20)
-                .Build();
-
-            await component.RespondWithModalAsync(modal);
-        }
-
-        /// <summary>
-        /// 處理按鈕點擊 - 開啟 Modal（猜技能名稱）
-        /// </summary>
-        public async Task ShowAbilityModalAsync(SocketMessageComponent component, ulong channelId)
-        {
-            var modal = new ModalBuilder()
-                .WithTitle("輸入技能名稱")
-                .WithCustomId($"valorant_modal_ability_{channelId}")
-                .AddTextInput("請輸入技能的名稱", "ability_input",
-                    placeholder: "例如：Cloudburst, Tailwind, Blade Storm...",
-                    minLength: 2,
-                    maxLength: 30)
-                .Build();
-
-            await component.RespondWithModalAsync(modal);
-        }
-
-        /// <summary>
-        /// 處理 Modal 提交（猜角色圖片）
-        /// </summary>
-        public async Task<((ComponentBuilder? component, Embed embed), bool isError, ulong messageId)> HandleAgentModalSubmitAsync(SocketModal modal, ulong userId)
+        public async Task<(Embed embed, bool isCorrect, string correctAnswer)> HandleAgentAnswerAsync(ulong userId, string userAnswer)
         {
             // 檢查是否有遊戲進行中
             if (!_activeImageGames.ContainsKey(userId))
@@ -243,36 +210,86 @@ namespace MusicBot2.Service
                 var errorEmbed = new EmbedBuilder()
                     .WithTitle("⚠️ 提示")
                     .WithColor(Discord.Color.Orange)
-                    .WithDescription("找不到遊戲，請重新開始！")
+                    .WithDescription("找不到你的遊戲！請先使用 `/猜猜我是誰瓦學弟ver` 開始遊戲。")
                     .Build();
-                return ((null, errorEmbed), true, 0);
+                return (errorEmbed, false, "");
             }
 
             var session = _activeImageGames[userId];
+            var correctAgent = session.CorrectAgent;
 
-            // 獲取使用者輸入
-            var userAnswer = modal.Data.Components
-                .First(x => x.CustomId == "answer_input").Value.Trim();
+            // 檢查答案（支援中英文，不區分大小寫）
+            bool isCorrect = string.Equals(userAnswer.Trim(), correctAgent.displayName, StringComparison.OrdinalIgnoreCase);
 
-            // 檢查答案是否正確（不區分大小寫）
-            bool isCorrect = string.Equals(userAnswer, session.CorrectAgent.displayName, StringComparison.OrdinalIgnoreCase);
+            if (isCorrect)
+            {
+                // 答對了 - 移除遊戲狀態
+                _activeImageGames.Remove(userId);
+
+                var successEmbed = new EmbedBuilder()
+                    .WithTitle("🎉 答對了！")
+                    .WithColor(Discord.Color.Green)
+                    .WithDescription($"正確答案就是 **{correctAgent.displayName}**！")
+                    .AddField("角色定位", correctAgent.role?.displayName ?? "未知", inline: true)
+                    .WithImageUrl(correctAgent.fullPortrait)
+                    .WithTimestamp(DateTimeOffset.Now)
+                    .Build();
+
+                return (successEmbed, true, correctAgent.displayName);
+            }
+            else
+            {
+                // 答錯了 - 遊戲繼續
+                var errorEmbed = new EmbedBuilder()
+                    .WithTitle("❌ 答錯了！")
+                    .WithColor(Discord.Color.Red)
+                    .WithDescription($"你的答案：**{userAnswer}**\n\n請再試一次！使用 `/回答valorant角色 答案:[角色名稱]`")
+                    .Build();
+
+                return (errorEmbed, false, "");
+            }
+        }
+
+        /// <summary>
+        /// 處理角色圖片答案（slash command）
+        /// </summary>
+        public async Task<(bool isCorrect, Embed embed, string? correctName)> HandleAgentAnswerAsync(ulong userId, string userAnswer, SocketGuildUser user, ISocketMessageChannel channel)
+        {
+            // 檢查是否有遊戲進行中
+            if (!_activeImageGames.ContainsKey(userId))
+            {
+                var errorEmbed = new EmbedBuilder()
+                    .WithTitle("⚠️ 提示")
+                    .WithColor(Discord.Color.Orange)
+                    .WithDescription("找不到遊戲，請先使用 `/猜猜我是誰瓦學弟ver` 開始遊戲！")
+                    .Build();
+                return (false, errorEmbed, null);
+            }
+
+            var session = _activeImageGames[userId];
+            userAnswer = userAnswer.Trim();
+
+            // 檢查答案（支援中英文，不區分大小寫）
+            bool isCorrect = await CheckAgentAnswerAsync(session.CorrectAgent, userAnswer);
 
             if (isCorrect)
             {
                 // 答對了
                 _activeImageGames.Remove(userId);
 
+                var rewardText = await RewardsHelpers.GetRandomRewards(channel, user);
+
                 var embedBuilder = new EmbedBuilder()
                     .WithTitle("🎉 答對了！")
                     .WithColor(Discord.Color.Green)
                     .WithDescription($"正確答案就是 **{session.CorrectAgent.displayName}**！")
                     .AddField("角色定位", session.CorrectAgent.role?.displayName ?? "未知", inline: true)
-                    .AddField("恭喜", $"Valorant 大師 **{modal.User.Mention}** {CommonHelper.GetUserFace(modal.User.Id.ToString())}", inline: true)
-                    .AddField("獎勵", await RewardsHelpers.GetRandomRewards(modal.Channel, modal.User as SocketGuildUser))
+                    .AddField("恭喜", $"Valorant 大師 **{user.Mention}** {CommonHelper.GetUserFace(user.Id.ToString())}", inline: true)
+                    .AddField("獎勵", rewardText)
                     .WithImageUrl(session.CorrectAgent.fullPortrait)
                     .WithTimestamp(DateTimeOffset.Now);
 
-                return ((new ComponentBuilder(), embedBuilder.Build()), false, session.MessageId);
+                return (true, embedBuilder.Build(), session.CorrectAgent.displayName);
             }
             else
             {
@@ -280,42 +297,39 @@ namespace MusicBot2.Service
                 var errorEmbed = new EmbedBuilder()
                     .WithTitle("❌ 答錯了！")
                     .WithColor(Discord.Color.Red)
-                    .WithDescription($"{modal.User.Mention} {CommonHelper.GetUserFace(modal.User.Id.ToString())} 答：**{userAnswer}**\n\n請再試一次！")
+                    .WithDescription($"{user.Mention} {CommonHelper.GetUserFace(user.Id.ToString())} 答：**{userAnswer}**\n\n請再試一次！")
                     .Build();
-                return ((null, errorEmbed), true, 0);
+                return (false, errorEmbed, null);
             }
         }
 
         /// <summary>
-        /// 處理 Modal 提交（猜技能名稱）- 返回訊息內容而不是 Embed
+        /// 處理技能名稱答案（slash command）
         /// </summary>
-        public async Task<(string message, bool isCorrect, string correctAnswer, string agentName)> HandleAbilityModalSubmitAsync(SocketModal modal, ulong channelId)
+        public async Task<(bool isCorrect, string? wrongAnswer, string? correctAnswer, string? agentName)> HandleAbilityAnswerAsync(ulong channelId, string userAnswer)
         {
             // 檢查是否有遊戲進行中
             if (!_activeAbilityGames.ContainsKey(channelId))
             {
-                return ("找不到遊戲，請重新開始！", false, "", "");
+                return (false, null, null, null);
             }
 
             var session = _activeAbilityGames[channelId];
+            userAnswer = userAnswer.Trim();
 
-            // 獲取使用者輸入
-            var userAnswer = modal.Data.Components
-                .First(x => x.CustomId == "ability_input").Value.Trim();
-
-            // 檢查答案是否正確（不區分大小寫）
-            bool isCorrect = string.Equals(userAnswer, session.SelectedAbility.displayName, StringComparison.OrdinalIgnoreCase);
+            // 檢查答案（支援中英文，不區分大小寫）
+            bool isCorrect = await CheckAbilityAnswerAsync(session.SelectedAbility, userAnswer);
 
             if (isCorrect)
             {
                 // 答對了 - 移除遊戲狀態
                 _activeAbilityGames.Remove(channelId);
-                return ("", true, session.SelectedAbility.displayName, session.CorrectAgent.displayName);
+                return (true, null, session.SelectedAbility.displayName, session.CorrectAgent.displayName);
             }
             else
             {
                 // 答錯了 - 遊戲繼續
-                return (userAnswer, false, "", "");
+                return (false, userAnswer, null, null);
             }
         }
 
@@ -331,6 +345,106 @@ namespace MusicBot2.Service
             else if (!isImageMode && _activeAbilityGames.ContainsKey(id))
             {
                 _activeAbilityGames[id].MessageId = messageId;
+            }
+        }
+
+        /// <summary>
+        /// 檢查角色答案（支援中英文）
+        /// </summary>
+        private async Task<bool> CheckAgentAnswerAsync(ValorantAgent agent, string userAnswer)
+        {
+            // 先確保有最新的 API 資料（如果 _nameMapping 為空）
+            if (_nameMapping.Count == 0)
+            {
+                await LoadNameMappingAsync();
+            }
+
+            // 直接比對中文名（API displayName）
+            if (string.Equals(userAnswer, agent.displayName, StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            // 嘗試從映射表找英文名
+            if (_nameMapping.TryGetValue(agent.displayName, out string? englishName))
+            {
+                if (string.Equals(userAnswer, englishName, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// 檢查技能答案（支援中英文）
+        /// </summary>
+        private async Task<bool> CheckAbilityAnswerAsync(ValorantAbility ability, string userAnswer)
+        {
+            // 先確保有最新的 API 資料
+            if (_nameMapping.Count == 0)
+            {
+                await LoadNameMappingAsync();
+            }
+
+            // 直接比對中文名
+            if (string.Equals(userAnswer, ability.displayName, StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            // 嘗試從映射表找英文名
+            if (_nameMapping.TryGetValue(ability.displayName, out string? englishName))
+            {
+                if (string.Equals(userAnswer, englishName, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// 載入中英文名稱映射（從 API 動態獲取）
+        /// </summary>
+        private async Task LoadNameMappingAsync()
+        {
+            try
+            {                // 取得中文版（zh-TW）
+                var zhResponse = await _httpClient.GetAsync("https://valorant-api.com/v1/agents?language=zh-TW");
+                var zhContent = await zhResponse.Content.ReadAsStringAsync();
+                var zhData = JsonConvert.DeserializeObject<ValorantAgentsResponse>(zhContent);
+
+                // 取得英文版（en-US）
+                var enResponse = await _httpClient.GetAsync("https://valorant-api.com/v1/agents?language=en-US");
+                var enContent = await enResponse.Content.ReadAsStringAsync();
+                var enData = JsonConvert.DeserializeObject<ValorantAgentsResponse>(enContent);
+
+                // 建立映射表 (中文 -> 英文)
+                _nameMapping.Clear();
+                foreach (var zhAgent in zhData.data)
+                {
+                    var enAgent = enData.data.FirstOrDefault(a => a.uuid == zhAgent.uuid);
+                    if (enAgent != null)
+                    {
+                        // 角色名稱
+                        _nameMapping[zhAgent.displayName] = enAgent.displayName;
+
+                        // 技能名稱
+                        if (zhAgent.abilities != null && enAgent.abilities != null)
+                        {
+                            for (int i = 0; i < zhAgent.abilities.Count && i < enAgent.abilities.Count; i++)
+                            {
+                                var zhAbility = zhAgent.abilities[i];
+                                var enAbility = enAgent.abilities[i];
+                                if (!string.IsNullOrEmpty(zhAbility.displayName) && !string.IsNullOrEmpty(enAbility.displayName))
+                                {
+                                    _nameMapping[zhAbility.displayName] = enAbility.displayName;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Console.WriteLine($"[ValorantService] 已載入 {_nameMapping.Count} 組中英文名稱映射");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[ValorantService] 載入名稱映射失敗: {ex.Message}");
             }
         }
         #endregion
