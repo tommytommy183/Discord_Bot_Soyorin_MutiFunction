@@ -34,10 +34,6 @@ namespace MusicBot2.Service
                     break;
             }
 
-            url =
-                $"https://image.pollinations.ai/prompt/{encodedPrompt}?model=flux";
-
-
             using var response = await _httpClient.GetAsync(url);
 
             response.EnsureSuccessStatusCode();
