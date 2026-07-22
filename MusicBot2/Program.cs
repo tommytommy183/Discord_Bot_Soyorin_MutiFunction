@@ -652,6 +652,34 @@ public class Program
 
         try
         {
+            // 歌詞帶歌名參數，獨立處理
+            if (feature.StartsWith("歌詞:"))
+            {
+                var trackName = feature.Substring("歌詞:".Length).Trim();
+                if (!string.IsNullOrWhiteSpace(trackName))
+                {
+                    var lyricsSvc = _services.GetRequiredService<LyrisService>();
+                    var results = await lyricsSvc.SearchLyricsAsync(trackName);
+                    if (results == null || results.Count == 0)
+                    {
+                        await channel.SendMessageAsync($"❌ 找不到「{trackName}」的歌詞");
+                    }
+                    else
+                    {
+                        var r = results[0];
+                        var lyricsEmbed = new EmbedBuilder()
+                            .WithTitle($"🎵 {r.trackName}")
+                            .WithDescription(lyricsSvc.FormatLyrics(r.plainLyrics, 4000))
+                            .WithColor(Color.Blue)
+                            .AddField("歌手", r.artistName ?? "未知", true)
+                            .AddField("專輯", r.albumName ?? "未知", true)
+                            .Build();
+                        await channel.SendMessageAsync(embed: lyricsEmbed);
+                    }
+                }
+                return;
+            }
+
             switch (feature)
             {
                 case "1a2b":
@@ -688,7 +716,63 @@ public class Program
                 case "推薦動漫":
                 {
                     var svc = _services.GetRequiredService<JikanAnimeService>();
-                    var ((comp, embed), imageUrl) = await svc.GetSomeRandomAnime("tv", "");
+                    var ((comp, embed), _) = await svc.GetSomeRandomAnime("tv", "");
+                    await channel.SendMessageAsync(embed: embed, components: comp.Build());
+                    break;
+                }
+                case "推薦漫畫":
+                {
+                    var svc = _services.GetRequiredService<JikanAnimeService>();
+                    var ((comp, embed), _) = await svc.GetSomeRandomManga("manga", "");
+                    await channel.SendMessageAsync(embed: embed, components: comp.Build());
+                    break;
+                }
+                case "猜單字":
+                {
+                    var svc = _services.GetRequiredService<WordGuessingService>();
+                    var txt = await svc.Guess(channel, "", talker);
+                    if (!string.IsNullOrWhiteSpace(txt))
+                        await channel.SendMessageAsync(txt);
+                    break;
+                }
+                case "動物照片":
+                {
+                    var svc = _services.GetRequiredService<UselessApiService>();
+                    // 隨機選一種動物
+                    var pick = new Random().Next(3);
+                    string txt = pick switch
+                    {
+                        0 => await svc.GetDogPicAsync(),
+                        1 => await svc.GetDuckPicAsync(),
+                        _ => await svc.GetFoxPicAsync()
+                    };
+                    if (!string.IsNullOrWhiteSpace(txt))
+                        await channel.SendMessageAsync(txt);
+                    break;
+                }
+                case "一言":
+                {
+                    var svc = _services.GetRequiredService<UselessApiService>();
+                    var pick = new Random().Next(2);
+                    string txt = pick == 0
+                        ? await svc.GetHitokotoAnimeAsync()
+                        : await svc.GetHitokotoGameAsync();
+                    if (!string.IsNullOrWhiteSpace(txt))
+                        await channel.SendMessageAsync(txt);
+                    break;
+                }
+                case "冷知識":
+                {
+                    var svc = _services.GetRequiredService<UselessApiService>();
+                    var txt = await svc.GetUselessFactsAsync();
+                    if (!string.IsNullOrWhiteSpace(txt))
+                        await channel.SendMessageAsync(txt);
+                    break;
+                }
+                case "抓寶可夢":
+                {
+                    var svc = _services.GetRequiredService<PokeGameService>();
+                    var (embed, comp) = await svc.CatchPokemonAsync(userId, talker?.DisplayName ?? talker?.Username ?? "訓練師");
                     await channel.SendMessageAsync(embed: embed, components: comp.Build());
                     break;
                 }

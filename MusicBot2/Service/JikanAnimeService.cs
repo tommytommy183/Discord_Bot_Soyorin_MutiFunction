@@ -400,43 +400,30 @@ namespace MusicBot2.Service
         {
             try
             {
-                string url = $"{API_BASE_URL}/top/anime?";
-                string imageUrl = "";
+                string baseUrl = $"{API_BASE_URL}/top/anime?";
+                if (!string.IsNullOrEmpty(type))    baseUrl += $"&type={type}";
+                if (!string.IsNullOrEmpty(ratings)) baseUrl += $"&rating={ratings}";
 
-                if (!string.IsNullOrEmpty(type))
-                {
-                    url += $"&type={type}";
-                }
-                if (!string.IsNullOrEmpty(ratings))
-                {
-                    url += $"&rating={ratings}";
-                }
+                var items = await GetPageData(baseUrl);
+                if (items == null || items.per_page <= 0)
+                    return (CommonHelper.BuildErrorResponse("無法取得動畫分頁資訊"), "");
 
-                //應該要先直接打一次，取得總資料，然後再隨機一頁
-                Items items = new Items();
-                items = await GetPageData(url);
-                int totalPages = items.total / items.per_page;
+                int totalPages = Math.Max(1, items.total / items.per_page);
+                string url = baseUrl + $"&page={new Random().Next(1, totalPages + 1)}";
 
-                Random random = new Random();
-                int page = random.Next(1, totalPages + 1);
-                url += $"&page={page}";
-                Console.WriteLine(url);
                 var response = await _httpClient.GetAsync(url);
-
                 if (!response.IsSuccessStatusCode)
-                {
                     return (CommonHelper.BuildErrorResponse("無法獲取動畫資料"), "");
-                }
+
                 var content = await response.Content.ReadAsStringAsync();
                 var wrapper = JsonConvert.DeserializeObject<TopAnimeResponse>(content);
+                if (wrapper?.data == null || wrapper.data.Count == 0)
+                    return (CommonHelper.BuildErrorResponse("動畫資料為空"), "");
 
-                Random random2 = new Random();
-                var anime = wrapper.data[random2.Next(wrapper.data.Count)];
-
-                string description = $"分數:{anime.score}\n簡介:{anime.synopsis ?? "沒有動畫簡介"}";
-
-                if (description.Length > 200) description = description.Substring(0, 200) + "...";
-
+                var anime = wrapper.data[new Random().Next(wrapper.data.Count)];
+                string imageUrl = "";
+                string description = $"分數：{anime.score}\n簡介：{anime.synopsis ?? "無簡介"}";
+                if (description.Length > 200) description = description[..200] + "...";
 
                 var embedBuilder = new EmbedBuilder()
                 {
@@ -447,13 +434,10 @@ namespace MusicBot2.Service
                 bool isR18 = anime.rating?.ToLower().StartsWith("rx") == true;
                 string coverUrl = anime.images?.jpg?.image_url ?? "";
                 if (!string.IsNullOrEmpty(coverUrl) && !isR18)
-                {
                     embedBuilder.WithImageUrl(coverUrl);
-                }
                 else
-                {
                     imageUrl = coverUrl;
-                }
+
                 return ((new ComponentBuilder(), embedBuilder.Build()), imageUrl);
             }
             catch (Exception ex)
@@ -466,43 +450,30 @@ namespace MusicBot2.Service
         {
             try
             {
-                string url = $"{API_BASE_URL}/manga?";
-                string imageUrl = "";
+                string baseUrl = $"{API_BASE_URL}/top/manga?";
+                if (!string.IsNullOrEmpty(type))   baseUrl += $"&type={type}";
+                if (!string.IsNullOrEmpty(genres)) baseUrl += $"&genres={genres}";
 
-                if (!string.IsNullOrEmpty(type))
-                {
-                    url += $"&type={type}";
-                }
-                if (!string.IsNullOrEmpty(genres))
-                {
-                    url += $"&genres={genres}";
-                }
+                var items = await GetPageData(baseUrl);
+                if (items == null || items.per_page <= 0)
+                    return (CommonHelper.BuildErrorResponse("無法取得漫畫分頁資訊"), "");
 
-                //應該要先直接打一次，取得總資料，然後再隨機一頁
-                Items items = new Items();
-                items = await GetPageData(url);
-                int totalPages = items.total / items.per_page;
+                int totalPages = Math.Max(1, items.total / items.per_page);
+                string url = baseUrl + $"&page={new Random().Next(1, totalPages + 1)}";
 
-                Random random = new Random();
-                int page = random.Next(1, totalPages + 1);
-                url += $"&page={page}";
-                Console.WriteLine(url);
                 var response = await _httpClient.GetAsync(url);
-
                 if (!response.IsSuccessStatusCode)
-                {
                     return (CommonHelper.BuildErrorResponse("無法獲取漫畫資料"), "");
-                }
+
                 var content = await response.Content.ReadAsStringAsync();
                 var wrapper = JsonConvert.DeserializeObject<TopMangaResponse>(content);
+                if (wrapper?.data == null || wrapper.data.Count == 0)
+                    return (CommonHelper.BuildErrorResponse("漫畫資料為空"), "");
 
-                Random random2 = new Random();
-                var manga = wrapper.data[random2.Next(wrapper.data.Count)];
-
-                string description = $"分數:{manga.score}\n簡介:{manga.synopsis ?? "沒有動畫簡介"}";
-
-                if (description.Length > 200) description = description.Substring(0, 200) + "...";
-
+                var manga = wrapper.data[new Random().Next(wrapper.data.Count)];
+                string imageUrl = "";
+                string description = $"分數：{manga.score}\n簡介：{manga.synopsis ?? "無簡介"}";
+                if (description.Length > 200) description = description[..200] + "...";
 
                 var embedBuilder = new EmbedBuilder()
                 {
@@ -510,14 +481,12 @@ namespace MusicBot2.Service
                     Description = description,
                     Color = Color.Purple
                 };
-                if (!string.IsNullOrEmpty(manga.images?.jpg?.image_url) && manga.genres != null && !manga.genres.Any(g => g.mal_id == "12" || g.mal_id == "9"))
-                {
-                    embedBuilder.WithImageUrl(manga.images.jpg.image_url);
-                }
+                string coverUrl = manga.images?.jpg?.image_url ?? "";
+                bool isAdult = manga.genres?.Any(g => g.mal_id == "12" || g.mal_id == "9") == true;
+                if (!string.IsNullOrEmpty(coverUrl) && !isAdult)
+                    embedBuilder.WithImageUrl(coverUrl);
                 else
-                {
-                    imageUrl = manga.images.jpg.image_url;
-                }
+                    imageUrl = coverUrl;
 
                 return ((new ComponentBuilder(), embedBuilder.Build()), imageUrl);
             }
@@ -529,10 +498,18 @@ namespace MusicBot2.Service
 
         public async Task<Items> GetPageData(string url)
         {
-            var response = await _httpClient.GetAsync(url);
-            var content = await response.Content.ReadAsStringAsync();
-            var wrapper = JsonConvert.DeserializeObject<PaginationWrapper>(content);
-            return wrapper.pagination.items;
+            try
+            {
+                var response = await _httpClient.GetAsync(url);
+                if (!response.IsSuccessStatusCode) return null;
+                var content = await response.Content.ReadAsStringAsync();
+                var wrapper = JsonConvert.DeserializeObject<PaginationWrapper>(content);
+                return wrapper?.pagination?.items;
+            }
+            catch
+            {
+                return null;
+            }
         }
     }
 }
