@@ -124,7 +124,7 @@ public class Program
                   )
             .AddSingleton<JikanAnimeService>()
             .AddSingleton<PokeGameService>(sp =>
-                new PokeGameService(redisConn, sp.GetRequiredService<OpenRouterService>(),_client)
+                new PokeGameService(redisConn, sp.GetRequiredService<OpenRouterService>(), _client)
                 )
             .AddSingleton<LyrisService>()
             .AddSingleton<LyricsDisplayService>()
@@ -652,6 +652,19 @@ public class Program
 
         try
         {
+            // 產生圖片帶 prompt 參數，獨立處理
+            if (feature.StartsWith("產生圖片:"))
+            {
+                var prompt = feature.Substring("產生圖片:".Length).Trim();
+                if (!string.IsNullOrWhiteSpace(prompt))
+                {
+                    var imgSvc = _services.GetRequiredService<AIImageService>();
+                    var stream = await imgSvc.GenerateImageAsync(prompt);
+                    await channel.SendFileAsync(stream, "image.png");
+                }
+                return;
+            }
+
             // 歌詞帶歌名參數，獨立處理
             if (feature.StartsWith("歌詞:"))
             {
@@ -683,99 +696,99 @@ public class Program
             switch (feature)
             {
                 case "1a2b":
-                {
-                    var svc = _services.GetRequiredService<Game1A2BService>();
-                    var (comp, embed) = await svc.StartGameAsync(userId, "");
-                    await channel.SendMessageAsync(embed: embed, components: comp.Build());
-                    break;
-                }
-                case "猜動漫":
-                {
-                    var svc = _services.GetRequiredService<JikanAnimeService>();
-                    var (comp, embed) = await svc.StartGameAsync("character", false);
-                    await channel.SendMessageAsync(embed: embed, components: comp.Build());
-                    break;
-                }
-                case "2048":
-                {
-                    var svc = _services.GetRequiredService<Game2048Service>();
-                    var (comp, embed) = await svc.StartGameAsync(channel.Id);
-                    await channel.SendMessageAsync(embed: embed, components: comp.Build());
-                    break;
-                }
-                case "猜英雄":
-                {
-                    var svc = _services.GetRequiredService<ValorantService>();
-                    var ((comp, embed), silhouette) = await svc.StartGuessAgentImageAsync(channel.Id);
-                    if (silhouette != null)
-                        await channel.SendFileAsync(silhouette, "agent.png", embed: embed, components: comp.Build());
-                    else
-                        await channel.SendMessageAsync(embed: embed, components: comp.Build());
-                    break;
-                }
-                case "推薦動漫":
-                {
-                    var svc = _services.GetRequiredService<JikanAnimeService>();
-                    var ((comp, embed), _) = await svc.GetSomeRandomAnime("tv", "");
-                    await channel.SendMessageAsync(embed: embed, components: comp.Build());
-                    break;
-                }
-                case "推薦漫畫":
-                {
-                    var svc = _services.GetRequiredService<JikanAnimeService>();
-                    var ((comp, embed), _) = await svc.GetSomeRandomManga("manga", "");
-                    await channel.SendMessageAsync(embed: embed, components: comp.Build());
-                    break;
-                }
-                case "猜單字":
-                {
-                    var svc = _services.GetRequiredService<WordGuessingService>();
-                    var txt = await svc.Guess(channel, "", talker);
-                    if (!string.IsNullOrWhiteSpace(txt))
-                        await channel.SendMessageAsync(txt);
-                    break;
-                }
-                case "動物照片":
-                {
-                    var svc = _services.GetRequiredService<UselessApiService>();
-                    // 隨機選一種動物
-                    var pick = new Random().Next(3);
-                    string txt = pick switch
                     {
-                        0 => await svc.GetDogPicAsync(),
-                        1 => await svc.GetDuckPicAsync(),
-                        _ => await svc.GetFoxPicAsync()
-                    };
-                    if (!string.IsNullOrWhiteSpace(txt))
-                        await channel.SendMessageAsync(txt);
-                    break;
-                }
+                        var svc = _services.GetRequiredService<Game1A2BService>();
+                        var (comp, embed) = await svc.StartGameAsync(userId, "");
+                        await channel.SendMessageAsync(embed: embed, components: comp.Build());
+                        break;
+                    }
+                case "猜動漫":
+                    {
+                        var svc = _services.GetRequiredService<JikanAnimeService>();
+                        var (comp, embed) = await svc.StartGameAsync("character", false);
+                        await channel.SendMessageAsync(embed: embed, components: comp.Build());
+                        break;
+                    }
+                case "2048":
+                    {
+                        var svc = _services.GetRequiredService<Game2048Service>();
+                        var (comp, embed) = await svc.StartGameAsync(channel.Id);
+                        await channel.SendMessageAsync(embed: embed, components: comp.Build());
+                        break;
+                    }
+                case "猜英雄":
+                    {
+                        var svc = _services.GetRequiredService<ValorantService>();
+                        var ((comp, embed), silhouette) = await svc.StartGuessAgentImageAsync(channel.Id);
+                        if (silhouette != null)
+                            await channel.SendFileAsync(silhouette, "agent.png", embed: embed, components: comp.Build());
+                        else
+                            await channel.SendMessageAsync(embed: embed, components: comp.Build());
+                        break;
+                    }
+                case "推薦動漫":
+                    {
+                        var svc = _services.GetRequiredService<JikanAnimeService>();
+                        var ((comp, embed), _) = await svc.GetSomeRandomAnime("tv", "");
+                        await channel.SendMessageAsync(embed: embed, components: comp.Build());
+                        break;
+                    }
+                case "推薦漫畫":
+                    {
+                        var svc = _services.GetRequiredService<JikanAnimeService>();
+                        var ((comp, embed), _) = await svc.GetSomeRandomManga("manga", "");
+                        await channel.SendMessageAsync(embed: embed, components: comp.Build());
+                        break;
+                    }
+                case "猜單字":
+                    {
+                        var svc = _services.GetRequiredService<WordGuessingService>();
+                        var txt = await svc.Guess(channel, "", talker);
+                        if (!string.IsNullOrWhiteSpace(txt))
+                            await channel.SendMessageAsync(txt);
+                        break;
+                    }
+                case "動物照片":
+                    {
+                        var svc = _services.GetRequiredService<UselessApiService>();
+                        // 隨機選一種動物
+                        var pick = new Random().Next(3);
+                        string txt = pick switch
+                        {
+                            0 => await svc.GetDogPicAsync(),
+                            1 => await svc.GetDuckPicAsync(),
+                            _ => await svc.GetFoxPicAsync()
+                        };
+                        if (!string.IsNullOrWhiteSpace(txt))
+                            await channel.SendMessageAsync(txt);
+                        break;
+                    }
                 case "一言":
-                {
-                    var svc = _services.GetRequiredService<UselessApiService>();
-                    var pick = new Random().Next(2);
-                    string txt = pick == 0
-                        ? await svc.GetHitokotoAnimeAsync()
-                        : await svc.GetHitokotoGameAsync();
-                    if (!string.IsNullOrWhiteSpace(txt))
-                        await channel.SendMessageAsync(txt);
-                    break;
-                }
+                    {
+                        var svc = _services.GetRequiredService<UselessApiService>();
+                        var pick = new Random().Next(2);
+                        string txt = pick == 0
+                            ? await svc.GetHitokotoAnimeAsync()
+                            : await svc.GetHitokotoGameAsync();
+                        if (!string.IsNullOrWhiteSpace(txt))
+                            await channel.SendMessageAsync(txt);
+                        break;
+                    }
                 case "冷知識":
-                {
-                    var svc = _services.GetRequiredService<UselessApiService>();
-                    var txt = await svc.GetUselessFactsAsync();
-                    if (!string.IsNullOrWhiteSpace(txt))
-                        await channel.SendMessageAsync(txt);
-                    break;
-                }
+                    {
+                        var svc = _services.GetRequiredService<UselessApiService>();
+                        var txt = await svc.GetUselessFactsAsync();
+                        if (!string.IsNullOrWhiteSpace(txt))
+                            await channel.SendMessageAsync(txt);
+                        break;
+                    }
                 case "抓寶可夢":
-                {
-                    var svc = _services.GetRequiredService<PokeGameService>();
-                    var (embed, comp) = await svc.CatchPokemonAsync(userId, talker?.DisplayName ?? talker?.Username ?? "訓練師");
-                    await channel.SendMessageAsync(embed: embed, components: comp.Build());
-                    break;
-                }
+                    {
+                        var svc = _services.GetRequiredService<PokeGameService>();
+                        var (embed, comp) = await svc.CatchPokemonAsync(userId, talker?.DisplayName ?? talker?.Username ?? "訓練師");
+                        await channel.SendMessageAsync(embed: embed, components: comp.Build());
+                        break;
+                    }
             }
         }
         catch (Exception ex)
@@ -1784,7 +1797,7 @@ public class Program
         var (exitCode, output, error) = await ExecuteYtDlpAsync($"-f bestaudio/best -x --audio-format mp3 -o \"{outputTemplate}\" {url}");
 
         if (exitCode == 0)
-{
+        {
             // 找出實際的 MP3 檔案
             var downloadedFile = Directory
                 .EnumerateFiles(tempDirectory, $"{filePrefix}.*")
@@ -1884,7 +1897,7 @@ public class Program
         var bypassArgs = "--extractor-args \"youtube:player_client=android,web\"";
 
         // Cookie 參數需要放在前面，並添加額外參數來處理受限內容
-        var fullArguments = string.IsNullOrEmpty(cookieArg) 
+        var fullArguments = string.IsNullOrEmpty(cookieArg)
             ? $"--no-warnings --no-playlist {bypassArgs} {arguments}"
             : $"{cookieArg} --no-warnings --no-playlist {bypassArgs} {arguments}";
 
@@ -2057,8 +2070,8 @@ public class Program
                 }
 
                 // 檢查是否因為年齡限制或會員限定被擋
-                bool needsAuth = error1.Contains("Sign in") || 
-                                error1.Contains("age") || 
+                bool needsAuth = error1.Contains("Sign in") ||
+                                error1.Contains("age") ||
                                 error1.Contains("members-only") ||
                                 error1.Contains("private") ||
                                 error1.Contains("unavailable");

@@ -17,10 +17,11 @@ namespace MusicBot2.Service
         //https://loremflickr.com/800/600/anime
         //GET https://image.pollinations.ai/prompt/一隻可愛的柴犬坐在草地上
 
-        public async Task<Stream> GenerateImageAsync(string prompt, string model)
+        public async Task<Stream> GenerateImageAsync(string prompt)
         {
             string encodedPrompt = WebUtility.UrlEncode(prompt);
             string url = "";
+            string model = "pollinations";
 
             switch (model)
             {
