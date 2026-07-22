@@ -748,21 +748,6 @@ public class Program
                             await channel.SendMessageAsync(txt);
                         break;
                     }
-                case "動物照片":
-                    {
-                        var svc = _services.GetRequiredService<UselessApiService>();
-                        // 隨機選一種動物
-                        var pick = new Random().Next(3);
-                        string txt = pick switch
-                        {
-                            0 => await svc.GetDogPicAsync(),
-                            1 => await svc.GetDuckPicAsync(),
-                            _ => await svc.GetFoxPicAsync()
-                        };
-                        if (!string.IsNullOrWhiteSpace(txt))
-                            await channel.SendMessageAsync(txt);
-                        break;
-                    }
                 case "一言":
                     {
                         var svc = _services.GetRequiredService<UselessApiService>();
