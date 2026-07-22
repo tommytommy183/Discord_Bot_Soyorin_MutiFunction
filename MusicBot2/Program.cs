@@ -626,6 +626,80 @@ public class Program
     #endregion
 
     #region MSreceive
+    private static readonly System.Text.RegularExpressions.Regex _launchTagRegex =
+        new(@"\[LAUNCH:(.+?)\]", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    private async Task HandleSoyoResponseAsync(string result, SocketMessage message, SocketGuildUser talker)
+    {
+        if (string.IsNullOrWhiteSpace(result))
+        {
+            await message.Channel.SendMessageAsync(result);
+            return;
+        }
+
+        var tagMatch = _launchTagRegex.Match(result);
+        var cleanText = _launchTagRegex.Replace(result, "").Trim();
+
+        // 先送出 Soyo 的文字回覆
+        if (!string.IsNullOrWhiteSpace(cleanText))
+            await message.Channel.SendMessageAsync(cleanText);
+
+        if (!tagMatch.Success) return;
+
+        var feature = tagMatch.Groups[1].Value.Trim();
+        var channel = message.Channel;
+        var userId = talker?.Id ?? message.Author.Id;
+
+        try
+        {
+            switch (feature)
+            {
+                case "1a2b":
+                {
+                    var svc = _services.GetRequiredService<Game1A2BService>();
+                    var (comp, embed) = await svc.StartGameAsync(userId, "");
+                    await channel.SendMessageAsync(embed: embed, components: comp.Build());
+                    break;
+                }
+                case "猜動漫":
+                {
+                    var svc = _services.GetRequiredService<JikanAnimeService>();
+                    var (comp, embed) = await svc.StartGameAsync("character", false);
+                    await channel.SendMessageAsync(embed: embed, components: comp.Build());
+                    break;
+                }
+                case "2048":
+                {
+                    var svc = _services.GetRequiredService<Game2048Service>();
+                    var (comp, embed) = await svc.StartGameAsync(channel.Id);
+                    await channel.SendMessageAsync(embed: embed, components: comp.Build());
+                    break;
+                }
+                case "猜英雄":
+                {
+                    var svc = _services.GetRequiredService<ValorantService>();
+                    var ((comp, embed), silhouette) = await svc.StartGuessAgentImageAsync(channel.Id);
+                    if (silhouette != null)
+                        await channel.SendFileAsync(silhouette, "agent.png", embed: embed, components: comp.Build());
+                    else
+                        await channel.SendMessageAsync(embed: embed, components: comp.Build());
+                    break;
+                }
+                case "推薦動漫":
+                {
+                    var svc = _services.GetRequiredService<JikanAnimeService>();
+                    var ((comp, embed), imageUrl) = await svc.GetSomeRandomAnime("tv", "");
+                    await channel.SendMessageAsync(embed: embed, components: comp.Build());
+                    break;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[HandleSoyoResponse] Launch '{feature}' 失敗: {ex.Message}");
+        }
+    }
+
     public async Task MessageReceivedHandler(SocketMessage message)
     {
         if (message is not SocketUserMessage userMessage || message.Author.IsBot) return;
@@ -669,21 +743,15 @@ public class Program
                 if (repliedMessage != null)
                 {
                     result = await _openRouterService.GenerateTextAsync(message.Content, talker, true, channelKey, repliedMessage);
-                    await message.Channel.SendMessageAsync(result);
-                    return; // 已處理完畢，直接返回
-
-                    //result = await _googleAIStudioService.GenerateTextAsync(message.Content, talker, true, channelKey);
-                    //await message.Channel.SendMessageAsync(result);
+                    await HandleSoyoResponseAsync(result, message, talker);
+                    return;
                 }
             }
             else
             {
                 result = await _openRouterService.GenerateTextAsync(message.Content, talker, true, channelKey);
-                await message.Channel.SendMessageAsync(result);
-                return; // 已處理完畢，直接返回
-
-                //result = await _googleAIStudioService.GenerateTextAsync(message.Content, talker, true, channelKey);
-                //await message.Channel.SendMessageAsync(result);
+                await HandleSoyoResponseAsync(result, message, talker);
+                return;
             }
         }
 
