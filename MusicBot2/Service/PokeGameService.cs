@@ -473,6 +473,62 @@ namespace MusicBot2.Service
             }
         }
 
+        public async Task<(Embed embed, ComponentBuilder component)> ShowOnePokemon(ulong userId, string userName, int index,IMessageChannel channel)
+        {
+            try
+            {
+                var player = await GetPlayerDataAsync(userId, userName);
+
+                if (player.CaughtPokemon.Count == 0)
+                {
+                    var errorEmbed = new EmbedBuilder()
+                        .WithTitle("你還沒有任何pokemon！")
+                        .WithDescription("使用 `/抓pokemon` 來抓取你的第一隻pokemon吧！")
+                        .WithColor(Color.Orange)
+                        .Build();
+                    return (errorEmbed, new ComponentBuilder());
+                }
+
+                if (index < 1 || index > player.CaughtPokemon.Count)
+                {
+                    var errorEmbed = new EmbedBuilder()
+                        .WithTitle("❌ 無效的pokemon編號！")
+                        .WithDescription($"請輸入 1 到 {player.CaughtPokemon.Count} 之間的編號")
+                        .WithColor(Color.Red)
+                        .Build();
+                    return (errorEmbed, new ComponentBuilder());
+                }
+
+                var pokemon = player.CaughtPokemon[index - 1];
+
+                var embed = new EmbedBuilder()
+                    .WithTitle($"{userName} 想秀給大家看看他勇猛的 {pokemon.CustomName ?? pokemon.Name}")
+                    .WithColor(Color.Gold);
+
+                string shinyText = pokemon.isShiny ? "✨閃光的✨" : "";
+                var displayName = pokemon.CustomName ?? pokemon.Name;
+                var evolutionInfo = pokemon.CanEvolve
+                    ? $"\n進化進度: {pokemon.EvolutionPoints}/3 ⭐"
+                    : $"\n✨ 最終形態 (階段 {pokemon.EvolutionStage})";
+
+                embed.AddField(
+                    $"原名: {shinyText + pokemon.Name}\n" +
+                    $"屬性: {string.Join(", ", pokemon.Types)}\n" +
+                    $"HP: {pokemon.HP} | 攻: {pokemon.Attack} | 防: {pokemon.Defense}\n" +
+                    $"抓到時間: {pokemon.CaughtDate:yyyy-MM-dd}" +
+                    evolutionInfo,
+                    false
+                );
+                await channel.SendMessageAsync(pokemon.ImageUrl);
+
+                return (embed.Build(), new ComponentBuilder());
+            }
+            catch (Exception ex)
+            {
+                return (CommonHelper.BuildErrorResponse($"列出pokemon時發生錯誤: {ex}").Item2, new ComponentBuilder());
+            }
+        }
+
         public async Task<(Embed embed, ComponentBuilder component)> ListPokemonAsync(ulong userId, string userName)
         {
             try
@@ -498,12 +554,13 @@ namespace MusicBot2.Service
                 {
                     var pokemon = player.CaughtPokemon[i];
                     var displayName = pokemon.CustomName ?? pokemon.Name;
-                    var evolutionInfo = pokemon.CanEvolve 
-                        ? $"\n進化進度: {pokemon.EvolutionPoints}/3 ⭐" 
+                    var evolutionInfo = pokemon.CanEvolve
+                        ? $"\n進化進度: {pokemon.EvolutionPoints}/3 ⭐"
                         : $"\n✨ 最終形態 (階段 {pokemon.EvolutionStage})";
+                    string shinyText = pokemon.isShiny ? "✨閃光的✨" : "";
 
                     embed.AddField(
-                        $"{i + 1}. {displayName}",
+                        $"{i + 1}. {shinyText + displayName}",
                         $"原名: {pokemon.Name}\n" +
                         $"屬性: {string.Join(", ", pokemon.Types)}\n" +
                         $"HP: {pokemon.HP} | 攻: {pokemon.Attack} | 防: {pokemon.Defense}\n" +
@@ -620,10 +677,10 @@ namespace MusicBot2.Service
         private static readonly Dictionary<string, PokemonExchangeRequest> _exchangeRequests = new Dictionary<string, PokemonExchangeRequest>();
 
         public async Task<(Embed embed, ComponentBuilder component)> InitiateExchangeAsync(
-            ulong requesterId, 
-            string requesterName, 
-            int pokemonIndex, 
-            IUser target, 
+            ulong requesterId,
+            string requesterName,
+            int pokemonIndex,
+            IUser target,
             IMessageChannel channel)
         {
             try
@@ -705,7 +762,7 @@ namespace MusicBot2.Service
                     .AddField("提供的Pokemon", $"**{pokemonName}**", true)
                     .AddField("屬性", string.Join(", ", pokemonToExchange.Types), true)
                     .AddField("✨ 狀態", pokemonToExchange.isShiny ? "閃光✨" : "普通", true)
-                    .AddField("能力值", 
+                    .AddField("能力值",
                         $"HP: {pokemonToExchange.HP}\n" +
                         $"攻擊: {pokemonToExchange.Attack}\n" +
                         $"防禦: {pokemonToExchange.Defense}\n" +
@@ -939,7 +996,7 @@ namespace MusicBot2.Service
         #endregion
 
         #region 對戰系統
-        public async Task<(Embed embed, ComponentBuilder component)> StartBattleSearchAsync(ulong userId, string userName,int index, IMessageChannel channel)
+        public async Task<(Embed embed, ComponentBuilder component)> StartBattleSearchAsync(ulong userId, string userName, int index, IMessageChannel channel)
         {
             try
             {
@@ -997,7 +1054,7 @@ namespace MusicBot2.Service
                         opponent.UserId, opponent.UserName, opponent.Pokemon);
 
                     // 在對方頻道發送對戰結果
-                    if(opponentChannel != null && opponentChannel.Id != channel.Id)
+                    if (opponentChannel != null && opponentChannel.Id != channel.Id)
                     {
                         await opponentChannel.SendMessageAsync(embed: embed, components: component.Build());
                     }
@@ -1068,7 +1125,7 @@ namespace MusicBot2.Service
         }
 
 
-        public async Task<(Embed embed, ComponentBuilder component)> Start2v2BattleSearchAsync(ulong userId, string userName, int index1,int index2, IMessageChannel channel)
+        public async Task<(Embed embed, ComponentBuilder component)> Start2v2BattleSearchAsync(ulong userId, string userName, int index1, int index2, IMessageChannel channel)
         {
             try
             {
@@ -1121,7 +1178,7 @@ namespace MusicBot2.Service
                     if (opponentChannel != null && opponentChannel.Id != channel.Id)
                     {
                         await NotifyBattleStart2V2Async(opponentChannel, opponent.UserId, opponent.Pokemon1, opponent.Pokemon2,
-                            new BattleMatchmaking2V2 { UserId = userId, UserName = userName, Pokemon1 = pokemon1,Pokemon2 = pokemon2 });
+                            new BattleMatchmaking2V2 { UserId = userId, UserName = userName, Pokemon1 = pokemon1, Pokemon2 = pokemon2 });
                     }
                     var (embed, component) = await Execute2V2BattleAsync(userId, userName, pokemon1, pokemon2, opponent.UserId, opponent.UserName, opponent.Pokemon1, opponent.Pokemon2);
 
@@ -1134,7 +1191,7 @@ namespace MusicBot2.Service
                 else
                 {
                     // 沒有對手，加入配對池
-                    await AddToMatchmaking2V2Async(userId, userName, pokemon1,pokemon2, channel.Id);
+                    await AddToMatchmaking2V2Async(userId, userName, pokemon1, pokemon2, channel.Id);
 
                     var embed = new EmbedBuilder()
                         .WithTitle("🔍 尋找對手中...")
@@ -1967,7 +2024,7 @@ HP為0就是真的死亡，不會再有後續動作
                     return (errorEmbed, new ComponentBuilder());
                 }
 
-                if(currentBoss.IsFighting)
+                if (currentBoss.IsFighting)
                 {
                     var errorEmbed = new EmbedBuilder()
                     .WithTitle("❌ 正在打架中")
@@ -2028,7 +2085,7 @@ HP為0就是真的死亡，不會再有後續動作
                 // 呼叫 AI 判斷對戰結果
                 var aiResponse = await _aiService.GenerateSimpleTextAsync(battlePrompt);
 
-                if(aiResponse == null)
+                if (aiResponse == null)
                 {
                     return (CommonHelper.BuildErrorResponse($"soyo似了阿，回應為空").Item2, new ComponentBuilder());
                 }
@@ -2446,7 +2503,7 @@ HP為0就是真的死亡，不會再有後續動作
             }
         }
 
-        private async Task AddToMatchmaking2V2Async(ulong userId, string userName, PokeGamePokemon pokemon1, PokeGamePokemon pokemon2,ulong channel)
+        private async Task AddToMatchmaking2V2Async(ulong userId, string userName, PokeGamePokemon pokemon1, PokeGamePokemon pokemon2, ulong channel)
         {
             var matchmaking = new BattleMatchmaking2V2
             {
@@ -2581,7 +2638,7 @@ HP為0就是真的死亡，不會再有後續動作
             }
         }
 
-        
+
         #endregion
     }
 }

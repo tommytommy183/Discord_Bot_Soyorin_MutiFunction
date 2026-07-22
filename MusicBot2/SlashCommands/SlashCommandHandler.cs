@@ -681,11 +681,21 @@ namespace MusicBot2.SlahCommands
         }
 
         [SlashCommand("我的pokemon", "查看你的pokemon列表")]
-        public async Task MyPokemonAsync()
+        public async Task MyPokemonAsync([Summary("秀給大家看", "想秀給大家看的pokemon編號")] int index = 0)
         {
-            await DeferAsync(ephemeral: true);
-            var (embed, component) = await _pokeGameService.ListPokemonAsync(Context.User.Id, Context.User.Username);
-            await FollowupAsync(embed: embed, components: component.Build(), ephemeral: true);
+            if(index == 0)
+            {
+                await DeferAsync(ephemeral: true);
+                var (embed, component) = await _pokeGameService.ListPokemonAsync(Context.User.Id, Context.User.Username);
+                await FollowupAsync(embed: embed, components: component.Build(), ephemeral: true);
+            }
+            else
+            {
+                await DeferAsync();
+                var channel = Context.Channel as IMessageChannel;
+                var (embed, component) = await _pokeGameService.ShowOnePokemon(Context.User.Id, Context.User.Username,index,channel);
+                await FollowupAsync(embed: embed, components: component.Build());
+            }
         }
 
         [SlashCommand("自定義pokemon", "自定義你的pokemon名稱")]
