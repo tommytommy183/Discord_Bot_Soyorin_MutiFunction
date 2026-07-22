@@ -72,6 +72,16 @@ namespace MusicBot2.Models
         public List<AnimeResponse> data { get; set; }
     }
 
+    public class RandomAnimeResponse
+    {
+        public AnimeResponse data { get; set; }
+    }
+
+    public class RandomMangaResponse
+    {
+        public MangaResponse data { get; set; }
+    }
+
     public class CharacterAnimeResponse
     {
         public List<CharacterAnimeData> data { get; set; }

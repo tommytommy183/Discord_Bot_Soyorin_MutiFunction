@@ -400,27 +400,17 @@ namespace MusicBot2.Service
         {
             try
             {
-                string baseUrl = $"{API_BASE_URL}/top/anime?";
-                if (!string.IsNullOrEmpty(type))    baseUrl += $"&type={type}";
-                if (!string.IsNullOrEmpty(ratings)) baseUrl += $"&rating={ratings}";
-
-                var items = await GetPageData(baseUrl);
-                if (items == null || items.per_page <= 0)
-                    return (CommonHelper.BuildErrorResponse("無法取得動畫分頁資訊"), "");
-
-                int totalPages = Math.Max(1, items.total / items.per_page);
-                string url = baseUrl + $"&page={new Random().Next(1, totalPages + 1)}";
-
-                var response = await _httpClient.GetAsync(url);
+                // 用 /random/anime 避免兩段式 pagination call 與 rate limit 問題
+                var response = await _httpClient.GetAsync($"{API_BASE_URL}/random/anime");
                 if (!response.IsSuccessStatusCode)
                     return (CommonHelper.BuildErrorResponse("無法獲取動畫資料"), "");
 
                 var content = await response.Content.ReadAsStringAsync();
-                var wrapper = JsonConvert.DeserializeObject<TopAnimeResponse>(content);
-                if (wrapper?.data == null || wrapper.data.Count == 0)
+                var wrapper = JsonConvert.DeserializeObject<RandomAnimeResponse>(content);
+                var anime = wrapper?.data;
+                if (anime == null)
                     return (CommonHelper.BuildErrorResponse("動畫資料為空"), "");
 
-                var anime = wrapper.data[new Random().Next(wrapper.data.Count)];
                 string imageUrl = "";
                 string description = $"分數：{anime.score}\n簡介：{anime.synopsis ?? "無簡介"}";
                 if (description.Length > 200) description = description[..200] + "...";
@@ -450,27 +440,17 @@ namespace MusicBot2.Service
         {
             try
             {
-                string baseUrl = $"{API_BASE_URL}/top/manga?";
-                if (!string.IsNullOrEmpty(type))   baseUrl += $"&type={type}";
-                if (!string.IsNullOrEmpty(genres)) baseUrl += $"&genres={genres}";
-
-                var items = await GetPageData(baseUrl);
-                if (items == null || items.per_page <= 0)
-                    return (CommonHelper.BuildErrorResponse("無法取得漫畫分頁資訊"), "");
-
-                int totalPages = Math.Max(1, items.total / items.per_page);
-                string url = baseUrl + $"&page={new Random().Next(1, totalPages + 1)}";
-
-                var response = await _httpClient.GetAsync(url);
+                // 用 /random/manga 避免兩段式 pagination call 與 rate limit 問題
+                var response = await _httpClient.GetAsync($"{API_BASE_URL}/random/manga");
                 if (!response.IsSuccessStatusCode)
                     return (CommonHelper.BuildErrorResponse("無法獲取漫畫資料"), "");
 
                 var content = await response.Content.ReadAsStringAsync();
-                var wrapper = JsonConvert.DeserializeObject<TopMangaResponse>(content);
-                if (wrapper?.data == null || wrapper.data.Count == 0)
+                var wrapper = JsonConvert.DeserializeObject<RandomMangaResponse>(content);
+                var manga = wrapper?.data;
+                if (manga == null)
                     return (CommonHelper.BuildErrorResponse("漫畫資料為空"), "");
 
-                var manga = wrapper.data[new Random().Next(wrapper.data.Count)];
                 string imageUrl = "";
                 string description = $"分數：{manga.score}\n簡介：{manga.synopsis ?? "無簡介"}";
                 if (description.Length > 200) description = description[..200] + "...";
