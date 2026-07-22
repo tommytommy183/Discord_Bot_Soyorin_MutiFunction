@@ -444,13 +444,15 @@ namespace MusicBot2.Service
                     Description = description,
                     Color = Color.Purple
                 };
-                if (!string.IsNullOrEmpty(anime.images?.jpg?.image_url) && !anime.rating.ToLower().StartsWith("rx"))
+                bool isR18 = anime.rating?.ToLower().StartsWith("rx") == true;
+                string coverUrl = anime.images?.jpg?.image_url ?? "";
+                if (!string.IsNullOrEmpty(coverUrl) && !isR18)
                 {
-                    embedBuilder.WithImageUrl(anime.images.jpg.image_url);
+                    embedBuilder.WithImageUrl(coverUrl);
                 }
                 else
                 {
-                    imageUrl = anime.images.jpg.image_url;
+                    imageUrl = coverUrl;
                 }
                 return ((new ComponentBuilder(), embedBuilder.Build()), imageUrl);
             }
