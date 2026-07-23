@@ -56,14 +56,14 @@ namespace MusicBot2.Service
         private readonly string[] _models =
         {
             // === 第0梯隊：短時間內免費 ===
-            //"tencent/hy3:free",
+            //"tencent/hy3:free",                          //無法傳出
 
 
 
             // === 第一梯隊：大型高品質模型 ===
-            //"nvidia/nemotron-3.5-content-safety:free",    // 這個是安全檢測模型，非聊天模型，會直接失敗
-            //"openrouter/owl-alpha",                       // 我這邊抓到官方頁面它其實還在榜上第一名！建議你重新測一次，可能只是暫時性問題
-            //"moonshotai/kimi-k2.6:free",                  // 官方頁面顯示還在免費榜，但你說沒成功傳出去過，可以再測一次
+            //"nvidia/nemotron-3.5-content-safety:free",    // 安全檢測模型，非聊天模型，會直接失敗
+            //"openrouter/owl-alpha",                       // 曾經很好用，但現在停止了
+            //"moonshotai/kimi-k2.6:free",                  // 之前的備案，但也停止提供
             "google/gemma-4-26b-a4b-it:free",
             "nvidia/nemotron-3-super-120b-a12b:free",      // 120B MoE, 官方免費榜使用量#1(排除owl-alpha後)
             "nvidia/nemotron-3-ultra-550b-a55b:free",       // 550B MoE(55B啟用), 1M context 超長文本強
@@ -94,7 +94,7 @@ namespace MusicBot2.Service
             //"minimax/minimax-m2.5:free",                  // 沒成功傳出去過
             //"poolside/laguna-xs.2:free",                  // 講怪異中國用語
             //"poolside/laguna-m.1:free",                   // 講怪異中國用語
-            //"google/lyria-3-pro-preview",                 // ⚠️ 這是圖片/音樂生成模型，不是聊天模型，會直接失敗
+            //"google/lyria-3-pro-preview",                 // 圖片/音樂生成模型，不是聊天模型，會直接失敗
         };
 
         //無記憶對話的模型順序
@@ -448,28 +448,29 @@ namespace MusicBot2.Service
             var basePersona = string.IsNullOrWhiteSpace(request.SystemInstruction) ? Persona : request.SystemInstruction;
             var summary = GetChannelSummary(channelKey);
             // 偵測查詢意圖，若有就先查 wiki 注入背景資料
-            var wikiQuery = ExtractWikiQuery(request.UserMessage);
-            string wikiContext = null;
-            if (wikiQuery != null)
-            {
-                try
-                {
-                    Console.WriteLine($"[OpenRouter] 偵測到查詢意圖，wiki 查詢: {wikiQuery}");
-                    var wikiRes = await _wikiService.SearchAsync(wikiQuery);
-                    if (wikiRes.Found)
-                        wikiContext = $"[背景資料 - 維基百科]\n【{wikiRes.Title}】\n{wikiRes.Extract}";
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"[OpenRouter] wiki 查詢失敗: {ex.Message}");
-                }
-            }
+            // 這段先移除，有點影響到日常對話
+            //var wikiQuery = ExtractWikiQuery(request.UserMessage);
+            //string wikiContext = null;
+            //if (wikiQuery != null)
+            //{
+            //    try
+            //    {
+            //        Console.WriteLine($"[OpenRouter] 偵測到查詢意圖，wiki 查詢: {wikiQuery}");
+            //        var wikiRes = await _wikiService.SearchAsync(wikiQuery);
+            //        if (wikiRes.Found)
+            //            wikiContext = $"[背景資料 - 維基百科]\n【{wikiRes.Title}】\n{wikiRes.Extract}";
+            //    }
+            //    catch (Exception ex)
+            //    {
+            //        Console.WriteLine($"[OpenRouter] wiki 查詢失敗: {ex.Message}");
+            //    }
+            //}
 
             var systemPrompt = string.IsNullOrEmpty(summary)
                 ? basePersona
                 : basePersona + $"\n\n[過去對話摘要]\n{summary}";
-            if (wikiContext != null)
-                systemPrompt += $"\n\n{wikiContext}";
+            //if (wikiContext != null)
+            //    systemPrompt += $"\n\n{wikiContext}";
 
             string repliedText = repliedMessage == null ? "" : repliedMessage.Content;
 
