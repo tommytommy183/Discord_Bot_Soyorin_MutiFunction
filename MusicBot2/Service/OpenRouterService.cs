@@ -393,24 +393,31 @@ namespace MusicBot2.Service
             {
                 var toSummarize = history.Take(SummarizeChunkSize).ToList();
 
+                var existing = GetChannelSummary(channelKey);
+
                 var sb = new StringBuilder();
-                sb.AppendLine("請用繁體中文，摘要以下對話的重點（保留重要人名、話題、關鍵事件），不要加任何開場白，直接輸出摘要：");
+                if (!string.IsNullOrEmpty(existing))
+                {
+                    sb.AppendLine($"[目前摘要]\n{existing}\n");
+                    sb.AppendLine("[新增對話]");
+                }
+                else
+                {
+                    sb.AppendLine("請用繁體中文，摘要以下對話的重點（保留重要人名、話題、關鍵事件），不要加任何開場白，直接輸出摘要：");
+                }
                 foreach (var msg in toSummarize)
                 {
                     var speaker = msg.Role == "model" ? "爽世" : (msg.UserName ?? "使用者");
                     sb.AppendLine($"{speaker}: {msg.Text}");
                 }
+                if (!string.IsNullOrEmpty(existing))
+                    sb.AppendLine("\n請整合「目前摘要」與「新增對話」，產生一份更新後的完整摘要，不要加任何開場白，直接輸出摘要：");
 
                 var newSummary = await GenerateSimpleTextAsync(sb.ToString());
 
                 if (!string.IsNullOrWhiteSpace(newSummary))
                 {
-                    var existing = GetChannelSummary(channelKey);
-                    var combined = string.IsNullOrEmpty(existing)
-                        ? newSummary
-                        : $"{existing}\n（後來）{newSummary}";
-
-                    _channelSummaries[channelKey] = Truncate(combined, 500);
+                    _channelSummaries[channelKey] = Truncate(newSummary, 800);
                     _channelHistories[channelKey] = history.Skip(SummarizeChunkSize).ToList();
 
                     _ = SaveMemoryAsync();
