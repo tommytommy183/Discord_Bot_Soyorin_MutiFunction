@@ -665,17 +665,24 @@ public class Program
                 return;
             }
 
-            // 歌詞帶歌名參數，獨立處理
+            // 歌詞帶歌名（選填歌手）參數，獨立處理，格式：歌詞:歌名 或 歌詞:歌名|歌手
             if (feature.StartsWith("歌詞:"))
             {
-                var trackName = feature.Substring("歌詞:".Length).Trim();
-                if (!string.IsNullOrWhiteSpace(trackName))
+                var param = feature.Substring("歌詞:".Length).Trim();
+                if (!string.IsNullOrWhiteSpace(param))
                 {
+                    var parts = param.Split('|', 2);
+                    var trackName = parts[0].Trim();
+                    var artistName = parts.Length > 1 ? parts[1].Trim() : null;
+
                     var lyricsSvc = _services.GetRequiredService<LyrisService>();
-                    var results = await lyricsSvc.SearchLyricsAsync(trackName);
+                    var results = await lyricsSvc.SearchLyricsAsync(trackName, artistName);
                     if (results == null || results.Count == 0)
                     {
-                        await channel.SendMessageAsync($"❌ 找不到「{trackName}」的歌詞");
+                        var notFound = artistName != null
+                            ? $"❌ 找不到「{trackName}」（{artistName}）的歌詞"
+                            : $"❌ 找不到「{trackName}」的歌詞";
+                        await channel.SendMessageAsync(notFound);
                     }
                     else
                     {
