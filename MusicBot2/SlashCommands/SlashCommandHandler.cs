@@ -683,7 +683,7 @@ namespace MusicBot2.SlahCommands
         [SlashCommand("我的pokemon", "查看你的pokemon列表")]
         public async Task MyPokemonAsync([Summary("秀給大家看", "想秀給大家看的pokemon編號")] int index = 0)
         {
-            if(index == 0)
+            if (index == 0)
             {
                 await DeferAsync(ephemeral: true);
                 var (embed, component) = await _pokeGameService.ListPokemonAsync(Context.User.Id, Context.User.Username);
@@ -693,7 +693,7 @@ namespace MusicBot2.SlahCommands
             {
                 await DeferAsync();
                 var channel = Context.Channel as IMessageChannel;
-                var (embed, component) = await _pokeGameService.ShowOnePokemon(Context.User.Id, Context.User.Username,index,channel);
+                var (embed, component) = await _pokeGameService.ShowOnePokemon(Context.User.Id, Context.User.Username, index, channel);
                 await FollowupAsync(embed: embed, components: component.Build());
             }
         }
@@ -870,6 +870,19 @@ namespace MusicBot2.SlahCommands
                     .Build();
                 await FollowupAsync(embed: errorEmbed, ephemeral: true);
             }
+        }
+
+        [SlashCommand("隨機抽一把幸運武器造型", "隨機抽一把幸運武器造型")]
+        public async Task RandomDrawWeaponSkin([Summary("武器名稱，不輸入或不存在就隨便一把", "武器名稱")] string name = "")
+        {
+            await DeferAsync();
+            var (weaponName, skinName, skinImageUrl) = await _valorantService.RandomWeaponSkin(name);
+
+            var channel = Context.Channel as IMessageChannel;
+            await channel.SendMessageAsync($"🎁 {Context.User.Mention} {CommonHelper.GetUserFace(Context.User.Id.ToString())} 屌抽一把\n**{weaponName}** - **{skinName}**");
+            await channel.SendMessageAsync(skinImageUrl);
+
+            await FollowupAsync();
         }
         #endregion
 
@@ -1150,7 +1163,7 @@ namespace MusicBot2.SlahCommands
         {
             await DeferAsync();
             var user = Context.User as SocketGuildUser;
-            string res = await _uselessApiService.GetRandomFoodApIAsync(user,type);
+            string res = await _uselessApiService.GetRandomFoodApIAsync(user, type);
             await FollowupAsync(res);
         }
         #endregion

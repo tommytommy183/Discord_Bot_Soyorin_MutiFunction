@@ -398,17 +398,87 @@ namespace MusicBot2.Service
                 Console.WriteLine($"[ValorantService] 載入名稱映射失敗: {ex.Message}");
             }
         }
-        #endregion
-    }
 
-    /// <summary>
-    /// Valorant 遊戲狀態
-    /// </summary>
-    public class ValorantGameSession
-    {
-        public ValorantAgent CorrectAgent { get; set; }
-        public ValorantAbility SelectedAbility { get; set; }
-        public bool IsImageMode { get; set; }
-        public ulong MessageId { get; set; }
+
+        public async Task<(string weaponName, string skinName, string skinImageUrl)> RandomWeaponSkin(string name)
+        {
+            try
+            {
+                // 取得中文版（zh-TW）
+                var zhResponse = await _httpClient.GetAsync("https://valorant-api.com/v1/weapons?language=zh-TW");
+                var zhContent = await zhResponse.Content.ReadAsStringAsync();
+                var zhData = JsonConvert.DeserializeObject<ValorantWeaponResponse>(zhContent);
+
+                if (zhData == null || zhData.data == null || zhData.data.Count == 0)
+                {
+                    Console.WriteLine("[ValorantService] 無法取得武器資料");
+                    return (null, null, null);
+                }
+
+                Random random = new Random();
+                ValorantWeapon weapon = null;
+
+                // 如果有指定武器名稱，先嘗試找該武器
+                if (!string.IsNullOrWhiteSpace(name))
+                {
+                    weapon = zhData.data.FirstOrDefault(w => w.displayName.Equals(name.Trim(), StringComparison.OrdinalIgnoreCase));
+
+                    if (weapon == null)
+                    {
+                        Console.WriteLine($"[ValorantService] 找不到武器: {name}，改為隨機選擇");
+                    }
+                }
+
+                // 如果沒有指定武器或找不到，就隨機選一把
+                if (weapon == null)
+                {
+                    // 過濾掉沒有皮膚的武器
+                    var weaponsWithSkins = zhData.data.Where(w => w.skins != null && w.skins.Count > 0).ToList();
+
+                    if (weaponsWithSkins.Count == 0)
+                    {
+                        Console.WriteLine("[ValorantService] 沒有可用的武器皮膚");
+                        return (null, null, null);
+                    }
+
+                    weapon = weaponsWithSkins[random.Next(weaponsWithSkins.Count)];
+                }
+
+                // 檢查該武器是否有皮膚
+                if (weapon.skins == null || weapon.skins.Count == 0)
+                {
+                    Console.WriteLine($"[ValorantService] 武器 {weapon.displayName} 沒有可用的皮膚");
+                    return (null, null, null);
+                }
+
+                // 隨機選擇一個皮膚
+                var randomSkin = weapon.skins[random.Next(weapon.skins.Count)];
+
+                // 確保皮膚有圖片
+                if (string.IsNullOrEmpty(randomSkin.displayIcon))
+                {
+                    // 如果這個皮膚沒圖，再試一次
+                    var skinsWithIcon = weapon.skins.Where(s => !string.IsNullOrEmpty(s.displayIcon)).ToList();
+
+                    if (skinsWithIcon.Count == 0)
+                    {
+                        Console.WriteLine($"[ValorantService] 武器 {weapon.displayName} 的皮膚都沒有圖片");
+                        return (null, null, null);
+                    }
+
+                    randomSkin = skinsWithIcon[random.Next(skinsWithIcon.Count)];
+                }
+
+                Console.WriteLine($"[ValorantService] 隨機武器造型: {weapon.displayName} - {randomSkin.displayName}");
+                return (weapon.displayName, randomSkin.displayName, randomSkin.displayIcon);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[ValorantService] RandomWeaponSkin 失敗: {ex.Message}");
+                return (null, null, null);
+            }
+        }
+        #endregion
+
     }
 }
