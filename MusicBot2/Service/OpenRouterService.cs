@@ -44,11 +44,11 @@ namespace MusicBot2.Service
         private readonly SemaphoreSlim _saveLock = new(1, 1);
         private readonly HashSet<string> _summarizingChannels = new();
 
-        private const int MaxRecentMessages = 8;
-        private const int MaxTotalMessages = 10;
-        private const int MaxContextChars = 2500;
-        private const int SummarizeChunkSize = 20;
-        private const int MaxMessageStoreLength = 300;
+        private const int MaxRecentMessages = 16;
+        private const int MaxTotalMessages = 25;
+        private const int MaxContextChars = 5000;
+        private const int SummarizeChunkSize = 30;
+        private const int MaxMessageStoreLength = 500;
 
         // 依優先順序嘗試的模型 (免費；當主要 provider 被 upstream rate-limit 時自動 fallback)
         // 註: 同樣經由 Venice provider 的模型（如 Venice / Llama 3.3 70b free 在部分帳號）會共用 rate-limit，
