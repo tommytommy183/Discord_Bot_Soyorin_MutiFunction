@@ -91,7 +91,8 @@ namespace MusicBot2.Service
                 // 保存臨時音頻檔案
                 var tempDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "temp");
                 Directory.CreateDirectory(tempDir);
-                var tempFile = Path.Combine(tempDir, $"voice_{Guid.NewGuid()}.wav");
+                var guidString = Guid.NewGuid().ToString();
+                var tempFile = Path.Combine(tempDir, $"voice_{guidString}.wav");
                 await File.WriteAllBytesAsync(tempFile, audioData);
 
                 Console.WriteLine($"[Groq Whisper] 開始轉錄音頻: {tempFile}");
@@ -216,11 +217,11 @@ namespace MusicBot2.Service
                         }
 
                         Console.WriteLine($"[Voice Listener] 用戶 {userId} 語音結束");
-                        _userBuffers.TryRemove((uint)userId, out _);
+                        var removed = _userBuffers.TryRemove((uint)userId, out _);
                     }
                     catch (OperationCanceledException)
                     {
-                        Console.WriteLine($"[Voice Listener] 監聽已取消");
+                        Console.WriteLine("[Voice Listener] 監聽已取消");
                     }
                     catch (Exception ex)
                     {
