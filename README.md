@@ -100,14 +100,61 @@
 | FFmpeg + yt-dlp | 影音下載與轉檔 |
 
 ### 外部 API
-| API | 用途 |
-|-----|------|
-| OpenRouter | 多模型 LLM（Deepseek、Qwen 等）|
-| ElevenLabs | Text-to-Speech |
-| Google AI Studio (Gemini) | 備援 LLM |
-| RiotSharp | League of Legends 資料 |
-| Jikan | 動漫角色資料庫 |
-| PokéAPI | 寶可夢資料 |
+
+本專案共使用 **23 個 API Domain**，詳細列表如下：
+
+#### 🤖 AI / LLM 服務
+| API | Domain | 用途 |
+|-----|--------|------|
+| Google AI Studio (Gemini) | `generativelanguage.googleapis.com` | 主 LLM，支援 Gemini 2.0/2.5 系列模型 |
+| OpenRouter | `openrouter.ai` | 多家大模型 LLM（DeepSeek、Qwen 等） |
+| Groq Whisper | `api.groq.com` | 語音轉文字服務 |
+
+#### 🎙️ TTS (文字轉語音)
+| API | Domain | 用途 |
+|-----|--------|------|
+| ElevenLabs | `api.elevenlabs.io` | 高品質 TTS 服務 |
+| Fish Audio | `api.fish.audio` | TTS 服務 |
+| 本地 RVC | `localhost:8000` | 本地語音轉換和 TTS |
+
+#### 🎮 遊戲相關
+| API | Domain | 用途 |
+|-----|--------|------|
+| PokéAPI | `pokeapi.co` | 寶可夢資料查詢 |
+| Valorant API | `valorant-api.com` | Valorant 角色與武器資料 |
+| League of Legends (Data Dragon) | `ddragon.leagueoflegends.com` | 英雄聯盟英雄資料 |
+| 2Pick App | `2pick.app` | 二選一遊戲服務 |
+
+#### 📺 動漫 & 知識庫
+| API | Domain | 用途 |
+|-----|--------|------|
+| Jikan (MyAnimeList) | `api.jikan.moe` | 動漫資料查詢 |
+| Wikipedia (MediaWiki) | `*.wikipedia.org` | 多語言維基百科查詢（中/日/英） |
+
+#### 🖼️ 圖片生成
+| API | Domain | 用途 |
+|-----|--------|------|
+| LoremFlickr | `loremflickr.com` | 隨機圖片生成 |
+| Pollinations AI | `image.pollinations.ai` | AI 圖片生成（Flux 模型） |
+
+#### 🎲 趣味 API
+| API | Domain | 用途 |
+|-----|--------|------|
+| Chuck Norris Jokes | `api.chucknorris.io` | 隨機笑話 |
+| Cat Facts | `catfact.ninja` | 貓咪小知識 |
+| Dog CEO | `dog.ceo` | 隨機狗狗圖片 |
+| Hitokoto (一言) | `v1.hitokoto.cn` | 隨機句子/名言 |
+| Random Duck | `random-d.uk` | 隨機鴨子圖片 |
+| Random Fox | `randomfox.ca` | 隨機狐狸圖片 |
+| Useless Facts | `uselessfacts.jsph.pl` | 無用小知識 |
+
+#### 📹 其他
+| API | Domain | 用途 |
+|-----|--------|------|
+| YouTube | `youtube.com` | 音樂播放（透過 yt-dlp） |
+| Steam Store | `store.steampowered.com` | Steam 連結偵測 |
+
+> 📄 完整 API 文檔請參考：[API_DOMAINS_SUMMARY.md](API_DOMAINS_SUMMARY.md)
 
 ### 部署
 - **平台**：Railway.app（Docker 容器化）

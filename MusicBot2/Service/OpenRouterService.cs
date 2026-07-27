@@ -468,12 +468,16 @@ namespace MusicBot2.Service
 
                     if (!alreadyExists)
                     {
+                        // 判斷是否為 bot 訊息
+                        var role = msg.Author.IsBot ? "model" : "user";
+                        var userName = msg.Author.IsBot ? "爽世" : authorName;
+
                         history.Add(new ConversationMessage
                         {
-                            Role = "user",
+                            Role = role,
                             Text = messageText,
                             Timestamp = msg.Timestamp.DateTime,
-                            UserName = authorName
+                            UserName = userName
                         });
                     }
                 }
