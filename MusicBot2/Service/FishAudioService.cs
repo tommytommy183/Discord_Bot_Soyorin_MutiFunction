@@ -13,7 +13,7 @@ using System.Threading.Tasks;
 namespace MusicBot2.Service
 {
     /// <summary>
-    /// Fish Audio TTS ªA°È¡G±N¤å¦rÂà´«¬°»y­µ¨Ã¦b Discord »y­µÀW¹D¼½©ñ
+    /// Fish Audio TTS ï¿½Aï¿½È¡Gï¿½Nï¿½ï¿½rï¿½à´«ï¿½ï¿½ï¿½yï¿½ï¿½ï¿½Ã¦b Discord ï¿½yï¿½ï¿½ï¿½Wï¿½Dï¿½ï¿½ï¿½ï¿½
     /// </summary>
     public class FishAudioService
     {
@@ -21,7 +21,7 @@ namespace MusicBot2.Service
         private readonly HttpClient _httpClient;
         private const string API_BASE_URL = "https://api.fish.audio/v1/tts";
 
-        // Fish Audio ªº Soyo Án­µ¼Ò«¬ ID
+        // Fish Audio ï¿½ï¿½ Soyo ï¿½nï¿½ï¿½ï¿½Ò«ï¿½ ID
         private const string SOYO_REFERENCE_ID = "19c74d6eddb04a9b82dfd350b54e76e2";
 
         public FishAudioService(string apiKey)
@@ -35,41 +35,55 @@ namespace MusicBot2.Service
         }
 
         /// <summary>
-        /// ±N¤å¦rÂà´«¬°»y­µ¨Ã¦b»y­µÀW¹D¼½©ñ
+        /// ï¿½Nï¿½ï¿½rï¿½à´«ï¿½ï¿½ï¿½yï¿½ï¿½ï¿½Ã¦bï¿½yï¿½ï¿½ï¿½Wï¿½Dï¿½ï¿½ï¿½ï¿½
         /// </summary>
         public async Task<bool> SpeakInVoiceChannelAsync(
-            string text, 
-            SocketGuildUser user, 
-            IAudioClient audioClient)
+            string text,
+            SocketGuildUser user,
+            IAudioClient audioClient,
+            IMessageChannel textChannel = null)
         {
             try
             {
                 var preview = text.Length > 50 ? text.Substring(0, 50) : text;
 
-                // 1. ½Õ¥Î Fish Audio API ¥Í¦¨»y­µ
+                // 1. ï¿½Õ¥ï¿½ Fish Audio API ï¿½Í¦ï¿½ï¿½yï¿½ï¿½
                 var audioData = await GenerateSpeechAsync(text);
                 if (audioData == null || audioData.Length == 0)
                 {
-                    Console.WriteLine("[FishAudio] TTS ¥Í¦¨¥¢±Ñ");
+                    Console.WriteLine("[FishAudio] TTS ï¿½Í¦ï¿½ï¿½ï¿½ï¿½ï¿½");
                     return false;
                 }
 
-                // 2. «O¦sÁ{®É­µÀWÀÉ®×
+                // 2. ï¿½Oï¿½sï¿½{ï¿½É­ï¿½ï¿½Wï¿½É®ï¿½
                 var tempDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "temp");
                 Directory.CreateDirectory(tempDir);
                 var guid = Guid.NewGuid();
                 var tempFile = Path.Combine(tempDir, $"tts_{guid}.mp3");
                 await File.WriteAllBytesAsync(tempFile, audioData);
 
-                Console.WriteLine($"[FishAudio] ­µÀWÀÉ®×¤w«O¦s: {tempFile}");
+                Console.WriteLine($"[FishAudio] ï¿½ï¿½ï¿½Wï¿½É®×¤wï¿½Oï¿½s: {tempFile}");
 
-                // 3. ¦b»y­µÀW¹D¼½©ñ
+                // å…ˆæŠŠèªéŸ³æª”å‚³åˆ°æ–‡å­—é »é“ï¼Œå°±ç®—ä¹‹å¾Œæ’­æ”¾å¤±æ•—ä¹Ÿçœ‹å¾—åˆ°æª”æ¡ˆ
+                if (textChannel != null)
+                {
+                    try
+                    {
+                        await textChannel.SendFileAsync(tempFile, "ğŸ”Š");
+                    }
+                    catch (Exception sendEx)
+                    {
+                        Console.WriteLine($"[FishAudio] å‚³é€èªéŸ³æª”å¤±æ•—: {sendEx.Message}");
+                    }
+                }
+
+                // 3. ï¿½bï¿½yï¿½ï¿½ï¿½Wï¿½Dï¿½ï¿½ï¿½ï¿½
                 await PlayAudioAsync(audioClient, tempFile);
 
-                // 4. ²M²zÁ{®ÉÀÉ®×
+                // 4. ï¿½Mï¿½zï¿½{ï¿½ï¿½ï¿½É®ï¿½
                 try { File.Delete(tempFile); } catch { }
 
-                Console.WriteLine("[FishAudio] TTS ¼½©ñ§¹¦¨");
+                Console.WriteLine("[FishAudio] TTS ï¿½ï¿½ï¿½ñ§¹¦ï¿½");
                 return true;
             }
             catch (Exception ex)
@@ -80,7 +94,7 @@ namespace MusicBot2.Service
         }
 
         /// <summary>
-        /// ½Õ¥Î Fish Audio API ¥Í¦¨»y­µ
+        /// ï¿½Õ¥ï¿½ Fish Audio API ï¿½Í¦ï¿½ï¿½yï¿½ï¿½
         /// </summary>
         private async Task<byte[]> GenerateSpeechAsync(string text)
         {
@@ -91,7 +105,7 @@ namespace MusicBot2.Service
                     text = text,
                     reference_id = SOYO_REFERENCE_ID,
                     format = "mp3",
-                    latency = "normal" // ¥i¿ï: "normal" ©Î "balanced"
+                    latency = "normal" // ï¿½iï¿½ï¿½: "normal" ï¿½ï¿½ "balanced"
                 };
 
                 var json = JsonSerializer.Serialize(requestBody);
@@ -116,13 +130,13 @@ namespace MusicBot2.Service
         }
 
         /// <summary>
-        /// ¦b»y­µÀW¹D¼½©ñ­µÀW
+        /// ï¿½bï¿½yï¿½ï¿½ï¿½Wï¿½Dï¿½ï¿½ï¿½ï¿½ï¿½W
         /// </summary>
         private async Task PlayAudioAsync(IAudioClient audioClient, string filePath)
         {
             if (audioClient == null || audioClient.ConnectionState != ConnectionState.Connected)
             {
-                Console.WriteLine("[FishAudio] ­µÀW«È¤áºİ¥¼³s±µ");
+                Console.WriteLine("[FishAudio] ï¿½ï¿½ï¿½Wï¿½È¤ï¿½İ¥ï¿½ï¿½sï¿½ï¿½");
                 return;
             }
 
@@ -131,7 +145,7 @@ namespace MusicBot2.Service
 
             if (ffmpeg == null)
             {
-                Console.WriteLine("[FishAudio] FFmpeg ±Ò°Ê¥¢±Ñ");
+                Console.WriteLine("[FishAudio] FFmpeg ï¿½Ò°Ê¥ï¿½ï¿½ï¿½");
                 return;
             }
 
@@ -163,7 +177,7 @@ namespace MusicBot2.Service
         }
 
         /// <summary>
-        /// ³Ğ«Ø FFmpeg ¶iµ{¡]Âà´«­µÀW¬° PCM¡^
+        /// ï¿½Ğ«ï¿½ FFmpeg ï¿½iï¿½{ï¿½]ï¿½à´«ï¿½ï¿½ï¿½Wï¿½ï¿½ PCMï¿½^
         /// </summary>
         private Process CreateFfmpegProcess(string filePath)
         {

@@ -15,7 +15,7 @@ using System.Threading.Tasks;
 namespace MusicBot2.Service
 {
     /// <summary>
-    /// Groq Whisper STT ªA°È¡GºÊÅ¥»y­µÀW¹D¨ÃÂà´«»y­µ¬°¤å¦r
+    /// Groq Whisper STT ï¿½Aï¿½È¡Gï¿½ï¿½Å¥ï¿½yï¿½ï¿½ï¿½Wï¿½Dï¿½ï¿½ï¿½à´«ï¿½yï¿½ï¿½ï¿½ï¿½ï¿½ï¿½r
     /// </summary>
     public class GroqWhisperService
     {
@@ -24,7 +24,7 @@ namespace MusicBot2.Service
         private const string API_URL = "https://api.groq.com/openai/v1/audio/transcriptions";
         private const string MODEL = "whisper-large-v3";
 
-        // °O¿ı¥¿¦bºÊÅ¥ªº»y­µÀW¹D
+        // ï¿½Oï¿½ï¿½ï¿½ï¿½ï¿½bï¿½ï¿½Å¥ï¿½ï¿½ï¿½yï¿½ï¿½ï¿½Wï¿½D
         private readonly ConcurrentDictionary<ulong, VoiceChannelListener> _activeListeners = new();
         
         public GroqWhisperService(string apiKey)
@@ -38,9 +38,9 @@ namespace MusicBot2.Service
         }
 
         /// <summary>
-        /// ¶}©lºÊÅ¥»y­µÀW¹D
+        /// ï¿½}ï¿½lï¿½ï¿½Å¥ï¿½yï¿½ï¿½ï¿½Wï¿½D
         /// </summary>
-        public async Task<bool> StartListeningAsync(
+        public async Task<IAudioClient> StartListeningAsync(
             IVoiceChannel voiceChannel,
             Func<string, SocketGuildUser, Task> onSpeechRecognized)
         {
@@ -48,26 +48,27 @@ namespace MusicBot2.Service
             {
                 if (_activeListeners.ContainsKey(voiceChannel.Id))
                 {
-                    return false;
+                    return null;
                 }
 
 
-                var audioClient = await voiceChannel.ConnectAsync();
+                var audioClient = await voiceChannel.ConnectAsync(selfDeaf: false, selfMute: false);
                 var listener = new VoiceChannelListener(audioClient, voiceChannel, this, onSpeechRecognized);
 
                 _activeListeners.TryAdd(voiceChannel.Id, listener);
                 await listener.StartAsync();
 
-                return true;
+                return audioClient;
             }
             catch (Exception ex)
             {
-                return false;
+                Console.WriteLine($"[GroqWhisper] é–‹å§‹ç›£è½å¤±æ•—: {ex.Message}");
+                return null;
             }
         }
 
         /// <summary>
-        /// °±¤îºÊÅ¥»y­µÀW¹D
+        /// ï¿½ï¿½ï¿½ï¿½ï¿½Å¥ï¿½yï¿½ï¿½ï¿½Wï¿½D
         /// </summary>
         public async Task StopListeningAsync(ulong channelId)
         {
@@ -78,26 +79,26 @@ namespace MusicBot2.Service
         }
 
         /// <summary>
-        /// ±N­µÀWÂà´«¬°¤å¦r¡]½Õ¥Î Groq Whisper API¡^
+        /// ï¿½Nï¿½ï¿½ï¿½Wï¿½à´«ï¿½ï¿½ï¿½ï¿½rï¿½]ï¿½Õ¥ï¿½ Groq Whisper APIï¿½^
         /// </summary>
         public async Task<string> TranscribeAudioAsync(byte[] audioData)
         {
             try
             {
-                // «O¦sÁ{®É­µÀWÀÉ®×
+                // ï¿½Oï¿½sï¿½{ï¿½É­ï¿½ï¿½Wï¿½É®ï¿½
                 var tempDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "temp");
                 Directory.CreateDirectory(tempDir);
                 var guidString = Guid.NewGuid().ToString();
                 var tempFile = Path.Combine(tempDir, $"voice_{guidString}.wav");
                 await File.WriteAllBytesAsync(tempFile, audioData);
 
-                // ½Õ¥Î Groq API
+                // ï¿½Õ¥ï¿½ Groq API
                 using var formData = new MultipartFormDataContent();
                 using var fileContent = new ByteArrayContent(audioData);
                 fileContent.Headers.ContentType = new MediaTypeHeaderValue("audio/wav");
                 formData.Add(fileContent, "file", "audio.wav");
                 formData.Add(new StringContent(MODEL), "model");
-                formData.Add(new StringContent("zh"), "language"); // ¤¤¤å
+                formData.Add(new StringContent("zh"), "language"); // ï¿½ï¿½ï¿½ï¿½
 
                 var response = await _httpClient.PostAsync(API_URL, formData);
 
@@ -105,7 +106,7 @@ namespace MusicBot2.Service
                 {
                     var error = await response.Content.ReadAsStringAsync();
 
-                    // ²M²zÁ{®ÉÀÉ®×
+                    // ï¿½Mï¿½zï¿½{ï¿½ï¿½ï¿½É®ï¿½
                     try { File.Delete(tempFile); } catch { }
                     return null;
                 }
@@ -115,7 +116,7 @@ namespace MusicBot2.Service
                 var text = doc.RootElement.GetProperty("text").GetString();
 
 
-                // ²M²zÁ{®ÉÀÉ®×
+                // ï¿½Mï¿½zï¿½{ï¿½ï¿½ï¿½É®ï¿½
                 try { File.Delete(tempFile); } catch { }
 
                 return text?.Trim();
@@ -127,7 +128,7 @@ namespace MusicBot2.Service
         }
 
         /// <summary>
-        /// »y­µÀW¹DºÊÅ¥¾¹¡]¤º³¡Ãş¡^
+        /// ï¿½yï¿½ï¿½ï¿½Wï¿½Dï¿½ï¿½Å¥ï¿½ï¿½ï¿½]ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½^
         /// </summary>
         private class VoiceChannelListener
         {
@@ -155,7 +156,7 @@ namespace MusicBot2.Service
             {
                 try
                 {
-                    // ­q¾\»y­µ¼Æ¾Ú¨Æ¥ó
+                    // ï¿½qï¿½\ï¿½yï¿½ï¿½ï¿½Æ¾Ú¨Æ¥ï¿½
                     _audioClient.StreamCreated += OnStreamCreated;
                 }
                 catch (Exception ex)
@@ -196,7 +197,7 @@ namespace MusicBot2.Service
                         {
                             buffer.Write(audioBuffer, bytesRead);
 
-                            // ¨C 3 ¬í³B²z¤@¦¸¡]©ÎÀË´ú¨ìÀR­µ¡^
+                            // ï¿½C 3 ï¿½ï¿½ï¿½Bï¿½zï¿½@ï¿½ï¿½ï¿½]ï¿½ï¿½ï¿½Ë´ï¿½ï¿½ï¿½ï¿½Rï¿½ï¿½ï¿½^
                             if (buffer.Duration >= TimeSpan.FromSeconds(3))
                             {
                                 await ProcessAudioBufferAsync(userId, buffer);
@@ -224,7 +225,7 @@ namespace MusicBot2.Service
                     var audioData = buffer.GetAudioData();
                     if (audioData == null || audioData.Length < 1000)
                     {
-                        return; // ­µÀW¤Óµu¡A©¿²¤
+                        return; // ï¿½ï¿½ï¿½Wï¿½Óµuï¿½Aï¿½ï¿½ï¿½ï¿½
                     }
 
                     var text = await _service.TranscribeAudioAsync(audioData);
@@ -233,13 +234,13 @@ namespace MusicBot2.Service
                         return;
                     }
 
-                    // ÀË¬d¬O§_´£¨ì soyo
+                    // ï¿½Ë¬dï¿½Oï¿½_ï¿½ï¿½ï¿½ï¿½ soyo
                     if (text.ToLower().Contains("soyo") ||
-                        text.Contains("·j«ÕªL") ||
-                        text.Contains("²n¥@"))
+                        text.Contains("ï¿½jï¿½ÕªL") ||
+                        text.Contains("ï¿½nï¿½@"))
                     {
 
-                        // ¨ú±o»¡¸Üªº¥Î¤á
+                        // ï¿½ï¿½ï¿½oï¿½ï¿½ï¿½Üªï¿½ï¿½Î¤ï¿½
                         var guild = (_voiceChannel as SocketVoiceChannel)?.Guild;
                         var user = guild?.GetUser(userId);
 
@@ -256,7 +257,7 @@ namespace MusicBot2.Service
         }
 
         /// <summary>
-        /// ­µÀW½w½Ä°Ï¡]¤º³¡Ãş¡^
+        /// ï¿½ï¿½ï¿½Wï¿½wï¿½Ä°Ï¡]ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½^
         /// </summary>
         private class AudioStreamBuffer : IDisposable
         {

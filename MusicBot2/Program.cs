@@ -659,23 +659,28 @@ public class Program
             await message.Channel.SendMessageAsync(cleanText);
 
         // ✅ 新增：如果啟用 TTS 且用戶在語音頻道，就播放語音
+        // ConnectAsync 不能在 gateway thread 上 await（會等不到 VOICE_SERVER_UPDATE 而 operation timeout），所以丟到背景執行
         if (_isTtsEnabled && talker?.VoiceChannel != null)
         {
-            try
+            var voiceChannel = talker.VoiceChannel;
+            _ = Task.Run(async () =>
             {
-                // 確保連接到語音頻道
-                if (_audioClient == null || _audioClient.ConnectionState != Discord.ConnectionState.Connected)
+                try
                 {
-                    _audioClient = await talker.VoiceChannel.ConnectAsync(selfDeaf: false, selfMute: false);
-                }
+                    // 確保連接到語音頻道
+                    if (_audioClient == null || _audioClient.ConnectionState != Discord.ConnectionState.Connected)
+                    {
+                        _audioClient = await voiceChannel.ConnectAsync(selfDeaf: false, selfMute: false);
+                    }
 
-                // 播放 TTS
-                await _fishAudioService.SpeakInVoiceChannelAsync(cleanText, talker, _audioClient);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[TTS Error] {ex.Message}");
-            }
+                    // 播放 TTS，同時把語音檔傳到文字頻道
+                    await _fishAudioService.SpeakInVoiceChannelAsync(cleanText, talker, _audioClient, message.Channel);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[TTS Error] {ex.Message}");
+                }
+            });
         }
 
         if (!tagMatch.Success) return;
@@ -931,6 +936,43 @@ public class Program
             var url = cmd.Substring(1).Trim();
             await PlayBiblibiliMusicAsync(channel, user, url);
         }
+        //停止監聽語音（必須放在 unloop 的 "u" 和列清單的 "li" 之前，避免前綴撞到）
+        else if (cmd.ToLower().StartsWith("unlisten"))
+        {
+            if (user?.VoiceChannel != null)
+            {
+                var voiceChannelId = user.VoiceChannel.Id;
+                // 語音連線操作不能在 gateway thread 上等待，否則會 operation timeout
+                _ = Task.Run(async () =>
+                {
+                    await _groqWhisperService.StopListeningAsync(voiceChannelId);
+                    await channel.SendMessageAsync($"🔇 已停止監聽語音頻道");
+                });
+            }
+            else
+            {
+                await channel.SendMessageAsync("你不在語音頻道中");
+            }
+        }
+        //開始監聽語音
+        else if (cmd.ToLower().StartsWith("listen"))
+        {
+            if (user?.VoiceChannel != null)
+            {
+                var voiceChannelName = user.VoiceChannel.Name;
+                _ = Task.Run(async () =>
+                {
+                    var started = await StartVoiceListeningAsync(user);
+                    await channel.SendMessageAsync(started
+                        ? $"👂 開始監聽語音頻道: {voiceChannelName}"
+                        : "❌ 無法開始監聽（可能已在監聽中，或語音連線失敗）");
+                });
+            }
+            else
+            {
+                await channel.SendMessageAsync("你不在語音頻道中");
+            }
+        }
         //跳過
         else if (cmd.ToLower().StartsWith("s") || cmd.StartsWith("skip"))
         {
@@ -1005,32 +1047,6 @@ public class Program
         {
             _isTtsEnabled = !_isTtsEnabled;
             await channel.SendMessageAsync(_isTtsEnabled ? "✅ TTS 已啟用" : "❌ TTS 已關閉");
-        }
-        //開始監聽語音
-        else if (cmd.ToLower().StartsWith("listen"))
-        {
-            if (user?.VoiceChannel != null)
-            {
-                await StartVoiceListeningAsync(user);
-                await channel.SendMessageAsync($"👂 開始監聽語音頻道: {user.VoiceChannel.Name}");
-            }
-            else
-            {
-                await channel.SendMessageAsync("你不在語音頻道中");
-            }
-        }
-        //停止監聽語音
-        else if (cmd.ToLower().StartsWith("unlisten"))
-        {
-            if (user?.VoiceChannel != null)
-            {
-                await _groqWhisperService.StopListeningAsync(user.VoiceChannel.Id);
-                await channel.SendMessageAsync($"🔇 已停止監聽語音頻道");
-            }
-            else
-            {
-                await channel.SendMessageAsync("你不在語音頻道中");
-            }
         }
         else
         {
@@ -2239,11 +2255,11 @@ public class Program
     /// <summary>
     /// 開始監聽語音頻道（用戶在頻道時自動觸發）
     /// </summary>
-    public async Task StartVoiceListeningAsync(SocketGuildUser user)
+    public async Task<bool> StartVoiceListeningAsync(SocketGuildUser user)
     {
-        if (user?.VoiceChannel == null) return;
+        if (user?.VoiceChannel == null) return false;
 
-        await _groqWhisperService.StartListeningAsync(
+        var audioClient = await _groqWhisperService.StartListeningAsync(
             user.VoiceChannel,
             async (text, speaker) =>
             {
@@ -2282,13 +2298,13 @@ public class Program
                         }
                     }
 
-                    // 播放 TTS 回應
+                    // 播放 TTS 回應，同時把語音檔傳到文字頻道
                     if (_audioClient != null && !string.IsNullOrWhiteSpace(result))
                     {
                         var cleanResponse = _launchTagRegex.Replace(result, "").Trim();
                         if (!string.IsNullOrWhiteSpace(cleanResponse))
                         {
-                            await _fishAudioService.SpeakInVoiceChannelAsync(cleanResponse, speaker, _audioClient);
+                            await _fishAudioService.SpeakInVoiceChannelAsync(cleanResponse, speaker, _audioClient, textChannel);
                         }
                     }
                 }
@@ -2298,6 +2314,12 @@ public class Program
                 }
             }
         );
+
+        if (audioClient == null) return false;
+
+        // 讓 TTS 共用同一條語音連線，避免之後再 ConnectAsync 把監聽踢掉
+        _audioClient = audioClient;
+        return true;
     }
 
     #endregion
