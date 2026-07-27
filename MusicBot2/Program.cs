@@ -50,7 +50,10 @@ public class Program
     private SetTextService _setTextService;
     private TRPGService _trpgService;
     private string _cookie;
+    private List<ulong> passBotList = new List<ulong> 
+    { 1499768328586002473, //魚骨頭
 
+    }; // 這裡放置要排除的 Bot ID
     #endregion
 
     #region 基礎設定
@@ -791,7 +794,9 @@ public class Program
 
     public async Task MessageReceivedHandler(SocketMessage message)
     {
-        if (message is not SocketUserMessage userMessage || message.Author.IsBot) return;
+        bool ispassBot = passBotList.Contains(message.Author.Id);
+        // 忽略非使用者訊息或機器人訊息（除非在 passBotList 中）
+        if (message is not SocketUserMessage userMessage || (message.Author.IsBot && !ispassBot)) return;
 
         // 🎲 檢查是否在 TRPG 遊戲頻道中
         var trpgUser = message.Author as SocketGuildUser;
@@ -818,7 +823,8 @@ public class Program
                 message.Content.ToLower().Contains("長期") ||
                 message.Content.ToLower().Contains("爽世") ||
                 message.Content.ToLower().Contains("爽食") ||
-                message.Content.ToLower().Contains("素食"))
+                message.Content.ToLower().Contains("素食") ||
+                ispassBot)
         {
             var talker = message.Author as SocketGuildUser;
             // 用「伺服器 + 頻道」當記憶 key，避免不同頻道上下文互相污染
