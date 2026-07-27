@@ -22,11 +22,15 @@ namespace MusicBot2.Service
         private const string API_BASE_URL = "https://api.fish.audio/v1/tts";
 
         // Fish Audio �� Soyo �n���ҫ� ID
-        private const string SOYO_REFERENCE_ID = "9a9cf47702da476aa4629e2506d4a857";
+        private const string SOYO_REFERENCE_ID = "23d8ed0094914caa89d350c4ce803cc9";
 
         //23d8ed0094914caa89d350c4ce803cc9 //SOYO
         //9a9cf47702da476aa4629e2506d4a857 //預設
         //4b5eb5bb302a4cb6bf975f30b3e58c07 //ANON
+
+        // TTS 模型：s2.1-pro-free 是免費 API 模型（至 2026/8/31），不指定的話會用付費模型導致 402
+        private const string TTS_MODEL = "s2.1-pro-free";
+
         public FishAudioService(string apiKey)
         {
             _apiKey = apiKey;
@@ -35,6 +39,7 @@ namespace MusicBot2.Service
                 Timeout = TimeSpan.FromSeconds(30)
             };
             _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+            _httpClient.DefaultRequestHeaders.Add("model", TTS_MODEL);
         }
 
         /// <summary>
