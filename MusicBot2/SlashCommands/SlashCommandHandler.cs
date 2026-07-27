@@ -872,8 +872,8 @@ namespace MusicBot2.SlahCommands
             }
         }
 
-        [SlashCommand("隨機抽一把幸運武器造型", "隨機抽一把幸運武器造型")]
-        public async Task RandomDrawWeaponSkin([Summary("武器名稱，不輸入或不存在就隨便一把", "武器名稱")] string name = "")
+        [SlashCommand("隨機抽一把幸運造型", "隨機抽一把幸運造型")]
+        public async Task RandomDrawWeaponSkinAsync([Summary("武器名稱，不輸入或不存在就隨便一把", "武器名稱")] string name = "")
         {
             await DeferAsync();
             var (weaponName, skinName, skinImageUrl) = await _valorantService.RandomWeaponSkin(name);
