@@ -448,18 +448,34 @@ namespace MusicBot2.Service
             var basePersona = string.IsNullOrWhiteSpace(request.SystemInstruction) ? Persona : request.SystemInstruction;
             var summary = GetChannelSummary(channelKey);
 
-            // 處理頻道歷史對話
-            string contextHistory = "";
+            // ✅ 先將 contextMessages 加入記憶（如果有的話）
             if (contextMessages != null && contextMessages.Any())
             {
-                var historyBuilder = new StringBuilder();
-                historyBuilder.AppendLine("\n[最近的對話歷史]");
+                var history = GetHistory(channelKey);
+
+                // 將最近的對話按時間順序加入記憶
                 foreach (var msg in contextMessages.Reverse())
                 {
                     var authorName = (msg.Author as SocketGuildUser)?.DisplayName ?? msg.Author?.Username ?? "某人";
-                    historyBuilder.AppendLine($"{authorName}: {Truncate(msg.Content, 200)}");
+                    var messageText = Truncate(msg.Content, MaxMessageStoreLength);
+
+                    // 檢查是否已存在（避免重複記錄）
+                    bool alreadyExists = history.Any(h => 
+                        h.Text == messageText && 
+                        h.UserName == authorName &&
+                        Math.Abs((h.Timestamp - msg.Timestamp.DateTime).TotalSeconds) < 5);
+
+                    if (!alreadyExists)
+                    {
+                        history.Add(new ConversationMessage
+                        {
+                            Role = "user",
+                            Text = messageText,
+                            Timestamp = msg.Timestamp.DateTime,
+                            UserName = authorName
+                        });
+                    }
                 }
-                contextHistory = historyBuilder.ToString();
             }
             // 偵測查詢意圖，若有就先查 wiki 注入背景資料
             // 這段先移除，有點影響到日常對話
@@ -483,12 +499,6 @@ namespace MusicBot2.Service
             var systemPrompt = string.IsNullOrEmpty(summary)
                 ? basePersona
                 : basePersona + $"\n\n[過去對話摘要]\n{summary}";
-
-            // 加入最近的對話歷史
-            if (!string.IsNullOrEmpty(contextHistory))
-            {
-                systemPrompt += contextHistory;
-            }
             //if (wikiContext != null)
             //    systemPrompt += $"\n\n{wikiContext}";
 
