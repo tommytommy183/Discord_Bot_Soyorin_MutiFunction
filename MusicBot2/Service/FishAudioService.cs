@@ -45,7 +45,6 @@ namespace MusicBot2.Service
             try
             {
                 var preview = text.Length > 50 ? text.Substring(0, 50) : text;
-                Console.WriteLine($"[FishAudio] 開始 TTS: {preview}...");
 
                 // 1. 調用 Fish Audio API 生成語音
                 var audioData = await GenerateSpeechAsync(text);

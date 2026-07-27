@@ -48,11 +48,9 @@ namespace MusicBot2.Service
             {
                 if (_activeListeners.ContainsKey(voiceChannel.Id))
                 {
-                    Console.WriteLine($"[Groq Whisper] 已在監聽頻道: {voiceChannel.Name}");
                     return false;
                 }
 
-                Console.WriteLine($"[Groq Whisper] 開始監聽語音頻道: {voiceChannel.Name}");
 
                 var audioClient = await voiceChannel.ConnectAsync();
                 var listener = new VoiceChannelListener(audioClient, voiceChannel, this, onSpeechRecognized);
@@ -64,7 +62,6 @@ namespace MusicBot2.Service
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[Groq Whisper Error] 啟動監聽失敗: {ex.Message}");
                 return false;
             }
         }
@@ -77,7 +74,6 @@ namespace MusicBot2.Service
             if (_activeListeners.TryRemove(channelId, out var listener))
             {
                 await listener.StopAsync();
-                Console.WriteLine($"[Groq Whisper] 已停止監聽頻道: {channelId}");
             }
         }
 
@@ -95,8 +91,6 @@ namespace MusicBot2.Service
                 var tempFile = Path.Combine(tempDir, $"voice_{guidString}.wav");
                 await File.WriteAllBytesAsync(tempFile, audioData);
 
-                Console.WriteLine($"[Groq Whisper] 開始轉錄音頻: {tempFile}");
-
                 // 調用 Groq API
                 using var formData = new MultipartFormDataContent();
                 using var fileContent = new ByteArrayContent(audioData);
@@ -110,7 +104,6 @@ namespace MusicBot2.Service
                 if (!response.IsSuccessStatusCode)
                 {
                     var error = await response.Content.ReadAsStringAsync();
-                    Console.WriteLine($"[Groq Whisper API Error] {response.StatusCode}: {error}");
 
                     // 清理臨時檔案
                     try { File.Delete(tempFile); } catch { }
@@ -121,7 +114,6 @@ namespace MusicBot2.Service
                 using var doc = JsonDocument.Parse(resultJson);
                 var text = doc.RootElement.GetProperty("text").GetString();
 
-                Console.WriteLine($"[Groq Whisper] 轉錄結果: {text}");
 
                 // 清理臨時檔案
                 try { File.Delete(tempFile); } catch { }
@@ -130,7 +122,6 @@ namespace MusicBot2.Service
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[Groq Whisper Exception] {ex.Message}");
                 return null;
             }
         }
@@ -166,11 +157,9 @@ namespace MusicBot2.Service
                 {
                     // 訂閱語音數據事件
                     _audioClient.StreamCreated += OnStreamCreated;
-                    Console.WriteLine($"[Voice Listener] 已訂閱語音串流事件");
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"[Voice Listener Error] {ex.Message}");
                 }
 
                 await Task.CompletedTask;
@@ -199,7 +188,6 @@ namespace MusicBot2.Service
                         var buffer = new AudioStreamBuffer();
                         _userBuffers.TryAdd((uint)userId, buffer);
 
-                        Console.WriteLine($"[Voice Listener] 開始接收用戶 {userId} 的語音");
 
                         byte[] audioBuffer = new byte[4096];
                         int bytesRead;
@@ -216,16 +204,13 @@ namespace MusicBot2.Service
                             }
                         }
 
-                        Console.WriteLine($"[Voice Listener] 用戶 {userId} 語音結束");
                         var removed = _userBuffers.TryRemove((uint)userId, out _);
                     }
                     catch (OperationCanceledException)
                     {
-                        Console.WriteLine("[Voice Listener] 監聽已取消");
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine($"[Voice Listener Error] {ex.Message}");
                     }
                 });
 
@@ -253,7 +238,6 @@ namespace MusicBot2.Service
                         text.Contains("搜幽林") ||
                         text.Contains("爽世"))
                     {
-                        Console.WriteLine($"[Voice Listener] 偵測到關鍵字: {text}");
 
                         // 取得說話的用戶
                         var guild = (_voiceChannel as SocketVoiceChannel)?.Guild;
@@ -267,7 +251,6 @@ namespace MusicBot2.Service
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"[Voice Listener] 處理音頻失敗: {ex.Message}");
                 }
             }
         }
