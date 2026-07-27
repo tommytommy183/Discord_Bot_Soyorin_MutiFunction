@@ -817,7 +817,7 @@ public class Program
         bool isMentioned = message.MentionedUsers.Any(u => u.Id == _client.CurrentUser.Id);
         bool isSelf = message.Author.Id == _client.CurrentUser.Id;
 
-        if (!isSelf || isMentioned ||
+        if (isMentioned ||
             message.Content.ToLower().Contains("soyo") ||
             message.Content.ToLower().Contains("搜幽林") ||
                 message.Content.ToLower().Contains("crychic") ||
