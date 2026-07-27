@@ -78,6 +78,8 @@ namespace MusicBot2.Models
         public List<PokeGenera> genera { get; set; }
         public List<PokeNames> names { get; set; }
         public List<FlavorTextEntries> flavor_text_entries { get; set; }
+        public bool is_legendary { get; set; }
+        public bool is_mythical { get; set; }
     }
 
     public class FlavorTextEntries
@@ -179,6 +181,7 @@ namespace MusicBot2.Models
         public ulong UserId { get; set; }
         public string UserName { get; set; }
         public PokeGamePokemon Pokemon { get; set; }
+        public ulong ChannelId { get; set; }
         public DateTime SearchStartTime { get; set; }
     }
 
@@ -188,6 +191,7 @@ namespace MusicBot2.Models
         public string UserName { get; set; }
         public PokeGamePokemon Pokemon1 { get; set; }
         public PokeGamePokemon Pokemon2 { get; set; }
+        public ulong ChannelId { get; set; }
 
         public DateTime SearchStartTime { get; set; }
     }
@@ -201,6 +205,43 @@ namespace MusicBot2.Models
         public string LoserName { get; set; }
         public PokeGamePokemon LoserPokemon { get; set; }
         public string BattleDescription { get; set; }
+    }
+
+    public class TeamFightBoss
+    {
+        public PokeGamePokemon BossPokemon { get; set; }
+        public int CurrentHP { get; set; }
+        public int MaxHP { get; set; }
+        public List<TeamFightParticipant> Participants { get; set; } = new List<TeamFightParticipant>();
+        public DateTime StartTime { get; set; }
+        public ulong ChannelId { get; set; }
+        public bool IsActive { get; set; }
+        public bool IsFighting { get; set; }
+    }
+
+    public class TeamFightParticipant
+    {
+        public ulong UserId { get; set; }
+        public string UserName { get; set; }
+        public PokeGamePokemon Pokemon { get; set; }
+        public int DamageDealt { get; set; }
+        public DateTime JoinTime { get; set; }
+    }
+
+    public class PokemonExchangeRequest
+    {
+        public ulong RequesterId { get; set; }
+        public string RequesterName { get; set; }
+        public int RequesterPokemonIndex { get; set; }
+        public PokeGamePokemon RequesterPokemon { get; set; }
+        public ulong TargetId { get; set; }
+        public string TargetName { get; set; }
+        public int? TargetPokemonIndex { get; set; }  // 對方選擇的 Pokemon 編號
+        public PokeGamePokemon TargetPokemon { get; set; }  // 對方選擇的 Pokemon
+        public bool TargetSelected { get; set; }  // 對方是否已選擇
+        public ulong ChannelId { get; set; }
+        public ulong MessageId { get; set; }
+        public DateTime RequestTime { get; set; }
     }
     #endregion
 

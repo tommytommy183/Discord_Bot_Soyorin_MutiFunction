@@ -10,6 +10,7 @@ using MusicBot2.Models;
 using MusicBot2.Service;
 using RiotSharp.Misc;
 using System.ComponentModel;
+using System.IO;
 using System.Net.Http;
 using System.Xml.Linq;
 using static System.Net.Mime.MediaTypeNames;
@@ -25,6 +26,7 @@ namespace MusicBot2.SlahCommands
         private readonly OldMaidService _oldMaidService;
         private readonly RubiksCubeService _rubiksCubeService;
         private readonly GoogleAIStudioService _googleAIStudioService;
+        private readonly OpenRouterService _openRouterService;
         private readonly RVC_Service _rVC_Service;
         private readonly SetTextService _setTextService;
         private readonly Game2048Service _game2048Service;
@@ -33,8 +35,14 @@ namespace MusicBot2.SlahCommands
         private readonly JikanAnimeService _animeService;
         private readonly PokeService _pokeService;
         private readonly PokeGameService _pokeGameService;
+        private readonly ValorantService _valorantService;
+        private readonly TRPGService _trpgService;
+        private readonly LyrisService _lyrisService;
+        private readonly LyricsDisplayService _lyricsDisplayService;
+        private readonly UselessApiService _uselessApiService;
+        private readonly AIImageService _aiImageService;
 
-        public SlashCommandHandler(Program program, WordGuessingService wordService, MineGameService mineGameService, ElevenLabsService elevenLabsService, OldMaidService oldMaidService, RubiksCubeService rubiksCubeService, GoogleAIStudioService googleAIStudioService, RVC_Service rVC_Service, SetTextService setTextService, Game2048Service game2048Service, Game1A2BService game1A2BService, Pick2Service pick2Service, JikanAnimeService animeService, PokeService pokeService, PokeGameService pokeGameService)
+        public SlashCommandHandler(Program program, WordGuessingService wordService, MineGameService mineGameService, ElevenLabsService elevenLabsService, OldMaidService oldMaidService, RubiksCubeService rubiksCubeService, GoogleAIStudioService googleAIStudioService, OpenRouterService openRouterService, RVC_Service rVC_Service, SetTextService setTextService, Game2048Service game2048Service, Game1A2BService game1A2BService, Pick2Service pick2Service, JikanAnimeService animeService, PokeService pokeService, PokeGameService pokeGameService, ValorantService valorantService, TRPGService trpgService, LyrisService lyrisService, LyricsDisplayService lyricsDisplayService, UselessApiService uselessApiService, AIImageService aiImageService)
         {
             _program = program;
             _wordService = wordService;
@@ -44,6 +52,7 @@ namespace MusicBot2.SlahCommands
             _oldMaidService = oldMaidService;
             _rubiksCubeService = rubiksCubeService;
             _googleAIStudioService = googleAIStudioService;
+            _openRouterService = openRouterService;
             _rVC_Service = rVC_Service;
             _game2048Service = game2048Service;
             _game1A2BService = game1A2BService;
@@ -51,6 +60,12 @@ namespace MusicBot2.SlahCommands
             _animeService = animeService;
             _pokeService = pokeService;
             _pokeGameService = pokeGameService;
+            _valorantService = valorantService;
+            _trpgService = trpgService;
+            _lyrisService = lyrisService;
+            _lyricsDisplayService = lyricsDisplayService;
+            _uselessApiService = uselessApiService;
+            _aiImageService = aiImageService;
         }
         #region 音樂撥放相關
         [SlashCommand("播放音樂", "播放音樂")]
@@ -429,16 +444,42 @@ namespace MusicBot2.SlahCommands
             );
         }
 
-        [SlashCommand("soyo記憶消除", "清除 Soyo 的記憶")]
+        [SlashCommand("soyo記憶消除", "清除 Soyo 的記憶（包含對話摘要）")]
         public async Task ClearSoyoMemory(
-    [Summary("頻道", "要清除記憶的頻道")] string channelKey = null
+    [Summary("頻道", "要清除記憶的頻道（留空 = 全部）")] string channelKey = null
 )
         {
             await DeferAsync();
 
             await _googleAIStudioService.ClearMemoryAsync(channelKey);
+            await _openRouterService.ClearMemoryAsync(channelKey);
 
-            await FollowupAsync($"已清除 Soyo 的記憶 ({channelKey ?? "全部頻道"})");
+            await FollowupAsync($"已清除 Soyo 的記憶與對話摘要 ({channelKey ?? "全部頻道"})");
+        }
+
+        [SlashCommand("soyo對話摘要", "查看目前整理出來的對話摘要")]
+        public async Task GetSoyoSummary()
+        {
+            await DeferAsync();
+
+            string channelKey = Context.Guild?.Id.ToString() ?? "global";
+            var summary = _openRouterService.GetChannelSummary(channelKey);
+
+            if (string.IsNullOrEmpty(summary))
+            {
+                await FollowupAsync($"頻道 `{channelKey}` 目前沒有對話摘要（對話量還不夠多，或尚未觸發摘要整理）");
+                return;
+            }
+
+            var embed = new EmbedBuilder()
+                .WithTitle("📝 Soyo 的對話摘要")
+                .WithDescription(summary)
+                .WithColor(Color.Purple)
+                .WithFooter($"頻道 key: {channelKey}")
+                .WithCurrentTimestamp()
+                .Build();
+
+            await FollowupAsync(embed: embed);
         }
         #endregion
 
@@ -492,7 +533,8 @@ namespace MusicBot2.SlahCommands
     [Summary("自訂訊息", "你想要附加的訊息，選填，如果要的話，幫我以/me代表自己，/target代表你要發送的對象")] string message = ""
 )
         {
-            var channel = Context.Client.GetChannel(592716175461580800) as ISocketMessageChannel;
+            //var channel = Context.Client.GetChannel(592716175461580800) as ISocketMessageChannel;
+            var channel = Context.Channel as IMessageChannel;
             if (string.IsNullOrEmpty(message))
             {
                 await channel.SendMessageAsync($"{sender} 送光給 {target.Mention} ", allowedMentions: AllowedMentions.All);
@@ -639,11 +681,21 @@ namespace MusicBot2.SlahCommands
         }
 
         [SlashCommand("我的pokemon", "查看你的pokemon列表")]
-        public async Task MyPokemonAsync()
+        public async Task MyPokemonAsync([Summary("秀給大家看", "想秀給大家看的pokemon編號")] int index = 0)
         {
-            await DeferAsync();
-            var (embed, component) = await _pokeGameService.ListPokemonAsync(Context.User.Id, Context.User.Username);
-            await FollowupAsync(embed: embed, components: component.Build());
+            if (index == 0)
+            {
+                await DeferAsync(ephemeral: true);
+                var (embed, component) = await _pokeGameService.ListPokemonAsync(Context.User.Id, Context.User.Username);
+                await FollowupAsync(embed: embed, components: component.Build(), ephemeral: true);
+            }
+            else
+            {
+                await DeferAsync();
+                var channel = Context.Channel as IMessageChannel;
+                var (embed, component) = await _pokeGameService.ShowOnePokemon(Context.User.Id, Context.User.Username, index, channel);
+                await FollowupAsync(embed: embed, components: component.Build());
+            }
         }
 
         [SlashCommand("自定義pokemon", "自定義你的pokemon名稱")]
@@ -697,7 +749,447 @@ namespace MusicBot2.SlahCommands
             await FollowupAsync(embed: embed, components: component.Build());
         }
 
+        [SlashCommand("交換一隻pokemon", "交換一隻pokemon(兩方都使用此指令才會成功交換)")]
+        public async Task ExchangePokemonAsync(
+            [Summary("編號", "要交換的pokemon編號（從1開始）")] int index,
+            [Summary("要交換的人", "要交換的人")] IUser target)
+        {
+            await DeferAsync();
+            var (embed, component) = await _pokeGameService.InitiateExchangeAsync(
+                Context.User.Id,
+                Context.User.Username,
+                index,
+                target,
+                Context.Channel);
+            await FollowupAsync(embed: embed, components: component.Build());
+        }
 
+        [SlashCommand("開始傳說pokemon團戰", "當前所有參與團戰的人來開始對戰")]
+        public async Task StartPokemonTeamFightAsync()
+        {
+            await DeferAsync();
+            var channel = Context.Channel;
+            var (embed, component) = await _pokeGameService.StartTeamFightBattleAsync(channel);
+            await FollowupAsync(embed: embed, components: component.Build());
+        }
+
+        [SlashCommand("參與或開啟pokemon團戰", "參與已存在尚未開始的團戰，如果當前沒有則開啟新的一團")]
+        public async Task JoinPokemonTeamFightAsync(
+            [Summary("編號", "要出戰的pokemon編號（從1開始）")] int index)
+        {
+            await DeferAsync();
+
+            var channel = Context.Channel;
+            var (embed, component) = await _pokeGameService.JoinOrCreateTeamFightAsync(Context.User.Id, Context.User.Username, index - 1, channel.Id);
+            await FollowupAsync(embed: embed, components: component.Build());
+        }
+        #endregion
+
+        #region Valorant相關
+        [SlashCommand("猜猜我是誰瓦學弟ver", "根據角色圖片輪廓猜Valorant角色")]
+        public async Task GuessValorantAgentAsync()
+        {
+            await DeferAsync();
+            var ((component, embed), silhouette) = await _valorantService.StartGuessAgentImageAsync(Context.Channel.Id);
+
+            if (silhouette != null)
+            {
+                var message = await FollowupWithFileAsync(silhouette, "silhouette.png", embed: embed, components: component.Build());
+                _valorantService.SetMessageId(Context.Channel.Id, message.Id, true);
+            }
+            else
+            {
+                await FollowupAsync(embed: embed, components: component.Build());
+            }
+        }
+
+        [SlashCommand("猜猜這哪招瓦學弟ver", "根據技能圖示和描述猜Valorant技能名稱")]
+        public async Task GuessValorantAbilityAsync()
+        {
+            await DeferAsync();
+            var (component, embed) = await _valorantService.StartGuessAbilityNameAsync(Context.Channel.Id);
+            var message = await FollowupAsync(embed: embed, components: component.Build());
+            _valorantService.SetMessageId(Context.Channel.Id, message.Id, false);
+        }
+
+        [SlashCommand("回答valorant角色", "回答猜角色遊戲")]
+        public async Task AnswerValorantAgentAsync([Summary("答案", "輸入角色名稱（中文或英文都可以）")] string answer)
+        {
+            await DeferAsync();
+            var user = Context.User as SocketGuildUser;
+            var (isCorrect, embed, correctName) = await _valorantService.HandleAgentAnswerAsync(Context.Channel.Id, answer, user, Context.Channel);
+
+            if (isCorrect)
+            {
+                // 答對了 → 公開發送訊息
+                await FollowupAsync(embed: embed);
+            }
+            else
+            {
+                // 答錯了 → 公開發送錯誤訊息
+                await FollowupAsync(embed: embed);
+            }
+        }
+
+        [SlashCommand("回答valorant技能", "回答猜技能遊戲")]
+        public async Task AnswerValorantAbilityAsync([Summary("答案", "輸入技能名稱（中文或英文都可以）")] string answer)
+        {
+            await DeferAsync();
+            var user = Context.User as SocketGuildUser;
+            var (isCorrect, wrongAnswer, correctAnswer, agentName) = await _valorantService.HandleAbilityAnswerAsync(Context.Channel.Id, answer);
+
+            if (isCorrect)
+            {
+                // 答對了 → 公開發送訊息
+                var rewardText = await RewardsHelpers.GetRandomRewards(Context.Channel, user);
+
+                var successEmbed = new EmbedBuilder()
+                    .WithTitle("🎉 答對了！")
+                    .WithColor(Color.Green)
+                    .WithDescription($"**{user.Mention}**{CommonHelper.GetUserFace(user.Id.ToString())} 答對了！")
+                    .AddField("正確答案", correctAnswer, inline: true)
+                    .AddField("所屬角色", agentName, inline: true)
+                    .AddField("獎勵", rewardText)
+                    .WithTimestamp(DateTimeOffset.Now)
+                    .Build();
+
+                await FollowupAsync(embed: successEmbed);
+            }
+            else if (wrongAnswer != null)
+            {
+                // 答錯了 → 公開發送錯誤訊息
+                await FollowupAsync($"❌ **{user.Mention}** {CommonHelper.GetUserFace(user.Id.ToString())} 猜錯了！答案：**{wrongAnswer}**");
+            }
+            else
+            {
+                // 找不到遊戲
+                var errorEmbed = new EmbedBuilder()
+                    .WithTitle("⚠️ 提示")
+                    .WithColor(Color.Orange)
+                    .WithDescription("找不到遊戲，請先使用 `/猜猜這哪招瓦學弟ver` 開始遊戲！")
+                    .Build();
+                await FollowupAsync(embed: errorEmbed, ephemeral: true);
+            }
+        }
+
+        [SlashCommand("隨機抽一把幸運造型", "隨機抽一把幸運造型")]
+        public async Task RandomDrawWeaponSkinAsync([Summary("武器名稱，不輸入或不存在就隨便一把", "武器名稱")] string name = "")
+        {
+            await DeferAsync();
+            var (weaponName, skinName, skinImageUrl) = await _valorantService.RandomWeaponSkin(name);
+
+            var channel = Context.Channel as IMessageChannel;
+            await channel.SendMessageAsync($"🎁 {Context.User.Mention} {CommonHelper.GetUserFace(Context.User.Id.ToString())} 屌抽一把\n**{weaponName}** - **{skinName}**");
+            await channel.SendMessageAsync(skinImageUrl);
+
+            await FollowupAsync();
+        }
+        #endregion
+
+        #region TRPG 黑暗奇幻冒險
+        [SlashCommand("開始冒險", "開始一個黑暗奇幻 TRPG 冒險（此頻道所有訊息將成為遊戲內容）")]
+        public async Task StartAdventureAsync()
+        {
+            await DeferAsync();
+            var user = Context.User as SocketGuildUser;
+            if (user == null)
+            {
+                await FollowupAsync("❌ 無法取得使用者資訊", ephemeral: true);
+                return;
+            }
+
+            var result = await _trpgService.StartAdventureAsync(Context.Channel.Id, user);
+            await FollowupAsync(result);
+        }
+
+        [SlashCommand("加入冒險", "加入當前頻道進行中的 TRPG 冒險")]
+        public async Task JoinAdventureAsync()
+        {
+            await DeferAsync();
+            var user = Context.User as SocketGuildUser;
+            if (user == null)
+            {
+                await FollowupAsync("❌ 無法取得使用者資訊", ephemeral: true);
+                return;
+            }
+
+            var result = await _trpgService.JoinAdventureAsync(Context.Channel.Id, user);
+            await FollowupAsync(result);
+        }
+
+        [SlashCommand("投骰", "投擲 20 面骰來判定行動結果")]
+        public async Task RollDiceAsync()
+        {
+            await DeferAsync();
+            var user = Context.User as SocketGuildUser;
+            if (user == null)
+            {
+                await FollowupAsync("❌ 無法取得使用者資訊", ephemeral: true);
+                return;
+            }
+
+            var result = await _trpgService.RollDiceAsync(Context.Channel.Id, user);
+            await FollowupAsync(result);
+        }
+
+        [SlashCommand("結束冒險", "結束當前頻道的 TRPG 冒險")]
+        public async Task EndAdventureAsync()
+        {
+            await DeferAsync();
+            var user = Context.User as SocketGuildUser;
+            if (user == null)
+            {
+                await FollowupAsync("❌ 無法取得使用者資訊", ephemeral: true);
+                return;
+            }
+
+            var result = await _trpgService.EndAdventureAsync(Context.Channel.Id, user);
+            await FollowupAsync(result);
+        }
+
+        [SlashCommand("冒險狀態", "查看當前冒險的狀態")]
+        public async Task AdventureStatusAsync()
+        {
+            await DeferAsync();
+            var result = await _trpgService.GetAdventureStatusAsync(Context.Channel.Id);
+            await FollowupAsync(result, ephemeral: true);
+        }
+
+        [SlashCommand("查看背包", "查看你的背包物品")]
+        public async Task ViewInventoryAsync()
+        {
+            await DeferAsync();
+            var user = Context.User as SocketGuildUser;
+            if (user == null)
+            {
+                await FollowupAsync("❌ 無法取得使用者資訊", ephemeral: true);
+                return;
+            }
+
+            var result = await _trpgService.GetInventoryAsync(Context.Channel.Id, user);
+            await FollowupAsync(result, ephemeral: true);
+        }
+        #endregion
+
+        #region 歌詞相關
+        [SlashCommand("查歌詞", "根據歌名和歌手查詢歌詞")]
+        public async Task SearchLyricsAsync(
+            [Summary("歌名", "歌曲名稱")] string trackName,
+            [Summary("歌手", "歌手名稱(選填)")] string artistName = null)
+        {
+            await DeferAsync();
+
+            try
+            {
+                var results = await _lyrisService.SearchLyricsAsync(trackName, artistName);
+
+                if (results == null || results.Count == 0)
+                {
+                    await FollowupAsync($"❌ 找不到歌曲: {trackName}" + (artistName != null ? $" - {artistName}" : ""));
+                    return;
+                }
+
+                var firstResult = results[0];
+                var embed = new EmbedBuilder()
+                    .WithTitle($"🎵 {firstResult.trackName}")
+                    .WithDescription(_lyrisService.FormatLyrics(firstResult.plainLyrics, 4000))
+                    .WithColor(Color.Blue)
+                    .AddField("歌手", firstResult.artistName ?? "未知", true)
+                    .AddField("專輯", firstResult.albumName ?? "未知", true)
+                    .AddField("長度", $"{(int)(firstResult.duration / 60)}:{(int)(firstResult.duration % 60):D2}", true)
+                    .WithFooter($"歌詞 ID: {firstResult.id}");
+
+                if (firstResult.instrumental)
+                {
+                    embed.AddField("⚠️", "此曲為純音樂，無歌詞");
+                }
+
+                await FollowupAsync(embed: embed.Build());
+            }
+            catch (Exception ex)
+            {
+                await FollowupAsync($"❌ 發生錯誤: {ex.Message}");
+            }
+        }
+
+        [SlashCommand("查歌手歌曲", "根據歌手查詢所有歌曲")]
+        public async Task SearchArtistSongsAsync(
+            [Summary("歌手", "歌手名稱")] string artistName)
+        {
+            await DeferAsync();
+
+            try
+            {
+                var results = await _lyrisService.SearchLyricsAsync("", artistName);
+
+                if (results == null || results.Count == 0)
+                {
+                    await FollowupAsync($"❌ 找不到歌手: {artistName} 的歌曲");
+                    return;
+                }
+
+                var songList = string.Join("\n", results.Take(15).Select((r, i) =>
+                    $"{i + 1}. **{r.trackName}** - {r.artistName}" +
+                    (r.albumName != null ? $" ({r.albumName})" : "")));
+
+                var embed = new EmbedBuilder()
+                    .WithTitle($"🎤 {artistName} 的歌曲")
+                    .WithDescription(songList)
+                    .WithColor(Color.Purple)
+                    .WithFooter($"共找到 {results.Count} 首歌曲，顯示前 15 首");
+
+                await FollowupAsync(embed: embed.Build());
+            }
+            catch (Exception ex)
+            {
+                await FollowupAsync($"❌ 發生錯誤: {ex.Message}");
+            }
+        }
+
+        [SlashCommand("顯示同步歌詞", "顯示帶時間戳的歌詞")]
+        public async Task ShowSyncedLyricsAsync(
+            [Summary("歌名", "歌曲名稱")] string trackName,
+            [Summary("歌手", "歌手名稱")] string artistName = "")
+        {
+            await DeferAsync();
+
+            try
+            {
+                var result = await _lyrisService.GetLyricsAsync(trackName, artistName);
+
+                if (result == null)
+                {
+                    await FollowupAsync($"❌ 找不到歌曲: {trackName} - {artistName}");
+                    return;
+                }
+
+                if (string.IsNullOrWhiteSpace(result.syncedLyrics))
+                {
+                    await FollowupAsync($"❌ 此歌曲沒有同步歌詞，請使用 /查歌詞 查看一般歌詞");
+                    return;
+                }
+
+                var syncedLines = _lyrisService.ParseSyncedLyrics(result.syncedLyrics);
+                var formattedLyrics = string.Join("\n", syncedLines.Take(50).Select(l =>
+                    $"`[{l.timestamp:mm\\:ss}]` {l.line}"));
+
+                var embed = new EmbedBuilder()
+                    .WithTitle($"🎵 {result.trackName} - {result.artistName}")
+                    .WithDescription(_lyrisService.FormatLyrics(formattedLyrics, 4000))
+                    .WithColor(Color.Green)
+                    .WithFooter($"同步歌詞 | 共 {syncedLines.Count} 行");
+
+                await FollowupAsync(embed: embed.Build());
+            }
+            catch (Exception ex)
+            {
+                await FollowupAsync($"❌ 發生錯誤: {ex.Message}");
+            }
+        }
+
+        [SlashCommand("測試播放同步歌詞", "播放同步歌詞(手動控制模式，使用按鈕切換前後句)")]
+        public async Task TestPlaySyncedLyricsAsync(
+            [Summary("歌名", "歌曲名稱")] string trackName,
+            [Summary("歌手", "歌手名稱")] string artistName = "")
+        {
+            await DeferAsync();
+
+            try
+            {
+                var success = await _lyricsDisplayService.StartLyricsDisplayAsync(
+                    Context.Channel.Id,
+                    trackName,
+                    artistName,
+                    Context.Channel);
+
+                if (success)
+                {
+                    await FollowupAsync($"✅ 已開始播放 **{trackName}** 的同步歌詞（使用按鈕控制前後句）", ephemeral: true);
+                }
+                else
+                {
+                    await FollowupAsync($"❌ 無法開始播放歌詞", ephemeral: true);
+                }
+            }
+            catch (Exception ex)
+            {
+                await FollowupAsync($"❌ 發生錯誤: {ex.Message}", ephemeral: true);
+            }
+        }
+
+        [SlashCommand("停止歌詞顯示", "停止當前頻道的歌詞顯示")]
+        public async Task StopLyricsDisplayAsync()
+        {
+            _lyricsDisplayService.StopLyricsDisplay(Context.Channel.Id);
+            await RespondAsync("✅ 已停止歌詞顯示", ephemeral: true);
+        }
+        #endregion
+
+        #region 無用api
+        [SlashCommand("無用小功能", "各種無用小功能")]
+        public async Task UselessApiAsync(
+            [Summary("功能", "功能_不輸入則隨機")]
+        [Choice("隨機查克莫里士史詩", 1)]
+        [Choice("隨機貓咪冷知識", 2)]
+        [Choice("隨機狗勾", 3)]
+        [Choice("隨機中文名言", 4)]
+        [Choice("隨機鴨子", 5)]
+        [Choice("隨機狐狸", 6)]
+        [Choice("隨機冷知識", 7)]
+        [Choice("隨機動畫句子", 8)]
+        [Choice("隨機遊戲句子", 9)]
+        int type = 0)
+        {
+            await DeferAsync();
+            var user = Context.User as SocketGuildUser;
+            string res = await _uselessApiService.GetUselessApiAsync(type);
+            await FollowupAsync(res);
+        }
+
+        [SlashCommand("今晚你想來點", "幫你屌決定一波今天吃甚麼")]
+        public async Task GetFoodAsync(
+    [Summary("類型", "類型")]
+    [Choice("台式", 1)]
+    [Choice("中式", 2)]
+    [Choice("日式", 3)]
+    [Choice("韓式", 4)]
+    [Choice("西式", 5)]
+    [Choice("港式", 6)]
+    [Choice("東南亞", 7)]
+    [Choice("鍋物", 8)]
+    [Choice("甜點", 9)]
+    [Choice("神秘食物", 10)]
+        int type = 0)
+        {
+            await DeferAsync();
+            var user = Context.User as SocketGuildUser;
+            string res = await _uselessApiService.GetRandomFoodApIAsync(user, type);
+            await FollowupAsync(res);
+        }
+        #endregion
+
+        #region 產出圖片相關
+        [SlashCommand("產出圖片", "產出圖片")]
+        public async Task GenerateAIImageAsync(
+            [Summary("提示詞", "提示詞")] string prompt
+            )
+        {
+            await DeferAsync();
+
+            try
+            {
+                using var imageStream = await _aiImageService.GenerateImageAsync(prompt);
+
+                await FollowupWithFileAsync(
+                    imageStream,
+                    "ai-image.png"
+                );
+            }
+            catch (Exception ex)
+            {
+                await FollowupAsync($"產生圖片失敗：{ex.Message}");
+            }
+        }
         #endregion
     }
 }

@@ -6,6 +6,7 @@ using Discord.WebSocket;
 using InstagramApiSharp.Classes;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using MusicBot2.Helpers;
 using MusicBot2.Service;
 using NAudio.CoreAudioApi;
 using NAudio.Wave;
@@ -47,8 +48,15 @@ public class Program
     private GoogleAIStudioService _googleAIStudioService;
     private OpenRouterService _openRouterService;
     private SetTextService _setTextService;
+    private TRPGService _trpgService;
+    private FishAudioService _fishAudioService;
+    private GroqWhisperService _groqWhisperService;
     private string _cookie;
-    
+    private bool _isTtsEnabled = false; // TTS 開關
+    private List<ulong> passBotList = new List<ulong> 
+    {   1499768328586002473, //魚骨頭
+        1286491383426711563, //soyo自己的，這樣才能讀到之前的訊息
+    }; // 這裡放置要排除的 Bot ID
     #endregion
 
     #region 基礎設定
@@ -77,6 +85,8 @@ public class Program
         string googleAIStudioApiKey = configer["GoogleAIStudio:dcBotKey1"];
         string googleAIStudioApiKey2 = configer["GoogleAIStudio:dcBotKey2"];
         string openRouterApiKey = configer["Openrouter:ApiKey1"];
+        string fishAudioApiKey = configer["FishAudio:ApiKey"];
+        string groqApiKey = configer["Groq:ApiKey"];
         _cookie = configer["YT_DLP_COOKIES"];
 
         string redisConn = configer["Redis:ConnectionString"];
@@ -101,6 +111,9 @@ public class Program
             .AddSingleton<Game2048Service>()
             .AddSingleton<Pick2Service>()
             .AddSingleton<PokeService>()
+            .AddSingleton<ValorantService>()
+            .AddSingleton<AIImageService>()
+            .AddSingleton<UselessApiService>()
             .AddSingleton<RVC_Service>()
             .AddSingleton<SetTextService>(setTextService)
             .AddSingleton<ElevenLabsService>(sp =>
@@ -112,17 +125,29 @@ public class Program
                 new GoogleAIStudioService(googleAIStudioApiKey, googleAIStudioApiKey2)
                 )
             .AddSingleton<OpenRouterService>(sp =>
-                  new OpenRouterService(openRouterApiKey)
+                  new OpenRouterService(openRouterApiKey, redisConn)
+                  )
+            .AddSingleton<TRPGService>(sp =>
+                  new TRPGService(openRouterApiKey, redisConn)
                   )
             .AddSingleton<JikanAnimeService>()
             .AddSingleton<PokeGameService>(sp =>
-                new PokeGameService(redisConn, sp.GetRequiredService<OpenRouterService>())
+                new PokeGameService(redisConn, sp.GetRequiredService<OpenRouterService>(), _client)
                 )
+            .AddSingleton<LyrisService>()
+            .AddSingleton<LyricsDisplayService>()
+            .AddSingleton<FishAudioService>(sp =>
+                new FishAudioService(fishAudioApiKey))
+            .AddSingleton<GroqWhisperService>(sp =>
+                new GroqWhisperService(groqApiKey))
               .BuildServiceProvider();
 
         _googleAIStudioService = _services.GetRequiredService<GoogleAIStudioService>();
         _openRouterService = _services.GetRequiredService<OpenRouterService>();
         _setTextService = _services.GetRequiredService<SetTextService>();
+        _trpgService = _services.GetRequiredService<TRPGService>();
+        _fishAudioService = _services.GetRequiredService<FishAudioService>();
+        _groqWhisperService = _services.GetRequiredService<GroqWhisperService>();
 
         _client.MessageReceived += MessageReceivedHandler;
         _client.Log += Log;
@@ -386,6 +411,95 @@ public class Program
                     });
                 }
             }
+            else if (component.Data.CustomId.StartsWith("poke_exchange_"))
+            {
+                await component.DeferAsync();
+
+                var pokeGameService = _services.GetService<PokeGameService>();
+
+                if (component.Data.CustomId.Contains("_accept_"))
+                {
+                    // 對方接受交換 - 顯示選擇Pokemon的按鈕
+                    var parts = component.Data.CustomId.Split(new[] { "_accept_" }, StringSplitOptions.None);
+                    if (parts.Length == 2)
+                    {
+                        string exchangeKey = parts[1];
+                        var (embed, newComponent, _) = await pokeGameService.HandleExchangeResponseAsync(component, exchangeKey, true);
+
+                        await component.ModifyOriginalResponseAsync(msg =>
+                        {
+                            msg.Embed = embed;
+                            msg.Components = newComponent?.Build();
+                        });
+                    }
+                }
+                else if (component.Data.CustomId.Contains("_reject_"))
+                {
+                    // 對方拒絕交換
+                    var parts = component.Data.CustomId.Split(new[] { "_reject_" }, StringSplitOptions.None);
+                    if (parts.Length == 2)
+                    {
+                        string exchangeKey = parts[1];
+                        var (embed, newComponent, _) = await pokeGameService.HandleExchangeResponseAsync(component, exchangeKey, false);
+
+                        await component.ModifyOriginalResponseAsync(msg =>
+                        {
+                            msg.Embed = embed;
+                            msg.Components = newComponent?.Build();
+                        });
+                    }
+                }
+                else if (component.Data.CustomId.Contains("_select_"))
+                {
+                    // 對方選擇Pokemon - 顯示給發起者確認
+                    var parts = component.Data.CustomId.Replace("poke_exchange_select_", "").Split('_');
+                    if (parts.Length >= 2)
+                    {
+                        string exchangeKey = string.Join("_", parts.Take(parts.Length - 1));
+                        int pokemonIndex = int.Parse(parts[parts.Length - 1]);
+
+                        var (embed, newComponent, _) = await pokeGameService.HandleExchangeResponseAsync(component, exchangeKey, true, pokemonIndex);
+
+                        await component.ModifyOriginalResponseAsync(msg =>
+                        {
+                            msg.Embed = embed;
+                            msg.Components = newComponent?.Build();
+                        });
+                    }
+                }
+                else if (component.Data.CustomId.Contains("_confirm_"))
+                {
+                    // 發起者確認交換 - 執行交換
+                    var parts = component.Data.CustomId.Split(new[] { "_confirm_" }, StringSplitOptions.None);
+                    if (parts.Length == 2)
+                    {
+                        string exchangeKey = parts[1];
+                        var (embed, newComponent, _) = await pokeGameService.HandleExchangeResponseAsync(component, exchangeKey, true);
+
+                        await component.ModifyOriginalResponseAsync(msg =>
+                        {
+                            msg.Embed = embed;
+                            msg.Components = newComponent?.Build();
+                        });
+                    }
+                }
+                else if (component.Data.CustomId.Contains("_cancel_"))
+                {
+                    // 發起者取消交換
+                    var parts = component.Data.CustomId.Split(new[] { "_cancel_" }, StringSplitOptions.None);
+                    if (parts.Length == 2)
+                    {
+                        string exchangeKey = parts[1];
+                        var (embed, newComponent, _) = await pokeGameService.HandleExchangeResponseAsync(component, exchangeKey, false);
+
+                        await component.ModifyOriginalResponseAsync(msg =>
+                        {
+                            msg.Embed = embed;
+                            msg.Components = newComponent?.Build();
+                        });
+                    }
+                }
+            }
             else if (component.Data.CustomId.StartsWith("1a2b_"))
             {
                 var parts = component.Data.CustomId.Split('_');
@@ -414,6 +528,12 @@ public class Program
                         });
                     }
                 }
+            }
+            // 處理歌詞控制按鈕
+            else if (component.Data.CustomId.StartsWith("lyrics_"))
+            {
+                var lyricsDisplayService = _services.GetService<LyricsDisplayService>();
+                await lyricsDisplayService.HandleButtonAsync(component);
             }
         }
         else if (interaction is SocketModal modal)
@@ -520,10 +640,213 @@ public class Program
     #endregion
 
     #region MSreceive
+    private static readonly System.Text.RegularExpressions.Regex _launchTagRegex =
+        new(@"\[LAUNCH:(.+?)\]", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    private async Task HandleSoyoResponseAsync(string result, SocketMessage message, SocketGuildUser talker)
+    {
+        if (string.IsNullOrWhiteSpace(result))
+        {
+            await message.Channel.SendMessageAsync(result);
+            return;
+        }
+
+        var tagMatch = _launchTagRegex.Match(result);
+        var cleanText = _launchTagRegex.Replace(result, "").Trim();
+
+        // 先送出 Soyo 的文字回覆
+        if (!string.IsNullOrWhiteSpace(cleanText))
+            await message.Channel.SendMessageAsync(cleanText);
+
+        // ✅ 新增：如果啟用 TTS 且用戶在語音頻道，就播放語音
+        if (_isTtsEnabled && talker?.VoiceChannel != null)
+        {
+            try
+            {
+                // 確保連接到語音頻道
+                if (_audioClient == null || _audioClient.ConnectionState != Discord.ConnectionState.Connected)
+                {
+                    _audioClient = await talker.VoiceChannel.ConnectAsync(selfDeaf: false, selfMute: false);
+                }
+
+                // 播放 TTS
+                await _fishAudioService.SpeakInVoiceChannelAsync(cleanText, talker, _audioClient);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[TTS Error] {ex.Message}");
+            }
+        }
+
+        if (!tagMatch.Success) return;
+
+        var feature = tagMatch.Groups[1].Value.Trim();
+        var channel = message.Channel;
+        var userId = talker?.Id ?? message.Author.Id;
+
+        try
+        {
+            // 產生圖片帶 prompt 參數，獨立處理
+            if (feature.StartsWith("產生圖片:"))
+            {
+                var prompt = feature.Substring("產生圖片:".Length).Trim();
+                if (!string.IsNullOrWhiteSpace(prompt))
+                {
+                    var imgSvc = _services.GetRequiredService<AIImageService>();
+                    var stream = await imgSvc.GenerateImageAsync(prompt);
+                    await channel.SendFileAsync(stream, "image.png");
+                }
+                return;
+            }
+
+            // 歌詞帶歌名（選填歌手）參數，獨立處理，格式：歌詞:歌名 或 歌詞:歌名|歌手
+            if (feature.StartsWith("歌詞:"))
+            {
+                var param = feature.Substring("歌詞:".Length).Trim();
+                if (!string.IsNullOrWhiteSpace(param))
+                {
+                    var parts = param.Split('|', 2);
+                    var trackName = parts[0].Trim();
+                    var artistName = parts.Length > 1 ? parts[1].Trim() : null;
+
+                    var lyricsSvc = _services.GetRequiredService<LyrisService>();
+                    var results = await lyricsSvc.SearchLyricsAsync(trackName, artistName);
+                    if (results == null || results.Count == 0)
+                    {
+                        var notFound = artistName != null
+                            ? $"❌ 找不到「{trackName}」（{artistName}）的歌詞"
+                            : $"❌ 找不到「{trackName}」的歌詞";
+                        await channel.SendMessageAsync(notFound);
+                    }
+                    else
+                    {
+                        var r = results[0];
+                        var lyricsEmbed = new EmbedBuilder()
+                            .WithTitle($"🎵 {r.trackName}")
+                            .WithDescription(lyricsSvc.FormatLyrics(r.plainLyrics, 4000))
+                            .WithColor(Color.Blue)
+                            .AddField("歌手", r.artistName ?? "未知", true)
+                            .AddField("專輯", r.albumName ?? "未知", true)
+                            .Build();
+                        await channel.SendMessageAsync(embed: lyricsEmbed);
+                    }
+                }
+                return;
+            }
+
+            switch (feature)
+            {
+                case "1a2b":
+                    {
+                        var svc = _services.GetRequiredService<Game1A2BService>();
+                        var (comp, embed) = await svc.StartGameAsync(userId, "");
+                        await channel.SendMessageAsync(embed: embed, components: comp.Build());
+                        break;
+                    }
+                case "猜動漫":
+                    {
+                        var svc = _services.GetRequiredService<JikanAnimeService>();
+                        var (comp, embed) = await svc.StartGameAsync("character", false);
+                        await channel.SendMessageAsync(embed: embed, components: comp.Build());
+                        break;
+                    }
+                case "2048":
+                    {
+                        var svc = _services.GetRequiredService<Game2048Service>();
+                        var (comp, embed) = await svc.StartGameAsync(channel.Id);
+                        await channel.SendMessageAsync(embed: embed, components: comp.Build());
+                        break;
+                    }
+                case "猜英雄":
+                    {
+                        var svc = _services.GetRequiredService<ValorantService>();
+                        var ((comp, embed), silhouette) = await svc.StartGuessAgentImageAsync(channel.Id);
+                        if (silhouette != null)
+                            await channel.SendFileAsync(silhouette, "agent.png", embed: embed, components: comp.Build());
+                        else
+                            await channel.SendMessageAsync(embed: embed, components: comp.Build());
+                        break;
+                    }
+                case "推薦動漫":
+                    {
+                        var svc = _services.GetRequiredService<JikanAnimeService>();
+                        var ((comp, embed), _) = await svc.GetSomeRandomAnime("tv", "");
+                        await channel.SendMessageAsync(embed: embed, components: comp.Build());
+                        break;
+                    }
+                case "推薦漫畫":
+                    {
+                        var svc = _services.GetRequiredService<JikanAnimeService>();
+                        var ((comp, embed), _) = await svc.GetSomeRandomManga("manga", "");
+                        await channel.SendMessageAsync(embed: embed, components: comp.Build());
+                        break;
+                    }
+                case "猜單字":
+                    {
+                        var svc = _services.GetRequiredService<WordGuessingService>();
+                        var txt = await svc.Guess(channel, "", talker);
+                        if (!string.IsNullOrWhiteSpace(txt))
+                            await channel.SendMessageAsync(txt);
+                        break;
+                    }
+                case "一言":
+                    {
+                        var svc = _services.GetRequiredService<UselessApiService>();
+                        var pick = new Random().Next(2);
+                        string txt = pick == 0
+                            ? await svc.GetHitokotoAnimeAsync()
+                            : await svc.GetHitokotoGameAsync();
+                        if (!string.IsNullOrWhiteSpace(txt))
+                            await channel.SendMessageAsync(txt);
+                        break;
+                    }
+                case "冷知識":
+                    {
+                        var svc = _services.GetRequiredService<UselessApiService>();
+                        var txt = await svc.GetUselessFactsAsync();
+                        if (!string.IsNullOrWhiteSpace(txt))
+                            await channel.SendMessageAsync(txt);
+                        break;
+                    }
+                case "抓寶可夢":
+                    {
+                        var svc = _services.GetRequiredService<PokeGameService>();
+                        var (embed, comp) = await svc.CatchPokemonAsync(userId, talker?.DisplayName ?? talker?.Username ?? "訓練師");
+                        await channel.SendMessageAsync(embed: embed, components: comp.Build());
+                        break;
+                    }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[HandleSoyoResponse] Launch '{feature}' 失敗: {ex.Message}");
+        }
+    }
+
     public async Task MessageReceivedHandler(SocketMessage message)
     {
-        if (message is not SocketUserMessage userMessage || message.Author.IsBot) return;
+        bool ispassBot = passBotList.Contains(message.Author.Id);
+        // 忽略非使用者訊息或機器人訊息（除非在 passBotList 中）還有自己
+        if (message is not SocketUserMessage userMessage || (message.Author.IsBot && !ispassBot) || message.Author.Id == _client.CurrentUser.Id) return;
+
+        // 🎲 檢查是否在 TRPG 遊戲頻道中
+        var trpgUser = message.Author as SocketGuildUser;
+        if (trpgUser != null && await _trpgService.IsAdventureActiveAsync(message.Channel.Id))
+        {
+            // 如果訊息不是指令，則視為冒險行動
+            if (!message.Content.StartsWith("/"))
+            {
+                var response = await _trpgService.ProcessAdventureActionAsync(message.Channel.Id, trpgUser, message.Content);
+                if (!string.IsNullOrEmpty(response))
+                {
+                    await message.Channel.SendMessageAsync(response);
+                }
+                return;
+            }
+        }
+
         bool isMentioned = message.MentionedUsers.Any(u => u.Id == _client.CurrentUser.Id);
+        bool isSelf = message.Author.Id == _client.CurrentUser.Id;
 
         if (isMentioned ||
             message.Content.ToLower().Contains("soyo") ||
@@ -540,26 +863,25 @@ public class Program
 
             string result = string.Empty;
 
+            // 取得最近 5 則對話歷史（不包含目前這則）
+            var recentMessages = await message.Channel.GetMessagesAsync(message, Direction.Before, 5).FlattenAsync();
+            var contextMessages = recentMessages.Where(m => !m.Author.IsBot || passBotList.Contains(m.Author.Id)).ToList();
+
             if (message.Reference != null)
             {
                 var repliedMessage = await message.Channel.GetMessageAsync(message.Reference.MessageId.Value);
                 if (repliedMessage != null)
                 {
-                    result = await _openRouterService.GenerateTextAsync(message.Content, talker, true, channelKey, repliedMessage);
-                    await message.Channel.SendMessageAsync(result);
-                    return; // 已處理完畢，直接返回
-
-                    //result = await _googleAIStudioService.GenerateTextAsync(message.Content, talker, true, channelKey);
-                    //await message.Channel.SendMessageAsync(result);
+                    result = await _openRouterService.GenerateTextAsync(message.Content, talker, true, channelKey, repliedMessage, contextMessages);
+                    await HandleSoyoResponseAsync(result, message, talker);
+                    return;
                 }
             }
             else
             {
-                result = await _openRouterService.GenerateTextAsync(message.Content, talker, true, channelKey);
-                await message.Channel.SendMessageAsync(result);
-
-                //result = await _googleAIStudioService.GenerateTextAsync(message.Content, talker, true, channelKey);
-                //await message.Channel.SendMessageAsync(result);
+                result = await _openRouterService.GenerateTextAsync(message.Content, talker, true, channelKey, null, contextMessages);
+                await HandleSoyoResponseAsync(result, message, talker);
+                return;
             }
         }
 
@@ -677,6 +999,38 @@ public class Program
         else if (cmd.ToLower().StartsWith("e") || cmd.StartsWith("爆"))
         {
             await EarRapeAsync(channel, user);
+        }
+        //TTS 開關
+        else if (cmd.ToLower().StartsWith("tts"))
+        {
+            _isTtsEnabled = !_isTtsEnabled;
+            await channel.SendMessageAsync(_isTtsEnabled ? "✅ TTS 已啟用" : "❌ TTS 已關閉");
+        }
+        //開始監聽語音
+        else if (cmd.ToLower().StartsWith("listen"))
+        {
+            if (user?.VoiceChannel != null)
+            {
+                await StartVoiceListeningAsync(user);
+                await channel.SendMessageAsync($"👂 開始監聽語音頻道: {user.VoiceChannel.Name}");
+            }
+            else
+            {
+                await channel.SendMessageAsync("你不在語音頻道中");
+            }
+        }
+        //停止監聽語音
+        else if (cmd.ToLower().StartsWith("unlisten"))
+        {
+            if (user?.VoiceChannel != null)
+            {
+                await _groqWhisperService.StopListeningAsync(user.VoiceChannel.Id);
+                await channel.SendMessageAsync($"🔇 已停止監聽語音頻道");
+            }
+            else
+            {
+                await channel.SendMessageAsync("你不在語音頻道中");
+            }
         }
         else
         {
@@ -1508,7 +1862,7 @@ public class Program
         var (exitCode, output, error) = await ExecuteYtDlpAsync($"-f bestaudio/best -x --audio-format mp3 -o \"{outputTemplate}\" {url}");
 
         if (exitCode == 0)
-{
+        {
             // 找出實際的 MP3 檔案
             var downloadedFile = Directory
                 .EnumerateFiles(tempDirectory, $"{filePrefix}.*")
@@ -1608,7 +1962,7 @@ public class Program
         var bypassArgs = "--extractor-args \"youtube:player_client=android,web\"";
 
         // Cookie 參數需要放在前面，並添加額外參數來處理受限內容
-        var fullArguments = string.IsNullOrEmpty(cookieArg) 
+        var fullArguments = string.IsNullOrEmpty(cookieArg)
             ? $"--no-warnings --no-playlist {bypassArgs} {arguments}"
             : $"{cookieArg} --no-warnings --no-playlist {bypassArgs} {arguments}";
 
@@ -1781,8 +2135,8 @@ public class Program
                 }
 
                 // 檢查是否因為年齡限制或會員限定被擋
-                bool needsAuth = error1.Contains("Sign in") || 
-                                error1.Contains("age") || 
+                bool needsAuth = error1.Contains("Sign in") ||
+                                error1.Contains("age") ||
                                 error1.Contains("members-only") ||
                                 error1.Contains("private") ||
                                 error1.Contains("unavailable");
@@ -1876,6 +2230,74 @@ public class Program
         s = singer[random.Next(singer.Count)];
 
         return s;
+    }
+
+    #endregion
+
+    #region 語音服務（TTS & STT）
+
+    /// <summary>
+    /// 開始監聽語音頻道（用戶在頻道時自動觸發）
+    /// </summary>
+    public async Task StartVoiceListeningAsync(SocketGuildUser user)
+    {
+        if (user?.VoiceChannel == null) return;
+
+        await _groqWhisperService.StartListeningAsync(
+            user.VoiceChannel,
+            async (text, speaker) =>
+            {
+                try
+                {
+                    Console.WriteLine($"[STT] {speaker.DisplayName}: {text}");
+
+                    // 將語音轉換的文字當作訊息處理
+                    var channelKey = $"{user.VoiceChannel.Guild.Id}";
+
+                    // 調用 OpenRouter 生成回應
+                    var result = await _openRouterService.GenerateTextAsync(
+                        text, 
+                        speaker, 
+                        true, 
+                        channelKey, 
+                        null, 
+                        null
+                    );
+
+                    // 在文字頻道顯示對話
+                    IMessageChannel textChannel = user.Guild.TextChannels.FirstOrDefault(c => c.Name.Contains("一般") || c.Name.Contains("general"));
+                    if (textChannel == null)
+                    {
+                        textChannel = user.Guild.DefaultChannel;
+                    }
+
+                    if (textChannel != null)
+                    {
+                        await textChannel.SendMessageAsync($"🎤 **{speaker.DisplayName}**: {text}");
+
+                        var cleanResponse = _launchTagRegex.Replace(result, "").Trim();
+                        if (!string.IsNullOrWhiteSpace(cleanResponse))
+                        {
+                            await textChannel.SendMessageAsync($"💬 **Soyo**: {cleanResponse}");
+                        }
+                    }
+
+                    // 播放 TTS 回應
+                    if (_audioClient != null && !string.IsNullOrWhiteSpace(result))
+                    {
+                        var cleanResponse = _launchTagRegex.Replace(result, "").Trim();
+                        if (!string.IsNullOrWhiteSpace(cleanResponse))
+                        {
+                            await _fishAudioService.SpeakInVoiceChannelAsync(cleanResponse, speaker, _audioClient);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[Voice Response Error] {ex.Message}");
+                }
+            }
+        );
     }
 
     #endregion
