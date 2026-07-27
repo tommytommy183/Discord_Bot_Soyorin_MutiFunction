@@ -47,6 +47,13 @@ namespace MusicBot2.Helpers
             "<:tomori_scream:1293559831310897184>",
         };
 
+        private static Dictionary<string, string> emojiSwitchList = new Dictionary<string, string>
+        {
+            {"🍵" , "<a:soyoDrink:1531208854338273442>" },
+            {"🍰" , "<a:soyoDrink:1531208854338273442>" },
+
+        };
+
         public static async Task AddEmojiToMessageAsync(IUserMessage message, int count)
         {
             for (int i = 0; i < count; i++)
@@ -117,6 +124,18 @@ namespace MusicBot2.Helpers
                     return "";
                     break;
             }
+        }
+
+        public static string SwitchSoyoPic(string text)
+        {
+            foreach(var emojiSwitch in emojiSwitchList)
+            {
+                if (text.Contains(emojiSwitch.Key))
+                {
+                    text = text.Replace(emojiSwitch.Key, emojiSwitch.Value);
+                }
+            }
+            return text;
         }
 
     }
