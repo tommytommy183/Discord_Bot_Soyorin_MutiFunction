@@ -57,6 +57,9 @@ WORKDIR /src
 COPY MusicBot2/MusicBot2.csproj MusicBot2/
 RUN dotnet restore MusicBot2/MusicBot2.csproj -r linux-x64
 
+# 破壞緩存以強制重新複製最新代碼
+ARG CACHEBUST=1
+
 # 編譯並發布
 COPY MusicBot2/ MusicBot2/
 WORKDIR /src/MusicBot2
