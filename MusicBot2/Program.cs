@@ -826,8 +826,8 @@ public class Program
     public async Task MessageReceivedHandler(SocketMessage message)
     {
         bool ispassBot = passBotList.Contains(message.Author.Id);
-        // 忽略非使用者訊息或機器人訊息（除非在 passBotList 中）
-        if (message is not SocketUserMessage userMessage || (message.Author.IsBot && !ispassBot)) return;
+        // 忽略非使用者訊息或機器人訊息（除非在 passBotList 中）還有自己
+        if (message is not SocketUserMessage userMessage || (message.Author.IsBot && !ispassBot) || message.Author.Id == _client.CurrentUser.Id) return;
 
         // 🎲 檢查是否在 TRPG 遊戲頻道中
         var trpgUser = message.Author as SocketGuildUser;
