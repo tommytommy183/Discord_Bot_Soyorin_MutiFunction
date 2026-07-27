@@ -21,7 +21,7 @@ namespace MusicBot2.Service
         private readonly HttpClient _httpClient;
         private const string API_BASE_URL = "https://api.fish.audio/v1/tts";
 
-        // Fish Audio 的 Soyo 聲音模型 ID（需要替換成實際的 ID）
+        // Fish Audio 的 Soyo 聲音模型 ID
         private const string SOYO_REFERENCE_ID = "19c74d6eddb04a9b82dfd350b54e76e2";
 
         public FishAudioService(string apiKey)
