@@ -440,13 +440,27 @@ namespace MusicBot2.Service
         /// <summary>
         /// 進階版：使用 GeminiRequestVM (沿用既有 VM，避免到處改型別)
         /// </summary>
-        public async Task<string> GenerateTextAsync(GeminiRequestVM request, SocketGuildUser user, bool saveToMemory = true, string channelKey = null, IMessage? repliedMessage = null)
+        public async Task<string> GenerateTextAsync(GeminiRequestVM request, SocketGuildUser user, bool saveToMemory = true, string channelKey = null, IMessage? repliedMessage = null, IEnumerable<IMessage>? contextMessages = null)
         {
             channelKey ??= user?.Guild?.Id.ToString() ?? "global";
 
             const int maxRetry = 2;
             var basePersona = string.IsNullOrWhiteSpace(request.SystemInstruction) ? Persona : request.SystemInstruction;
             var summary = GetChannelSummary(channelKey);
+
+            // 處理頻道歷史對話
+            string contextHistory = "";
+            if (contextMessages != null && contextMessages.Any())
+            {
+                var historyBuilder = new StringBuilder();
+                historyBuilder.AppendLine("\n[最近的對話歷史]");
+                foreach (var msg in contextMessages.Reverse())
+                {
+                    var authorName = (msg.Author as SocketGuildUser)?.DisplayName ?? msg.Author?.Username ?? "某人";
+                    historyBuilder.AppendLine($"{authorName}: {Truncate(msg.Content, 200)}");
+                }
+                contextHistory = historyBuilder.ToString();
+            }
             // 偵測查詢意圖，若有就先查 wiki 注入背景資料
             // 這段先移除，有點影響到日常對話
             //var wikiQuery = ExtractWikiQuery(request.UserMessage);
@@ -469,6 +483,12 @@ namespace MusicBot2.Service
             var systemPrompt = string.IsNullOrEmpty(summary)
                 ? basePersona
                 : basePersona + $"\n\n[過去對話摘要]\n{summary}";
+
+            // 加入最近的對話歷史
+            if (!string.IsNullOrEmpty(contextHistory))
+            {
+                systemPrompt += contextHistory;
+            }
             //if (wikiContext != null)
             //    systemPrompt += $"\n\n{wikiContext}";
 
@@ -716,7 +736,7 @@ namespace MusicBot2.Service
         /// <summary>
         /// 簡化版本：直接傳入訊息
         /// </summary>
-        public async Task<string> GenerateTextAsync(string message, SocketGuildUser user, bool saveToMemory = true, string channelKey = null, IMessage? repliedMessage = null)
+        public async Task<string> GenerateTextAsync(string message, SocketGuildUser user, bool saveToMemory = true, string channelKey = null, IMessage? repliedMessage = null, IEnumerable<IMessage>? contextMessages = null)
         {
             var request = new GeminiRequestVM
             {
@@ -727,7 +747,7 @@ namespace MusicBot2.Service
                 MaxOutputTokens = 1024
             };
 
-            return await GenerateTextAsync(request, user, saveToMemory, channelKey, repliedMessage);
+            return await GenerateTextAsync(request, user, saveToMemory, channelKey, repliedMessage, contextMessages);
         }
 
         public async Task<string> GenerateSimpleTextAsync(string message, SocketGuildUser user, bool saveToMemory = true, string channelKey = null, IMessage? repliedMessage = null)

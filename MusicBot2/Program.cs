@@ -831,19 +831,23 @@ public class Program
 
             string result = string.Empty;
 
+            // 取得最近 3 則對話歷史（不包含目前這則）
+            var recentMessages = await message.Channel.GetMessagesAsync(message, Direction.Before, 5).FlattenAsync();
+            var contextMessages = recentMessages.Where(m => !m.Author.IsBot || passBotList.Contains(m.Author.Id)).ToList();
+
             if (message.Reference != null)
             {
                 var repliedMessage = await message.Channel.GetMessageAsync(message.Reference.MessageId.Value);
                 if (repliedMessage != null)
                 {
-                    result = await _openRouterService.GenerateTextAsync(message.Content, talker, true, channelKey, repliedMessage);
+                    result = await _openRouterService.GenerateTextAsync(message.Content, talker, true, channelKey, repliedMessage, contextMessages);
                     await HandleSoyoResponseAsync(result, message, talker);
                     return;
                 }
             }
             else
             {
-                result = await _openRouterService.GenerateTextAsync(message.Content, talker, true, channelKey);
+                result = await _openRouterService.GenerateTextAsync(message.Content, talker, true, channelKey, null, contextMessages);
                 await HandleSoyoResponseAsync(result, message, talker);
                 return;
             }
