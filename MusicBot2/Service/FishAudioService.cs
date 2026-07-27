@@ -58,7 +58,8 @@ namespace MusicBot2.Service
                 // 2. 保存臨時音頻檔案
                 var tempDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "temp");
                 Directory.CreateDirectory(tempDir);
-                var tempFile = Path.Combine(tempDir, $"tts_{Guid.NewGuid()}.mp3");
+                var guid = Guid.NewGuid();
+                var tempFile = Path.Combine(tempDir, $"tts_{guid}.mp3");
                 await File.WriteAllBytesAsync(tempFile, audioData);
 
                 Console.WriteLine($"[FishAudio] 音頻檔案已保存: {tempFile}");
