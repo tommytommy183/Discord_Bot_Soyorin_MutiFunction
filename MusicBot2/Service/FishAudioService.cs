@@ -22,7 +22,7 @@ namespace MusicBot2.Service
         private const string API_BASE_URL = "https://api.fish.audio/v1/tts";
 
         // Fish Audio �� Soyo �n���ҫ� ID
-        private const string SOYO_REFERENCE_ID = "19c74d6eddb04a9b82dfd350b54e76e2";
+        private const string SOYO_REFERENCE_ID = "23d8ed0094914caa89d350c4ce803cc9";
 
         public FishAudioService(string apiKey)
         {
@@ -52,6 +52,10 @@ namespace MusicBot2.Service
                 if (audioData == null || audioData.Length == 0)
                 {
                     Console.WriteLine("[FishAudio] TTS �ͦ�����");
+                    if (textChannel != null)
+                    {
+                        try { await textChannel.SendMessageAsync("⚠️ TTS 生成失敗（詳細原因看 log，402 代表 Fish Audio 帳戶沒 credits）"); } catch { }
+                    }
                     return false;
                 }
 

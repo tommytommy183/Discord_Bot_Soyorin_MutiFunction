@@ -81,33 +81,26 @@ namespace MusicBot2.Service
         /// <summary>
         /// �N���W�ഫ����r�]�ե� Groq Whisper API�^
         /// </summary>
-        public async Task<string> TranscribeAudioAsync(byte[] audioData)
+        public async Task<string> TranscribeAudioAsync(byte[] pcmData)
         {
             try
             {
-                // �O�s�{�ɭ��W�ɮ�
-                var tempDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "temp");
-                Directory.CreateDirectory(tempDir);
-                var guidString = Guid.NewGuid().ToString();
-                var tempFile = Path.Combine(tempDir, $"voice_{guidString}.wav");
-                await File.WriteAllBytesAsync(tempFile, audioData);
+                // Discord 語音解碼後是 48kHz 16-bit 立體聲 PCM，必須包上 WAV header Groq 才讀得懂
+                var wavData = CreateWavFile(pcmData);
 
-                // �ե� Groq API
                 using var formData = new MultipartFormDataContent();
-                using var fileContent = new ByteArrayContent(audioData);
+                using var fileContent = new ByteArrayContent(wavData);
                 fileContent.Headers.ContentType = new MediaTypeHeaderValue("audio/wav");
                 formData.Add(fileContent, "file", "audio.wav");
                 formData.Add(new StringContent(MODEL), "model");
-                formData.Add(new StringContent("zh"), "language"); // ����
+                formData.Add(new StringContent("zh"), "language"); // 中文
 
                 var response = await _httpClient.PostAsync(API_URL, formData);
 
                 if (!response.IsSuccessStatusCode)
                 {
                     var error = await response.Content.ReadAsStringAsync();
-
-                    // �M�z�{���ɮ�
-                    try { File.Delete(tempFile); } catch { }
+                    Console.WriteLine($"[GroqWhisper API Error] {response.StatusCode}: {error}");
                     return null;
                 }
 
@@ -115,16 +108,44 @@ namespace MusicBot2.Service
                 using var doc = JsonDocument.Parse(resultJson);
                 var text = doc.RootElement.GetProperty("text").GetString();
 
-
-                // �M�z�{���ɮ�
-                try { File.Delete(tempFile); } catch { }
-
                 return text?.Trim();
             }
             catch (Exception ex)
             {
+                Console.WriteLine($"[GroqWhisper Error] {ex.Message}");
                 return null;
             }
+        }
+
+        /// <summary>
+        /// 把裸 PCM 包成 WAV（48kHz / 16-bit / 立體聲）
+        /// </summary>
+        private static byte[] CreateWavFile(byte[] pcmData)
+        {
+            const int sampleRate = 48000;
+            const short channels = 2;
+            const short bitsPerSample = 16;
+            const int byteRate = sampleRate * channels * (bitsPerSample / 8);
+            const short blockAlign = channels * (bitsPerSample / 8);
+
+            using var ms = new MemoryStream();
+            using var writer = new BinaryWriter(ms);
+            writer.Write(System.Text.Encoding.ASCII.GetBytes("RIFF"));
+            writer.Write(36 + pcmData.Length);
+            writer.Write(System.Text.Encoding.ASCII.GetBytes("WAVE"));
+            writer.Write(System.Text.Encoding.ASCII.GetBytes("fmt "));
+            writer.Write(16);
+            writer.Write((short)1); // PCM 格式
+            writer.Write(channels);
+            writer.Write(sampleRate);
+            writer.Write(byteRate);
+            writer.Write(blockAlign);
+            writer.Write(bitsPerSample);
+            writer.Write(System.Text.Encoding.ASCII.GetBytes("data"));
+            writer.Write(pcmData.Length);
+            writer.Write(pcmData);
+            writer.Flush();
+            return ms.ToArray();
         }
 
         /// <summary>
@@ -184,34 +205,66 @@ namespace MusicBot2.Service
             {
                 _ = Task.Run(async () =>
                 {
+                    OpusDotNet.OpusDecoder decoder = null;
                     try
                     {
+                        // Discord 傳來的是 Opus 編碼封包，要先解碼成 PCM 才能給 Whisper
+                        decoder = new OpusDotNet.OpusDecoder(48000, 2);
                         var buffer = new AudioStreamBuffer();
                         _userBuffers.TryAdd((uint)userId, buffer);
 
+                        Task<RTPFrame> pendingRead = null;
 
-                        byte[] audioBuffer = new byte[4096];
-                        int bytesRead;
-
-                        while ((bytesRead = await stream.ReadAsync(audioBuffer, 0, audioBuffer.Length, _cts.Token)) > 0)
+                        while (!_cts.IsCancellationRequested)
                         {
-                            buffer.Write(audioBuffer, bytesRead);
+                            pendingRead ??= stream.ReadFrameAsync(_cts.Token);
+                            var completed = await Task.WhenAny(pendingRead, Task.Delay(800, _cts.Token));
 
-                            // �C 3 ���B�z�@���]���˴����R���^
-                            if (buffer.Duration >= TimeSpan.FromSeconds(3))
+                            if (completed != pendingRead)
+                            {
+                                // 800ms 沒有新音訊 → 視為一句話講完，送去辨識
+                                if (buffer.Duration >= TimeSpan.FromMilliseconds(400))
+                                {
+                                    await ProcessAudioBufferAsync(userId, buffer);
+                                }
+                                buffer.Clear();
+                                continue;
+                            }
+
+                            var frame = await pendingRead;
+                            pendingRead = null;
+
+                            if (frame.Payload == null || frame.Payload.Length == 0) continue;
+
+                            try
+                            {
+                                var pcm = decoder.Decode(frame.Payload, frame.Payload.Length, out var decodedLength);
+                                buffer.Write(pcm, decodedLength);
+                            }
+                            catch
+                            {
+                                continue; // 壞掉的 frame 直接略過
+                            }
+
+                            // 講太久的保護：滿 8 秒就先送一段
+                            if (buffer.Duration >= TimeSpan.FromSeconds(8))
                             {
                                 await ProcessAudioBufferAsync(userId, buffer);
                                 buffer.Clear();
                             }
                         }
-
-                        var removed = _userBuffers.TryRemove((uint)userId, out _);
                     }
                     catch (OperationCanceledException)
                     {
                     }
                     catch (Exception ex)
                     {
+                        Console.WriteLine($"[GroqWhisper Stream Error] {ex.Message}");
+                    }
+                    finally
+                    {
+                        decoder?.Dispose();
+                        _userBuffers.TryRemove((uint)userId, out _);
                     }
                 });
 
@@ -223,9 +276,9 @@ namespace MusicBot2.Service
                 try
                 {
                     var audioData = buffer.GetAudioData();
-                    if (audioData == null || audioData.Length < 1000)
+                    if (audioData == null || audioData.Length < 48000) // 不到 0.25 秒就略過
                     {
-                        return; // ���W�ӵu�A����
+                        return;
                     }
 
                     var text = await _service.TranscribeAudioAsync(audioData);
@@ -261,10 +314,13 @@ namespace MusicBot2.Service
         /// </summary>
         private class AudioStreamBuffer : IDisposable
         {
-            private readonly MemoryStream _buffer = new();
-            private DateTime _startTime = DateTime.Now;
+            // 48kHz * 2 聲道 * 16-bit = 每秒 192000 bytes
+            private const double BYTES_PER_SECOND = 48000.0 * 2 * 2;
 
-            public TimeSpan Duration => DateTime.Now - _startTime;
+            private readonly MemoryStream _buffer = new();
+
+            // 用實際錄到的 PCM 長度換算時長，不受中間停頓影響
+            public TimeSpan Duration => TimeSpan.FromSeconds(_buffer.Length / BYTES_PER_SECOND);
 
             public void Write(byte[] data, int count)
             {
@@ -279,7 +335,6 @@ namespace MusicBot2.Service
             public void Clear()
             {
                 _buffer.SetLength(0);
-                _startTime = DateTime.Now;
             }
 
             public void Dispose()
