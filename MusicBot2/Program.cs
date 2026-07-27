@@ -49,7 +49,10 @@ public class Program
     private OpenRouterService _openRouterService;
     private SetTextService _setTextService;
     private TRPGService _trpgService;
+    private FishAudioService _fishAudioService;
+    private GroqWhisperService _groqWhisperService;
     private string _cookie;
+    private bool _isTtsEnabled = false; // TTS 開關
     private List<ulong> passBotList = new List<ulong> 
     {   1499768328586002473, //魚骨頭
         1286491383426711563, //soyo自己的，這樣才能讀到之前的訊息
@@ -82,6 +85,8 @@ public class Program
         string googleAIStudioApiKey = configer["GoogleAIStudio:dcBotKey1"];
         string googleAIStudioApiKey2 = configer["GoogleAIStudio:dcBotKey2"];
         string openRouterApiKey = configer["Openrouter:ApiKey1"];
+        string fishAudioApiKey = configer["FishAudio:ApiKey"];
+        string groqApiKey = configer["Groq:ApiKey"];
         _cookie = configer["YT_DLP_COOKIES"];
 
         string redisConn = configer["Redis:ConnectionString"];
@@ -131,12 +136,18 @@ public class Program
                 )
             .AddSingleton<LyrisService>()
             .AddSingleton<LyricsDisplayService>()
+            .AddSingleton<FishAudioService>(sp =>
+                new FishAudioService(fishAudioApiKey))
+            .AddSingleton<GroqWhisperService>(sp =>
+                new GroqWhisperService(groqApiKey))
               .BuildServiceProvider();
 
         _googleAIStudioService = _services.GetRequiredService<GoogleAIStudioService>();
         _openRouterService = _services.GetRequiredService<OpenRouterService>();
         _setTextService = _services.GetRequiredService<SetTextService>();
         _trpgService = _services.GetRequiredService<TRPGService>();
+        _fishAudioService = _services.GetRequiredService<FishAudioService>();
+        _groqWhisperService = _services.GetRequiredService<GroqWhisperService>();
 
         _client.MessageReceived += MessageReceivedHandler;
         _client.Log += Log;
@@ -647,6 +658,26 @@ public class Program
         if (!string.IsNullOrWhiteSpace(cleanText))
             await message.Channel.SendMessageAsync(cleanText);
 
+        // ✅ 新增：如果啟用 TTS 且用戶在語音頻道，就播放語音
+        if (_isTtsEnabled && talker?.VoiceChannel != null)
+        {
+            try
+            {
+                // 確保連接到語音頻道
+                if (_audioClient == null || _audioClient.ConnectionState != Discord.ConnectionState.Connected)
+                {
+                    _audioClient = await talker.VoiceChannel.ConnectAsync(selfDeaf: false, selfMute: false);
+                }
+
+                // 播放 TTS
+                await _fishAudioService.SpeakInVoiceChannelAsync(cleanText, talker, _audioClient);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[TTS Error] {ex.Message}");
+            }
+        }
+
         if (!tagMatch.Success) return;
 
         var feature = tagMatch.Groups[1].Value.Trim();
@@ -968,6 +999,38 @@ public class Program
         else if (cmd.ToLower().StartsWith("e") || cmd.StartsWith("爆"))
         {
             await EarRapeAsync(channel, user);
+        }
+        //TTS 開關
+        else if (cmd.ToLower().StartsWith("tts"))
+        {
+            _isTtsEnabled = !_isTtsEnabled;
+            await channel.SendMessageAsync(_isTtsEnabled ? "✅ TTS 已啟用" : "❌ TTS 已關閉");
+        }
+        //開始監聽語音
+        else if (cmd.ToLower().StartsWith("listen"))
+        {
+            if (user?.VoiceChannel != null)
+            {
+                await StartVoiceListeningAsync(user);
+                await channel.SendMessageAsync($"👂 開始監聽語音頻道: {user.VoiceChannel.Name}");
+            }
+            else
+            {
+                await channel.SendMessageAsync("你不在語音頻道中");
+            }
+        }
+        //停止監聽語音
+        else if (cmd.ToLower().StartsWith("unlisten"))
+        {
+            if (user?.VoiceChannel != null)
+            {
+                await _groqWhisperService.StopListeningAsync(user.VoiceChannel.Id);
+                await channel.SendMessageAsync($"🔇 已停止監聽語音頻道");
+            }
+            else
+            {
+                await channel.SendMessageAsync("你不在語音頻道中");
+            }
         }
         else
         {
@@ -2167,6 +2230,74 @@ public class Program
         s = singer[random.Next(singer.Count)];
 
         return s;
+    }
+
+    #endregion
+
+    #region 語音服務（TTS & STT）
+
+    /// <summary>
+    /// 開始監聽語音頻道（用戶在頻道時自動觸發）
+    /// </summary>
+    public async Task StartVoiceListeningAsync(SocketGuildUser user)
+    {
+        if (user?.VoiceChannel == null) return;
+
+        await _groqWhisperService.StartListeningAsync(
+            user.VoiceChannel,
+            async (text, speaker) =>
+            {
+                try
+                {
+                    Console.WriteLine($"[STT] {speaker.DisplayName}: {text}");
+
+                    // 將語音轉換的文字當作訊息處理
+                    var channelKey = $"{user.VoiceChannel.Guild.Id}";
+
+                    // 調用 OpenRouter 生成回應
+                    var result = await _openRouterService.GenerateTextAsync(
+                        text, 
+                        speaker, 
+                        true, 
+                        channelKey, 
+                        null, 
+                        null
+                    );
+
+                    // 在文字頻道顯示對話
+                    IMessageChannel textChannel = user.Guild.TextChannels.FirstOrDefault(c => c.Name.Contains("一般") || c.Name.Contains("general"));
+                    if (textChannel == null)
+                    {
+                        textChannel = user.Guild.DefaultChannel;
+                    }
+
+                    if (textChannel != null)
+                    {
+                        await textChannel.SendMessageAsync($"🎤 **{speaker.DisplayName}**: {text}");
+
+                        var cleanResponse = _launchTagRegex.Replace(result, "").Trim();
+                        if (!string.IsNullOrWhiteSpace(cleanResponse))
+                        {
+                            await textChannel.SendMessageAsync($"💬 **Soyo**: {cleanResponse}");
+                        }
+                    }
+
+                    // 播放 TTS 回應
+                    if (_audioClient != null && !string.IsNullOrWhiteSpace(result))
+                    {
+                        var cleanResponse = _launchTagRegex.Replace(result, "").Trim();
+                        if (!string.IsNullOrWhiteSpace(cleanResponse))
+                        {
+                            await _fishAudioService.SpeakInVoiceChannelAsync(cleanResponse, speaker, _audioClient);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[Voice Response Error] {ex.Message}");
+                }
+            }
+        );
     }
 
     #endregion
