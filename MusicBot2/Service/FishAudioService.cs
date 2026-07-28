@@ -22,7 +22,7 @@ namespace MusicBot2.Service
         private const string API_BASE_URL = "https://api.fish.audio/v1/tts";
 
         // Fish Audio �� Soyo �n���ҫ� ID
-        private const string SOYO_REFERENCE_ID = "23d8ed0094914caa89d350c4ce803cc9";
+        private const string SOYO_REFERENCE_ID = "4b5eb5bb302a4cb6bf975f30b3e58c07";
 
         //23d8ed0094914caa89d350c4ce803cc9 //SOYO
         //9a9cf47702da476aa4629e2506d4a857 //預設
