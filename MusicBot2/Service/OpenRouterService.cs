@@ -46,9 +46,9 @@ namespace MusicBot2.Service
         private readonly HashSet<string> _summarizingChannels = new();
 
         private const int MaxRecentMessages = 16;
-        private const int MaxTotalMessages = 25;
+        private const int MaxTotalMessages = 40;      // 提高觸發摘要的門檻
         private const int MaxContextChars = 5000;
-        private const int SummarizeChunkSize = 30;
+        private const int SummarizeChunkSize = 20;     // 每次摘要舊的 20 條
         private const int MaxMessageStoreLength = 500;
 
         // 依優先順序嘗試的模型 (免費；當主要 provider 被 upstream rate-limit 時自動 fallback)
@@ -399,12 +399,19 @@ namespace MusicBot2.Service
                 var sb = new StringBuilder();
                 if (!string.IsNullOrEmpty(existing))
                 {
-                    sb.AppendLine($"[目前摘要]\n{existing}\n");
-                    sb.AppendLine("[新增對話]");
+                    sb.AppendLine("【目前摘要】");
+                    sb.AppendLine(existing);
+                    sb.AppendLine();
+                    sb.AppendLine("【新增對話】");
                 }
                 else
                 {
-                    sb.AppendLine("請用繁體中文，摘要以下對話的重點（保留重要人名、話題、關鍵事件），不要加任何開場白，直接輸出摘要：");
+                    sb.AppendLine("請用繁體中文，精簡摘要以下對話的重點：");
+                    sb.AppendLine("- 只保留重要話題、關鍵事件、重要人物");
+                    sb.AppendLine("- 使用簡短條列式，不要 Markdown 格式");
+                    sb.AppendLine("- 每個話題用一句話概括");
+                    sb.AppendLine("- 不要開場白，直接輸出摘要");
+                    sb.AppendLine();
                 }
                 foreach (var msg in toSummarize)
                 {
@@ -412,13 +419,22 @@ namespace MusicBot2.Service
                     sb.AppendLine($"{speaker}: {msg.Text}");
                 }
                 if (!string.IsNullOrEmpty(existing))
-                    sb.AppendLine("\n請整合「目前摘要」與「新增對話」，產生一份更新後的完整摘要，不要加任何開場白，直接輸出摘要：");
+                {
+                    sb.AppendLine();
+                    sb.AppendLine("【要求】請整合以上兩部分，產生一份精簡的完整摘要：");
+                    sb.AppendLine("- 合併相同話題，去除重複內容");
+                    sb.AppendLine("- 使用條列式，每個話題一行");
+                    sb.AppendLine("- 不要 Markdown、不要粗體、不要（後來）");
+                    sb.AppendLine("- 總長度控制在 300 字以內");
+                }
 
                 var newSummary = await GenerateSimpleTextAsync(sb.ToString());
 
                 if (!string.IsNullOrWhiteSpace(newSummary))
                 {
-                    _channelSummaries[channelKey] = Truncate(newSummary, 800);
+                    // 清理摘要格式
+                    newSummary = CleanSummary(newSummary);
+                    _channelSummaries[channelKey] = Truncate(newSummary, 400);  // 縮短摘要長度限制
                     _channelHistories[channelKey] = history.Skip(SummarizeChunkSize).ToList();
 
                     _ = SaveMemoryAsync();
@@ -921,6 +937,37 @@ namespace MusicBot2.Service
             text = Regex.Replace(text, @"\n{3,}", "\n\n");
 
             if (text.Length > 1800) text = text.Substring(0, 1800) + "…";
+
+            return text.Trim();
+        }
+
+        /// <summary>
+        /// 清理摘要文字：移除 Markdown 格式、過度冗餘的用詞、多餘的標點
+        /// </summary>
+        private static string CleanSummary(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return text;
+
+            text = text.Trim();
+
+            // 移除 Markdown 格式標記
+            text = Regex.Replace(text, @"\*\*(.+?)\*\*", "$1");  // **粗體**
+            text = Regex.Replace(text, @"\*(.+?)\*", "$1");      // *斜體*
+            text = Regex.Replace(text, @"^#+\s*", "", RegexOptions.Multiline);  // # 標題
+            text = Regex.Replace(text, @"^[-*]\s+", "• ", RegexOptions.Multiline);  // 統一條列符號
+
+            // 移除常見的冗餘用詞
+            text = text.Replace("（後來）", "");
+            text = text.Replace("(後來)", "");
+            text = text.Replace("【後來】", "");
+            text = text.Replace("之後", "，");
+            text = text.Replace("接著", "，");
+            text = text.Replace("隨後", "，");
+
+            // 移除多餘的空白和換行
+            text = Regex.Replace(text, @"\n{3,}", "\n\n");
+            text = Regex.Replace(text, @"\s+", " ");
+            text = Regex.Replace(text, @"^\s*•\s*", "", RegexOptions.Multiline);  // 移除獨立條列符號
 
             return text.Trim();
         }
