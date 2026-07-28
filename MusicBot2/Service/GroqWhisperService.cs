@@ -177,11 +177,13 @@ namespace MusicBot2.Service
             {
                 try
                 {
-                    // �q�\�y���ƾڨƥ�
+                    Console.WriteLine($"[GroqWhisper] 開始監聽頻道 {_voiceChannel.Name}");
+                    // 訂閱語音串流事件
                     _audioClient.StreamCreated += OnStreamCreated;
                 }
                 catch (Exception ex)
                 {
+                    Console.WriteLine($"[GroqWhisper StartAsync Error] {ex.Message}");
                 }
 
                 await Task.CompletedTask;
@@ -203,6 +205,8 @@ namespace MusicBot2.Service
 
             private Task OnStreamCreated(ulong userId, AudioInStream stream)
             {
+                Console.WriteLine($"[GroqWhisper] 用戶 {userId} 開始說話");
+
                 _ = Task.Run(async () =>
                 {
                     OpusDotNet.OpusDecoder decoder = null;
@@ -225,7 +229,12 @@ namespace MusicBot2.Service
                                 // 800ms 沒有新音訊 → 視為一句話講完，送去辨識
                                 if (buffer.Duration >= TimeSpan.FromMilliseconds(400))
                                 {
+                                    Console.WriteLine($"[GroqWhisper] 用戶 {userId} 停止說話 ({buffer.Duration.TotalSeconds:F2}秒)");
                                     await ProcessAudioBufferAsync(userId, buffer);
+                                }
+                                else
+                                {
+                                    Console.WriteLine($"[GroqWhisper] 用戶 {userId} 音訊片段太短 ({buffer.Duration.TotalMilliseconds:F0}ms < 400ms)，略過");
                                 }
                                 buffer.Clear();
                                 continue;
@@ -276,24 +285,36 @@ namespace MusicBot2.Service
                 try
                 {
                     var audioData = buffer.GetAudioData();
-                    if (audioData == null || audioData.Length < 48000) // 不到 0.25 秒就略過
+
+                    // 音訊太短，略過
+                    if (audioData == null || audioData.Length < 48000) // 不到 0.25 秒
                     {
+                        Console.WriteLine($"[GroqWhisper] 音訊太短 ({audioData?.Length ?? 0} bytes < 48000)，略過");
                         return;
                     }
+
+                    Console.WriteLine($"[GroqWhisper] 開始辨識音訊：{audioData.Length} bytes ({buffer.Duration.TotalSeconds:F2}秒)");
 
                     var text = await _service.TranscribeAudioAsync(audioData);
+
                     if (string.IsNullOrWhiteSpace(text))
                     {
+                        Console.WriteLine($"[GroqWhisper] 辨識結果為空");
                         return;
                     }
 
-                    // �ˬd�O�_���� soyo
-                    if (text.ToLower().Contains("soyo") ||
-                        text.Contains("�j�ժL") ||
-                        text.Contains("�n�@"))
-                    {
+                    Console.WriteLine($"[GroqWhisper] 辨識成功：{text}");
 
-                        // ���o���ܪ��Τ�
+                    // 檢查是否包含 soyo（可選：如果想記錄所有對話，移除這個檢查）
+                    bool containsTrigger = text.ToLower().Contains("soyo") ||
+                                          text.Contains("爽世") ||
+                                          text.Contains("搜幽");
+
+                    if (containsTrigger)
+                    {
+                        Console.WriteLine($"[GroqWhisper] 檢測到觸發詞，準備回應");
+
+                        // 獲得語音頻道和用戶
                         var guild = (_voiceChannel as SocketVoiceChannel)?.Guild;
                         var user = guild?.GetUser(userId);
 
@@ -301,10 +322,19 @@ namespace MusicBot2.Service
                         {
                             await _onSpeechRecognized(text, user);
                         }
+                        else
+                        {
+                            Console.WriteLine($"[GroqWhisper] 找不到用戶 ID: {userId}");
+                        }
+                    }
+                    else
+                    {
+                        Console.WriteLine($"[GroqWhisper] 未檢測到觸發詞 (soyo/爽世/搜幽)，不觸發回應");
                     }
                 }
                 catch (Exception ex)
                 {
+                    Console.WriteLine($"[GroqWhisper ProcessAudio Error] {ex.Message}\n{ex.StackTrace}");
                 }
             }
         }

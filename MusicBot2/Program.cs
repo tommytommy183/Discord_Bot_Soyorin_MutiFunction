@@ -53,6 +53,8 @@ public class Program
     private GroqWhisperService _groqWhisperService;
     private string _cookie;
     private bool _isTtsEnabled = false; // TTS 開關
+    public bool IsTtsEnabled => _isTtsEnabled;
+    public void ToggleTts() => _isTtsEnabled = !_isTtsEnabled;
     private List<ulong> passBotList = new List<ulong> 
     {   1499768328586002473, //魚骨頭
         1286491383426711563, //soyo自己的，這樣才能讀到之前的訊息

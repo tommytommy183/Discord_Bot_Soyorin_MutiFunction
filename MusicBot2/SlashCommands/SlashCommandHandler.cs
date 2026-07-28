@@ -41,8 +41,9 @@ namespace MusicBot2.SlahCommands
         private readonly LyricsDisplayService _lyricsDisplayService;
         private readonly UselessApiService _uselessApiService;
         private readonly AIImageService _aiImageService;
+        private readonly GroqWhisperService _groqWhisperService;
 
-        public SlashCommandHandler(Program program, WordGuessingService wordService, MineGameService mineGameService, ElevenLabsService elevenLabsService, OldMaidService oldMaidService, RubiksCubeService rubiksCubeService, GoogleAIStudioService googleAIStudioService, OpenRouterService openRouterService, RVC_Service rVC_Service, SetTextService setTextService, Game2048Service game2048Service, Game1A2BService game1A2BService, Pick2Service pick2Service, JikanAnimeService animeService, PokeService pokeService, PokeGameService pokeGameService, ValorantService valorantService, TRPGService trpgService, LyrisService lyrisService, LyricsDisplayService lyricsDisplayService, UselessApiService uselessApiService, AIImageService aiImageService)
+        public SlashCommandHandler(Program program, WordGuessingService wordService, MineGameService mineGameService, ElevenLabsService elevenLabsService, OldMaidService oldMaidService, RubiksCubeService rubiksCubeService, GoogleAIStudioService googleAIStudioService, OpenRouterService openRouterService, RVC_Service rVC_Service, SetTextService setTextService, Game2048Service game2048Service, Game1A2BService game1A2BService, Pick2Service pick2Service, JikanAnimeService animeService, PokeService pokeService, PokeGameService pokeGameService, ValorantService valorantService, TRPGService trpgService, LyrisService lyrisService, LyricsDisplayService lyricsDisplayService, UselessApiService uselessApiService, AIImageService aiImageService, GroqWhisperService groqWhisperService)
         {
             _program = program;
             _wordService = wordService;
@@ -66,6 +67,7 @@ namespace MusicBot2.SlahCommands
             _lyricsDisplayService = lyricsDisplayService;
             _uselessApiService = uselessApiService;
             _aiImageService = aiImageService;
+            _groqWhisperService = groqWhisperService;
         }
         #region 音樂撥放相關
         [SlashCommand("播放音樂", "播放音樂")]
@@ -873,7 +875,7 @@ namespace MusicBot2.SlahCommands
         }
 
         [SlashCommand("隨機抽一把幸運造型", "隨機抽一把幸運造型")]
-        public async Task RandomDrawWeaponSkinAsync([Summary("武器名稱，不輸入或不存在就隨便一把", "武器名稱")] string name = "")
+        public async Task RandomDrawWeaponSkinAsync([Summary("武器名稱", "武器名稱")] string name = "")
         {
             await DeferAsync();
             var (weaponName, skinName, skinImageUrl) = await _valorantService.RandomWeaponSkin(name);
@@ -1189,6 +1191,58 @@ namespace MusicBot2.SlahCommands
             {
                 await FollowupAsync($"產生圖片失敗：{ex.Message}");
             }
+        }
+        #endregion
+
+        #region stt & tts相關
+        [SlashCommand("tts", "開關 TTS 語音回覆功能")]
+        public async Task TtsToggleCommand()
+        {
+            var user = Context.User as SocketGuildUser;
+            if (user?.VoiceChannel == null)
+            {
+                await RespondAsync("你不在語音頻道中", ephemeral: true);
+                return;
+            }
+
+            // 透過 Program 切換 TTS
+            _program.ToggleTts();
+            var status = _program.IsTtsEnabled ? "✅ TTS 已啟用" : "❌ TTS 已關閉";
+            await RespondAsync(status);
+        }
+
+        [SlashCommand("listen", "開始監聽語音頻道（語音轉文字）")]
+        public async Task ListenCommand()
+        {
+            var user = Context.User as SocketGuildUser;
+            if (user?.VoiceChannel == null)
+            {
+                await RespondAsync("你不在語音頻道中", ephemeral: true);
+                return;
+            }
+
+            await DeferAsync();
+            var voiceChannelName = user.VoiceChannel.Name;
+            var started = await _program.StartVoiceListeningAsync(user);
+            await FollowupAsync(started
+                ? $"👂 開始監聽語音頻道: {voiceChannelName}"
+                : "❌ 無法開始監聽（可能已在監聽中，或語音連線失敗）");
+        }
+
+        [SlashCommand("unlisten", "停止監聽語音頻道")]
+        public async Task UnlistenCommand()
+        {
+            var user = Context.User as SocketGuildUser;
+            if (user?.VoiceChannel == null)
+            {
+                await RespondAsync("你不在語音頻道中", ephemeral: true);
+                return;
+            }
+
+            await DeferAsync();
+            var voiceChannelId = user.VoiceChannel.Id;
+            await _groqWhisperService.StopListeningAsync(voiceChannelId);
+            await FollowupAsync("🔇 已停止監聽語音頻道");
         }
         #endregion
     }
