@@ -30,7 +30,7 @@ namespace MusicBot2.Service
         private readonly string _apiKey;
         private readonly HttpClient _httpClient;
         private readonly MediaWikiService _wikiService;
-        private readonly DuckDuckGoSearchService _searchService;
+        private readonly TavilySearchService _searchService;
         private readonly string _memoryFilePath = Path.Combine("TxtFolder", "AI_Memory_OpenRouter.txt");
         private readonly string _summaryFilePath = Path.Combine("TxtFolder", "AI_Summary_OpenRouter.txt");
 
@@ -187,11 +187,13 @@ namespace MusicBot2.Service
             "查查", "查看", "找找", "幫我查", "幫我找", "搜索", "幫查", "幫找"
         };
 
-        public OpenRouterService(string apiKey, string redisConnectionString = null)
+        public OpenRouterService(string apiKey, string redisConnectionString = null, string tavilyApiKey = null)
         {
             _apiKey = apiKey;
             _wikiService = new MediaWikiService();
-            _searchService = new DuckDuckGoSearchService();
+            _searchService = !string.IsNullOrWhiteSpace(tavilyApiKey)
+                ? new TavilySearchService(tavilyApiKey)
+                : null;
             _httpClient = new HttpClient
             {
                 Timeout = TimeSpan.FromSeconds(60)
@@ -536,17 +538,25 @@ namespace MusicBot2.Service
             {
                 try
                 {
-                    // Phase 2：用 AI 給的關鍵字搜尋
                     Console.WriteLine($"[OpenRouter] AI 判斷需要搜尋，關鍵字: {searchQuery}");
-                    var searchResult = await _searchService.SearchAsync(searchQuery);
+
+                    // Phase 2a：Tavily 搜尋
+                    string searchResult = null;
+                    if (_searchService != null)
+                        searchResult = await _searchService.SearchAsync(searchQuery);
+
                     if (!string.IsNullOrWhiteSpace(searchResult))
                     {
                         searchContext = $"[網路搜尋結果 - 關鍵字: {searchQuery}]\n{searchResult}";
-                        Console.WriteLine($"[OpenRouter] DuckDuckGo 搜尋成功，字數: {searchResult.Length}");
+                        Console.WriteLine($"[Tavily] 搜尋成功，字數: {searchResult.Length}");
                     }
                     else
                     {
-                        Console.WriteLine($"[OpenRouter] DuckDuckGo 無結果，嘗試 MediaWiki fallback");
+                        // Phase 2b：MediaWiki fallback
+                        if (_searchService != null)
+                            Console.WriteLine($"[Tavily] 無結果，嘗試 MediaWiki fallback");
+                        else
+                            Console.WriteLine($"[OpenRouter] 無 Tavily key，直接用 MediaWiki");
                         try
                         {
                             var wikiRes = await _wikiService.SearchAsync(searchQuery);

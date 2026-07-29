@@ -87,6 +87,7 @@ public class Program
         string googleAIStudioApiKey = configer["GoogleAIStudio:dcBotKey1"];
         string googleAIStudioApiKey2 = configer["GoogleAIStudio:dcBotKey2"];
         string openRouterApiKey = configer["Openrouter:ApiKey1"];
+        string tavilyApiKey = configer["Tavily:ApiKey"];
         string fishAudioApiKey = configer["FishAudio:ApiKey"];
         string groqApiKey = configer["Groq:ApiKey"];
         _cookie = configer["YT_DLP_COOKIES"];
@@ -127,7 +128,7 @@ public class Program
                 new GoogleAIStudioService(googleAIStudioApiKey, googleAIStudioApiKey2)
                 )
             .AddSingleton<OpenRouterService>(sp =>
-                  new OpenRouterService(openRouterApiKey, redisConn)
+                  new OpenRouterService(openRouterApiKey, redisConn, tavilyApiKey)
                   )
             .AddSingleton<TRPGService>(sp =>
                   new TRPGService(openRouterApiKey, redisConn)
