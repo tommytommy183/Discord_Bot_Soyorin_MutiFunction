@@ -536,7 +536,24 @@ namespace MusicBot2.Service
                     }
                     else
                     {
-                        Console.WriteLine($"[OpenRouter] DuckDuckGo 搜尋無結果（null），不注入 context");
+                        Console.WriteLine($"[OpenRouter] DuckDuckGo 無結果，嘗試 MediaWiki fallback");
+                        try
+                        {
+                            var wikiRes = await _wikiService.SearchAsync(searchQuery);
+                            if (wikiRes.Found)
+                            {
+                                searchContext = $"[背景資料 - 維基百科 ({wikiRes.Lang})]\n【{wikiRes.Title}】\n{wikiRes.Extract}";
+                                Console.WriteLine($"[OpenRouter] MediaWiki fallback 成功: {wikiRes.Title}");
+                            }
+                            else
+                            {
+                                Console.WriteLine($"[OpenRouter] MediaWiki fallback 也無結果，不注入 context");
+                            }
+                        }
+                        catch (Exception wikiEx)
+                        {
+                            Console.WriteLine($"[OpenRouter] MediaWiki fallback 失敗: {wikiEx.Message}");
+                        }
                     }
                 }
                 catch (Exception ex)

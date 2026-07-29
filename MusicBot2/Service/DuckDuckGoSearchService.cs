@@ -59,8 +59,10 @@ namespace MusicBot2.Service
             foreach (var kw in SearchTriggerKeywords.OrderByDescending(k => k.Length))
                 cleaned = cleaned.Replace(kw, " ", StringComparison.OrdinalIgnoreCase);
 
-            cleaned = Regex.Replace(cleaned, @"(幫我|告訴我?|一下|查查|找找|確認|告訴|soyo|需要|大概|幫我找)", "", RegexOptions.IgnoreCase);
+            cleaned = Regex.Replace(cleaned, @"(幫我|告訴我?|一下|查查|找找|確認|告訴|soyo|需要|大概|幫我找|可以|請問|嗎|呢|吧|啊|喔|耶|哦|ㄟ|誒|欸)", "", RegexOptions.IgnoreCase);
             cleaned = cleaned.Trim(' ', '?', '？', '!', '！', '。', ',', '，', '、');
+            // 移除多餘空白
+            cleaned = Regex.Replace(cleaned, @"\s{2,}", " ").Trim();
 
             return cleaned.Length >= 2 ? cleaned : null;
         }
@@ -157,18 +159,31 @@ namespace MusicBot2.Service
 
                 var html = await response.Content.ReadAsStringAsync();
 
-                // 簡單解析：抓出搜尋結果的摘要文字
+                // 解析：嘗試多個 selector
                 var snippets = new List<string>();
-                var matches = Regex.Matches(html, @"<td[^>]*class=""result-snippet""[^>]*>(.*?)</td>", RegexOptions.Singleline);
 
+                // 嘗試 class="result-snippet"
+                var matches = Regex.Matches(html, @"<td[^>]*class=""result-snippet""[^>]*>(.*?)</td>", RegexOptions.Singleline);
                 foreach (Match match in matches)
                 {
                     if (snippets.Count >= 3) break;
                     var text = Regex.Replace(match.Groups[1].Value, @"<[^>]+>", "").Trim();
                     text = HttpUtility.HtmlDecode(text);
                     if (!string.IsNullOrWhiteSpace(text) && text.Length > 20)
-                    {
                         snippets.Add(text);
+                }
+
+                // fallback：抓任何 <td> 內超過 50 字的文字
+                if (snippets.Count == 0)
+                {
+                    var tdMatches = Regex.Matches(html, @"<td[^>]*>(.*?)</td>", RegexOptions.Singleline);
+                    foreach (Match match in tdMatches)
+                    {
+                        if (snippets.Count >= 3) break;
+                        var text = Regex.Replace(match.Groups[1].Value, @"<[^>]+>", "").Trim();
+                        text = HttpUtility.HtmlDecode(text);
+                        if (!string.IsNullOrWhiteSpace(text) && text.Length > 50 && text.Length < 500)
+                            snippets.Add(text);
                     }
                 }
 
