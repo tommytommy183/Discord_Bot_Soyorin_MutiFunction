@@ -20,13 +20,40 @@ namespace MusicBot2.Service
         private readonly string _apiKey;
         private readonly HttpClient _httpClient;
         private const string API_BASE_URL = "https://api.fish.audio/v1/tts";
+        public static readonly Dictionary<string, string> ReferenceList = new Dictionary<string, string>
+        {
+            { "SOYO", "23d8ed0094914caa89d350c4ce803cc9" },
+            { "預設", "9a9cf47702da476aa4629e2506d4a857" },
+            { "ANON", "4b5eb5bb302a4cb6bf975f30b3e58c07" },
+            { "更高級的soyo", "19c74d6eddb04a9b82dfd350b54e76e2" },
+            { "tomo", "781d170ce2e24391a46701981228951c" },
+            { "中文anon", "c5c17c9709384ba9a4b294662a2af0b1" },
+            { "是我迪奧", "5a8e46f1b94c4351aebb8a66b113cec5" },
+            { "中文tomo", "b4f70fdef5f943c2bf43db00e80ad680" },
+            { "中文soyo", "333bb1723a3847cdb06d77a131d9576d" },
+            { "中文祥子", "8ce20e146c9545619e5f6f4c95564a2d" },
+        };
 
-        // Fish Audio �� Soyo �n���ҫ� ID
-        private const string SOYO_REFERENCE_ID = "4b5eb5bb302a4cb6bf975f30b3e58c07";
+        // Fish Audio 音色 ID，預設中文soyo
+        private string _currentReferenceId = "333bb1723a3847cdb06d77a131d9576d";
 
-        //23d8ed0094914caa89d350c4ce803cc9 //SOYO
-        //9a9cf47702da476aa4629e2506d4a857 //預設
-        //4b5eb5bb302a4cb6bf975f30b3e58c07 //ANON
+        /// <summary>
+        /// 切換當前音色，回傳音色名稱；若找不到則回傳 null
+        /// </summary>
+        public string SetVoice(string voiceName)
+        {
+            if (ReferenceList.TryGetValue(voiceName, out var id))
+            {
+                _currentReferenceId = id;
+                return voiceName;
+            }
+            return null;
+        }
+
+        public string GetCurrentVoiceName()
+        {
+            return ReferenceList.FirstOrDefault(x => x.Value == _currentReferenceId).Key ?? "未知";
+        }
 
         // TTS 模型：s2.1-pro-free 是免費 API 模型（至 2026/8/31），不指定的話會用付費模型導致 402
         private const string TTS_MODEL = "s2.1-pro-free";
@@ -115,7 +142,7 @@ namespace MusicBot2.Service
                 var requestBody = new
                 {
                     text = text,
-                    reference_id = SOYO_REFERENCE_ID,
+                    reference_id = _currentReferenceId,
                     format = "mp3",
                     latency = "normal" // �i��: "normal" �� "balanced"
                 };

@@ -248,7 +248,9 @@ namespace MusicBot2.Service
                             try
                             {
                                 var pcm = decoder.Decode(frame.Payload, frame.Payload.Length, out var decodedLength);
-                                buffer.Write(pcm, decodedLength);
+                                // decodedLength 是每聲道的 sample 數，實際 byte 數 = samples * channels * bytesPerSample
+                                var byteCount = decodedLength * 2 * 2; // stereo, 16-bit
+                                buffer.Write(pcm, byteCount);
                             }
                             catch
                             {

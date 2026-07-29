@@ -42,8 +42,9 @@ namespace MusicBot2.SlahCommands
         private readonly UselessApiService _uselessApiService;
         private readonly AIImageService _aiImageService;
         private readonly GroqWhisperService _groqWhisperService;
+        private readonly FishAudioService _fishAudioService;
 
-        public SlashCommandHandler(Program program, WordGuessingService wordService, MineGameService mineGameService, ElevenLabsService elevenLabsService, OldMaidService oldMaidService, RubiksCubeService rubiksCubeService, GoogleAIStudioService googleAIStudioService, OpenRouterService openRouterService, RVC_Service rVC_Service, SetTextService setTextService, Game2048Service game2048Service, Game1A2BService game1A2BService, Pick2Service pick2Service, JikanAnimeService animeService, PokeService pokeService, PokeGameService pokeGameService, ValorantService valorantService, TRPGService trpgService, LyrisService lyrisService, LyricsDisplayService lyricsDisplayService, UselessApiService uselessApiService, AIImageService aiImageService, GroqWhisperService groqWhisperService)
+        public SlashCommandHandler(Program program, WordGuessingService wordService, MineGameService mineGameService, ElevenLabsService elevenLabsService, OldMaidService oldMaidService, RubiksCubeService rubiksCubeService, GoogleAIStudioService googleAIStudioService, OpenRouterService openRouterService, RVC_Service rVC_Service, SetTextService setTextService, Game2048Service game2048Service, Game1A2BService game1A2BService, Pick2Service pick2Service, JikanAnimeService animeService, PokeService pokeService, PokeGameService pokeGameService, ValorantService valorantService, TRPGService trpgService, LyrisService lyrisService, LyricsDisplayService lyricsDisplayService, UselessApiService uselessApiService, AIImageService aiImageService, GroqWhisperService groqWhisperService, FishAudioService fishAudioService)
         {
             _program = program;
             _wordService = wordService;
@@ -68,6 +69,7 @@ namespace MusicBot2.SlahCommands
             _uselessApiService = uselessApiService;
             _aiImageService = aiImageService;
             _groqWhisperService = groqWhisperService;
+            _fishAudioService = fishAudioService;
         }
         #region 音樂撥放相關
         [SlashCommand("播放音樂", "播放音樂")]
@@ -1211,7 +1213,7 @@ namespace MusicBot2.SlahCommands
             await RespondAsync(status);
         }
 
-        [SlashCommand("listen", "開始監聽語音頻道（語音轉文字）")]
+        [SlashCommand("監聽", "開始監聽語音頻道（語音轉文字）")]
         public async Task ListenCommand()
         {
             var user = Context.User as SocketGuildUser;
@@ -1229,7 +1231,7 @@ namespace MusicBot2.SlahCommands
                 : "❌ 無法開始監聽（可能已在監聽中，或語音連線失敗）");
         }
 
-        [SlashCommand("unlisten", "停止監聽語音頻道")]
+        [SlashCommand("取消監聽", "停止監聽語音頻道")]
         public async Task UnlistenCommand()
         {
             var user = Context.User as SocketGuildUser;
@@ -1243,6 +1245,41 @@ namespace MusicBot2.SlahCommands
             var voiceChannelId = user.VoiceChannel.Id;
             await _groqWhisperService.StopListeningAsync(voiceChannelId);
             await FollowupAsync("🔇 已停止監聽語音頻道");
+        }
+        #endregion
+
+        #region 音色切換
+        [SlashCommand("切換音色", "切換 Soyo 說話的音色")]
+        public async Task ChangeVoiceStyle(
+            [Summary("音色", "選擇想要的音色")]
+            [Choice("SOYO", "SOYO")]
+            [Choice("預設", "預設")]
+            [Choice("ANON", "ANON")]
+            [Choice("更高級的soyo", "更高級的soyo")]
+            [Choice("tomo", "tomo")]
+            [Choice("中文anon", "中文anon")]
+            [Choice("是我迪奧", "是我迪奧")]
+            [Choice("中文tomo", "中文tomo")]
+            [Choice("中文soyo", "中文soyo")]
+            [Choice("中文祥子", "中文祥子")]
+            string voiceName)
+        {
+            var result = _fishAudioService.SetVoice(voiceName);
+            if (result != null)
+            {
+                await RespondAsync($"✅ 音色已切換為: **{result}**");
+            }
+            else
+            {
+                await RespondAsync("❌ 找不到該音色", ephemeral: true);
+            }
+        }
+
+        [SlashCommand("目前音色", "查看目前使用的音色")]
+        public async Task CurrentVoiceStyle()
+        {
+            var name = _fishAudioService.GetCurrentVoiceName();
+            await RespondAsync($"🎙️ 目前音色: **{name}**");
         }
         #endregion
     }
