@@ -162,7 +162,13 @@ namespace MusicBot2.Service
 我傳給你的每則訊息會是：
 使用者名稱: xxx
 訊息: xxx
-請根據使用者名稱判斷對話對象並自然回應。回應時不要套用這個格式，直接講話。";
+請根據使用者名稱判斷對話對象並自然回應。回應時不要套用這個格式，直接講話。
+
+【多人群組規則】
+15. 群組裡有多個不同的人同時聊天，每個「使用者名稱」代表獨立不同的人。
+16. 嚴格禁止把 A 說的話歸咎給 B、或把 A 做的事說成是 B 做的。誰說了什麼，就是那個人說的。
+17. 如果某則訊息不是在叫你（沒有 soyo / 爽世），你不一定要回應；如果決定回，只針對叫你的那個人回就好，不要順便攻擊其他人。
+18. 你的每次回覆只需要處理「最後一則叫你的訊息」，不要把歷史對話裡其他人的八卦全部夾帶進來評論。";
 
         private const string TtsEmotionAddon = @"
 
@@ -502,11 +508,11 @@ namespace MusicBot2.Service
                         ? $"使用者名稱: {userName}\n訊息: {rawText}"
                         : rawText;
 
-                    // 檢查是否已存在（避免重複記錄）
-                    bool alreadyExists = history.Any(h => 
+                    // 檢查是否已存在（避免重複記錄，視窗拉到 120 秒避免 DateTime.Now vs Discord 時間差造成誤判）
+                    bool alreadyExists = history.Any(h =>
                         h.UserName == userName &&
                         h.Text != null && h.Text.Contains(rawText) &&
-                        Math.Abs((h.Timestamp - msg.Timestamp.DateTime).TotalSeconds) < 5);
+                        Math.Abs((h.Timestamp - msg.Timestamp.DateTime).TotalSeconds) < 120);
 
                     if (!alreadyExists)
                     {
@@ -520,14 +526,15 @@ namespace MusicBot2.Service
                     }
                 }
             }
-            // 偵測查詢意圖，若有就先用 DuckDuckGo 搜尋注入背景資料
-            var searchQuery = _searchService.DetectSearchIntent(request.UserMessage);
+            // Phase 1：讓 AI 判斷是否需要搜尋，並直接給出搜尋關鍵字
             string searchContext = null;
+            var searchQuery = await DetectSearchQueryWithAiAsync(request.UserMessage);
             if (searchQuery != null)
             {
                 try
                 {
-                    Console.WriteLine($"[OpenRouter] 偵測到查詢意圖，DuckDuckGo 搜尋: {searchQuery}");
+                    // Phase 2：用 AI 給的關鍵字搜尋
+                    Console.WriteLine($"[OpenRouter] AI 判斷需要搜尋，關鍵字: {searchQuery}");
                     var searchResult = await _searchService.SearchAsync(searchQuery);
                     if (!string.IsNullOrWhiteSpace(searchResult))
                     {
@@ -558,7 +565,7 @@ namespace MusicBot2.Service
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"[OpenRouter] DuckDuckGo 搜尋失敗: {ex.Message}");
+                    Console.WriteLine($"[OpenRouter] 搜尋失敗: {ex.Message}");
                 }
             }
 
@@ -718,6 +725,40 @@ namespace MusicBot2.Service
             return "（嗯…現在腦袋有點打結，等等再說好嗎）";
         }
 
+        /// <summary>
+        /// Phase 1：讓 AI 判斷訊息是否需要搜尋。需要則回傳搜尋關鍵字，否則回傳 null。
+        /// </summary>
+        private async Task<string> DetectSearchQueryWithAiAsync(string userMessage)
+        {
+            try
+            {
+                var prompt = $@"你是一個搜尋意圖偵測器。
+分析以下用戶訊息，判斷是否需要查詢外部資訊（如：作品資訊、人物、時事、最新發布、特定事實等）。
+
+如果需要搜尋：只回傳最精簡的搜尋關鍵字（15字以內，不含任何標點或說明文字）。
+如果不需要搜尋（純聊天、玩遊戲、一般問候、情緒表達等）：只回傳一個英文句點「.」。
+不要有任何其他文字。
+
+用戶訊息：{userMessage}";
+
+                var result = await GenerateSimpleTextAsync(prompt);
+                if (string.IsNullOrWhiteSpace(result)) return null;
+
+                result = result.Trim();
+                // 回傳 "." 或空字串表示不需搜尋
+                if (result == "." || result.Length < 2) return null;
+
+                // 去除可能的標點
+                result = result.Trim('.', '?', '？', '!', '！', '。', '，', ',', '"', '"', '【', '】');
+                Console.WriteLine($"[OpenRouter] Phase1 AI 偵測搜尋關鍵字: {result}");
+                return result.Length >= 2 ? result : null;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[OpenRouter] Phase1 偵測失敗: {ex.Message}");
+                return null;
+            }
+        }
 
         public async Task<string> GenerateSimpleTextAsync(string userMessage)
         {
