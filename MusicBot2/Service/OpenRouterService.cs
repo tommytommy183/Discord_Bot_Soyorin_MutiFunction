@@ -163,6 +163,17 @@ namespace MusicBot2.Service
 訊息: xxx
 請根據使用者名稱判斷對話對象並自然回應。回應時不要套用這個格式，直接講話。";
 
+        private const string TtsEmotionAddon = @"
+
+【語音模式額外規則】
+現在你的回覆會被轉成語音播放，你可以在句子中插入情緒標籤來讓語音更有表情：
+可用標籤：[excited] [laughing] [sad] [whisper] [angry] [nervous] [surprised]
+- 標籤放在該情緒對應的句子前面
+- 不要每句都加，只在情緒明顯時加
+- 一則回覆最多用 1~2 個標籤
+- 回覆要簡短（1~3句），因為是即時語音對話
+範例：[laughing]哈哈你在說什麼啦  /  [excited]真的嗎！太棒了吧";
+
         private static readonly string[] WikiTriggerKeywords =
         {
             "查詢", "找尋", "尋找", "上網查", "上網搜", "搜尋", "查一下", "找一下",
@@ -770,7 +781,7 @@ namespace MusicBot2.Service
         /// <summary>
         /// 簡化版本：直接傳入訊息
         /// </summary>
-        public async Task<string> GenerateTextAsync(string message, SocketGuildUser user, bool saveToMemory = true, string channelKey = null, IMessage? repliedMessage = null, IEnumerable<IMessage>? contextMessages = null)
+        public async Task<string> GenerateTextAsync(string message, SocketGuildUser user, bool saveToMemory = true, string channelKey = null, IMessage? repliedMessage = null, IEnumerable<IMessage>? contextMessages = null, bool isTtsMode = false)
         {
             var request = new GeminiRequestVM
             {
@@ -778,7 +789,8 @@ namespace MusicBot2.Service
                 Temperature = 0.85f,
                 TopP = 0.9f,
                 TopK = 40,
-                MaxOutputTokens = 1024
+                MaxOutputTokens = isTtsMode ? 256 : 1024,
+                SystemInstruction = isTtsMode ? Persona + TtsEmotionAddon : null
             };
 
             return await GenerateTextAsync(request, user, saveToMemory, channelKey, repliedMessage, contextMessages);

@@ -2279,42 +2279,41 @@ public class Program
                     // 將語音轉換的文字當作訊息處理
                     var channelKey = $"{user.VoiceChannel.Guild.Id}";
 
-                    // 調用 OpenRouter 生成回應
+                    // 調用 OpenRouter 生成回應（TTS 模式：回覆簡短＋帶情緒標籤）
                     var result = await _openRouterService.GenerateTextAsync(
                         text, 
                         speaker, 
                         true, 
                         channelKey, 
                         null, 
-                        null
+                        null,
+                        isTtsMode: true
                     );
 
-                    // 在文字頻道顯示對話
+                    // 在文字頻道顯示對話（移除情緒標籤和啟動標籤）
                     IMessageChannel textChannel = user.Guild.TextChannels.FirstOrDefault(c => c.Name.Contains("一般") || c.Name.Contains("general"));
                     if (textChannel == null)
                     {
                         textChannel = user.Guild.DefaultChannel;
                     }
 
+                    var ttsResponse = _launchTagRegex.Replace(result, "").Trim();
+                    var displayResponse = System.Text.RegularExpressions.Regex.Replace(ttsResponse, @"\[(excited|laughing|sad|whisper|angry|nervous|surprised)\]", "").Trim();
+
                     if (textChannel != null)
                     {
                         await textChannel.SendMessageAsync($"🎤 **{speaker.DisplayName}**: {text}");
 
-                        var cleanResponse = _launchTagRegex.Replace(result, "").Trim();
-                        if (!string.IsNullOrWhiteSpace(cleanResponse))
+                        if (!string.IsNullOrWhiteSpace(displayResponse))
                         {
-                            await textChannel.SendMessageAsync($"💬 **Soyo**: {cleanResponse}");
+                            await textChannel.SendMessageAsync($"💬 **Soyo**: {displayResponse}");
                         }
                     }
 
-                    // 播放 TTS 回應，同時把語音檔傳到文字頻道
-                    if (_audioClient != null && !string.IsNullOrWhiteSpace(result))
+                    // 播放 TTS 回應（保留情緒標籤給 Fish Audio）
+                    if (_audioClient != null && !string.IsNullOrWhiteSpace(ttsResponse))
                     {
-                        var cleanResponse = _launchTagRegex.Replace(result, "").Trim();
-                        if (!string.IsNullOrWhiteSpace(cleanResponse))
-                        {
-                            await _fishAudioService.SpeakInVoiceChannelAsync(cleanResponse, speaker, _audioClient, textChannel);
-                        }
+                        await _fishAudioService.SpeakInVoiceChannelAsync(ttsResponse, speaker, _audioClient, textChannel);
                     }
                 }
                 catch (Exception ex)
