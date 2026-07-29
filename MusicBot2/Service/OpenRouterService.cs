@@ -498,7 +498,10 @@ namespace MusicBot2.Service
                 // 將最近的對話按時間順序加入記憶
                 foreach (var msg in contextMessages.Reverse())
                 {
-                    var authorName = (msg.Author as SocketGuildUser)?.DisplayName ?? msg.Author?.Username ?? "某人";
+                    // SocketGuildUser cast 失敗時（GetMessagesAsync 可能回傳 IUser），用 GlobalName 再 fallback Username
+                    var guildMember = msg.Author as SocketGuildUser
+                        ?? (msg.Channel as SocketGuildChannel)?.Guild.GetUser(msg.Author.Id);
+                    var authorName = guildMember?.DisplayName ?? msg.Author?.GlobalName ?? msg.Author?.Username ?? "某人";
                     var rawText = Truncate(msg.Content, MaxMessageStoreLength);
 
                     // 用與當前訊息相同的格式儲存，讓 AI 能分辨誰說的
@@ -508,9 +511,9 @@ namespace MusicBot2.Service
                         ? $"使用者名稱: {userName}\n訊息: {rawText}"
                         : rawText;
 
-                    // 檢查是否已存在（避免重複記錄，視窗拉到 120 秒避免 DateTime.Now vs Discord 時間差造成誤判）
+                    // 檢查是否已存在：只比訊息內容 + 時間，不比 UserName
+                    // （主路徑存的是 DisplayName，contextMessages 可能 cast 不一致，UserName 比對不可靠）
                     bool alreadyExists = history.Any(h =>
-                        h.UserName == userName &&
                         h.Text != null && h.Text.Contains(rawText) &&
                         Math.Abs((h.Timestamp - msg.Timestamp.DateTime).TotalSeconds) < 120);
 
