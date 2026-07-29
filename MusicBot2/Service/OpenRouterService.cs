@@ -30,6 +30,7 @@ namespace MusicBot2.Service
         private readonly string _apiKey;
         private readonly HttpClient _httpClient;
         private readonly MediaWikiService _wikiService;
+        private readonly DuckDuckGoSearchService _searchService;
         private readonly string _memoryFilePath = Path.Combine("TxtFolder", "AI_Memory_OpenRouter.txt");
         private readonly string _summaryFilePath = Path.Combine("TxtFolder", "AI_Summary_OpenRouter.txt");
 
@@ -184,6 +185,7 @@ namespace MusicBot2.Service
         {
             _apiKey = apiKey;
             _wikiService = new MediaWikiService();
+            _searchService = new DuckDuckGoSearchService();
             _httpClient = new HttpClient
             {
                 Timeout = TimeSpan.FromSeconds(60)
@@ -474,6 +476,12 @@ namespace MusicBot2.Service
 
             const int maxRetry = 2;
             var basePersona = string.IsNullOrWhiteSpace(request.SystemInstruction) ? Persona : request.SystemInstruction;
+
+            
+            string currentDateTime = DateTime.Now.AddHours(8).ToString();
+            basePersona += $"\n\n[當前系統時間] {currentDateTime}";
+
+
             var summary = GetChannelSummary(channelKey);
 
             // ✅ 先將 contextMessages 加入記憶（如果有的話）
@@ -512,30 +520,29 @@ namespace MusicBot2.Service
                     }
                 }
             }
-            // 偵測查詢意圖，若有就先查 wiki 注入背景資料
-            // 這段先移除，有點影響到日常對話
-            //var wikiQuery = ExtractWikiQuery(request.UserMessage);
-            //string wikiContext = null;
-            //if (wikiQuery != null)
-            //{
-            //    try
-            //    {
-            //        Console.WriteLine($"[OpenRouter] 偵測到查詢意圖，wiki 查詢: {wikiQuery}");
-            //        var wikiRes = await _wikiService.SearchAsync(wikiQuery);
-            //        if (wikiRes.Found)
-            //            wikiContext = $"[背景資料 - 維基百科]\n【{wikiRes.Title}】\n{wikiRes.Extract}";
-            //    }
-            //    catch (Exception ex)
-            //    {
-            //        Console.WriteLine($"[OpenRouter] wiki 查詢失敗: {ex.Message}");
-            //    }
-            //}
+            // 偵測查詢意圖，若有就先用 DuckDuckGo 搜尋注入背景資料
+            var searchQuery = _searchService.DetectSearchIntent(request.UserMessage);
+            string searchContext = null;
+            if (searchQuery != null)
+            {
+                try
+                {
+                    Console.WriteLine($"[OpenRouter] 偵測到查詢意圖，DuckDuckGo 搜尋: {searchQuery}");
+                    var searchResult = await _searchService.SearchAsync(searchQuery);
+                    if (!string.IsNullOrWhiteSpace(searchResult))
+                        searchContext = $"[網路搜尋結果 - 關鍵字: {searchQuery}]\n{searchResult}";
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[OpenRouter] DuckDuckGo 搜尋失敗: {ex.Message}");
+                }
+            }
 
             var systemPrompt = string.IsNullOrEmpty(summary)
                 ? basePersona
                 : basePersona + $"\n\n[過去對話摘要]\n{summary}";
-            //if (wikiContext != null)
-            //    systemPrompt += $"\n\n{wikiContext}";
+            if (searchContext != null)
+                systemPrompt += $"\n\n{searchContext}";
 
             string repliedText = repliedMessage == null ? "" : repliedMessage.Content;
 
