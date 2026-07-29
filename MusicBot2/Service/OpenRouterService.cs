@@ -474,20 +474,23 @@ namespace MusicBot2.Service
                 foreach (var msg in contextMessages.Reverse())
                 {
                     var authorName = (msg.Author as SocketGuildUser)?.DisplayName ?? msg.Author?.Username ?? "某人";
-                    var messageText = Truncate(msg.Content, MaxMessageStoreLength);
+                    var rawText = Truncate(msg.Content, MaxMessageStoreLength);
+
+                    // 用與當前訊息相同的格式儲存，讓 AI 能分辨誰說的
+                    var role = msg.Author.IsBot ? "model" : "user";
+                    var userName = msg.Author.IsBot ? "爽世" : authorName;
+                    var messageText = role == "user"
+                        ? $"使用者名稱: {userName}\n訊息: {rawText}"
+                        : rawText;
 
                     // 檢查是否已存在（避免重複記錄）
                     bool alreadyExists = history.Any(h => 
-                        h.Text == messageText && 
-                        h.UserName == authorName &&
+                        h.UserName == userName &&
+                        h.Text != null && h.Text.Contains(rawText) &&
                         Math.Abs((h.Timestamp - msg.Timestamp.DateTime).TotalSeconds) < 5);
 
                     if (!alreadyExists)
                     {
-                        // 判斷是否為 bot 訊息
-                        var role = msg.Author.IsBot ? "model" : "user";
-                        var userName = msg.Author.IsBot ? "爽世" : authorName;
-
                         history.Add(new ConversationMessage
                         {
                             Role = role,

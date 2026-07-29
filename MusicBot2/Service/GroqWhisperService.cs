@@ -306,9 +306,12 @@ namespace MusicBot2.Service
                     Console.WriteLine($"[GroqWhisper] 辨識成功：{text}");
 
                     // 檢查是否包含 soyo（可選：如果想記錄所有對話，移除這個檢查）
-                    bool containsTrigger = text.ToLower().Contains("soyo") ||
-                                          text.Contains("爽世") ||
-                                          text.Contains("搜幽");
+                    //bool containsTrigger = text.ToLower().Contains("soyo") ||
+                    //                      text.Contains("爽世") ||
+                    //                      text.Contains("搜幽");
+                    //暫時讓他誰都會回
+                    bool containsTrigger = true;
+
 
                     if (containsTrigger)
                     {
