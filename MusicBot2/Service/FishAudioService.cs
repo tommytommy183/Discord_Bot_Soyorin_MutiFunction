@@ -38,6 +38,11 @@ namespace MusicBot2.Service
         private string _currentReferenceId = "333bb1723a3847cdb06d77a131d9576d";
 
         /// <summary>
+        /// 是否正在播放語音（用來避免 STT 回饋迴圈）
+        /// </summary>
+        public bool IsSpeaking { get; private set; }
+
+        /// <summary>
         /// 切換當前音色，回傳音色名稱；若找不到則回傳 null
         /// </summary>
         public string SetVoice(string voiceName)
@@ -116,10 +121,18 @@ namespace MusicBot2.Service
                     }
                 }
 
-                // 3. �b�y���W�D����
-                await PlayAudioAsync(audioClient, tempFile);
+                // 3. 在語音頻道播放
+                IsSpeaking = true;
+                try
+                {
+                    await PlayAudioAsync(audioClient, tempFile);
+                }
+                finally
+                {
+                    IsSpeaking = false;
+                }
 
-                // 4. �M�z�{���ɮ�
+                // 4. 清理暫存檔案
                 try { File.Delete(tempFile); } catch { }
 
                 Console.WriteLine("[FishAudio] TTS ���񧹦�");

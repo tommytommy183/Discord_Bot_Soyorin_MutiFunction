@@ -2267,6 +2267,13 @@ public class Program
             {
                 try
                 {
+                    // 避免回饋迴圈：bot 正在講話時忽略 STT
+                    if (_fishAudioService.IsSpeaking)
+                    {
+                        Console.WriteLine($"[STT] 忽略（bot 正在說話）: {text}");
+                        return;
+                    }
+
                     Console.WriteLine($"[STT] {speaker.DisplayName}: {text}");
 
                     // 將語音轉換的文字當作訊息處理
