@@ -10,19 +10,19 @@ using System.Web;
 namespace MusicBot2.Service
 {
     /// <summary>
-    /// ¨Ï¥Î DuckDuckGo HTML ·j´M¨ú±oºK­nµ²ªG¡A¨Ñ AI °Ñ¦Ò¡C
+    /// ä½¿ç”¨ DuckDuckGo HTML æœå°‹å–å¾—é—œéµè³‡è¨Šï¼Œä¾› AI åƒè€ƒã€‚
     /// </summary>
     public class DuckDuckGoSearchService
     {
         private readonly HttpClient _httpClient;
 
-        // Ä²µo·j´MªºÃöÁä¦r
+        // è§¸ç™¼æœå°‹æ„åœ–çš„é—œéµå­—
         private static readonly string[] SearchTriggerKeywords =
         {
-            "¬d¸ß", "§ä´M", "´M§ä", "¤Wºô¬d", "¤Wºô·j", "·j´M", "¬d¤@¤U", "§ä¤@¤U",
-            "¬d¬d", "¬d¬İ", "§ä§ä", "À°§Ú¬d", "À°§Ú§ä", "·j¯Á", "À°¬d", "À°§ä",
-            "¬O¤°»ò", "¬O½Ö", "«ç»ò", "¦p¦ó", "­ş¸Ì", "¤°»ò®É­Ô", "¬°¤°»ò",
-            "³Ì·s", "·s»D", "¤µ¤Ñ", "²{¦b"
+            "æŸ¥è©¢", "æœå°‹", "æœç´¢", "ä¸Šç¶²æŸ¥", "ä¸Šç¶²æœ", "æœä¸€ä¸‹", "æŸ¥ä¸€ä¸‹", "æœæœ",
+            "æŸ¥æŸ¥", "æŸ¥çœ‹", "æ‰¾æ‰¾", "å¹«æˆ‘æŸ¥", "å¹«æˆ‘æœ", "æ‰¾è³‡æ–™", "æŸ¥è³‡æ–™", "æ‰¾ä¸€ä¸‹",
+            "æ˜¯ä»€éº¼", "æ˜¯èª°", "ä»€éº¼æ±è¥¿", "å¹«æˆ‘æ‰¾", "å‘Šè¨´æˆ‘", "æŸ¥æ¸…æ¥š", "æŸ¥çœ‹ä¸€ä¸‹",
+            "æœ€æ–°", "æ–°è", "æœ€æ–°çš„", "ç¾åœ¨"
         };
 
         public DuckDuckGoSearchService()
@@ -35,53 +35,53 @@ namespace MusicBot2.Service
         }
 
         /// <summary>
-        /// °»´ú°T®§¬O§_¦³·j´M·N¹Ï¡A¦³ªº¸Ü¦^¶Ç·j´MÃöÁä¦r¡A§_«h¦^¶Ç null
+        /// åˆ¤æ–·è¨Šæ¯æ˜¯å¦å«æœå°‹æ„åœ–ï¼Œæœ‰çš„è©±å›å‚³æœå°‹é—œéµå­—ï¼Œå¦å‰‡å›å‚³ null
         /// </summary>
         public string DetectSearchIntent(string message)
         {
             if (string.IsNullOrWhiteSpace(message)) return null;
             if (message.Length < 4) return null;
 
-            // ÀË¬d¬O§_¥]§tÄ²µoÃöÁä¦r
+            // æª¢æŸ¥æ˜¯å¦åŒ…å«è§¸ç™¼é—œéµå­—
             bool hasTrigger = SearchTriggerKeywords.Any(k => message.Contains(k, StringComparison.OrdinalIgnoreCase));
             if (!hasTrigger) return null;
 
-            // Àu¥ı¨ú¤Ş¸¹/®Ñ¦W¸¹¤º®e
-            var bracketMatch = Regex.Match(message, @"[¡m¡u¡y\[""'](.+?)[¡n¡v¡z\]""']");
+            // å„ªå…ˆæŠ“æ‹¬è™Ÿ/å¼•è™Ÿå…§çš„å…§å®¹
+            var bracketMatch = Regex.Match(message, @"[ã€ã€Œã€\[""'](.+?)[ã€‘ã€ã€\]""']");
             if (bracketMatch.Success)
             {
                 var q = bracketMatch.Groups[1].Value.Trim();
                 if (q.Length >= 2) return q;
             }
 
-            // ¥h±¼Ä²µoµü©M±`¨£§Uµü¡A¨ú³Ñ¾l¤å¦r§@¬°¬d¸ß
+            // å»æ‰è§¸ç™¼è©å’Œå¸¸è¦‹èªæ°£è©ï¼Œå‰©é¤˜çš„ç•¶ä½œæŸ¥è©¢
             var cleaned = message;
             foreach (var kw in SearchTriggerKeywords.OrderByDescending(k => k.Length))
                 cleaned = cleaned.Replace(kw, " ", StringComparison.OrdinalIgnoreCase);
 
-            cleaned = Regex.Replace(cleaned, @"(À°§Ú|½Ğ§A?|¤@¤U|¬ÛÃö|¸ê®Æ|¸ê°T|µ¹§Ú|soyo|²n¥@|·j«ÕªL)", "", RegexOptions.IgnoreCase);
-            cleaned = cleaned.Trim(' ', '?', '¡H', '!', '¡I', '¡C', ',', '¡A', '¡B');
+            cleaned = Regex.Replace(cleaned, @"(å¹«æˆ‘|å‘Šè¨´æˆ‘?|ä¸€ä¸‹|æŸ¥æŸ¥|æ‰¾æ‰¾|ç¢ºèª|å‘Šè¨´|soyo|éœ€è¦|å¤§æ¦‚|å¹«æˆ‘æ‰¾)", "", RegexOptions.IgnoreCase);
+            cleaned = cleaned.Trim(' ', '?', 'ï¼Ÿ', '!', 'ï¼', 'ã€‚', ',', 'ï¼Œ', 'ã€');
 
             return cleaned.Length >= 2 ? cleaned : null;
         }
 
         /// <summary>
-        /// ¨Ï¥Î DuckDuckGo Instant Answer API ·j´M
+        /// ä½¿ç”¨ DuckDuckGo Instant Answer API æœå°‹
         /// </summary>
         public async Task<string> SearchAsync(string query)
         {
             try
             {
-                Console.WriteLine($"[DuckDuckGo] ·j´M: {query}");
+                Console.WriteLine($"[DuckDuckGo] æœå°‹: {query}");
 
-                // ¨Ï¥Î DuckDuckGo Instant Answer API
+                // ä½¿ç”¨ DuckDuckGo Instant Answer API
                 var encodedQuery = HttpUtility.UrlEncode(query);
                 var url = $"https://api.duckduckgo.com/?q={encodedQuery}&format=json&no_html=1&skip_disambig=1";
 
                 var response = await _httpClient.GetAsync(url);
                 if (!response.IsSuccessStatusCode)
                 {
-                    Console.WriteLine($"[DuckDuckGo] API ¦^À³¥¢±Ñ: {response.StatusCode}");
+                    Console.WriteLine($"[DuckDuckGo] API å›æ‡‰éŒ¯èª¤: {response.StatusCode}");
                     return null;
                 }
 
@@ -91,7 +91,7 @@ namespace MusicBot2.Service
 
                 var results = new List<string>();
 
-                // Abstract (¥D­nºK­n)
+                // Abstract (ä¸»è¦æ‘˜è¦)
                 var abstractText = root.TryGetProperty("Abstract", out var abs) ? abs.GetString() : null;
                 if (!string.IsNullOrWhiteSpace(abstractText))
                 {
@@ -99,14 +99,14 @@ namespace MusicBot2.Service
                     results.Add($"[{source}] {abstractText}");
                 }
 
-                // Answer (ª½±µµª®×)
+                // Answer (ç›´æ¥ç­”æ¡ˆ)
                 var answer = root.TryGetProperty("Answer", out var ans) ? ans.GetString() : null;
                 if (!string.IsNullOrWhiteSpace(answer))
                 {
-                    results.Add($"[µª®×] {answer}");
+                    results.Add($"[ç­”æ¡ˆ] {answer}");
                 }
 
-                // RelatedTopics (¬ÛÃö¥DÃD¡A¨ú«e 3 ­Ó)
+                // RelatedTopics (ç›¸é—œä¸»é¡Œï¼Œæœ€å¤š 3 å€‹)
                 if (root.TryGetProperty("RelatedTopics", out var topics) && topics.ValueKind == JsonValueKind.Array)
                 {
                     int count = 0;
@@ -124,15 +124,15 @@ namespace MusicBot2.Service
 
                 if (results.Count == 0)
                 {
-                    // Instant Answer API ¨Sµ²ªG¡A¹Á¸Õ DuckDuckGo Lite
+                    // Instant Answer API æ²’æœ‰çµæœï¼Œæ”¹ç”¨ DuckDuckGo Lite
                     return await SearchLiteAsync(query);
                 }
 
                 var combined = string.Join("\n", results);
-                // ­­¨îªø«×
+                // æˆªæ–·éé•·
                 if (combined.Length > 800) combined = combined.Substring(0, 800) + "...";
 
-                Console.WriteLine($"[DuckDuckGo] §ä¨ì {results.Count} ±øµ²ªG");
+                Console.WriteLine($"[DuckDuckGo] æ‰¾åˆ° {results.Count} ç­†çµæœ");
                 return combined;
             }
             catch (Exception ex)
@@ -143,7 +143,7 @@ namespace MusicBot2.Service
         }
 
         /// <summary>
-        /// ³Æ´©¡G¨Ï¥Î DuckDuckGo Lite HTML ª©·j´M
+        /// å‚™æ´ï¼šä½¿ç”¨ DuckDuckGo Lite HTML çˆ¬æœå°‹çµæœ
         /// </summary>
         private async Task<string> SearchLiteAsync(string query)
         {
@@ -157,7 +157,7 @@ namespace MusicBot2.Service
 
                 var html = await response.Content.ReadAsStringAsync();
 
-                // Â²³æ¸ÑªR¡G¨ú¥X·j´Mµ²ªGªººK­n¤å¦r
+                // ç°¡å–®è§£æï¼šæŠ“å‡ºæœå°‹çµæœçš„æ‘˜è¦æ–‡å­—
                 var snippets = new List<string>();
                 var matches = Regex.Matches(html, @"<td[^>]*class=""result-snippet""[^>]*>(.*?)</td>", RegexOptions.Singleline);
 
@@ -177,7 +177,7 @@ namespace MusicBot2.Service
                 var combined = string.Join("\n", snippets);
                 if (combined.Length > 800) combined = combined.Substring(0, 800) + "...";
 
-                Console.WriteLine($"[DuckDuckGo Lite] §ä¨ì {snippets.Count} ±øµ²ªG");
+                Console.WriteLine($"[DuckDuckGo Lite] æ‰¾åˆ° {snippets.Count} ç­†çµæœ");
                 return combined;
             }
             catch (Exception ex)
