@@ -124,7 +124,7 @@ namespace MusicBot2.Service
 
                 if (results.Count == 0)
                 {
-                    // Instant Answer API 沒有結果，改用 DuckDuckGo Lite
+                    Console.WriteLine($"[DuckDuckGo] Instant Answer API 無結果，改用 Lite");
                     return await SearchLiteAsync(query);
                 }
 
@@ -172,7 +172,11 @@ namespace MusicBot2.Service
                     }
                 }
 
-                if (snippets.Count == 0) return null;
+                if (snippets.Count == 0)
+                {
+                    Console.WriteLine($"[DuckDuckGo Lite] 無結果（HTML 長度: {html.Length}）");
+                    return null;
+                }
 
                 var combined = string.Join("\n", snippets);
                 if (combined.Length > 800) combined = combined.Substring(0, 800) + "...";

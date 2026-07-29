@@ -530,7 +530,14 @@ namespace MusicBot2.Service
                     Console.WriteLine($"[OpenRouter] 偵測到查詢意圖，DuckDuckGo 搜尋: {searchQuery}");
                     var searchResult = await _searchService.SearchAsync(searchQuery);
                     if (!string.IsNullOrWhiteSpace(searchResult))
+                    {
                         searchContext = $"[網路搜尋結果 - 關鍵字: {searchQuery}]\n{searchResult}";
+                        Console.WriteLine($"[OpenRouter] DuckDuckGo 搜尋成功，字數: {searchResult.Length}");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"[OpenRouter] DuckDuckGo 搜尋無結果（null），不注入 context");
+                    }
                 }
                 catch (Exception ex)
                 {
