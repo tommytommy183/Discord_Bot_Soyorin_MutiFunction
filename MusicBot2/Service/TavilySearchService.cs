@@ -90,6 +90,7 @@ namespace MusicBot2.Service
                 if (combined.Length > 1200) combined = combined[..1200] + "...";
 
                 Console.WriteLine($"[Tavily] 找到 {parts.Count} 筆結果，字數: {combined.Length}");
+                Console.WriteLine($"[Tavily 內容預覽]\n{combined[..Math.Min(600, combined.Length)]}");
                 return combined;
             }
             catch (Exception ex)

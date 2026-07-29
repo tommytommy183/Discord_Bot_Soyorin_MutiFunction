@@ -106,9 +106,10 @@
 #### 🤖 AI / LLM 服務
 | API | Domain | 用途 |
 |-----|--------|------|
-| Google AI Studio (Gemini) | `generativelanguage.googleapis.com` | 主 LLM，支援 Gemini 2.0/2.5 系列模型 |
-| OpenRouter | `openrouter.ai` | 多家大模型 LLM（DeepSeek、Qwen 等） |
-| Groq Whisper | `api.groq.com` | 語音轉文字服務 |
+| Google AI Studio (Gemini) | `generativelanguage.googleapis.com` | 備用 LLM，支援 Gemini 2.0/2.5 系列模型 |
+| OpenRouter | `openrouter.ai` | 主 LLM（Soyo 對話、AI 搜尋意圖判斷） |
+| Groq Whisper | `api.groq.com` | 語音轉文字（STT） |
+| Tavily | `api.tavily.com` | AI-first 網路搜尋（聊天資料查詢注入） |
 
 #### 🎙️ TTS (文字轉語音)
 | API | Domain | 用途 |
@@ -157,9 +158,10 @@
 > 📄 完整 API 文檔請參考：[API_DOMAINS_SUMMARY.md](API_DOMAINS_SUMMARY.md)
 
 ### 部署
-- **平台**：Railway.app（Docker 容器化）
+- **平台**：Northflank（Docker 容器化）
+- **Redis**：Upstash Redis（TLS 連線）
 - **語音加密**：libdave + libsodium
-- **重啟策略**：失敗時自動重啟（最多 10 次）
+- **重啟策略**：失敗時自動重啟
 
 ---
 
@@ -198,27 +200,64 @@ newSoyo/
 
 ## 🐳 部署說明
 
-### 環境變數 / appsettings.json
-```json
-{
-  "Discord": { "Token": "..." },
-  "ElevenLabs": { "ApiKey": "..." },
-  "GoogleAIStudio": { "ApiKey": "...", "ApiKey2": "..." },
-  "OpenRouter": { "ApiKey": "..." },
-  "Redis": { "ConnectionString": "..." }
-}
+### Northflank
+
+1. **建立 Combined Service**（Build + Deploy 合一）
+2. **Build settings**
+   - Build type：`Dockerfile`
+   - Dockerfile path：`Dockerfile`（repo root）
+3. **Port**：不需要對外 port（純 Discord bot）
+4. **Resources**：建議至少 **1 GB RAM**（libdave 編譯階段耗用較多，初次 build 約 5–10 分鐘）
+5. **環境變數**（Northflank > Service > Environment）：
+
+```
+Discord__Token=
+Openrouter__ApiKey1=
+Tavily__ApiKey=
+ElevenLabs__ApiKey=
+FishAudio__ApiKey=
+Groq__ApiKey=
+GoogleAIStudio__dcBotKey1=
+GoogleAIStudio__dcBotKey2=
+Redis__ConnectionString=
+YT_DLP_COOKIES=
 ```
 
-### Docker 建構流程
-1. 編譯 libdave（Discord 語音加密）
-2. 建構 .NET 8 應用程式
-3. 組合 Runtime 映像（含 FFmpeg、Python 3、yt-dlp）
+> `.NET` 設定系統用雙底線 `__` 代替 JSON 的 `:` 分隔符。  
+> 例如 `Openrouter:ApiKey1` → 環境變數寫 `Openrouter__ApiKey1`。
+
+---
+
+### Upstash Redis
+
+1. 前往 [console.upstash.com](https://console.upstash.com) 建立 Redis database
+2. 選擇離 Northflank 部署最近的 Region（降低延遲）
+3. **連線字串格式**（StackExchange.Redis）：
+
+```
+{host}:{port},password={password},ssl=True,abortConnect=false,ConnectTimeout=10000,ConnectRetry=3
+```
+
+4. 填入環境變數 `Redis__ConnectionString`
+
+> **注意**：Upstash 強制 TLS，連線字串必須加 `ssl=True`。  
+> 免費方案每日 10,000 次請求，生產環境建議 Pay-as-you-go。
+
+---
 
 ### 本地開發
+
 ```bash
 cd MusicBot2
 dotnet run
 ```
+
+設定檔：`MusicBot2/appsettings.json`（不要 commit）。
+
+### Docker 建構流程
+1. 編譯 libdave（Discord DAVE E2EE 語音加密函式庫）
+2. 建構 .NET 8 應用程式（linux-x64）
+3. 組合 Runtime 映像（含 FFmpeg、Python 3、yt-dlp、libsodium、libopus）
 
 ---
 
