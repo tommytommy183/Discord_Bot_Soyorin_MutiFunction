@@ -56,7 +56,7 @@ public class Program
     public bool IsTtsEnabled => _isTtsEnabled;
     public void ToggleTts() => _isTtsEnabled = !_isTtsEnabled;
     private List<ulong> passBotList = new List<ulong> 
-    {   1499768328586002473, //魚骨頭
+    {   //1499768328586002473, //魚骨頭
         1286491383426711563, //soyo自己的，這樣才能讀到之前的訊息
     }; // 這裡放置要排除的 Bot ID
     #endregion
