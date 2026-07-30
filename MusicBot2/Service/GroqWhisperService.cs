@@ -88,6 +88,12 @@ namespace MusicBot2.Service
                 // Discord 語音解碼後是 48kHz 16-bit 立體聲 PCM，必須包上 WAV header Groq 才讀得懂
                 var wavData = CreateWavFile(pcmData);
 
+                // 診斷 log：確認 WAV 是否正確
+                var headerHex = string.Join(" ", wavData.Take(44).Select(b => b.ToString("X2")));
+                var nonZero = pcmData.Count(b => b != 0);
+                Console.WriteLine($"[GroqWhisper Diag] PCM={pcmData.Length}B  WAV={wavData.Length}B  non-zero={nonZero}/{pcmData.Length}");
+                Console.WriteLine($"[GroqWhisper Diag] WAV header(44B): {headerHex}");
+
                 using var formData = new MultipartFormDataContent();
                 using var fileContent = new ByteArrayContent(wavData);
                 fileContent.Headers.ContentType = new MediaTypeHeaderValue("audio/wav");
