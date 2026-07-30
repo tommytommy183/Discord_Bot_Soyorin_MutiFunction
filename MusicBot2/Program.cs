@@ -875,21 +875,24 @@ public class Program
             var recentMessages = await message.Channel.GetMessagesAsync(message, Direction.Before, 5).FlattenAsync();
             var contextMessages = recentMessages.Where(m => !m.Author.IsBot || passBotList.Contains(m.Author.Id)).ToList();
 
-            if (message.Reference != null)
+            using (message.Channel.EnterTypingState())
             {
-                var repliedMessage = await message.Channel.GetMessageAsync(message.Reference.MessageId.Value);
-                if (repliedMessage != null)
+                if (message.Reference != null)
                 {
-                    result = await _openRouterService.GenerateTextAsync(message.Content, talker, true, channelKey, repliedMessage, contextMessages);
+                    var repliedMessage = await message.Channel.GetMessageAsync(message.Reference.MessageId.Value);
+                    if (repliedMessage != null)
+                    {
+                        result = await _openRouterService.GenerateTextAsync(message.Content, talker, true, channelKey, repliedMessage, contextMessages);
+                        await HandleSoyoResponseAsync(result, message, talker);
+                        return;
+                    }
+                }
+                else
+                {
+                    result = await _openRouterService.GenerateTextAsync(message.Content, talker, true, channelKey, null, contextMessages);
                     await HandleSoyoResponseAsync(result, message, talker);
                     return;
                 }
-            }
-            else
-            {
-                result = await _openRouterService.GenerateTextAsync(message.Content, talker, true, channelKey, null, contextMessages);
-                await HandleSoyoResponseAsync(result, message, talker);
-                return;
             }
         }
 
