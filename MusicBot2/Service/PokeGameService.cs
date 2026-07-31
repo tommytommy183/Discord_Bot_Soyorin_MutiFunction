@@ -1257,16 +1257,33 @@ namespace MusicBot2.Service
 HP為0就是真的死亡，不會再有後續動作
 最後請在描述的最後一行明確說明勝者是誰，格式為「勝者：[玩家名稱]」";
 
-                // 呼叫 AI 判斷對戰結果
+                // Phase 1：生成對戰劇情
                 var aiResponse = await _aiService.GenerateSimpleTextAsync(battlePrompt);
 
-                // 解析 AI 回應，判斷勝者
+                // Phase 2：從劇情萃取勝者
                 bool player1Wins = aiResponse.Contains($"勝者：{player1Name}") ||
                                    aiResponse.Contains($"勝者: {player1Name}");
+                bool player2Wins = aiResponse.Contains($"勝者：{player2Name}") ||
+                                   aiResponse.Contains($"勝者: {player2Name}");
 
-                // 如果 AI 沒有明確指出勝者，則根據數值判斷
-                if (!player1Wins && !aiResponse.Contains($"勝者：{player2Name}") && !aiResponse.Contains($"勝者: {player2Name}"))
+                if (!player1Wins && !player2Wins)
                 {
+                    // AI 沒有明確寫勝者格式，用第二個 call 從劇情判斷
+                    Console.WriteLine($"[PokeGame] 劇情未含勝者格式，啟動 Phase2 萃取勝者");
+                    var winnerExtractPrompt =
+                        $"以下是一段寶可夢對戰描述，對戰雙方是「{player1Name}」和「{player2Name}」。\n" +
+                        $"請只回覆勝利者的名字（只能是「{player1Name}」或「{player2Name}」其中之一），不要任何其他文字。\n\n" +
+                        $"{aiResponse}";
+                    var winnerResult = (await _aiService.GenerateSimpleTextAsync(winnerExtractPrompt))?.Trim();
+                    Console.WriteLine($"[PokeGame] Phase2 萃取結果: {winnerResult}");
+                    player1Wins = winnerResult?.Contains(player1Name) == true;
+                    player2Wins = !player1Wins && (winnerResult?.Contains(player2Name) == true);
+                }
+
+                // Phase2 仍無法判斷時，才用數值 fallback
+                if (!player1Wins && !player2Wins)
+                {
+                    Console.WriteLine($"[PokeGame] 無法從劇情判斷勝者，使用數值 fallback");
                     int pokemon1Total = pokemon1.HP + pokemon1.Attack + pokemon1.Defense +
                                        pokemon1.SpecialAttack + pokemon1.SpecialDefense + pokemon1.Speed +
                                        pokemon2.HP + pokemon2.Attack + pokemon2.Defense +
