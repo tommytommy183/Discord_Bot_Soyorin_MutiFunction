@@ -373,15 +373,18 @@ namespace MusicBot2.Service
         }
 
         // ── 事件池（帶選項） ──────────────────────────────────────
-        private record EventChoice(string Label, string Emoji, Func<TowerRun, string> Apply);
+        private record EventChoice(string Label, string Emoji, Func<TowerRun, Task<string>> Apply);
         private record EventDef(string Title, string Emoji, string Desc, List<EventChoice> Choices);
+        // 同步 choice 的語法糖
+        private static EventChoice C(string label, string emoji, Func<TowerRun, string> f)
+            => new(label, emoji, run => Task.FromResult(f(run)));
 
         private static readonly List<EventDef> _events = new()
         {
             new("神秘寶箱女", "🎁",
                 "前方寶箱有一位白色雙馬尾的精靈困在其中，該做什麼呢?",
                 new() {
-                    new("🔓 解救精靈少女", "🔓", run => {
+                    C("🔓 解救精靈少女", "🔓", run => {
                         if (_rng.Next(4) == 0) {
                             int dmg = Math.Max(1, (int)(run.ActivePokemon.MaxHP * 0.12));
                             run.ActivePokemon.CurrentHP = Math.Max(1, run.ActivePokemon.CurrentHP - dmg);
@@ -390,13 +393,13 @@ namespace MusicBot2.Service
                         int g = _rng.Next(25, 65); run.Gold += g;
                         return $"白髮少女很開心，送了你 **{g} 金幣**！";
                     }),
-                    new("🚶 當作沒看到", "🚶", run => "背後傳來好黑喔好可怕喔的聲音"),
+                    C("🚶 當作沒看到", "🚶", run => "背後傳來好黑喔好可怕喔的聲音"),
                 }),
 
             new("神秘藥水", "💊",
                 "地上有一瓶不明藥水，上面的標籤已經模糊不清。要喝嗎？",
                 new() {
-                    new("💊 直接喝下", "💊", run => {
+                    C("💊 直接喝下", "💊", run => {
                         if (_rng.Next(5) == 0) {
                             int dmg = Math.Max(1, (int)(run.ActivePokemon.MaxHP * 0.20));
                             run.ActivePokemon.CurrentHP = Math.Max(1, run.ActivePokemon.CurrentHP - dmg);
@@ -406,27 +409,27 @@ namespace MusicBot2.Service
                         run.ActivePokemon.CurrentHP = Math.Min(run.ActivePokemon.MaxHP, run.ActivePokemon.CurrentHP + h);
                         return $"💚 **{run.ActivePokemon.DisplayName}** 恢復了 **{h} HP**！";
                     }),
-                    new("👃 先聞一聞", "👃", run => {
+                    C("👃 先聞一聞", "👃", run => {
                         int h = Math.Max(1, run.ActivePokemon.MaxHP / 4);
                         run.ActivePokemon.CurrentHP = Math.Min(run.ActivePokemon.MaxHP, run.ActivePokemon.CurrentHP + h);
                         return $"🌿 小心地喝了一點，恢復了 **{h} HP**（保守做法）。";
                     }),
-                    new("🚫 不碰它", "🚫", run => "謹慎地繞過，繼續前進。"),
+                    C("🚫 不碰它", "🚫", run => "謹慎地繞過，繼續前進。"),
                 }),
 
             new("能量泉", "⛲",
                 "發現了一處散發神秘光芒的泉水，帶來陣陣清涼感……",
                 new() {
-                    new("🏊 整隻泡進去", "🏊", run => {
+                    C("🏊 整隻泡進去", "🏊", run => {
                         run.ActivePokemon.CurrentHP = run.ActivePokemon.MaxHP;
                         foreach (var m in run.ActivePokemon.Moves) m.CurrentPP = m.MaxPP;
                         return $"✨ **{run.ActivePokemon.DisplayName}** HP 和 PP **完全恢復**！";
                     }),
-                    new("💧 只喝一口", "💧", run => {
+                    C("💧 只喝一口", "💧", run => {
                         foreach (var m in run.ActivePokemon.Moves) m.CurrentPP = m.MaxPP;
                         return $"🔋 **{run.ActivePokemon.DisplayName}** 的所有技能 **PP 完全恢復**！";
                     }),
-                    new("💰 裝一瓶帶走", "💰", run => {
+                    C("💰 裝一瓶帶走", "💰", run => {
                         int g = _rng.Next(20, 45); run.Gold += g;
                         return $"💰 把神奇泉水賣給了商人，獲得 **{g} 金幣**！";
                     }),
@@ -435,7 +438,7 @@ namespace MusicBot2.Service
             new("遺落的技能機", "📀",
                 "地上有一台廢棄的技能學習機，螢幕還微微發亮。要讓誰學嗎？",
                 new() {
-                    new("📀 立刻使用", "📀", run => {
+                    C("📀 立刻使用", "📀", run => {
                         var pool = PickMovesStatic(run.ActivePokemon.Types);
                         var nm = pool.FirstOrDefault(m => run.ActivePokemon.Moves.All(e => e.Name != m.Name)) ?? pool[0];
                         int slot = run.ActivePokemon.Moves.Select((m,i)=>(m,i)).OrderBy(x=>x.m.Power).First().i;
@@ -443,17 +446,17 @@ namespace MusicBot2.Service
                         run.ActivePokemon.Moves[slot] = nm;
                         return $"📀 忘掉了 **{old}**，學會了 {nm.Emoji}**{nm.Name}**！";
                     }),
-                    new("💰 賣給商人", "💰", run => {
+                    C("💰 賣給商人", "💰", run => {
                         int g = _rng.Next(15, 30); run.Gold += g;
                         return $"💰 把技能機賣了，獲得 **{g} 金幣**！";
                     }),
-                    new("🚶 不需要", "🚶", run => "留下了技能機，繼續前進。"),
+                    C("🚶 不需要", "🚶", run => "留下了技能機，繼續前進。"),
                 }),
 
             new("神秘陷阱", "🕳️",
                 "前方有些不對勁……地上有奇怪的痕跡，可能是陷阱。",
                 new() {
-                    new("🏃 直接衝過去", "🏃", run => {
+                    C("🏃 直接衝過去", "🏃", run => {
                         if (_rng.Next(2) == 0) {
                             int dmg = Math.Max(1, (int)(run.ActivePokemon.MaxHP * 0.18));
                             run.ActivePokemon.CurrentHP = Math.Max(1, run.ActivePokemon.CurrentHP - dmg);
@@ -461,18 +464,18 @@ namespace MusicBot2.Service
                         }
                         return "😌 運氣不錯，沒觸發陷阱！";
                     }),
-                    new("🔍 仔細調查", "🔍", run => {
+                    C("🔍 仔細調查", "🔍", run => {
                         int dmg = Math.Max(1, (int)(run.ActivePokemon.MaxHP * 0.06));
                         run.ActivePokemon.CurrentHP = Math.Max(1, run.ActivePokemon.CurrentHP - dmg);
                         return $"🔧 拆除了陷阱，但稍微受傷，損失 **{dmg}** HP。";
                     }),
-                    new("↩️ 繞遠路", "↩️", run => "繞了一大圈，安全通過，但浪費了時間。"),
+                    C("↩️ 繞遠路", "↩️", run => "繞了一大圈，安全通過，但浪費了時間。"),
                 }),
 
             new("壞訓練師", "😈",
                 "一個兇神惡煞的訓練師攔住了去路，想要搶奪財物！",
                 new() {
-                    new("⚔️ 正面對抗", "⚔️", run => {
+                    C("⚔️ 正面對抗", "⚔️", run => {
                         if (_rng.Next(2) == 0) {
                             return $"💪 成功擊退了壞訓練師！金幣完整保留（共 {run.Gold}💰）。";
                         }
@@ -480,12 +483,12 @@ namespace MusicBot2.Service
                         run.ActivePokemon.CurrentHP = Math.Max(1, run.ActivePokemon.CurrentHP - dmg);
                         return $"😓 對抗失敗，損失 **{dmg}** HP，但保住了金幣。";
                     }),
-                    new("💰 乖乖交出", "💰", run => {
+                    C("💰 乖乖交出", "💰", run => {
                         int lost = Math.Min(run.Gold, _rng.Next(10, 25));
                         run.Gold -= lost;
                         return $"😞 交出了 **{lost} 金幣**，但全身而退。（剩餘 {run.Gold}💰）";
                     }),
-                    new("🏃 拔腿就跑", "🏃", run => {
+                    C("🏃 拔腿就跑", "🏃", run => {
                         if (_rng.Next(3) == 0) {
                             int lost = Math.Min(run.Gold, _rng.Next(5, 15));
                             run.Gold -= lost;
@@ -498,7 +501,7 @@ namespace MusicBot2.Service
             new("遇到一個穿著綠色班服的神祕腳踏車大盜", "😈",
                 "他偷偷繞到你的背後，想偷你的腳踏車但發現你沒有，所以偷了你的錢！",
                 new() {
-                    new("💰 哭阿，下次一定在朝會狠狠的教訓你", "💰", run => {
+                    C("💰 哭阿，下次一定在朝會狠狠的教訓你", "💰", run => {
                         int lost = Math.Min(run.Gold, _rng.Next(10, 25));
                         run.Gold -= lost;
                         return $"😞 失去了 **{lost} 金幣**。（剩餘 {run.Gold}💰）";
@@ -508,16 +511,16 @@ namespace MusicBot2.Service
             new("精靈的祝福", "🌟",
                 "傳說中的精靈現身，散發著溫暖的光芒，似乎願意賜予祝福……",
                 new() {
-                    new("🙏 接受完整祝福", "🙏", run => {
+                    C("🙏 接受完整祝福", "🙏", run => {
                         run.ActivePokemon.CurrentHP = run.ActivePokemon.MaxHP;
                         foreach (var m in run.ActivePokemon.Moves) m.CurrentPP = m.MaxPP;
                         return $"🌟 **{run.ActivePokemon.DisplayName}** HP 和 PP **完全恢復**！";
                     }),
-                    new("💰 求賜財富", "💰", run => {
+                    C("💰 求賜財富", "💰", run => {
                         int g = _rng.Next(30, 70); run.Gold += g;
                         return $"💰 精靈賜予了 **{g} 金幣**！";
                     }),
-                    new("🎾 求賜精靈球", "🎾", run => {
+                    C("🎾 求賜精靈球", "🎾", run => {
                         run.Balls["super"] = run.Balls.GetValueOrDefault("super") + 2;
                         return "🔵 精靈賜予了 **超級球×2**！";
                     }),
@@ -526,14 +529,14 @@ namespace MusicBot2.Service
             new("迷失樹林", "🌲",
                 "四周全是樹，完全迷失了方向。要怎麼辦？",
                 new() {
-                    new("🧭 仔細找路", "🧭", run => {
+                    C("🧭 仔細找路", "🧭", run => {
                         if (_rng.Next(2) == 0) {
                             int g = _rng.Next(10, 30); run.Gold += g;
                             return $"🍄 在林中找到了珍稀藥草，換了 **{g} 金幣**！";
                         }
                         return "😵‍💫 耗費了許多時間，什麼也沒找到。";
                     }),
-                    new("🏃 靠直覺衝", "🏃", run => {
+                    C("🏃 靠直覺衝", "🏃", run => {
                         if (_rng.Next(3) == 0) {
                             int dmg = Math.Max(1, (int)(run.ActivePokemon.MaxHP * 0.10));
                             run.ActivePokemon.CurrentHP = Math.Max(1, run.ActivePokemon.CurrentHP - dmg);
@@ -541,7 +544,7 @@ namespace MusicBot2.Service
                         }
                         return "😤 靠著直覺走出了樹林！";
                     }),
-                    new("😴 先休息", "😴", run => {
+                    C("😴 先休息", "😴", run => {
                         int h = Math.Max(1, run.ActivePokemon.MaxHP / 5);
                         run.ActivePokemon.CurrentHP = Math.Min(run.ActivePokemon.MaxHP, run.ActivePokemon.CurrentHP + h);
                         foreach (var m in run.ActivePokemon.Moves) m.CurrentPP = m.MaxPP;
@@ -552,17 +555,17 @@ namespace MusicBot2.Service
             new("老修行者", "🧙",
                 "一位鶴髮童顏的老修行者攔住了去路，似乎想傳授些什麼。",
                 new() {
-                    new("📚 聆聽教誨", "📚", run => {
+                    C("📚 聆聽教誨", "📚", run => {
                         int g = _rng.Next(25, 55); run.Gold += g;
                         return $"🧠 從修行者的智慧中獲益，收到 **{g} 金幣** 作為旅費。";
                     }),
-                    new("💊 請求療傷", "💊", run => {
+                    C("💊 請求療傷", "💊", run => {
                         int h = Math.Max(1, run.ActivePokemon.MaxHP / 2);
                         run.ActivePokemon.CurrentHP = Math.Min(run.ActivePokemon.MaxHP, run.ActivePokemon.CurrentHP + h);
                         foreach (var m in run.ActivePokemon.Moves) m.CurrentPP = m.MaxPP;
                         return $"🌿 修行者替 **{run.ActivePokemon.DisplayName}** 療傷，恢復 **{h} HP** + PP 全回！";
                     }),
-                    new("📀 求教技能", "📀", run => {
+                    C("📀 求教技能", "📀", run => {
                         var pool = PickMovesStatic(run.ActivePokemon.Types);
                         var nm = pool.FirstOrDefault(m => run.ActivePokemon.Moves.All(e => e.Name != m.Name)) ?? pool[0];
                         int slot = run.ActivePokemon.Moves.Select((m,i)=>(m,i)).OrderBy(x=>x.m.Power).First().i;
@@ -575,12 +578,12 @@ namespace MusicBot2.Service
             new("廢棄的球工廠", "🏭",
                 "發現了一間廢棄的精靈球工廠，倉庫裡還有些存貨……",
                 new() {
-                    new("⚽ 拿普通球", "⚽", run => {
+                    C("⚽ 拿普通球", "⚽", run => {
                         int n = _rng.Next(3, 7);
                         run.Balls["normal"] = run.Balls.GetValueOrDefault("normal") + n;
                         return $"⚽ 找到了 **普通球×{n}**！";
                     }),
-                    new("🔍 深入搜索", "🔍", run => {
+                    C("🔍 深入搜索", "🔍", run => {
                         if (_rng.Next(3) == 0) {
                             run.Balls["ultra"] = run.Balls.GetValueOrDefault("ultra") + 1;
                             return "🟡 在深處找到了稀有的 **高級球×1**！";
@@ -589,7 +592,7 @@ namespace MusicBot2.Service
                         run.Balls["super"] = run.Balls.GetValueOrDefault("super") + n;
                         return $"🔵 找到了 **超級球×{n}**！";
                     }),
-                    new("💰 全部變現", "💰", run => {
+                    C("💰 全部變現", "💰", run => {
                         int g = _rng.Next(15, 35); run.Gold += g;
                         return $"💰 把找到的球賣掉，獲得 **{g} 金幣**！";
                     }),
@@ -598,13 +601,13 @@ namespace MusicBot2.Service
             new("神秘外星人", "<:kc1:1511607011253551194>",
                 "遇到一位妹妹頭綠色觸角皮膚黑黑的外星人，她似乎有些東西想交換。",
                 new() {
-                    new("💰 以金換物", "💰", run => {
+                    C("💰 以金換物", "💰", run => {
                         if (run.Gold < 15) return "💸 金幣不足，外星人失望地離開了。";
                         run.Gold -= 15;
                         run.Balls["super"] = run.Balls.GetValueOrDefault("super") + 2;
                         return "🔵 花了 **15 金幣** 換到 **超級球×2**！";
                     }),
-                    new("🎁 直接交換", "🎁", run => {
+                    C("🎁 直接交換", "🎁", run => {
                         if (_rng.Next(2) == 0) {
                             run.Balls["ultra"] = run.Balls.GetValueOrDefault("ultra") + 1;
                             return "🟡 運氣好！獲得了 **高級球×1**！";
@@ -612,13 +615,13 @@ namespace MusicBot2.Service
                         run.Balls["normal"] = run.Balls.GetValueOrDefault("normal") + 3;
                         return "⚽ 交換到了 **普通球×3**。";
                     }),
-                    new("🚶 不感興趣", "🚶", run => "外星人抖了抖觸角便離開了。"),
+                    C("🚶 不感興趣", "🚶", run => "外星人抖了抖觸角便離開了。"),
                 }),
 
             new("神秘長脖男", "<:541105947435859978:1526117158831001742>",
                 "前方出現一顆頭飄在空中，定睛一看才發現是一個人，他似乎說了些甚麼。",
                 new() {
-                    new("📀 這個增幅裝置不能虧，鬼轉ap", "📀", run => {
+                    C("📀 這個增幅裝置不能虧，鬼轉ap", "📀", run => {
                         var pool = PickMovesStatic(run.ActivePokemon.Types);
                         var nm = pool.FirstOrDefault(m => run.ActivePokemon.Moves.All(e => e.Name != m.Name)) ?? pool[0];
                         int slot = run.ActivePokemon.Moves.Select((m,i)=>(m,i)).OrderBy(x=>x.m.Power).First().i;
@@ -626,12 +629,12 @@ namespace MusicBot2.Service
                         run.ActivePokemon.Moves[slot] = nm;
                         return $"📀 忘掉了 **{old}**，學會了 {nm.Emoji}**{nm.Name}**！";
                     }),
-                    new("🎁 這邊獎勵一把食魂者ap特朗德", "🎁", run => {
+                    C("🎁 這邊獎勵一把食魂者ap特朗德", "🎁", run => {
                         int lost = Math.Min(run.Gold, _rng.Next(10, 25));
                         run.Gold -= lost;
                         return $"😞 輸了，失去了 **{lost} 金幣**。（剩餘 {run.Gold}💰）";
                     }),
-                    new("🔍 一起研究扶他知識，撰寫論文", "🔍", run => {
+                    C("🔍 一起研究扶他知識，撰寫論文", "🔍", run => {
                         if (_rng.Next(4) == 0) {
                             int dmg = Math.Max(1, (int)(run.ActivePokemon.MaxHP * 0.12));
                             run.ActivePokemon.CurrentHP = Math.Max(1, run.ActivePokemon.CurrentHP - dmg);
@@ -641,10 +644,98 @@ namespace MusicBot2.Service
                         return $"論文火了，後續甚至登上各大新聞版面，賺到了 **{g} 金幣**！";
                     }),
                 }),
+
+            new("神秘鳥巢頭", "<:540922644267270154:1526117156641706044>",
+                "有一個看起來很邋遢的留著鳥巢頭的大叔，他一看到你就開始哭著對你說:",
+                new() {
+                    C("📀 真的好想玩活俠傳阿哈阿哈2ㄏ2ㄏ，甚麼時候才要更新阿", "📀", run => {
+                        if (_rng.Next(10) == 0) {
+                            int dmg = Math.Max(1, (int)(run.ActivePokemon.MaxHP * 0.12));
+                            run.ActivePokemon.CurrentHP = Math.Max(1, run.ActivePokemon.CurrentHP - dmg);
+                            return $"💥 你跟他說反正$也用不到不如給我，結果**{run.ActivePokemon.DisplayName}** 就被痛打一頓，受到 **{dmg}** 傷害後快速跑走了";
+                        }
+                        int g = _rng.Next(25, 65); run.Gold += g;
+                        return $"你跟他說反正$也用不到不如給我，他覺得滿有道理的，送了你 **{g} 金幣**！";
+                    }),
+                    C("😩 怎麼會有人一直花錢買pokemon的遊戲啊，10年來從沒換過诶", "😩", run => {
+                        run.Balls["super"] = run.Balls.GetValueOrDefault("super") + 2;
+                        return $"🔵 他一邊哭一邊還是買下了最新版的pokemon，你獲得了他的**超級球×{2}**！";
+                    }),
+                    C("😴 想不想來一局緊張又刺激的指令卡戰鬥阿? 2026最好玩的遊戲喔", "😴", run => {
+                        int h = Math.Max(1, run.ActivePokemon.MaxHP / 5);
+                        run.ActivePokemon.CurrentHP = Math.Min(run.ActivePokemon.MaxHP, run.ActivePokemon.CurrentHP + h);
+                        foreach (var m in run.ActivePokemon.Moves) m.CurrentPP = m.MaxPP;
+                        return $"💤 你陪他玩了一下，但真的太無聊你不小心睡著了，寶可夢成功回血，恢復了 **{h} HP** 和 **全部 PP**！";
+                    }),
+                }),
+
+            new("神秘拉弓男", "<:404439235290988544:1526117155127562320>",
+                "你看到了一位在路邊練習拉弓的人，他看到妳後射掉你頭上的蘋果，",
+                new() {
+                    C("🪪 可以借我看一下你的健保卡嗎?", "🪪", run => {
+                        int dmg = Math.Max(1, (int)(run.ActivePokemon.MaxHP * 0.15));
+                        run.ActivePokemon.CurrentHP = Math.Max(1, run.ActivePokemon.CurrentHP - dmg);
+                        return $"😨 他直接笑你長得像外星人，你後來還被做成Discord貼圖！**{run.ActivePokemon.DisplayName}** 受到嚴重心靈傷害 **{dmg}** 點。";
+                    }),
+                    C("🎮 這把認真局ok吧?", "🎮", run => {
+                        if (_rng.Next(2) == 0) {
+                            int g = _rng.Next(25, 55); run.Gold += g;
+                            return $"⚔️ 他一邊說著要認真一邊拿出雙刀流柔伊，但在一番努力下你贏了，獲得 **{g} 金幣**！";
+                        }
+                        int lost = Math.Min(run.Gold, _rng.Next(15, 35));
+                        run.Gold -= lost;
+                        return $"😔 完全沒辦法，輸了一把，扣了 **{lost} 金幣**。（剩餘 {run.Gold}💰）";
+                    }),
+                    C("🩺 還敢趁我不在偷偷用索拉卡贏遊戲喔?", "🩺", run => {
+                        run.Balls["super"] = run.Balls.GetValueOrDefault("super") + 2;
+                        return "🔵 你趁他不在的時候趕快用索拉卡贏了一把，獲得 **超級球×2**！";
+                    }),
+                }),
+
+            new("神秘綠帽男", "<:325482625127153664:1526117110667804836>",
+                "你走一走路不小心踢到東西，低頭才發現原來是一個戴著帽子的人，他跟你介紹了他的貓芝麻",
+                new() {
+                    C("💕 他問妳是不是純愛黨?", "💕", run => {
+                        if (_rng.Next(2) == 0) {
+                            int g = _rng.Next(40, 80); run.Gold += g;
+                            return $"🥰 你說是！他非常開心，大方地給了你 **{g} 金幣**！";
+                        }
+                        var victim = run.Party.Count > 1
+                            ? run.Party[_rng.Next(run.Party.Count)]
+                            : run.ActivePokemon;
+                        victim.CurrentHP = 0;
+                        return $"😱 你說不是！他暴怒，直接把 **{victim.DisplayName}** 打倒了！";
+                    }),
+                    C("⚔️ 他說這把他會秀給你看", "⚔️", run => {
+                        run.Gold += 19;
+                        return "🏆 他完成了傳說 **1/9/2 牙膏**，感動地分給你 **19.2 金幣**（取整數19）！";
+                    }),
+                    C("💬 跟他講一講話…", "💬", run => "🫥 你跟他講一講話發現人不見了，又不見了，後來喊了他好幾下也沒有回應，無事發生。"),
+                }),
+
+            new("神秘程式男", "<:415032840925741056:1526117153307103282>",
+                "在你準備登上下一層時，你看到了一個人在路邊推銷其他人使用自己的soyo機器人，你靠近看了看，",
+                new() {
+                    new("💬 上前搭話", "💬", async run => {
+                        if (_aiService == null) return "（Soyo 你怎麼又似了啦……）";
+                        string prompt = $"你是一個名叫Soyo的可愛Discord機器人助手，個性活潑親切，說話帶有一點點傲嬌。有人在神秘塔的路上遇到了正在推銷你的程式男，並走上來搭話。請用繁體中文，以Soyo的口吻，隨機說一句有趣的自我介紹或推銷詞，不超過60字。";
+                        string reply = await _aiService.GenerateSimpleTextAsync(prompt);
+                        return $"🤖 Soyo 機器人：「{reply.Trim()}」";
+                    }),
+                    new("🎮 試用看看", "🎮", async run => {
+                        if (_aiService == null) return "（系統錯誤：找不到 Soyo……）";
+                        string prompt = $"你是Soyo，一個可愛的Discord機器人。有人想試用你，請用繁體中文給出一個簡短的寶可夢爬塔小技巧或鼓勵的話，不超過50字，口氣要俏皮可愛。";
+                        string tip = await _aiService.GenerateSimpleTextAsync(prompt);
+                        return $"💡 Soyo 給的小提示：「{tip.Trim()}」";
+                    }),
+                    C("🚶 裝沒看見，繼續趕路", "🚶", run => "你假裝沒看到，快步離開，背後傳來「欸欸欸你要不要試試看～」的聲音……"),
+                }),
         };
 
+        private static OpenRouterService _aiService;
+
         // ── Constructor ────────────────────────────────────────
-        public PokeTowerService(string redisConnectionString = null)
+        public PokeTowerService(string redisConnectionString = null, OpenRouterService aiService = null)
         {
             if (!string.IsNullOrWhiteSpace(redisConnectionString))
             {
@@ -657,6 +748,7 @@ namespace MusicBot2.Service
                 }
                 catch (Exception ex) { Console.WriteLine($"[Tower] Redis 連線失敗: {ex.Message}"); }
             }
+            _aiService = aiService;
             _ = LoadRunsAsync();
         }
 
@@ -1065,7 +1157,7 @@ namespace MusicBot2.Service
                 return ErrEmbed("無效的選項");
 
             var choice = ev.Choices[choiceIdx];
-            string result = choice.Apply(run);
+            string result = await choice.Apply(run);
             run.RunLog.Add($"{ev.Emoji} 第{run.CurrentFloor}層【{ev.Title}】→ {choice.Label}");
             run.PendingEventIdx = -1;
             run.State = TowerRunState.SelectingPath;

@@ -144,7 +144,7 @@ public class Program
             .AddSingleton<GroqWhisperService>(sp =>
                 new GroqWhisperService(groqApiKey))
             .AddSingleton<PokeTowerService>(sp =>
-                new PokeTowerService(redisConn))
+                new PokeTowerService(redisConn, sp.GetService<OpenRouterService>()))
               .BuildServiceProvider();
 
         _googleAIStudioService = _services.GetRequiredService<GoogleAIStudioService>();
