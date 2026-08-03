@@ -792,7 +792,7 @@ public class Program
                 case "猜單字":
                     {
                         var svc = _services.GetRequiredService<WordGuessingService>();
-                        var txt = await svc.Guess(channel, "", talker);
+                        var txt = await svc.Guess(channel, "", talker,"");
                         if (!string.IsNullOrWhiteSpace(txt))
                             await channel.SendMessageAsync(txt);
                         break;
