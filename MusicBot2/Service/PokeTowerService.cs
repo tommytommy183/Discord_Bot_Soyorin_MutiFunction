@@ -111,6 +111,9 @@ namespace MusicBot2.Service
         public Dictionary<string, int> Balls { get; set; } = new() { ["normal"] = 10 };
         public int PendingEventIdx { get; set; } = -1;
         public HashSet<int> UsedEventIndices { get; set; } = new();
+        public int Level { get; set; } = 1;
+        public int Exp { get; set; } = 0;
+        public int ExpToNext => Level * 60;
     }
 
     public class PokeTowerService
@@ -404,16 +407,14 @@ namespace MusicBot2.Service
                         if (_rng.Next(5) == 0) {
                             int dmg = Math.Max(1, (int)(run.ActivePokemon.MaxHP * 0.20));
                             run.ActivePokemon.CurrentHP = Math.Max(1, run.ActivePokemon.CurrentHP - dmg);
-                            return $"😨 是毒藥！**{run.ActivePokemon.DisplayName}** 損失 **{dmg}** HP！";
+                            return $"😨 是毒藥！**{run.ActivePokemon.DisplayName}** 損失 **{dmg}** HP！（只有先發吃到）";
                         }
-                        int h = Math.Max(1, run.ActivePokemon.MaxHP / 2);
-                        run.ActivePokemon.CurrentHP = Math.Min(run.ActivePokemon.MaxHP, run.ActivePokemon.CurrentHP + h);
-                        return $"💚 **{run.ActivePokemon.DisplayName}** 恢復了 **{h} HP**，而你的身材雖然縮小了，頭腦還是原來的名偵探！";
+                        foreach (var p in run.Party) p.CurrentHP = Math.Min(p.MaxHP, p.CurrentHP + Math.Max(1, p.MaxHP / 2));
+                        return "💚 **全隊**恢復約 50% HP，而你的身材雖然縮小了，頭腦還是原來的名偵探！";
                     }),
                     C("👃 先聞一聞", "👃", run => {
-                        int h = Math.Max(1, run.ActivePokemon.MaxHP / 4);
-                        run.ActivePokemon.CurrentHP = Math.Min(run.ActivePokemon.MaxHP, run.ActivePokemon.CurrentHP + h);
-                        return $"🌿 小心地吃了一點，恢復了 **{h} HP**。";
+                        foreach (var p in run.Party) p.CurrentHP = Math.Min(p.MaxHP, p.CurrentHP + Math.Max(1, p.MaxHP / 4));
+                        return "🌿 小心地吃了一點，**全隊**恢復約 25% HP。";
                     }),
                     C("🚫 不碰它", "🚫", run => "謹慎地繞過，繼續前進，珍愛生命，遠離梯歐歪立。"),
                 }),
@@ -422,13 +423,12 @@ namespace MusicBot2.Service
                 "發現了超大鍋的鼎王麻辣鍋，你看著你的寶可夢……",
                 new() {
                     C("🏊 整隻泡進去", "🏊", run => {
-                        run.ActivePokemon.CurrentHP = run.ActivePokemon.MaxHP;
-                        foreach (var m in run.ActivePokemon.Moves) m.CurrentPP = m.MaxPP;
-                        return $"✨ 冰水一壺冰水一壺 豆腐鴨血豆腐鴨血就飽啦，**{run.ActivePokemon.DisplayName}** HP 和 PP **完全恢復**！";
+                        foreach (var p in run.Party) { p.CurrentHP = p.MaxHP; foreach (var m in p.Moves) m.CurrentPP = m.MaxPP; }
+                        return $"✨ 冰水一壺冰水一壺 豆腐鴨血豆腐鴨血就飽啦，**全隊** HP 和 PP **完全恢復**！";
                     }),
                     C("💧 餵他吃一份豆腐鴨血", "💧", run => {
-                        foreach (var m in run.ActivePokemon.Moves) m.CurrentPP = m.MaxPP;
-                        return $"🔋 吃一份豆腐鴨血， **{run.ActivePokemon.DisplayName}** 的所有技能 **PP 完全恢復**！";
+                        foreach (var p in run.Party) foreach (var m in p.Moves) m.CurrentPP = m.MaxPP;
+                        return $"🔋 吃一份豆腐鴨血，**全隊**所有技能 **PP 完全恢復**！";
                     }),
                     C("💰 外帶打包帶走", "💰", run => {
                         int g = _rng.Next(20, 45); run.Gold += g;
@@ -494,9 +494,8 @@ namespace MusicBot2.Service
                 "傳說中的精靈現身，散發著溫暖的光芒，似乎願意賜予祝福……",
                 new() {
                     C("🙏 接受完整祝福", "🙏", run => {
-                        run.ActivePokemon.CurrentHP = run.ActivePokemon.MaxHP;
-                        foreach (var m in run.ActivePokemon.Moves) m.CurrentPP = m.MaxPP;
-                        return $"🌟 **{run.ActivePokemon.DisplayName}** HP 和 PP **完全恢復**！";
+                        foreach (var p in run.Party) { p.CurrentHP = p.MaxHP; foreach (var m in p.Moves) m.CurrentPP = m.MaxPP; }
+                        return "🌟 **全隊** HP 和 PP **完全恢復**！";
                     }),
                     C("💰 求賜財富", "💰", run => {
                         int g = _rng.Next(30, 70); run.Gold += g;
@@ -528,9 +527,8 @@ namespace MusicBot2.Service
                     }),
                     C("😴 先休息", "😴", run => {
                         int h = Math.Max(1, run.ActivePokemon.MaxHP / 5);
-                        run.ActivePokemon.CurrentHP = Math.Min(run.ActivePokemon.MaxHP, run.ActivePokemon.CurrentHP + h);
-                        foreach (var m in run.ActivePokemon.Moves) m.CurrentPP = m.MaxPP;
-                        return $"💤 休息了一會兒，恢復了 **{h} HP** 和 **全部 PP**，再出發！";
+                        foreach (var p in run.Party) { p.CurrentHP = Math.Min(p.MaxHP, p.CurrentHP + Math.Max(1, p.MaxHP / 5)); foreach (var m in p.Moves) m.CurrentPP = m.MaxPP; }
+                        return $"💤 休息了一會兒，**全隊**恢復約 20% HP 和 **全部 PP**，再出發！";
                     }),
                 }),
 
@@ -543,9 +541,8 @@ namespace MusicBot2.Service
                     }),
                     C("💊 學習反轉術士", "💊", run => {
                         int h = Math.Max(1, run.ActivePokemon.MaxHP / 2);
-                        run.ActivePokemon.CurrentHP = Math.Min(run.ActivePokemon.MaxHP, run.ActivePokemon.CurrentHP + h);
-                        foreach (var m in run.ActivePokemon.Moves) m.CurrentPP = m.MaxPP;
-                        return $"🌿 現代最強飄在空中，喊著甚麼對不起天內，我現在並不是為你生氣... 你聽不懂他在講什麼，但 **{run.ActivePokemon.DisplayName}** 睡著了，恢復 **{h} HP** + PP 全回！";
+                        foreach (var p in run.Party) { p.CurrentHP = Math.Min(p.MaxHP, p.CurrentHP + Math.Max(1, p.MaxHP / 2)); foreach (var m in p.Moves) m.CurrentPP = m.MaxPP; }
+                        return $"🌿 現代最強飄在空中，喊著甚麼對不起天內...你聽不懂，但**全隊**睡著了，恢復約 50% HP + PP 全回！";
                     }),
                     C("📀 學習領域展開", "📀", run => {
                         var pool = PickMovesStatic(run.ActivePokemon.Types);
@@ -644,10 +641,8 @@ namespace MusicBot2.Service
                         return $"🔵 他一邊哭一邊還是買下了最新版的pokemon，你獲得了他的**超級球×{2}**！";
                     }),
                     C("😴 想不想來一局緊張又刺激的指令卡戰鬥阿? 2026最好玩的遊戲喔", "😴", run => {
-                        int h = Math.Max(1, run.ActivePokemon.MaxHP / 5);
-                        run.ActivePokemon.CurrentHP = Math.Min(run.ActivePokemon.MaxHP, run.ActivePokemon.CurrentHP + h);
-                        foreach (var m in run.ActivePokemon.Moves) m.CurrentPP = m.MaxPP;
-                        return $"💤 你陪他玩了一下，但真的太無聊你不小心睡著了，寶可夢成功回血，恢復了 **{h} HP** 和 **全部 PP**！";
+                        foreach (var p in run.Party) { p.CurrentHP = Math.Min(p.MaxHP, p.CurrentHP + Math.Max(1, p.MaxHP / 5)); foreach (var m in p.Moves) m.CurrentPP = m.MaxPP; }
+                        return "💤 你陪他玩了一下，但真的太無聊你不小心睡著了，**全隊**成功回血，恢復約 20% HP 和 **全部 PP**！";
                     }),
                 }),
 
@@ -955,7 +950,35 @@ namespace MusicBot2.Service
             if (enemy.CurrentHP <= 0)
             {
                 run.Gold += enemy.GoldReward;
-                run.RunLog.Add($"✅ 第{run.CurrentFloor}層：擊倒 {enemy.Name}，獲得 {enemy.GoldReward}💰");
+
+                // 回復 10% HP
+                int heal = Math.Max(1, poke.MaxHP / 10);
+                poke.CurrentHP = Math.Min(poke.MaxHP, poke.CurrentHP + heal);
+
+                // 獲得 EXP
+                int expGain = 15 + run.CurrentFloor * 8;
+                run.Exp += expGain;
+                var levelUpMsg = new StringBuilder();
+                while (run.Exp >= run.ExpToNext)
+                {
+                    run.Exp -= run.ExpToNext;
+                    run.Level++;
+                    foreach (var member in run.Party)
+                    {
+                        member.Attack          = (int)(member.Attack          * 1.10f);
+                        member.Defense         = (int)(member.Defense         * 1.10f);
+                        member.SpecialAttack   = (int)(member.SpecialAttack   * 1.10f);
+                        member.SpecialDefense  = (int)(member.SpecialDefense  * 1.10f);
+                        member.Speed           = (int)(member.Speed           * 1.10f);
+                        int hpBoost = Math.Max(1, (int)(member.MaxHP * 0.10f));
+                        member.MaxHP     += hpBoost;
+                        member.CurrentHP += hpBoost;
+                    }
+                    levelUpMsg.Append($" ⬆️ **Lv.{run.Level}！全隊能力上升！**");
+                }
+
+                run.CurrentBattleLog += $"\n❤️ {poke.DisplayName} 恢復 {heal} HP | ✨ 獲得 {expGain} EXP{levelUpMsg}";
+                run.RunLog.Add($"✅ 第{run.CurrentFloor}層：擊倒 {enemy.Name}，獲得 {enemy.GoldReward}💰，+{expGain} EXP");
 
                 if (run.CurrentFloor >= run.MaxFloor)
                 {
@@ -1468,7 +1491,7 @@ namespace MusicBot2.Service
             var choices = tier.ToList();
             if (choices.Count == 0) choices = _enemyPool;
             var t = choices[_rng.Next(choices.Count)];
-            float scale = isBoss ? 1.5f : 1.0f + (floor - 1) * 0.07f;
+            float scale = isBoss ? 1.0f + (floor - 1) * 0.11f : 1.0f + (floor - 1) * 0.08f;
             int b = Math.Max(30, (int)(t.StatTotal * scale / 6));
             int gold = isBoss ? floor * 15 : floor * 5 + _rng.Next(5);
 
@@ -1559,7 +1582,7 @@ namespace MusicBot2.Service
             desc.AppendLine($"**{p.DisplayName}** {TypeBadge(p.Types)}");
             desc.AppendLine($"HP: {HpBar(p.CurrentHP, p.MaxHP)}");
             desc.AppendLine($"技能: {MovesDisplay(p)}");
-            desc.AppendLine($"💰 金幣: **{run.Gold}**");
+            desc.AppendLine($"💰 金幣: **{run.Gold}** | ⭐ Lv.**{run.Level}** EXP {run.Exp}/{run.ExpToNext}");
             if (run.Party.Count > 1)
                 desc.AppendLine($"🎒 背包: {string.Join("、", run.Party.Select(pk => $"{pk.DisplayName}({pk.CurrentHP}HP)"))}");
             desc.AppendLine();
