@@ -184,12 +184,12 @@ namespace MusicBot2.SlahCommands
 
         #region 不外接api的簡單遊戲
         [SlashCommand("猜單字", "猜單字")]
-        public async Task Guess(string word)
+        public async Task Guess(string word, [Summary("難度", "不選則隨便選一個")][Choice("easy", "1~5個字")][Choice("normal", "6~7個字")][Choice("hard", "8~9個字")][Choice("發kinghard", "10個字以上")] string diff = "")
         {
             try
             {
                 var user = Context.User as SocketGuildUser;
-                string res = await _wordService.Guess(Context.Channel as IMessageChannel, word, user);
+                string res = await _wordService.Guess(Context.Channel as IMessageChannel, word, user,diff);
                 if (!string.IsNullOrEmpty(res))
                 {
                     await RespondAsync(res);

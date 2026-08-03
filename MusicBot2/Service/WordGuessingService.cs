@@ -15,36 +15,73 @@ namespace MusicBot2.Service
         public WordsGuessingVM Answer;
         private readonly WordGuessingService _wordService;
         private readonly GetChampService _getChampService;
-        private const string FirstWords = "pornhubersSoBig";
+        private const string FirstWords = "pornhubersSoBigDesuWa";
         public WordGuessingService()
         {
             Answer = null;
         }
 
-        public async Task<string> Guess(IMessageChannel channel,string word, SocketGuildUser user)
+        public async Task<string> Guess(IMessageChannel channel,string word, SocketGuildUser user,string diff)
         {
             try
             {
                 // 如果沒有提供猜測的單字，且目前沒有答案，就開始新的遊戲
                 if (Answer == null)
                 {
-                    var words = LoadWords();
+                    if(string.IsNullOrEmpty(diff))
+                    {
+                        var words = LoadWords();
 
-                    Random r = new Random();
-                    var answerVM = words[r.Next(words.Count)];
+                        Random r = new Random();
+                        var answerVM = words[r.Next(words.Count)];
 
-                    Answer = answerVM;
-                    Console.WriteLine($"正確答案: {Answer.word}");
+                        Answer = answerVM;
+                        Console.WriteLine($"正確答案: {Answer.word}");
 
-                    //先幫他猜一個單字
-                    string FirstGuessingWords = FirstWords.Substring(0, answerVM.word.Length);
+                        //先幫他猜一個單字
+                        string FirstGuessingWords = FirstWords.Substring(0, answerVM.word.Length);
 
-                    var result = CheckWord(Answer.word, FirstGuessingWords);
+                        var result = CheckWord(Answer.word, FirstGuessingWords);
 
-                    var display = Display(FirstGuessingWords, result);
+                        var display = Display(FirstGuessingWords, result);
 
-                    return $"開始猜瞜，這次的文字是 {answerVM.word.Length} 個字，啊我先幫你猜一個了不客氣\n" + display;
+                        return $"開始猜瞜，這次的文字是 {answerVM.word.Length} 個字，啊我先幫你猜一個了不客氣\n" + display;
+                    }
+                    else
+                    {
+                        int wordMinLength = diff switch
+                        {
+                            "easy" => 1,
+                            "normal" => 6,
+                            "hard" => 8,
+                            "發kinghard" => 10
+                        };
+                        int wordMaxLength = diff switch
+                        {
+                            "easy" => 5,
+                            "normal" => 7,
+                            "hard" => 9,
+                            "發kinghard" => 100
+                        };
+                        var words = LoadWords();
 
+                        var lengthFilteredWords = words.Where(w => w.word.Length >= wordMinLength && w.word.Length <= wordMaxLength).ToList();
+
+                        Random r = new Random();
+                        var answerVM = lengthFilteredWords[r.Next(lengthFilteredWords.Count)];
+
+                        Answer = answerVM;
+                        Console.WriteLine($"正確答案: {Answer.word}");
+
+                        //先幫他猜一個單字
+                        string FirstGuessingWords = FirstWords.Substring(0, answerVM.word.Length);
+
+                        var result = CheckWord(Answer.word, FirstGuessingWords);
+
+                        var display = Display(FirstGuessingWords, result);
+
+                        return $"開始猜瞜，這次的文字是 {answerVM.word.Length} 個字，啊我先幫你猜一個了不客氣\n" + display;
+                    }
                 }
                 else
                 {
