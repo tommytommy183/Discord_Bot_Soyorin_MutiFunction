@@ -184,7 +184,7 @@ namespace MusicBot2.SlahCommands
 
         #region 不外接api的簡單遊戲
         [SlashCommand("猜單字", "猜單字")]
-        public async Task Guess(string word, [Summary("難度", "不選則隨便選一個")][Choice("easy", "1~5個字")][Choice("normal", "6~7個字")][Choice("hard", "8~9個字")][Choice("發kinghard", "10個字以上")] string diff = "")
+        public async Task Guess(string word, [Summary("難度", "不選則隨便選一個")][Choice("1~5個字", "easy")][Choice("6~7個字", "normal")][Choice("8~9個字", "hard")][Choice("10個字以上", "發kinghard")] string diff = "")
         {
             try
             {
