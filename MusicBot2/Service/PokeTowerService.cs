@@ -92,7 +92,7 @@ namespace MusicBot2.Service
         public string PlayerName { get; set; }
         public ulong ChannelId { get; set; }
         public int CurrentFloor { get; set; } = 0;
-        public int MaxFloor { get; set; } = 10;
+        public int MaxFloor { get; set; } = 20;
         public TowerPokemon ActivePokemon { get; set; }
         public List<TowerPokemon> Party { get; set; } = new();
         public TowerEnemy CurrentEnemy { get; set; }
@@ -110,6 +110,7 @@ namespace MusicBot2.Service
         // 球庫：key = "normal"/"super"/"ultra"/"master"，value = 數量
         public Dictionary<string, int> Balls { get; set; } = new() { ["normal"] = 10 };
         public int PendingEventIdx { get; set; } = -1;
+        public HashSet<int> UsedEventIndices { get; set; } = new();
     }
 
     public class PokeTowerService
@@ -868,7 +869,10 @@ namespace MusicBot2.Service
             }
             if (choice == "event")
             {
-                run.PendingEventIdx = _rng.Next(_events.Count);
+                var available = Enumerable.Range(0, _events.Count)
+                    .Where(i => !run.UsedEventIndices.Contains(i)).ToList();
+                if (available.Count == 0) { run.UsedEventIndices.Clear(); available = Enumerable.Range(0, _events.Count).ToList(); }
+                run.PendingEventIdx = available[_rng.Next(available.Count)];
                 run.State = TowerRunState.SelectingEvent;
                 await SaveAsync(run);
                 return BuildEventEmbed(run);
@@ -1164,6 +1168,7 @@ namespace MusicBot2.Service
             var choice = ev.Choices[choiceIdx];
             string result = await choice.Apply(run);
             run.RunLog.Add($"{ev.Emoji} 第{run.CurrentFloor}層【{ev.Title}】→ {choice.Label}");
+            run.UsedEventIndices.Add(run.PendingEventIdx);
             run.PendingEventIdx = -1;
             run.State = TowerRunState.SelectingPath;
             await SaveAsync(run);
