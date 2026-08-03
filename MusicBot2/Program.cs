@@ -570,7 +570,26 @@ public class Program
                     {
                         var p = id.Split('_');
                         ulong ch = ulong.Parse(p[2]);
+                        var prevState = towerSvc.GetRun(ch)?.State;
                         (tEmbed, tCb) = await towerSvc.HandlePathChoiceAsync(ch, p[3]);
+                        // 戰鬥開始 → 送兩張圖片
+                        var run = towerSvc.GetRun(ch);
+                        if (run?.State == TowerRunState.InBattle && prevState != TowerRunState.InBattle)
+                        {
+                            var (enemyUrl, playerUrl) = towerSvc.GetBattleImageUrls(ch);
+                            ulong eMsgId = 0, pMsgId = 0;
+                            if (!string.IsNullOrEmpty(enemyUrl))
+                            {
+                                var eMsg = await component.Channel.SendMessageAsync(enemyUrl);
+                                eMsgId = eMsg.Id;
+                            }
+                            if (!string.IsNullOrEmpty(playerUrl))
+                            {
+                                var pMsg = await component.Channel.SendMessageAsync(playerUrl);
+                                pMsgId = pMsg.Id;
+                            }
+                            towerSvc.SetBattleImageMsgIds(ch, eMsgId, pMsgId);
+                        }
                     }
                     // tower_move_{channelId}_{moveIndex}
                     else if (id.StartsWith("tower_move_"))
@@ -578,7 +597,18 @@ public class Program
                         var p = id.Split('_');
                         ulong ch = ulong.Parse(p[2]);
                         int mi = int.Parse(p[3]);
+                        var prevState = towerSvc.GetRun(ch)?.State;
                         (tEmbed, tCb) = await towerSvc.HandleMoveAsync(ch, mi);
+                        // 戰鬥結束 → 刪除圖片訊息
+                        var newState = towerSvc.GetRun(ch)?.State;
+                        bool battleEnded = prevState == TowerRunState.InBattle && newState != TowerRunState.InBattle;
+                        if (battleEnded || newState == TowerRunState.Victory || newState == TowerRunState.Defeated)
+                        {
+                            var (eMsgId, pMsgId) = towerSvc.GetBattleImageMsgIds(ch);
+                            if (eMsgId != 0) try { await component.Channel.DeleteMessageAsync(eMsgId); } catch { }
+                            if (pMsgId != 0) try { await component.Channel.DeleteMessageAsync(pMsgId); } catch { }
+                            towerSvc.ClearBattleImageMsgIds(ch);
+                        }
                     }
                     // tower_shop_{channelId}_{itemKey}  (itemKey may contain _)
                     else if (id.StartsWith("tower_shop_"))
@@ -632,6 +662,15 @@ public class Program
                                 (tEmbed, tCb) = await towerSvc.HandleAddNewPokemonAsync(ch, newOnes[si]);
                         }
                     }
+                    // tower_event_{channelId}_{choiceIdx}
+                    else if (id.StartsWith("tower_event_"))
+                    {
+                        var rest = id["tower_event_".Length..];
+                        int under = rest.LastIndexOf('_');
+                        ulong ch = ulong.Parse(rest[..under]);
+                        int choiceIdx = int.Parse(rest[(under + 1)..]);
+                        (tEmbed, tCb) = await towerSvc.HandleEventChoiceAsync(ch, choiceIdx);
+                    }
                     // tower_movereward_{channelId}_{idx|3=skip}
                     else if (id.StartsWith("tower_movereward_"))
                     {
@@ -650,14 +689,23 @@ public class Program
                         int slot = int.Parse(rest[(under + 1)..]);
                         (tEmbed, tCb) = await towerSvc.HandleMoveSlotAsync(ch, slot);
                     }
-                    // tower_catch_{channelId}_{yes|no}
+                    // tower_catch_{channelId}_{ballKey|pass}
+                    else if (id.StartsWith("tower_catchswap_"))
+                    {
+                        var rest = id["tower_catchswap_".Length..];
+                        int under = rest.LastIndexOf('_');
+                        ulong ch = ulong.Parse(rest[..under]);
+                        string token = rest[(under + 1)..];
+                        int partyIdx = token == "cancel" ? -1 : int.Parse(token);
+                        (tEmbed, tCb) = await towerSvc.HandleCatchSwapAsync(ch, partyIdx);
+                    }
                     else if (id.StartsWith("tower_catch_"))
                     {
                         var rest = id["tower_catch_".Length..];
                         int under = rest.LastIndexOf('_');
                         ulong ch = ulong.Parse(rest[..under]);
-                        bool yes = rest[(under + 1)..] == "yes";
-                        (tEmbed, tCb) = await towerSvc.HandleCatchAsync(ch, yes);
+                        string ballKey = rest[(under + 1)..];
+                        (tEmbed, tCb) = await towerSvc.HandleCatchAsync(ch, ballKey);
                     }
                 }
                 catch (Exception ex)

@@ -16,9 +16,11 @@ namespace MusicBot2.Service
         SelectingPath,
         InBattle,
         Shopping,
+        SelectingEvent,
         SelectingMoveReward,
         SelectingMoveSlot,
         SelectingCatch,
+        SelectingCatchSwap,
         Victory,
         Defeated
     }
@@ -50,6 +52,8 @@ namespace MusicBot2.Service
         public List<TowerMove> Moves { get; set; } = new();
         public bool IsShiny { get; set; }
         public DateTime CaughtAt { get; set; }
+        public string? ImageUrl { get; set; }
+        public string? BackImageUrl { get; set; }
 
         [JsonIgnore]
         public string DisplayName => !string.IsNullOrWhiteSpace(CustomName) ? CustomName : Name;
@@ -58,6 +62,7 @@ namespace MusicBot2.Service
     public class TowerEnemy
     {
         public string Name { get; set; }
+        public int PokeId { get; set; }
         public List<string> Types { get; set; } = new();
         public int MaxHP { get; set; }
         public int CurrentHP { get; set; }
@@ -70,6 +75,15 @@ namespace MusicBot2.Service
         public int NextMoveIdx { get; set; }
         public bool IsBoss { get; set; }
         public int GoldReward { get; set; }
+
+        [JsonIgnore]
+        public string FrontGifUrl => PokeId > 0
+            ? $"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/showdown/{PokeId}.gif"
+            : null;
+        [JsonIgnore]
+        public string FrontFallbackUrl => PokeId > 0
+            ? $"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/{PokeId}.png"
+            : null;
     }
 
     public class TowerRun
@@ -91,6 +105,11 @@ namespace MusicBot2.Service
         public List<TowerMove> PendingMoveRewards { get; set; } = new();
         public TowerMove PendingSelectedMove { get; set; }
         public TowerEnemy PendingCatch { get; set; }
+        public ulong EnemyImgMsgId { get; set; }
+        public ulong PlayerImgMsgId { get; set; }
+        // 球庫：key = "normal"/"super"/"ultra"/"master"，value = 數量
+        public Dictionary<string, int> Balls { get; set; } = new() { ["normal"] = 10 };
+        public int PendingEventIdx { get; set; } = -1;
     }
 
     public class PokeTowerService
@@ -100,6 +119,15 @@ namespace MusicBot2.Service
         private readonly Dictionary<ulong, TowerRun> _activeRuns = new();
         private const string REDIS_PREFIX = "tower:run:";
         private static readonly Random _rng = new();
+
+        // ── 球種設定 ───────────────────────────────────────────
+        private static readonly Dictionary<string, (string DisplayName, string Emoji, float Rate)> _balls = new()
+        {
+            ["normal"] = ("普通球", "⚽", 0.30f),
+            ["super"]  = ("超級球", "🔵", 0.55f),
+            ["ultra"]  = ("高級球", "🟡", 0.75f),
+            ["master"] = ("大師球", "🟣", 1.00f),
+        };
 
         private static readonly Dictionary<string, string> _typeEmoji = new(StringComparer.OrdinalIgnoreCase)
         {
@@ -212,48 +240,48 @@ namespace MusicBot2.Service
             new() { Name="耀眼魅力",   Type="妖精",   Power=80,  Category="Special",  Emoji="✨", MaxPP=10 },
         };
 
-        // ── 中文敵人池 ─────────────────────────────────────────
-        private static readonly List<(string Name, string[] Types, int StatTotal)> _enemyPool = new()
+        // ── 中文敵人池 (Name, Types, StatTotal, PokeApiId) ────────
+        private static readonly List<(string Name, string[] Types, int StatTotal, int PokeId)> _enemyPool = new()
         {
             // 低階 (floor 1-3)
-            ("比雕",     new[]{"一般","飛行"}, 349),
-            ("隆隆石",   new[]{"岩石","地面"}, 390),
-            ("鬼斯通",   new[]{"幽靈","毒"},   405),
-            ("卡咪龜",   new[]{"水"},           405),
-            ("火恐龍",   new[]{"火"},           405),
-            ("妙蛙草",   new[]{"草","毒"},      405),
-            ("電擊獸",   new[]{"電"},           490),
-            ("皮卡丘",   new[]{"電"},           320),
-            ("瞌睡貘",   new[]{"超能力"},       303),
-            ("小磁怪",   new[]{"電"},           325),
+            ("比雕",     new[]{"一般","飛行"}, 349, 22),
+            ("隆隆石",   new[]{"岩石","地面"}, 390, 74),
+            ("鬼斯通",   new[]{"幽靈","毒"},   405, 93),
+            ("卡咪龜",   new[]{"水"},           405, 8),
+            ("火恐龍",   new[]{"火"},           405, 5),
+            ("妙蛙草",   new[]{"草","毒"},      405, 2),
+            ("電擊獸",   new[]{"電"},           490, 26),
+            ("皮卡丘",   new[]{"電"},           320, 25),
+            ("瞌睡貘",   new[]{"超能力"},       303, 96),
+            ("小磁怪",   new[]{"電"},           325, 81),
             // 中階 (floor 4-6)
-            ("暴鯉龍",   new[]{"水","飛行"},    540),
-            ("拉普拉斯", new[]{"水","冰"},      535),
-            ("雷電獸",   new[]{"電"},           525),
-            ("寶石海星", new[]{"水","超能力"},  520),
-            ("飛天螳螂", new[]{"蟲","飛行"},    500),
-            ("鴨嘴火獸", new[]{"火"},           495),
-            ("椰蛋樹",   new[]{"草","超能力"},  530),
-            ("刺殼菊兒", new[]{"水","冰"},      525),
-            ("強行固執", new[]{"岩石"},         490),
-            ("多刺球",   new[]{"蟲"},           395),
+            ("暴鯉龍",   new[]{"水","飛行"},    540, 130),
+            ("拉普拉斯", new[]{"水","冰"},      535, 131),
+            ("雷電獸",   new[]{"電"},           525, 135),
+            ("寶石海星", new[]{"水","超能力"},  520, 121),
+            ("飛天螳螂", new[]{"蟲","飛行"},    500, 123),
+            ("鴨嘴火獸", new[]{"火"},           495, 126),
+            ("椰蛋樹",   new[]{"草","超能力"},  530, 103),
+            ("刺殼菊兒", new[]{"水","冰"},      525, 91),
+            ("骨恐龍",   new[]{"地面","岩石"},  490, 95),
+            ("多刺球",   new[]{"蟲"},           395, 14),
             // 高階 (floor 7-9)
-            ("怪力",     new[]{"格鬥"},         505),
-            ("耿鬼",     new[]{"幽靈","毒"},    500),
-            ("胡地",     new[]{"超能力"},       500),
-            ("風速狗",   new[]{"火"},           555),
-            ("尼多王",   new[]{"毒","地面"},    505),
-            ("哈克龍",   new[]{"龍"},           420),
-            ("化石翼龍", new[]{"岩石","飛行"},  515),
-            ("袋獸",     new[]{"一般"},         490),
-            ("水箭龜",   new[]{"水"},           530),
-            ("噴火龍",   new[]{"火","飛行"},    534),
+            ("怪力",     new[]{"格鬥"},         505, 68),
+            ("耿鬼",     new[]{"幽靈","毒"},    500, 94),
+            ("胡地",     new[]{"超能力"},       500, 65),
+            ("風速狗",   new[]{"火"},           555, 59),
+            ("尼多王",   new[]{"毒","地面"},    505, 34),
+            ("哈克龍",   new[]{"龍"},           420, 148),
+            ("化石翼龍", new[]{"岩石","飛行"},  515, 142),
+            ("袋獸",     new[]{"一般"},         490, 115),
+            ("水箭龜",   new[]{"水"},           530, 9),
+            ("噴火龍",   new[]{"火","飛行"},    534, 6),
             // Boss (floor 10)
-            ("快龍",     new[]{"龍","飛行"},    600),
-            ("超夢",     new[]{"超能力"},       680),
-            ("班基拉斯", new[]{"岩石","惡"},    600),
-            ("烈咬陸鯊", new[]{"龍","地面"},    600),
-            ("暴飛龍",   new[]{"龍","飛行"},    600),
+            ("快龍",     new[]{"龍","飛行"},    600, 149),
+            ("超夢",     new[]{"超能力"},       680, 150),
+            ("班基拉斯", new[]{"岩石","惡"},    600, 248),
+            ("烈咬陸鯊", new[]{"龍","地面"},    600, 373),
+            ("暴飛龍",   new[]{"龍","飛行"},    600, 445),
         };
 
         // ── 屬性剋制表 ─────────────────────────────────────────
@@ -344,74 +372,274 @@ namespace MusicBot2.Service
             return c;
         }
 
-        // ── 事件池 ────────────────────────────────────────────
-        private static readonly List<(string Title, string Emoji, string Desc, Func<TowerRun, string> Apply)> _events = new()
+        // ── 事件池（帶選項） ──────────────────────────────────────
+        private record EventChoice(string Label, string Emoji, Func<TowerRun, string> Apply);
+        private record EventDef(string Title, string Emoji, string Desc, List<EventChoice> Choices);
+
+        private static readonly List<EventDef> _events = new()
         {
-            ("神秘寶箱", "🎁", "面前有一個閃閃發光的寶箱……",
-                run => { int g = _rng.Next(20, 55); run.Gold += g; return $"箱子裡有 **{g} 金幣**！"; }),
-
-            ("迷路訓練師", "👟", "遇到一個迷路的訓練師，他感謝你指路……",
-                run => { int g = _rng.Next(10, 35); run.Gold += g; return $"訓練師送了你 **{g} 金幣** 表示感謝！"; }),
-
-            ("神秘藥水", "💊", "地上有一個神秘的藥水……",
-                run => {
-                    int h = Math.Max(1, run.ActivePokemon.MaxHP / 3);
-                    run.ActivePokemon.CurrentHP = Math.Min(run.ActivePokemon.MaxHP, run.ActivePokemon.CurrentHP + h);
-                    return $"**{run.ActivePokemon.DisplayName}** 恢復了 **{h} HP**！";
+            new("神秘寶箱女", "🎁",
+                "前方寶箱有一位白色雙馬尾的精靈困在其中，該做什麼呢?",
+                new() {
+                    new("🔓 解救精靈少女", "🔓", run => {
+                        if (_rng.Next(4) == 0) {
+                            int dmg = Math.Max(1, (int)(run.ActivePokemon.MaxHP * 0.12));
+                            run.ActivePokemon.CurrentHP = Math.Max(1, run.ActivePokemon.CurrentHP - dmg);
+                            return $"💥 是陷阱！**{run.ActivePokemon.DisplayName}** 也被吃了，受到 **{dmg}** 傷害後逃出來了";
+                        }
+                        int g = _rng.Next(25, 65); run.Gold += g;
+                        return $"白髮少女很開心，送了你 **{g} 金幣**！";
+                    }),
+                    new("🚶 當作沒看到", "🚶", run => "背後傳來好黑喔好可怕喔的聲音"),
                 }),
 
-            ("能量泉", "⛲", "發現了一個神奇的能量泉……",
-                run => {
-                    foreach (var m in run.ActivePokemon.Moves) m.CurrentPP = m.MaxPP;
-                    return $"**{run.ActivePokemon.DisplayName}** 的所有技能 **PP 完全恢復**！";
+            new("神秘藥水", "💊",
+                "地上有一瓶不明藥水，上面的標籤已經模糊不清。要喝嗎？",
+                new() {
+                    new("💊 直接喝下", "💊", run => {
+                        if (_rng.Next(5) == 0) {
+                            int dmg = Math.Max(1, (int)(run.ActivePokemon.MaxHP * 0.20));
+                            run.ActivePokemon.CurrentHP = Math.Max(1, run.ActivePokemon.CurrentHP - dmg);
+                            return $"😨 是毒藥！**{run.ActivePokemon.DisplayName}** 損失 **{dmg}** HP！";
+                        }
+                        int h = Math.Max(1, run.ActivePokemon.MaxHP / 2);
+                        run.ActivePokemon.CurrentHP = Math.Min(run.ActivePokemon.MaxHP, run.ActivePokemon.CurrentHP + h);
+                        return $"💚 **{run.ActivePokemon.DisplayName}** 恢復了 **{h} HP**！";
+                    }),
+                    new("👃 先聞一聞", "👃", run => {
+                        int h = Math.Max(1, run.ActivePokemon.MaxHP / 4);
+                        run.ActivePokemon.CurrentHP = Math.Min(run.ActivePokemon.MaxHP, run.ActivePokemon.CurrentHP + h);
+                        return $"🌿 小心地喝了一點，恢復了 **{h} HP**（保守做法）。";
+                    }),
+                    new("🚫 不碰它", "🚫", run => "謹慎地繞過，繼續前進。"),
                 }),
 
-            ("遺落的技能機", "📀", "地上有一個廢棄的技能機……",
-                run => {
-                    var pool = PickMovesStatic(run.ActivePokemon.Types);
-                    var nm = pool.FirstOrDefault(m => run.ActivePokemon.Moves.All(e => e.Name != m.Name)) ?? pool[0];
-                    int slot = run.ActivePokemon.Moves.Select((m,i)=>(m,i)).OrderBy(x=>x.m.Power).First().i;
-                    string old = run.ActivePokemon.Moves[slot].Name;
-                    run.ActivePokemon.Moves[slot] = nm;
-                    return $"忘掉了 **{old}**，學會了 {nm.Emoji} **{nm.Name}**！";
+            new("能量泉", "⛲",
+                "發現了一處散發神秘光芒的泉水，帶來陣陣清涼感……",
+                new() {
+                    new("🏊 整隻泡進去", "🏊", run => {
+                        run.ActivePokemon.CurrentHP = run.ActivePokemon.MaxHP;
+                        foreach (var m in run.ActivePokemon.Moves) m.CurrentPP = m.MaxPP;
+                        return $"✨ **{run.ActivePokemon.DisplayName}** HP 和 PP **完全恢復**！";
+                    }),
+                    new("💧 只喝一口", "💧", run => {
+                        foreach (var m in run.ActivePokemon.Moves) m.CurrentPP = m.MaxPP;
+                        return $"🔋 **{run.ActivePokemon.DisplayName}** 的所有技能 **PP 完全恢復**！";
+                    }),
+                    new("💰 裝一瓶帶走", "💰", run => {
+                        int g = _rng.Next(20, 45); run.Gold += g;
+                        return $"💰 把神奇泉水賣給了商人，獲得 **{g} 金幣**！";
+                    }),
                 }),
 
-            ("毒刺陷阱", "🕳️", "踩到了隱藏的毒刺陷阱！",
-                run => {
-                    int dmg = Math.Max(1, (int)(run.ActivePokemon.MaxHP * 0.15));
-                    run.ActivePokemon.CurrentHP = Math.Max(1, run.ActivePokemon.CurrentHP - dmg);
-                    return $"**{run.ActivePokemon.DisplayName}** 受到 **{dmg}** 點傷害！（HP不會歸零）";
+            new("遺落的技能機", "📀",
+                "地上有一台廢棄的技能學習機，螢幕還微微發亮。要讓誰學嗎？",
+                new() {
+                    new("📀 立刻使用", "📀", run => {
+                        var pool = PickMovesStatic(run.ActivePokemon.Types);
+                        var nm = pool.FirstOrDefault(m => run.ActivePokemon.Moves.All(e => e.Name != m.Name)) ?? pool[0];
+                        int slot = run.ActivePokemon.Moves.Select((m,i)=>(m,i)).OrderBy(x=>x.m.Power).First().i;
+                        string old = run.ActivePokemon.Moves[slot].Name;
+                        run.ActivePokemon.Moves[slot] = nm;
+                        return $"📀 忘掉了 **{old}**，學會了 {nm.Emoji}**{nm.Name}**！";
+                    }),
+                    new("💰 賣給商人", "💰", run => {
+                        int g = _rng.Next(15, 30); run.Gold += g;
+                        return $"💰 把技能機賣了，獲得 **{g} 金幣**！";
+                    }),
+                    new("🚶 不需要", "🚶", run => "留下了技能機，繼續前進。"),
                 }),
 
-            ("訓練師被搶劫", "😈", "遇到了一個壞訓練師，搶走了你的金幣……",
-                run => {
-                    int lost = Math.Min(run.Gold, _rng.Next(10, 30));
-                    run.Gold -= lost;
-                    return $"失去了 **{lost} 金幣**！（剩餘 {run.Gold} 金幣）";
+            new("神秘陷阱", "🕳️",
+                "前方有些不對勁……地上有奇怪的痕跡，可能是陷阱。",
+                new() {
+                    new("🏃 直接衝過去", "🏃", run => {
+                        if (_rng.Next(2) == 0) {
+                            int dmg = Math.Max(1, (int)(run.ActivePokemon.MaxHP * 0.18));
+                            run.ActivePokemon.CurrentHP = Math.Max(1, run.ActivePokemon.CurrentHP - dmg);
+                            return $"💥 中了陷阱！**{run.ActivePokemon.DisplayName}** 受到 **{dmg}** 傷害！";
+                        }
+                        return "😌 運氣不錯，沒觸發陷阱！";
+                    }),
+                    new("🔍 仔細調查", "🔍", run => {
+                        int dmg = Math.Max(1, (int)(run.ActivePokemon.MaxHP * 0.06));
+                        run.ActivePokemon.CurrentHP = Math.Max(1, run.ActivePokemon.CurrentHP - dmg);
+                        return $"🔧 拆除了陷阱，但稍微受傷，損失 **{dmg}** HP。";
+                    }),
+                    new("↩️ 繞遠路", "↩️", run => "繞了一大圈，安全通過，但浪費了時間。"),
                 }),
 
-            ("精靈的祝福", "🌟", "遇到了傳說中的精靈，獲得了祝福……",
-                run => {
-                    run.ActivePokemon.CurrentHP = run.ActivePokemon.MaxHP;
-                    foreach (var m in run.ActivePokemon.Moves) m.CurrentPP = m.MaxPP;
-                    return $"**{run.ActivePokemon.DisplayName}** HP 和 PP **完全恢復**！";
+            new("壞訓練師", "😈",
+                "一個兇神惡煞的訓練師攔住了去路，想要搶奪財物！",
+                new() {
+                    new("⚔️ 正面對抗", "⚔️", run => {
+                        if (_rng.Next(2) == 0) {
+                            return $"💪 成功擊退了壞訓練師！金幣完整保留（共 {run.Gold}💰）。";
+                        }
+                        int dmg = Math.Max(1, (int)(run.ActivePokemon.MaxHP * 0.15));
+                        run.ActivePokemon.CurrentHP = Math.Max(1, run.ActivePokemon.CurrentHP - dmg);
+                        return $"😓 對抗失敗，損失 **{dmg}** HP，但保住了金幣。";
+                    }),
+                    new("💰 乖乖交出", "💰", run => {
+                        int lost = Math.Min(run.Gold, _rng.Next(10, 25));
+                        run.Gold -= lost;
+                        return $"😞 交出了 **{lost} 金幣**，但全身而退。（剩餘 {run.Gold}💰）";
+                    }),
+                    new("🏃 拔腿就跑", "🏃", run => {
+                        if (_rng.Next(3) == 0) {
+                            int lost = Math.Min(run.Gold, _rng.Next(5, 15));
+                            run.Gold -= lost;
+                            return $"🫣 沒跑掉！還是被搶了 **{lost} 金幣**。";
+                        }
+                        return "💨 成功逃跑！";
+                    }),
                 }),
 
-            ("迷失樹林", "🌲", "迷失在黑暗的樹林中，浪費了時間……",
-                run => "走了很長一段路，什麼也沒發生……（浪費一層）"),
-
-            ("強化石", "💎", "找到了神奇的強化石，暫時強化了寶可夢……",
-                run => {
-                    int g = _rng.Next(15, 40);
-                    run.Gold += g;
-                    return $"強化石化為 **{g} 金幣** 存入口袋！";
+            new("遇到一個穿著綠色班服的神祕腳踏車大盜", "😈",
+                "他偷偷繞到你的背後，想偷你的腳踏車但發現你沒有，所以偷了你的錢！",
+                new() {
+                    new("💰 哭阿，下次一定在朝會狠狠的教訓你", "💰", run => {
+                        int lost = Math.Min(run.Gold, _rng.Next(10, 25));
+                        run.Gold -= lost;
+                        return $"😞 失去了 **{lost} 金幣**。（剩餘 {run.Gold}💰）";
+                    })
                 }),
 
-            ("老修行者", "🧙", "遇到了一位老修行者，他傳授了珍貴的知識……",
-                run => {
-                    int g = _rng.Next(25, 60);
-                    run.Gold += g;
-                    return $"老修行者給了你 **{g} 金幣** 作為旅費！";
+            new("精靈的祝福", "🌟",
+                "傳說中的精靈現身，散發著溫暖的光芒，似乎願意賜予祝福……",
+                new() {
+                    new("🙏 接受完整祝福", "🙏", run => {
+                        run.ActivePokemon.CurrentHP = run.ActivePokemon.MaxHP;
+                        foreach (var m in run.ActivePokemon.Moves) m.CurrentPP = m.MaxPP;
+                        return $"🌟 **{run.ActivePokemon.DisplayName}** HP 和 PP **完全恢復**！";
+                    }),
+                    new("💰 求賜財富", "💰", run => {
+                        int g = _rng.Next(30, 70); run.Gold += g;
+                        return $"💰 精靈賜予了 **{g} 金幣**！";
+                    }),
+                    new("🎾 求賜精靈球", "🎾", run => {
+                        run.Balls["super"] = run.Balls.GetValueOrDefault("super") + 2;
+                        return "🔵 精靈賜予了 **超級球×2**！";
+                    }),
+                }),
+
+            new("迷失樹林", "🌲",
+                "四周全是樹，完全迷失了方向。要怎麼辦？",
+                new() {
+                    new("🧭 仔細找路", "🧭", run => {
+                        if (_rng.Next(2) == 0) {
+                            int g = _rng.Next(10, 30); run.Gold += g;
+                            return $"🍄 在林中找到了珍稀藥草，換了 **{g} 金幣**！";
+                        }
+                        return "😵‍💫 耗費了許多時間，什麼也沒找到。";
+                    }),
+                    new("🏃 靠直覺衝", "🏃", run => {
+                        if (_rng.Next(3) == 0) {
+                            int dmg = Math.Max(1, (int)(run.ActivePokemon.MaxHP * 0.10));
+                            run.ActivePokemon.CurrentHP = Math.Max(1, run.ActivePokemon.CurrentHP - dmg);
+                            return $"🌵 被樹枝劃傷，損失 **{dmg}** HP。";
+                        }
+                        return "😤 靠著直覺走出了樹林！";
+                    }),
+                    new("😴 先休息", "😴", run => {
+                        int h = Math.Max(1, run.ActivePokemon.MaxHP / 5);
+                        run.ActivePokemon.CurrentHP = Math.Min(run.ActivePokemon.MaxHP, run.ActivePokemon.CurrentHP + h);
+                        foreach (var m in run.ActivePokemon.Moves) m.CurrentPP = m.MaxPP;
+                        return $"💤 休息了一會兒，恢復了 **{h} HP** 和 **全部 PP**，再出發！";
+                    }),
+                }),
+
+            new("老修行者", "🧙",
+                "一位鶴髮童顏的老修行者攔住了去路，似乎想傳授些什麼。",
+                new() {
+                    new("📚 聆聽教誨", "📚", run => {
+                        int g = _rng.Next(25, 55); run.Gold += g;
+                        return $"🧠 從修行者的智慧中獲益，收到 **{g} 金幣** 作為旅費。";
+                    }),
+                    new("💊 請求療傷", "💊", run => {
+                        int h = Math.Max(1, run.ActivePokemon.MaxHP / 2);
+                        run.ActivePokemon.CurrentHP = Math.Min(run.ActivePokemon.MaxHP, run.ActivePokemon.CurrentHP + h);
+                        foreach (var m in run.ActivePokemon.Moves) m.CurrentPP = m.MaxPP;
+                        return $"🌿 修行者替 **{run.ActivePokemon.DisplayName}** 療傷，恢復 **{h} HP** + PP 全回！";
+                    }),
+                    new("📀 求教技能", "📀", run => {
+                        var pool = PickMovesStatic(run.ActivePokemon.Types);
+                        var nm = pool.FirstOrDefault(m => run.ActivePokemon.Moves.All(e => e.Name != m.Name)) ?? pool[0];
+                        int slot = run.ActivePokemon.Moves.Select((m,i)=>(m,i)).OrderBy(x=>x.m.Power).First().i;
+                        string old = run.ActivePokemon.Moves[slot].Name;
+                        run.ActivePokemon.Moves[slot] = nm;
+                        return $"📀 修行者傳授了 {nm.Emoji}**{nm.Name}**，取代了 **{old}**！";
+                    }),
+                }),
+
+            new("廢棄的球工廠", "🏭",
+                "發現了一間廢棄的精靈球工廠，倉庫裡還有些存貨……",
+                new() {
+                    new("⚽ 拿普通球", "⚽", run => {
+                        int n = _rng.Next(3, 7);
+                        run.Balls["normal"] = run.Balls.GetValueOrDefault("normal") + n;
+                        return $"⚽ 找到了 **普通球×{n}**！";
+                    }),
+                    new("🔍 深入搜索", "🔍", run => {
+                        if (_rng.Next(3) == 0) {
+                            run.Balls["ultra"] = run.Balls.GetValueOrDefault("ultra") + 1;
+                            return "🟡 在深處找到了稀有的 **高級球×1**！";
+                        }
+                        int n = _rng.Next(2, 5);
+                        run.Balls["super"] = run.Balls.GetValueOrDefault("super") + n;
+                        return $"🔵 找到了 **超級球×{n}**！";
+                    }),
+                    new("💰 全部變現", "💰", run => {
+                        int g = _rng.Next(15, 35); run.Gold += g;
+                        return $"💰 把找到的球賣掉，獲得 **{g} 金幣**！";
+                    }),
+                }),
+
+            new("神秘外星人", "<:kc1:1511607011253551194>",
+                "遇到一位妹妹頭綠色觸角皮膚黑黑的外星人，她似乎有些東西想交換。",
+                new() {
+                    new("💰 以金換物", "💰", run => {
+                        if (run.Gold < 15) return "💸 金幣不足，外星人失望地離開了。";
+                        run.Gold -= 15;
+                        run.Balls["super"] = run.Balls.GetValueOrDefault("super") + 2;
+                        return "🔵 花了 **15 金幣** 換到 **超級球×2**！";
+                    }),
+                    new("🎁 直接交換", "🎁", run => {
+                        if (_rng.Next(2) == 0) {
+                            run.Balls["ultra"] = run.Balls.GetValueOrDefault("ultra") + 1;
+                            return "🟡 運氣好！獲得了 **高級球×1**！";
+                        }
+                        run.Balls["normal"] = run.Balls.GetValueOrDefault("normal") + 3;
+                        return "⚽ 交換到了 **普通球×3**。";
+                    }),
+                    new("🚶 不感興趣", "🚶", run => "外星人抖了抖觸角便離開了。"),
+                }),
+
+            new("神秘長脖男", "<:541105947435859978:1526117158831001742>",
+                "前方出現一顆頭飄在空中，定睛一看才發現是一個人，他似乎說了些甚麼。",
+                new() {
+                    new("📀 這個增幅裝置不能虧，鬼轉ap", "📀", run => {
+                        var pool = PickMovesStatic(run.ActivePokemon.Types);
+                        var nm = pool.FirstOrDefault(m => run.ActivePokemon.Moves.All(e => e.Name != m.Name)) ?? pool[0];
+                        int slot = run.ActivePokemon.Moves.Select((m,i)=>(m,i)).OrderBy(x=>x.m.Power).First().i;
+                        string old = run.ActivePokemon.Moves[slot].Name;
+                        run.ActivePokemon.Moves[slot] = nm;
+                        return $"📀 忘掉了 **{old}**，學會了 {nm.Emoji}**{nm.Name}**！";
+                    }),
+                    new("🎁 這邊獎勵一把食魂者ap特朗德", "🎁", run => {
+                        int lost = Math.Min(run.Gold, _rng.Next(10, 25));
+                        run.Gold -= lost;
+                        return $"😞 輸了，失去了 **{lost} 金幣**。（剩餘 {run.Gold}💰）";
+                    }),
+                    new("🔍 一起研究扶他知識，撰寫論文", "🔍", run => {
+                        if (_rng.Next(4) == 0) {
+                            int dmg = Math.Max(1, (int)(run.ActivePokemon.MaxHP * 0.12));
+                            run.ActivePokemon.CurrentHP = Math.Max(1, run.ActivePokemon.CurrentHP - dmg);
+                            return $"💥 是陷阱！ 教授不給過，**{run.ActivePokemon.DisplayName}** 覺得很羞恥，受到 **{dmg}** 心靈傷害";
+                        }
+                        int g = _rng.Next(15, 40); run.Gold += g;
+                        return $"論文火了，後續甚至登上各大新聞版面，賺到了 **{g} 金幣**！";
+                    }),
                 }),
         };
 
@@ -543,12 +771,10 @@ namespace MusicBot2.Service
             }
             if (choice == "event")
             {
-                var ev = _events[_rng.Next(_events.Count)];
-                string result = ev.Apply(run);
-                run.RunLog.Add($"{ev.Emoji} 第{run.CurrentFloor}層【{ev.Title}】");
+                run.PendingEventIdx = _rng.Next(_events.Count);
+                run.State = TowerRunState.SelectingEvent;
                 await SaveAsync(run);
-                return BuildPathEmbed(run,
-                    $"{ev.Emoji} **【{ev.Title}】**\n_{ev.Desc}_\n\n{result}");
+                return BuildEventEmbed(run);
             }
             return ErrEmbed("未知的路徑選擇");
         }
@@ -579,9 +805,11 @@ namespace MusicBot2.Service
             var enemyMove = enemy.Moves[enemy.NextMoveIdx % enemy.Moves.Count];
 
             bool playerFirst = poke.Speed >= enemy.Speed;
+            // 計算目前第幾回合（現有 rounds 數 + 1）
+            int roundNum = run.CurrentBattleLog.Split(new[] { "════════" }, StringSplitOptions.RemoveEmptyEntries)
+                               .Count(r => r.Trim().Length > 0) + 1;
             var sb = new StringBuilder();
-            sb.AppendLine($"─────────────────────────");
-            sb.AppendLine($"**【回合 {run.CurrentBattleLog.Count(c => c == '─') / 26 + 1}】**");
+            sb.AppendLine($"【回合 {roundNum}】");
 
             if (playerFirst)
             {
@@ -612,10 +840,15 @@ namespace MusicBot2.Service
 
             enemy.NextMoveIdx = (enemy.NextMoveIdx + 1) % enemy.Moves.Count;
 
-            // Accumulate log, keep last ~1800 chars
-            run.CurrentBattleLog += sb.ToString();
-            if (run.CurrentBattleLog.Length > 1800)
-                run.CurrentBattleLog = run.CurrentBattleLog[^1800..];
+            // 累積戰鬥紀錄，只保留最新 3 回合
+            const string RSEP = "════════";
+            var newRound = sb.ToString().Trim();
+            var existing = run.CurrentBattleLog;
+            var rounds = existing.Split(new[] { RSEP }, StringSplitOptions.RemoveEmptyEntries)
+                                 .Select(r => r.Trim()).Where(r => r.Length > 0).ToList();
+            rounds.Add(newRound);
+            if (rounds.Count > 3) rounds = rounds.TakeLast(3).ToList();
+            run.CurrentBattleLog = string.Join($"\n{RSEP}\n", rounds);
 
             // Check end
             if (enemy.CurrentHP <= 0)
@@ -725,38 +958,120 @@ namespace MusicBot2.Service
             return BuildPathEmbed(run);
         }
 
-        /// <summary>選擇是否捕獲（yes/no）</summary>
+        /// <summary>投球捕獲（ballKey = "normal"/"super"/"ultra"/"master"/"pass"）</summary>
         public async Task<(Embed embed, ComponentBuilder component)> HandleCatchAsync(
-            ulong channelId, bool doCatch)
+            ulong channelId, string ballKey)
         {
             if (!_activeRuns.TryGetValue(channelId, out var run))
                 return ErrEmbed("找不到進行中的爬塔");
 
-            string msg = "";
-            if (doCatch && run.PendingCatch != null)
+            if (ballKey == "pass")
             {
-                if (run.Party.Count >= 3)
+                string name = run.PendingCatch?.Name ?? "敵人";
+                run.PendingCatch = null;
+                run.State = TowerRunState.SelectingPath;
+                run.CurrentEnemy = null;
+                await SaveAsync(run);
+                return BuildPathEmbed(run, $"放走了 {name}。");
+            }
+
+            if (!_balls.TryGetValue(ballKey, out var ballInfo))
+                return ErrEmbed("未知的球種");
+            if (!run.Balls.TryGetValue(ballKey, out int ballCount) || ballCount <= 0)
+                return BuildCatchEmbed(run, $"⚠️ 沒有 {ballInfo.DisplayName} 了！");
+
+            run.Balls[ballKey]--;
+            if (run.Balls[ballKey] == 0) run.Balls.Remove(ballKey);
+
+            bool caught = (float)_rng.NextDouble() < ballInfo.Rate;
+            if (caught)
+            {
+                var newPoke = CatchFromEnemy(run.PendingCatch);
+                if (run.Party.Count < 3)
                 {
-                    msg = "⚠️ 背包已滿（最多3隻），無法捕獲！";
+                    run.Party.Add(newPoke);
+                    run.PendingCatch = null;
+                    run.State = TowerRunState.SelectingPath;
+                    run.CurrentEnemy = null;
+                    run.RunLog.Add($"🎉 捕獲了 {newPoke.Name}！");
+                    await SaveAsync(run);
+                    return BuildPathEmbed(run, $"🎉 成功捕獲 **{newPoke.Name}**！（HP: {newPoke.CurrentHP}/{newPoke.MaxHP}）");
                 }
                 else
                 {
-                    var newPoke = CatchFromEnemy(run.PendingCatch);
-                    run.Party.Add(newPoke);
-                    run.RunLog.Add($"🎉 捕獲了 {newPoke.Name}！");
-                    msg = $"🎉 成功捕獲 **{newPoke.Name}**！（HP: {newPoke.CurrentHP}/{newPoke.MaxHP}）";
+                    // 背包滿 → 進入交換選擇
+                    run.State = TowerRunState.SelectingCatchSwap;
+                    // PendingCatch 仍保留以便交換
+                    await SaveAsync(run);
+                    return BuildCatchSwapEmbed(run, newPoke);
                 }
             }
             else
             {
-                msg = $"放走了 {run.PendingCatch?.Name ?? "敵人"}。";
+                string ballsLeft = BallsDisplay(run);
+                await SaveAsync(run);
+                return BuildCatchEmbed(run, $"{ballInfo.Emoji} 投出 **{ballInfo.DisplayName}**……逃脫了！（剩餘：{ballsLeft}）");
             }
+        }
+
+        /// <summary>背包滿時選擇交換（partyIdx = 0-2 釋放並放入新捕獲，-1 = 取消）</summary>
+        public async Task<(Embed embed, ComponentBuilder component)> HandleCatchSwapAsync(
+            ulong channelId, int partyIdx)
+        {
+            if (!_activeRuns.TryGetValue(channelId, out var run))
+                return ErrEmbed("找不到進行中的爬塔");
+
+            var caughtName = run.PendingCatch?.Name ?? "新寶可夢";
+            if (partyIdx < 0)
+            {
+                // 取消 → 釋放剛捕獲的（背包保持原樣）
+                run.PendingCatch = null;
+                run.State = TowerRunState.SelectingPath;
+                run.CurrentEnemy = null;
+                await SaveAsync(run);
+                return BuildPathEmbed(run, $"放棄了帶走 {caughtName}。");
+            }
+
+            if (partyIdx >= run.Party.Count)
+                return ErrEmbed("無效的選擇");
+
+            string releasedName = run.Party[partyIdx].DisplayName;
+            var newPoke = CatchFromEnemy(run.PendingCatch);
+
+            // 若釋放的是目前上陣中的 → 換成新的
+            bool wasActive = run.Party[partyIdx].PokeId == run.ActivePokemon.PokeId
+                          && run.Party[partyIdx].CaughtAt == run.ActivePokemon.CaughtAt;
+            run.Party[partyIdx] = newPoke;
+            if (wasActive) run.ActivePokemon = newPoke;
 
             run.PendingCatch = null;
             run.State = TowerRunState.SelectingPath;
             run.CurrentEnemy = null;
+            run.RunLog.Add($"🔄 釋放了 {releasedName}，捕獲了 {newPoke.Name}！");
             await SaveAsync(run);
-            return BuildPathEmbed(run, msg);
+            return BuildPathEmbed(run, $"🔄 釋放了 **{releasedName}**，🎉 捕獲了 **{newPoke.Name}**！");
+        }
+
+        /// <summary>選擇事件選項（choiceIdx）</summary>
+        public async Task<(Embed embed, ComponentBuilder component)> HandleEventChoiceAsync(
+            ulong channelId, int choiceIdx)
+        {
+            if (!_activeRuns.TryGetValue(channelId, out var run))
+                return ErrEmbed("找不到進行中的爬塔");
+            if (run.PendingEventIdx < 0 || run.PendingEventIdx >= _events.Count)
+                return ErrEmbed("無效的事件");
+            var ev = _events[run.PendingEventIdx];
+            if (choiceIdx < 0 || choiceIdx >= ev.Choices.Count)
+                return ErrEmbed("無效的選項");
+
+            var choice = ev.Choices[choiceIdx];
+            string result = choice.Apply(run);
+            run.RunLog.Add($"{ev.Emoji} 第{run.CurrentFloor}層【{ev.Title}】→ {choice.Label}");
+            run.PendingEventIdx = -1;
+            run.State = TowerRunState.SelectingPath;
+            await SaveAsync(run);
+            return BuildPathEmbed(run,
+                $"{ev.Emoji} **【{ev.Title}】**\n> {choice.Emoji} {choice.Label}\n\n{result}");
         }
 
         /// <summary>商店購買</summary>
@@ -798,13 +1113,23 @@ namespace MusicBot2.Service
                     run.ActivePokemon.Moves[slot] = nm;
                     msg = $"📀 忘掉【{old}】，學會了 {nm.Emoji}**{nm.Name}**！（-25💰）";
                     break;
-                case "catch_ball":
-                    if (run.Gold < 20) return BuildShopEmbed(run, "💸 金幣不足！需要 20 金幣。");
-                    if (run.Party.Count >= 3) return BuildShopEmbed(run, "⚠️ 背包已滿（最多3隻）！");
-                    run.Gold -= 20;
-                    var wildPoke = CatchFromEnemy(GenEnemy(run.CurrentFloor, false));
-                    run.Party.Add(wildPoke);
-                    msg = $"🎾 捕獲了野生的 **{wildPoke.Name}**！（HP: {wildPoke.CurrentHP}/{wildPoke.MaxHP}，-20💰）";
+                case "buy_normal":
+                    if (run.Gold < 8) return BuildShopEmbed(run, "💸 金幣不足！需要 8 金幣。");
+                    run.Gold -= 8;
+                    run.Balls["normal"] = run.Balls.GetValueOrDefault("normal") + 3;
+                    msg = "⚽ 購入 **普通球×3**！（-8💰）";
+                    break;
+                case "buy_super":
+                    if (run.Gold < 15) return BuildShopEmbed(run, "💸 金幣不足！需要 15 金幣。");
+                    run.Gold -= 15;
+                    run.Balls["super"] = run.Balls.GetValueOrDefault("super") + 2;
+                    msg = "🔵 購入 **超級球×2**！（-15💰）";
+                    break;
+                case "buy_ultra":
+                    if (run.Gold < 25) return BuildShopEmbed(run, "💸 金幣不足！需要 25 金幣。");
+                    run.Gold -= 25;
+                    run.Balls["ultra"] = run.Balls.GetValueOrDefault("ultra") + 1;
+                    msg = "🟡 購入 **高級球×1**！（-25💰）";
                     break;
                 case "leave":
                     msg = "👋 離開商店，繼續爬塔！";
@@ -914,9 +1239,11 @@ namespace MusicBot2.Service
             {
                 TowerRunState.InBattle => BuildBattleEmbed(run),
                 TowerRunState.Shopping => BuildShopEmbed(run),
+                TowerRunState.SelectingEvent => BuildEventEmbed(run),
                 TowerRunState.SelectingMoveReward => BuildMoveRewardEmbed(run),
                 TowerRunState.SelectingMoveSlot => BuildMoveSlotEmbed(run),
                 TowerRunState.SelectingCatch => BuildCatchEmbed(run),
+                TowerRunState.SelectingCatchSwap => BuildCatchSwapEmbed(run, CatchFromEnemy(run.PendingCatch)),
                 _ => BuildPathEmbed(run)
             };
         }
@@ -946,11 +1273,48 @@ namespace MusicBot2.Service
             Speed = src.Speed,
             IsShiny = src.isShiny,
             CaughtAt = src.CaughtDate,
+            ImageUrl = src.Front_GIF ?? src.ImageUrl,
+            BackImageUrl = src.Back_GIF ?? src.Back_ImageUrl,
         };
+
+        // ── 圖片 URL helpers (供 Program.cs 送訊息用) ─────────────
+        public (string enemyUrl, string playerUrl) GetBattleImageUrls(ulong channelId)
+        {
+            if (!_activeRuns.TryGetValue(channelId, out var run)) return (null, null);
+            string enemy = run.CurrentEnemy?.FrontGifUrl ?? run.CurrentEnemy?.FrontFallbackUrl;
+            string player = run.ActivePokemon?.BackImageUrl ?? run.ActivePokemon?.ImageUrl;
+            return (enemy, player);
+        }
+
+        public void SetBattleImageMsgIds(ulong channelId, ulong enemyMsgId, ulong playerMsgId)
+        {
+            if (_activeRuns.TryGetValue(channelId, out var run))
+            {
+                run.EnemyImgMsgId = enemyMsgId;
+                run.PlayerImgMsgId = playerMsgId;
+                _ = SaveAsync(run);
+            }
+        }
+
+        public (ulong enemyMsgId, ulong playerMsgId) GetBattleImageMsgIds(ulong channelId)
+        {
+            if (_activeRuns.TryGetValue(channelId, out var run))
+                return (run.EnemyImgMsgId, run.PlayerImgMsgId);
+            return (0, 0);
+        }
+
+        public void ClearBattleImageMsgIds(ulong channelId)
+        {
+            if (_activeRuns.TryGetValue(channelId, out var run))
+            {
+                run.EnemyImgMsgId = 0;
+                run.PlayerImgMsgId = 0;
+            }
+        }
 
         private TowerPokemon CatchFromEnemy(TowerEnemy e) => new()
         {
-            PokeId = -(Math.Abs(e.Name.GetHashCode()) % 10000),
+            PokeId = e.PokeId > 0 ? e.PokeId : -(Math.Abs(e.Name.GetHashCode()) % 10000),
             Name = e.Name.Replace("👑 ", ""),
             Types = e.Types?.ToList() ?? new(),
             MaxHP = e.MaxHP,
@@ -960,6 +1324,10 @@ namespace MusicBot2.Service
             SpecialAttack = e.SpecialAttack,
             SpecialDefense = e.SpecialDefense,
             Speed = e.Speed,
+            ImageUrl = e.FrontGifUrl ?? e.FrontFallbackUrl,
+            BackImageUrl = e.PokeId > 0
+                ? $"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/showdown/back/{e.PokeId}.gif"
+                : null,
             Moves = e.Moves.Select(m => new TowerMove
             {
                 Name = m.Name, Type = m.Type, Power = m.Power,
@@ -989,11 +1357,11 @@ namespace MusicBot2.Service
 
         private TowerEnemy GenEnemy(int floor, bool isBoss)
         {
-            IEnumerable<(string Name, string[] Types, int StatTotal)> tier;
-            if (isBoss)     tier = _enemyPool.Where(e => e.StatTotal >= 590);
+            IEnumerable<(string Name, string[] Types, int StatTotal, int PokeId)> tier;
+            if (isBoss)          tier = _enemyPool.Where(e => e.StatTotal >= 590);
             else if (floor <= 3) tier = _enemyPool.Where(e => e.StatTotal < 430);
             else if (floor <= 6) tier = _enemyPool.Where(e => e.StatTotal >= 430 && e.StatTotal < 545);
-            else            tier = _enemyPool.Where(e => e.StatTotal >= 480 && e.StatTotal < 590);
+            else                 tier = _enemyPool.Where(e => e.StatTotal >= 480 && e.StatTotal < 590);
 
             var choices = tier.ToList();
             if (choices.Count == 0) choices = _enemyPool;
@@ -1005,6 +1373,7 @@ namespace MusicBot2.Service
             return new TowerEnemy
             {
                 Name = isBoss ? $"👑 {t.Name}" : t.Name,
+                PokeId = t.PokeId,
                 Types = t.Types.ToList(),
                 MaxHP = (int)(b * 1.6), CurrentHP = (int)(b * 1.6),
                 Attack = b, Defense = (int)(b * 0.85),
@@ -1035,10 +1404,9 @@ namespace MusicBot2.Service
             TowerMove move, int dmg, List<string> defTypes, bool isPlayer)
         {
             float eff = TypeEff(move.Type, defTypes);
-            string effNote = eff switch { >= 2f => "**（超級效果！）**", 0f => "**（完全無效！）**", < 1f => "（效果不佳）", _ => "" };
-            string tag = isPlayer ? "🗡️" : "💢";
-            sb.AppendLine($"{tag} **{atkName}** → {move.Emoji}**{move.Name}** {effNote}");
-            sb.AppendLine($"　　對 **{defName}** 造成 **{dmg}** 傷害");
+            string effNote = eff switch { >= 2f => "★超效", 0f => "×無效", < 1f => "▼不佳", _ => "" };
+            string tag = isPlayer ? "▶" : "◀";
+            sb.AppendLine($"{tag} {atkName} → {move.Emoji}{move.Name} -{dmg}HP {effNote}");
         }
 
         private string HpBar(int cur, int max, int len = 10)
@@ -1134,7 +1502,7 @@ namespace MusicBot2.Service
             {
                 desc.AppendLine();
                 desc.AppendLine("```");
-                desc.Append(run.CurrentBattleLog.Replace("**", "").Replace("`", "").Replace("🗡️", "▶").Replace("💢", "◀"));
+                desc.AppendLine(run.CurrentBattleLog);
                 desc.AppendLine("```");
             }
 
@@ -1176,22 +1544,52 @@ namespace MusicBot2.Service
             desc.AppendLine("🧃 **超級樹果** — 恢復50% HP (15💰)");
             desc.AppendLine("🔋 **PP全回復** — 所有技能PP滿 (20💰)");
             desc.AppendLine("📀 **技能學習器** — 隨機換一個技能 (25💰)");
-            if (run.Party.Count < 3)
-                desc.AppendLine("🎾 **精靈球** — 捕獲一隻當層的野生精靈 (20💰)");
+            desc.AppendLine("⚽ **普通球×3** — 30%捕獲率 (8💰)");
+            desc.AppendLine("🔵 **超級球×2** — 55%捕獲率 (15💰)");
+            desc.AppendLine("🟡 **高級球×1** — 75%捕獲率 (25💰)");
+            desc.AppendLine($"\n現有球：{BallsDisplay(run)}");
 
             var cb = new ComponentBuilder()
-                .WithButton("💊 全回復(30💰)",    $"tower_shop_{run.ChannelId}_heal_full", ButtonStyle.Success, row: 0)
-                .WithButton("🧃 超級樹果(15💰)",  $"tower_shop_{run.ChannelId}_heal_half", ButtonStyle.Primary, row: 0)
-                .WithButton("🔋 PP全回復(20💰)",  $"tower_shop_{run.ChannelId}_pp_restore", ButtonStyle.Primary, row: 1)
-                .WithButton("📀 技能學習器(25💰)",$"tower_shop_{run.ChannelId}_new_move",  ButtonStyle.Secondary, row: 1);
-            if (run.Party.Count < 3)
-                cb.WithButton("🎾 精靈球(20💰)", $"tower_shop_{run.ChannelId}_catch_ball", ButtonStyle.Secondary, row: 2);
-            cb.WithButton("離開商店", $"tower_shop_{run.ChannelId}_leave", ButtonStyle.Danger, row: 2);
+                .WithButton("💊 全回復(30💰)",    $"tower_shop_{run.ChannelId}_heal_full",  ButtonStyle.Success,   row: 0)
+                .WithButton("🧃 超級樹果(15💰)",  $"tower_shop_{run.ChannelId}_heal_half",  ButtonStyle.Primary,   row: 0)
+                .WithButton("🔋 PP全回復(20💰)",  $"tower_shop_{run.ChannelId}_pp_restore", ButtonStyle.Primary,   row: 1)
+                .WithButton("📀 技能學習器(25💰)",$"tower_shop_{run.ChannelId}_new_move",   ButtonStyle.Secondary, row: 1)
+                .WithButton("⚽ 普通球×3(8💰)",   $"tower_shop_{run.ChannelId}_buy_normal", ButtonStyle.Secondary, row: 2)
+                .WithButton("🔵 超級球×2(15💰)",  $"tower_shop_{run.ChannelId}_buy_super",  ButtonStyle.Primary,   row: 2)
+                .WithButton("🟡 高級球×1(25💰)",  $"tower_shop_{run.ChannelId}_buy_ultra",  ButtonStyle.Primary,   row: 2)
+                .WithButton("離開商店", $"tower_shop_{run.ChannelId}_leave", ButtonStyle.Danger, row: 3);
 
             return (new EmbedBuilder()
                 .WithTitle("🏪 神秘商店")
                 .WithDescription(desc.ToString())
                 .WithColor(new Color(255, 215, 0)).Build(), cb);
+        }
+
+        private (Embed embed, ComponentBuilder component) BuildEventEmbed(TowerRun run)
+        {
+            if (run.PendingEventIdx < 0 || run.PendingEventIdx >= _events.Count)
+                return BuildPathEmbed(run);
+            var ev = _events[run.PendingEventIdx];
+
+            var desc = new StringBuilder();
+            desc.AppendLine($"_{ev.Desc}_");
+            desc.AppendLine();
+            desc.AppendLine("**請選擇應對方式：**");
+            for (int i = 0; i < ev.Choices.Count; i++)
+                desc.AppendLine($"{ev.Choices[i].Emoji} **{ev.Choices[i].Label}**");
+            desc.AppendLine();
+            desc.AppendLine($"**{run.ActivePokemon.DisplayName}** HP: {HpBar(run.ActivePokemon.CurrentHP, run.ActivePokemon.MaxHP, 6)}　💰 {run.Gold}");
+
+            var cb = new ComponentBuilder();
+            for (int i = 0; i < ev.Choices.Count; i++)
+                cb.WithButton($"{ev.Choices[i].Emoji} {ev.Choices[i].Label}",
+                    $"tower_event_{run.ChannelId}_{i}",
+                    ButtonStyle.Primary, row: i / 3);
+
+            return (new EmbedBuilder()
+                .WithTitle($"{ev.Emoji} 神秘事件：{ev.Title}")
+                .WithDescription(desc.ToString())
+                .WithColor(new Color(148, 0, 211)).Build(), cb);
         }
 
         private (Embed embed, ComponentBuilder component) BuildMoveRewardEmbed(TowerRun run)
@@ -1247,36 +1645,76 @@ namespace MusicBot2.Service
                 .WithColor(Color.Blue).Build(), cb);
         }
 
-        private (Embed embed, ComponentBuilder component) BuildCatchEmbed(TowerRun run)
+        private (Embed embed, ComponentBuilder component) BuildCatchEmbed(TowerRun run, string notice = "")
         {
             var e = run.PendingCatch;
-            bool full = run.Party.Count >= 3;
-
             var desc = new StringBuilder();
+            if (!string.IsNullOrEmpty(notice)) desc.AppendLine(notice).AppendLine();
             desc.AppendLine($"野生的 **{e.Name}** {TypeBadge(e.Types)} 可以捕獲！");
             desc.AppendLine($"HP: {HpBar(e.MaxHP / 3, e.MaxHP)} · ATK: {e.Attack} · DEF: {e.Defense}");
             desc.AppendLine($"技能: {string.Join("、", e.Moves.Select(m => m.Name))}");
             desc.AppendLine();
-            if (full)
-                desc.AppendLine("⚠️ 背包已滿（3/3），無法捕獲。");
-            else
-                desc.AppendLine($"背包：{run.Party.Count}/3");
+            desc.AppendLine($"🎒 背包：{run.Party.Count}/3");
+            desc.AppendLine($"🎾 持有的球：{BallsDisplay(run)}");
 
-            var cb = new ComponentBuilder()
-                .WithButton("🎾 捕獲！", $"tower_catch_{run.ChannelId}_yes", ButtonStyle.Success, disabled: full)
-                .WithButton("放行", $"tower_catch_{run.ChannelId}_no", ButtonStyle.Secondary);
+            bool hasBalls = run.Balls.Any(b => b.Value > 0);
+            var cb = new ComponentBuilder();
+            int btnRow = 0;
+            foreach (var (key, info) in _balls)
+            {
+                if (run.Balls.TryGetValue(key, out int cnt) && cnt > 0)
+                {
+                    cb.WithButton($"{info.Emoji}{info.DisplayName}×{cnt}({info.Rate:P0})",
+                        $"tower_catch_{run.ChannelId}_{key}", ButtonStyle.Primary, row: btnRow / 3);
+                    btnRow++;
+                }
+            }
+            cb.WithButton("放走", $"tower_catch_{run.ChannelId}_pass", ButtonStyle.Secondary, row: 1);
 
             return (new EmbedBuilder()
-                .WithTitle("🎯 是否捕獲？")
+                .WithTitle("🎯 要嘗試捕獲嗎？")
                 .WithDescription(desc.ToString())
-                .WithColor(Color.Orange).Build(), cb);
+                .WithColor(hasBalls ? Color.Orange : Color.DarkGrey).Build(), cb);
         }
+
+        private (Embed embed, ComponentBuilder component) BuildCatchSwapEmbed(TowerRun run, TowerPokemon newPoke)
+        {
+            var desc = new StringBuilder();
+            desc.AppendLine($"🎉 成功捕獲 **{newPoke.Name}** {TypeBadge(newPoke.Types)}！");
+            desc.AppendLine($"但背包已滿（3/3）。選擇釋放哪一隻，或取消：");
+            desc.AppendLine();
+            for (int i = 0; i < run.Party.Count; i++)
+            {
+                var p = run.Party[i];
+                bool active = p.PokeId == run.ActivePokemon.PokeId && p.CaughtAt == run.ActivePokemon.CaughtAt;
+                desc.AppendLine($"{i + 1}. {(active ? "▶ " : "")}{p.DisplayName} {TypeBadge(p.Types)} HP:{p.CurrentHP}/{p.MaxHP}");
+            }
+
+            var cb = new ComponentBuilder();
+            for (int i = 0; i < run.Party.Count; i++)
+                cb.WithButton($"釋放 {run.Party[i].DisplayName}", $"tower_catchswap_{run.ChannelId}_{i}", ButtonStyle.Danger, row: 0);
+            cb.WithButton("取消", $"tower_catchswap_{run.ChannelId}_cancel", ButtonStyle.Secondary, row: 1);
+
+            return (new EmbedBuilder()
+                .WithTitle("🔄 背包已滿 — 選擇釋放")
+                .WithDescription(desc.ToString())
+                .WithColor(Color.Gold).Build(), cb);
+        }
+
+        private string BallsDisplay(TowerRun run) =>
+            run.Balls.Any()
+                ? string.Join(" ", run.Balls
+                    .Where(b => b.Value > 0)
+                    .Select(b => _balls.TryGetValue(b.Key, out var info)
+                        ? $"{info.Emoji}{info.DisplayName}×{b.Value}"
+                        : $"{b.Key}×{b.Value}"))
+                : "（無）";
 
         private (Embed embed, ComponentBuilder component) BuildVictoryEmbed(TowerRun run)
         {
             var elapsed = (int)(DateTime.UtcNow - run.StartedAt).TotalMinutes;
             return (new EmbedBuilder()
-                .WithTitle("🎉🏆 爬塔完成！恭喜！")
+                .WithTitle("🎉🏆 媽媽 我成功登上荒版大樓的塔頂了")
                 .WithDescription(
                     $"**{run.PlayerName}** 帶著 **{run.ActivePokemon.DisplayName}** 征服了全 **{run.MaxFloor}** 層！\n\n" +
                     $"📊 **最終成績**\n" +
