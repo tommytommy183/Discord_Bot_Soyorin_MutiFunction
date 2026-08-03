@@ -396,10 +396,10 @@ namespace MusicBot2.Service
                     C("🚶 當作沒看到", "🚶", run => "背後傳來好黑喔好可怕喔的聲音"),
                 }),
 
-            new("神秘藥水", "💊",
-                "地上有一瓶不明藥水，上面的標籤已經模糊不清。要喝嗎？",
+            new("神秘藥丸", "💊",
+                "地上有一頻不明藥丸，上面的標籤已經模糊不清，依稀寫著APTX48...。要吃嗎？",
                 new() {
-                    C("💊 直接喝下", "💊", run => {
+                    C("💊 直接吃下", "💊", run => {
                         if (_rng.Next(5) == 0) {
                             int dmg = Math.Max(1, (int)(run.ActivePokemon.MaxHP * 0.20));
                             run.ActivePokemon.CurrentHP = Math.Max(1, run.ActivePokemon.CurrentHP - dmg);
@@ -407,14 +407,14 @@ namespace MusicBot2.Service
                         }
                         int h = Math.Max(1, run.ActivePokemon.MaxHP / 2);
                         run.ActivePokemon.CurrentHP = Math.Min(run.ActivePokemon.MaxHP, run.ActivePokemon.CurrentHP + h);
-                        return $"💚 **{run.ActivePokemon.DisplayName}** 恢復了 **{h} HP**！";
+                        return $"💚 **{run.ActivePokemon.DisplayName}** 恢復了 **{h} HP**，而你的身材雖然縮小了，頭腦還是原來的名偵探！";
                     }),
                     C("👃 先聞一聞", "👃", run => {
                         int h = Math.Max(1, run.ActivePokemon.MaxHP / 4);
                         run.ActivePokemon.CurrentHP = Math.Min(run.ActivePokemon.MaxHP, run.ActivePokemon.CurrentHP + h);
-                        return $"🌿 小心地喝了一點，恢復了 **{h} HP**（保守做法）。";
+                        return $"🌿 小心地吃了一點，恢復了 **{h} HP**。";
                     }),
-                    C("🚫 不碰它", "🚫", run => "謹慎地繞過，繼續前進。"),
+                    C("🚫 不碰它", "🚫", run => "謹慎地繞過，繼續前進，珍愛生命，遠離梯歐歪立。"),
                 }),
 
             new("能量泉", "⛲",
@@ -472,29 +472,29 @@ namespace MusicBot2.Service
                     C("↩️ 繞遠路", "↩️", run => "繞了一大圈，安全通過，但浪費了時間。"),
                 }),
 
-            new("壞訓練師", "😈",
-                "一個兇神惡煞的訓練師攔住了去路，想要搶奪財物！",
+            new("待業上", "😈",
+                "你看到路邊有一個流浪漢，嘴巴不停說著我依然是世一上，他看到妳後向你撲了過來！",
                 new() {
                     C("⚔️ 正面對抗", "⚔️", run => {
                         if (_rng.Next(2) == 0) {
-                            return $"💪 成功擊退了壞訓練師！金幣完整保留（共 {run.Gold}💰）。";
+                            return $"💪 成功擊退了bin哥！他化身bin大小姐跑去跟zeus哭，金幣完整保留（共 {run.Gold}💰）。";
                         }
                         int dmg = Math.Max(1, (int)(run.ActivePokemon.MaxHP * 0.15));
                         run.ActivePokemon.CurrentHP = Math.Max(1, run.ActivePokemon.CurrentHP - dmg);
-                        return $"😓 對抗失敗，損失 **{dmg}** HP，但保住了金幣。";
+                        return $"😓 對抗失敗，損失 **{dmg}** HP，但保住了金幣，bin哥抱著滿滿的信心回blg找文波單挑。";
                     }),
-                    C("💰 乖乖交出", "💰", run => {
+                    C("💰 乖乖交出世一上的稱號", "💰", run => {
                         int lost = Math.Min(run.Gold, _rng.Next(10, 25));
                         run.Gold -= lost;
-                        return $"😞 交出了 **{lost} 金幣**，但全身而退。（剩餘 {run.Gold}💰）";
+                        return $"😞 你根本不是世一上，bin直接搶走你的 **{lost} 金幣**。（剩餘 {run.Gold}💰）";
                     }),
-                    C("🏃 拔腿就跑", "🏃", run => {
+                    C("🏃 高歌離席", "🏃", run => {
                         if (_rng.Next(3) == 0) {
                             int lost = Math.Min(run.Gold, _rng.Next(5, 15));
                             run.Gold -= lost;
-                            return $"🫣 沒跑掉！還是被搶了 **{lost} 金幣**。";
+                            return $"🫣 沒跑掉！bin哥最後追上你了，他搶了 **{lost} 金幣**去做眼皮手術。";
                         }
-                        return "💨 成功逃跑！";
+                        return "💨 成功逃跑！後方傳來 我是世一上我是世一上我是世一上的聲音";
                     }),
                 }),
 
@@ -711,6 +711,30 @@ namespace MusicBot2.Service
                         return "🏆 他完成了傳說 **1/9/2 牙膏**，感動地分給你 **19.2 金幣**（取整數19）！";
                     }),
                     C("💬 跟他講一講話…", "💬", run => "🫥 你跟他講一講話發現人不見了，又不見了，後來喊了他好幾下也沒有回應，無事發生。"),
+                }),
+
+            new("神秘揪打遊戲女", "🎮",
+                "你在準備上樓前，收到一則 Discord 私訊：",
+                new() {
+                    C("🔦 R.E.P.O -1 要不要++", "🔦", run => {
+                        if (_rng.Next(2) == 0) {
+                            run.Balls["ultra"] = run.Balls.GetValueOrDefault("ultra") + 1;
+                            return "👑 你打贏了其他人，當上了 loser 之王！獲得 **高級球×1**！";
+                        }
+                        int lost = Math.Min(run.Gold, _rng.Next(15, 35));
+                        run.Gold -= lost;
+                        return $"💀 你們揪團打了好幾場 R.E.P.O，從來沒有通關過，失去了 **{lost} 金幣**。（剩餘 {run.Gold}💰）";
+                    }),
+                    C("🏔️ PEAK ++", "🏔️", run => {
+                        int lost = Math.Min(run.Gold, _rng.Next(20, 45));
+                        run.Gold -= lost;
+                        return $"😈 她化身遊戲大盜，偷了其他人的遊戲來玩，還順便偷走了你的 **{lost} 金幣**。（剩餘 {run.Gold}💰）";
+                    }),
+                    C("🎯 APEX -1 ++", "🎯", run => {
+                        int g = _rng.Next(20, 45); run.Gold += g;
+                        run.Balls["super"] = run.Balls.GetValueOrDefault("super") + 1;
+                        return $"🦅 她不演了，直接秀一手頂獵實力帶你上分，獲得 **{g} 金幣** 和 **超級球×1**！";
+                    }),
                 }),
 
             new("神秘程式男", "<:415032840925741056:1526117153307103282>",
