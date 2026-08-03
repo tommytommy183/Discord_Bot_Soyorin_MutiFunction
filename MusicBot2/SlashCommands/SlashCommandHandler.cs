@@ -790,7 +790,7 @@ namespace MusicBot2.SlahCommands
             await FollowupAsync(embed: embed, components: component.Build());
         }
 
-        [SlashCommand("爬塔", "用你的Pokemon挑戰爬塔（Slay the Spire 風格，10層，HP保留）")]
+        [SlashCommand("pokemon爬塔", "用你的Pokemon挑戰爬塔")]
         public async Task PokeTowerAsync()
         {
             await DeferAsync();
@@ -804,7 +804,7 @@ namespace MusicBot2.SlahCommands
             await FollowupAsync(embed: embed, components: component.Build());
         }
 
-        [SlashCommand("取消爬塔", "取消此頻道進行中的爬塔（本人或開發者才能使用）")]
+        [SlashCommand("取消pokemon爬塔", "取消此頻道進行中的爬塔（本人才能使用）")]
         public async Task CancelPokeTowerAsync()
         {
             await DeferAsync();

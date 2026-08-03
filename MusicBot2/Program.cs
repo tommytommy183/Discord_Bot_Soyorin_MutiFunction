@@ -603,17 +603,21 @@ public class Program
                     else if (id.StartsWith("tower_swap_cancel_"))
                     {
                         ulong ch = ulong.Parse(id["tower_swap_cancel_".Length..]);
-                        var run = towerSvc.GetRun(ch);
-                        if (run != null)
-                        {
-                            tEmbed = new EmbedBuilder().WithTitle("↩️ 取消換寶可夢").WithDescription("繼續原本的狀態。").WithColor(Color.Blue).Build();
-                            tCb = new ComponentBuilder();
-                        }
+                        (tEmbed, tCb) = towerSvc.BuildCurrentStateEmbed(ch);
                     }
-                    // tower_swap_{channelId}_{pokemonListIndex}
+                    // tower_swap_{channelId}_{partyIndex}
                     else if (id.StartsWith("tower_swap_"))
                     {
                         var rest = id["tower_swap_".Length..];
+                        int under = rest.IndexOf('_');
+                        ulong ch = ulong.Parse(rest[..under]);
+                        int si = int.Parse(rest[(under + 1)..]);
+                        (tEmbed, tCb) = await towerSvc.HandleSwapConfirmAsync(ch, si);
+                    }
+                    // tower_addnew_{channelId}_{playerPokemonIndex}
+                    else if (id.StartsWith("tower_addnew_"))
+                    {
+                        var rest = id["tower_addnew_".Length..];
                         int under = rest.IndexOf('_');
                         ulong ch = ulong.Parse(rest[..under]);
                         int si = int.Parse(rest[(under + 1)..]);
@@ -621,10 +625,39 @@ public class Program
                         if (run != null)
                         {
                             var player = await pokeSvc.GetPlayerAsync(run.PlayerId, run.PlayerName);
-                            var list = player?.CaughtPokemon ?? new();
-                            if (si < list.Count)
-                                (tEmbed, tCb) = await towerSvc.HandleSwapConfirmAsync(ch, list[si]);
+                            var newOnes = (player?.CaughtPokemon ?? new())
+                                .Where(p => run.Party.All(tp => !(tp.PokeId == p.Id && tp.CaughtAt == p.CaughtDate)))
+                                .ToList();
+                            if (si < newOnes.Count)
+                                (tEmbed, tCb) = await towerSvc.HandleAddNewPokemonAsync(ch, newOnes[si]);
                         }
+                    }
+                    // tower_movereward_{channelId}_{idx|3=skip}
+                    else if (id.StartsWith("tower_movereward_"))
+                    {
+                        var rest = id["tower_movereward_".Length..];
+                        int under = rest.LastIndexOf('_');
+                        ulong ch = ulong.Parse(rest[..under]);
+                        int idx = int.Parse(rest[(under + 1)..]);
+                        (tEmbed, tCb) = await towerSvc.HandleMoveRewardAsync(ch, idx);
+                    }
+                    // tower_moveslot_{channelId}_{slot|4=cancel}
+                    else if (id.StartsWith("tower_moveslot_"))
+                    {
+                        var rest = id["tower_moveslot_".Length..];
+                        int under = rest.LastIndexOf('_');
+                        ulong ch = ulong.Parse(rest[..under]);
+                        int slot = int.Parse(rest[(under + 1)..]);
+                        (tEmbed, tCb) = await towerSvc.HandleMoveSlotAsync(ch, slot);
+                    }
+                    // tower_catch_{channelId}_{yes|no}
+                    else if (id.StartsWith("tower_catch_"))
+                    {
+                        var rest = id["tower_catch_".Length..];
+                        int under = rest.LastIndexOf('_');
+                        ulong ch = ulong.Parse(rest[..under]);
+                        bool yes = rest[(under + 1)..] == "yes";
+                        (tEmbed, tCb) = await towerSvc.HandleCatchAsync(ch, yes);
                     }
                 }
                 catch (Exception ex)
