@@ -143,6 +143,8 @@ public class Program
                 new FishAudioService(fishAudioApiKey))
             .AddSingleton<GroqWhisperService>(sp =>
                 new GroqWhisperService(groqApiKey))
+            .AddSingleton<PokeTowerService>(sp =>
+                new PokeTowerService(redisConn))
               .BuildServiceProvider();
 
         _googleAIStudioService = _services.GetRequiredService<GoogleAIStudioService>();
@@ -537,6 +539,107 @@ public class Program
             {
                 var lyricsDisplayService = _services.GetService<LyricsDisplayService>();
                 await lyricsDisplayService.HandleButtonAsync(component);
+            }
+            // ── 寶可夢爬塔 ──────────────────────────────────────────
+            else if (component.Data.CustomId.StartsWith("tower_"))
+            {
+                await component.DeferAsync();
+                var towerSvc = _services.GetService<PokeTowerService>();
+                var pokeSvc  = _services.GetService<PokeGameService>();
+                var id = component.Data.CustomId;
+                Embed tEmbed = null;
+                ComponentBuilder tCb = null;
+
+                try
+                {
+                    // tower_select_{channelId}_{playerId}_{pokemonIndex}
+                    if (id.StartsWith("tower_select_"))
+                    {
+                        var p = id.Split('_');
+                        ulong ch = ulong.Parse(p[2]);
+                        ulong pid = ulong.Parse(p[3]);
+                        int idx = int.Parse(p[4]);
+                        var player = await pokeSvc.GetPlayerAsync(pid, component.User.Username);
+                        if (player?.CaughtPokemon != null && idx < player.CaughtPokemon.Count)
+                            (tEmbed, tCb) = await towerSvc.StartRunAsync(ch, pid,
+                                component.User.GlobalName ?? component.User.Username,
+                                player.CaughtPokemon[idx]);
+                    }
+                    // tower_path_{channelId}_{choice}
+                    else if (id.StartsWith("tower_path_"))
+                    {
+                        var p = id.Split('_');
+                        ulong ch = ulong.Parse(p[2]);
+                        (tEmbed, tCb) = await towerSvc.HandlePathChoiceAsync(ch, p[3]);
+                    }
+                    // tower_move_{channelId}_{moveIndex}
+                    else if (id.StartsWith("tower_move_"))
+                    {
+                        var p = id.Split('_');
+                        ulong ch = ulong.Parse(p[2]);
+                        int mi = int.Parse(p[3]);
+                        (tEmbed, tCb) = await towerSvc.HandleMoveAsync(ch, mi);
+                    }
+                    // tower_shop_{channelId}_{itemKey}  (itemKey may contain _)
+                    else if (id.StartsWith("tower_shop_"))
+                    {
+                        var rest = id["tower_shop_".Length..];
+                        int under = rest.IndexOf('_');
+                        ulong ch = ulong.Parse(rest[..under]);
+                        (tEmbed, tCb) = await towerSvc.HandleShopItemAsync(ch, rest[(under + 1)..]);
+                    }
+                    // tower_swap_request_{channelId}
+                    else if (id.StartsWith("tower_swap_request_"))
+                    {
+                        ulong ch = ulong.Parse(id["tower_swap_request_".Length..]);
+                        var run = towerSvc.GetRun(ch);
+                        if (run != null)
+                        {
+                            var player = await pokeSvc.GetPlayerAsync(run.PlayerId, run.PlayerName);
+                            (tEmbed, tCb) = towerSvc.ShowSwapSelection(ch, player?.CaughtPokemon ?? new());
+                        }
+                    }
+                    // tower_swap_cancel_{channelId}
+                    else if (id.StartsWith("tower_swap_cancel_"))
+                    {
+                        ulong ch = ulong.Parse(id["tower_swap_cancel_".Length..]);
+                        var run = towerSvc.GetRun(ch);
+                        if (run != null)
+                        {
+                            tEmbed = new EmbedBuilder().WithTitle("↩️ 取消換寶可夢").WithDescription("繼續原本的狀態。").WithColor(Color.Blue).Build();
+                            tCb = new ComponentBuilder();
+                        }
+                    }
+                    // tower_swap_{channelId}_{pokemonListIndex}
+                    else if (id.StartsWith("tower_swap_"))
+                    {
+                        var rest = id["tower_swap_".Length..];
+                        int under = rest.IndexOf('_');
+                        ulong ch = ulong.Parse(rest[..under]);
+                        int si = int.Parse(rest[(under + 1)..]);
+                        var run = towerSvc.GetRun(ch);
+                        if (run != null)
+                        {
+                            var player = await pokeSvc.GetPlayerAsync(run.PlayerId, run.PlayerName);
+                            var list = player?.CaughtPokemon ?? new();
+                            if (si < list.Count)
+                                (tEmbed, tCb) = await towerSvc.HandleSwapConfirmAsync(ch, list[si]);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[Tower Button Error] {ex.Message}");
+                    tEmbed = new EmbedBuilder().WithTitle("❌ 爬塔操作失敗").WithDescription(ex.Message).WithColor(Color.Red).Build();
+                    tCb = new ComponentBuilder();
+                }
+
+                if (tEmbed != null)
+                    await component.ModifyOriginalResponseAsync(msg =>
+                    {
+                        msg.Embed = tEmbed;
+                        msg.Components = tCb?.Build();
+                    });
             }
         }
         else if (interaction is SocketModal modal)

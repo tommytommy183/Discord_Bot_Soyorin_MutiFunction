@@ -43,8 +43,9 @@ namespace MusicBot2.SlahCommands
         private readonly AIImageService _aiImageService;
         private readonly GroqWhisperService _groqWhisperService;
         private readonly FishAudioService _fishAudioService;
+        private readonly PokeTowerService _pokeTowerService;
 
-        public SlashCommandHandler(Program program, WordGuessingService wordService, MineGameService mineGameService, ElevenLabsService elevenLabsService, OldMaidService oldMaidService, RubiksCubeService rubiksCubeService, GoogleAIStudioService googleAIStudioService, OpenRouterService openRouterService, RVC_Service rVC_Service, SetTextService setTextService, Game2048Service game2048Service, Game1A2BService game1A2BService, Pick2Service pick2Service, JikanAnimeService animeService, PokeService pokeService, PokeGameService pokeGameService, ValorantService valorantService, TRPGService trpgService, LyrisService lyrisService, LyricsDisplayService lyricsDisplayService, UselessApiService uselessApiService, AIImageService aiImageService, GroqWhisperService groqWhisperService, FishAudioService fishAudioService)
+        public SlashCommandHandler(Program program, WordGuessingService wordService, MineGameService mineGameService, ElevenLabsService elevenLabsService, OldMaidService oldMaidService, RubiksCubeService rubiksCubeService, GoogleAIStudioService googleAIStudioService, OpenRouterService openRouterService, RVC_Service rVC_Service, SetTextService setTextService, Game2048Service game2048Service, Game1A2BService game1A2BService, Pick2Service pick2Service, JikanAnimeService animeService, PokeService pokeService, PokeGameService pokeGameService, ValorantService valorantService, TRPGService trpgService, LyrisService lyrisService, LyricsDisplayService lyricsDisplayService, UselessApiService uselessApiService, AIImageService aiImageService, GroqWhisperService groqWhisperService, FishAudioService fishAudioService, PokeTowerService pokeTowerService)
         {
             _program = program;
             _wordService = wordService;
@@ -70,6 +71,7 @@ namespace MusicBot2.SlahCommands
             _aiImageService = aiImageService;
             _groqWhisperService = groqWhisperService;
             _fishAudioService = fishAudioService;
+            _pokeTowerService = pokeTowerService;
         }
         #region 音樂撥放相關
         [SlashCommand("播放音樂", "播放音樂")]
@@ -786,6 +788,52 @@ namespace MusicBot2.SlahCommands
             var channel = Context.Channel;
             var (embed, component) = await _pokeGameService.JoinOrCreateTeamFightAsync(Context.User.Id, Context.User.Username, index - 1, channel.Id);
             await FollowupAsync(embed: embed, components: component.Build());
+        }
+
+        [SlashCommand("爬塔", "用你的Pokemon挑戰爬塔（Slay the Spire 風格，10層，HP保留）")]
+        public async Task PokeTowerAsync()
+        {
+            await DeferAsync();
+            var player = await _pokeGameService.GetPlayerAsync(Context.User.Id, Context.User.Username);
+            var pokemons = player?.CaughtPokemon ?? new();
+            var (embed, component) = _pokeTowerService.ShowPokemonSelection(
+                Context.Channel.Id,
+                Context.User.Id,
+                Context.User.GlobalName ?? Context.User.Username,
+                pokemons);
+            await FollowupAsync(embed: embed, components: component.Build());
+        }
+
+        [SlashCommand("取消爬塔", "取消此頻道進行中的爬塔（本人或開發者才能使用）")]
+        public async Task CancelPokeTowerAsync()
+        {
+            await DeferAsync();
+            var run = _pokeTowerService.GetRun(Context.Channel.Id);
+            if (run == null)
+            {
+                await FollowupAsync(embed: new EmbedBuilder()
+                    .WithTitle("❓ 此頻道目前沒有爬塔")
+                    .WithColor(Color.Orange).Build());
+                return;
+            }
+
+            // 只允許本人或開發者（豬頭馬又）取消
+            bool isOwner = run.PlayerId == Context.User.Id;
+            bool isDev = Context.User.Username.Contains("zu_tomayo") || Context.User.Username.Contains("豬頭馬又");
+            if (!isOwner && !isDev)
+            {
+                await FollowupAsync(embed: new EmbedBuilder()
+                    .WithTitle("❌ 只有爬塔的本人或開發者才能取消")
+                    .WithDescription($"目前爬塔的是 **{run.PlayerName}**。")
+                    .WithColor(Color.Red).Build(), ephemeral: true);
+                return;
+            }
+
+            await _pokeTowerService.CancelRunAsync(Context.Channel.Id);
+            await FollowupAsync(embed: new EmbedBuilder()
+                .WithTitle("🚫 爬塔已取消")
+                .WithDescription($"**{run.PlayerName}** 的爬塔（第 {run.CurrentFloor} 層）已被取消。")
+                .WithColor(Color.DarkOrange).Build());
         }
         #endregion
 

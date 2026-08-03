@@ -2296,6 +2296,9 @@ HP為0就是真的死亡，不會再有後續動作
         #endregion
 
         #region 資料操作 (支援 Redis 或記憶體儲存)
+        public Task<PokeGamePlayer> GetPlayerAsync(ulong userId, string userName)
+            => GetPlayerDataAsync(userId, userName);
+
         private async Task<PokeGamePlayer> GetPlayerDataAsync(ulong userId, string userName)
         {
             if (_useRedis)
