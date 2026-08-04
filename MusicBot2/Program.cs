@@ -644,7 +644,7 @@ public class Program
                         (tEmbed, tCb) = towerSvc.BuildCurrentStateEmbed(ch);
                     }
                     // tower_powerup_{channelId}_{rest|shop}  (觸發強化介面)
-                    else if (id.StartsWith("tower_powerup_") && !id.StartsWith("tower_powerup_select_"))
+                    else if (id.StartsWith("tower_powerup_") && !id.StartsWith("tower_powerup_select_") && !id.StartsWith("tower_powerup_switch_"))
                     {
                         var rest2 = id["tower_powerup_".Length..];
                         int under2 = rest2.LastIndexOf('_');
