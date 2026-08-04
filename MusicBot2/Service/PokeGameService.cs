@@ -193,8 +193,25 @@ namespace MusicBot2.Service
                     return (errorEmbed, new ComponentBuilder());
                 }
 
+                // 檢查是否有爬塔通關的閃光獎勵
+                bool forcedShiny = PokeTowerService.PendingShinyUserIds.Contains(userId);
+                if (!forcedShiny && _useRedis)
+                {
+                    try
+                    {
+                        var shinyFlag = await _redisDb.StringGetAsync($"tower:shiny:{userId}");
+                        if (shinyFlag.HasValue) forcedShiny = true;
+                    }
+                    catch { }
+                }
+                if (forcedShiny)
+                {
+                    PokeTowerService.PendingShinyUserIds.Remove(userId);
+                    if (_useRedis) try { await _redisDb.KeyDeleteAsync($"tower:shiny:{userId}"); } catch { }
+                }
+
                 // 隨機抓一隻pokemon
-                var pokemon = await GetRandomPokemonAsync();
+                var pokemon = await GetRandomPokemonAsync(forcedShiny);
                 string ShinyText = pokemon.isShiny ? "✨襪烙勒是閃的寶貝✨" : "";
                 // 儲存到玩家資料
                 player.CaughtPokemon.Add(pokemon);
@@ -228,7 +245,7 @@ namespace MusicBot2.Service
             }
         }
 
-        private async Task<PokeGamePokemon> GetRandomPokemonAsync()
+        private async Task<PokeGamePokemon> GetRandomPokemonAsync(bool forcedShiny = false)
         {
             bool isShiny = false;
 
@@ -263,12 +280,14 @@ namespace MusicBot2.Service
                 ?? pokeData.species.name;
 
 
-            if (!string.IsNullOrEmpty(pokeData.sprites.front_shiny))
+            if (forcedShiny && !string.IsNullOrEmpty(pokeData.sprites.front_shiny))
             {
-                // 如果有閃光圖，則這支pokemon有機會為閃光pokemon
-                Random randomShiny = new Random();
+                isShiny = true;
+            }
+            else if (!string.IsNullOrEmpty(pokeData.sprites.front_shiny))
+            {
                 // 閃光pokemon的機率約為 1/10
-                isShiny = randomShiny.Next(1, 11) == 1;
+                isShiny = new Random().Next(1, 11) == 1;
             }
 
             string imageUrl = isShiny ? pokeData.sprites.front_shiny : (pokeData.sprites.other.official_artwork.front_default ?? pokeData.sprites.front_default);

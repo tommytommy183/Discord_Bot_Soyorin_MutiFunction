@@ -141,6 +141,9 @@ namespace MusicBot2.Service
         private readonly bool _useRedis;
         private readonly Dictionary<ulong, TowerRun> _activeRuns = new();
         private const string REDIS_PREFIX = "tower:run:";
+        private const string SHINY_KEY_PREFIX = "tower:shiny:";
+        // in-memory fallback for shiny reward (also written to Redis for persistence)
+        internal static readonly HashSet<ulong> PendingShinyUserIds = new();
         private static readonly Random _rng = new();
         private static readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(8) };
         private static readonly Dictionary<int, List<TowerMove>> _movesApiCache = new();
@@ -276,25 +279,25 @@ namespace MusicBot2.Service
         private static readonly List<RelicDef> _relics = new()
         {
             // Immediate stat boosts
-            new("relic_atk_up",    "鋒芒碎片",  "💪", "全隊攻擊力+20%"),
-            new("relic_def_up",    "鋼盾符文",  "🛡️", "全隊防禦力+20%"),
-            new("relic_hp_up",     "生命之石",  "💎", "全隊最大HP+25%"),
-            new("relic_move_pow",  "全知之眼",  "👁️", "全部技能威力+20"),
+            new("relic_atk_up",    "純純的數值",  "💪", "全隊攻擊力+20%"),
+            new("relic_def_up",    "硬啦",  "🛡️", "全隊防禦力+20%"),
+            new("relic_hp_up",     "坦克引擎",  "💎", "全隊最大HP+25%"),
+            new("relic_move_pow",  "全ap跟你爆搂",  "👁️", "全部技能威力+20"),
             new("relic_move_pp",   "魔力水晶",  "💧", "全部技能MaxPP+5並回滿"),
-            new("relic_all_stats", "全隊號令",  "🎺", "全隊所有能力+15%"),
-            new("relic_gold",      "財富之手",  "💰", "立即獲得80金幣"),
-            new("relic_exp",       "知識衝擊",  "📚", "立即獲得大量EXP（Level×120）"),
+            new("relic_all_stats", "X項之力",  "🎺", "全隊所有能力+15%"),
+            new("relic_gold",      "我就愛錢",  "💰", "立即獲得80金幣"),
+            new("relic_exp",       "爆考研究所",  "📚", "立即獲得大量EXP（Level×120）"),
             // Passive combat
-            new("relic_lifesteal", "吸血魔石",  "🧛", "攻擊回復傷害的20%HP"),
-            new("relic_thorns",    "荊棘盔甲",  "🌵", "受傷時反彈傷害的25%（最多25）"),
-            new("relic_crit",      "爆裂核",    "💥", "攻擊15%機率造成雙倍傷害"),
+            new("relic_lifesteal", "嗜血者",  "🧛", "攻擊回復傷害的20%HP"),
+            new("relic_thorns",    "你是甲我反甲",  "🌵", "受傷時反彈傷害的25%（最多25）"),
+            new("relic_crit",      "賭你不敢",    "💥", "攻擊15%機率造成雙倍傷害"),
             new("relic_poison",    "毒牙",      "☠️", "每次攻擊額外造成15固定傷害"),
             new("relic_no_pp",     "永動機",    "⚙️", "使用技能25%機率不消耗PP"),
-            new("relic_enrage",    "復仇之刃",  "😤", "HP低於30%時傷害×1.6"),
+            new("relic_enrage",    "老子跟你爆搂",  "😤", "HP低於30%時傷害×1.6"),
             new("relic_regen",     "再生果實",  "🍎", "每回合回復MaxHP×3%（上限20）"),
-            new("relic_boss_dmg",  "魔王剋星",  "🪞", "對Boss造成的傷害+50%"),
-            new("relic_fullhp",    "血勇之力",  "👑", "HP全滿時傷害+30%"),
-            new("relic_amplify",   "弱點放大鏡","🔍", "所有攻擊傷害+30%"),
+            new("relic_boss_dmg",  "專打強者",  "🪞", "對Boss造成的傷害+50%"),
+            new("relic_fullhp",    "滿血的我，是最強的",  "👑", "HP全滿時傷害+30%"),
+            new("relic_amplify",   "發瘋啦","🔍", "所有攻擊傷害+30%"),
             new("relic_blood",     "血祭刃",    "🩸", "每回合自損MaxHP×3%但傷害×1.3"),
             new("relic_avenge",    "復仇碎片",  "💔", "受傷累積3次後下次攻擊造成雙倍傷害"),
             new("relic_kill_pp",   "奪命符文",  "⚡", "擊倒敵人後所有技能回復3PP"),
@@ -314,9 +317,9 @@ namespace MusicBot2.Service
         // ── 中文敵人池 (Name, Types, StatTotal, PokeApiId) ────────
         private static readonly List<(string Name, string[] Types, int StatTotal, int PokeId)> _enemyPool = new()
         {
-            // 低階 (floor 1-3)
+            // 低階 (floor 1-3)  StatTotal < 430
             ("比雕",     new[]{"一般","飛行"}, 349, 22),
-            ("隆隆石",   new[]{"岩石","地面"}, 390, 74),
+            ("隆隆石",   new[]{"岩石","地面"}, 390, 75),
             ("鬼斯通",   new[]{"幽靈","毒"},   405, 93),
             ("卡咪龜",   new[]{"水"},           405, 8),
             ("火恐龍",   new[]{"火"},           405, 5),
@@ -325,7 +328,14 @@ namespace MusicBot2.Service
             ("皮卡丘",   new[]{"電"},           320, 25),
             ("瞌睡貘",   new[]{"超能力"},       303, 96),
             ("小磁怪",   new[]{"電"},           325, 81),
-            // 中階 (floor 4-6)
+            ("小火馬",   new[]{"火"},           410, 77),
+            ("可達鴨",   new[]{"水"},           320, 54),
+            ("六尾",     new[]{"火"},           299, 37),
+            ("大岩蛇",   new[]{"岩石","地面"},  385, 95),
+            ("獨角蟲",   new[]{"蟲","毒"},      395, 15),
+            ("喇叭芽",   new[]{"草","毒"},      300, 69),
+            ("海星星",   new[]{"水"},           340, 120),
+            // 中階 (floor 4-6)  430 <= StatTotal < 545
             ("暴鯉龍",   new[]{"水","飛行"},    540, 130),
             ("拉普拉斯", new[]{"水","冰"},      535, 131),
             ("雷電獸",   new[]{"電"},           525, 135),
@@ -334,9 +344,15 @@ namespace MusicBot2.Service
             ("鴨嘴火獸", new[]{"火"},           495, 126),
             ("椰蛋樹",   new[]{"草","超能力"},  530, 103),
             ("刺殼菊兒", new[]{"水","冰"},      525, 91),
-            ("骨恐龍",   new[]{"地面","岩石"},  490, 95),
+            ("嗡嗡蝙",   new[]{"地面","岩石"},  485, 105),
             ("多刺球",   new[]{"蟲"},           395, 14),
-            // 高階 (floor 7-9)
+            ("班夏",     new[]{"幽靈"},         435, 292),
+            ("電龍",     new[]{"電"},           520, 466),
+            ("鋼鳥",     new[]{"鋼","飛行"},    510, 227),
+            ("冰蝎王",   new[]{"冰"},           510, 473),
+            ("苦栗寶",   new[]{"草"},           405, 470),
+            ("格鬥鼬",   new[]{"格鬥"},         484, 286),
+            // 高階 (floor 7-9)  545 <= StatTotal < 590
             ("怪力",     new[]{"格鬥"},         505, 68),
             ("耿鬼",     new[]{"幽靈","毒"},    500, 94),
             ("胡地",     new[]{"超能力"},       500, 65),
@@ -347,12 +363,49 @@ namespace MusicBot2.Service
             ("袋獸",     new[]{"一般"},         490, 115),
             ("水箭龜",   new[]{"水"},           530, 9),
             ("噴火龍",   new[]{"火","飛行"},    534, 6),
-            // Boss (floor 10)
+            ("黑暗鴉",   new[]{"飛行","一般"},  555, 227),
+            ("沙漠蜥蜴", new[]{"地面","龍"},    579, 330),
+            ("鋼甲蛹",   new[]{"鋼","超能力"},  540, 376),
+            ("格鬥公雞", new[]{"格鬥"},         530, 256),
+            ("水晶雯",   new[]{"水"},           535, 350),
+            ("鐵甲弄蝶", new[]{"蟲","鋼"},      575, 205),
+            ("泥偶巨人", new[]{"地面"},         580, 260),
+            // Boss (floor 10, 20)  StatTotal >= 590
             ("快龍",     new[]{"龍","飛行"},    600, 149),
             ("超夢",     new[]{"超能力"},       680, 150),
             ("班基拉斯", new[]{"岩石","惡"},    600, 248),
-            ("烈咬陸鯊", new[]{"龍","地面"},    600, 373),
-            ("暴飛龍",   new[]{"龍","飛行"},    600, 445),
+            ("烈咬陸鯊", new[]{"龍","地面"},    600, 445),
+            ("暴飛龍",   new[]{"龍","飛行"},    600, 373),
+            ("三地鼠",   new[]{"地面"},         600, 450),
+            ("水箭龜Mega",new[]{"水"},          630, 9),
+            ("噴火龍X",  new[]{"火","龍"},      634, 6),
+        };
+
+        // ── 神獸池 ────────────────────────────────────────────
+        private static readonly (string Name, int PokeId, string[] Types)[] _legendaryPool = new[]
+        {
+            ("急凍鳥", 144, new[]{"冰","飛行"}),
+            ("閃電鳥", 145, new[]{"電","飛行"}),
+            ("火焰鳥", 146, new[]{"火","飛行"}),
+            ("超夢",   150, new[]{"超能力"}),
+            ("夢幻",   151, new[]{"超能力"}),
+            ("雷公",   243, new[]{"電"}),
+            ("炎帝",   244, new[]{"火"}),
+            ("水君",   245, new[]{"水"}),
+            ("路基亞", 249, new[]{"超能力","飛行"}),
+            ("鳳王",   250, new[]{"火","飛行"}),
+            ("拉帝雅斯", 380, new[]{"龍","超能力"}),
+            ("拉帝歐斯", 381, new[]{"龍","超能力"}),
+            ("蓋歐卡", 382, new[]{"水"}),
+            ("固拉多", 383, new[]{"地面"}),
+            ("烈空坐", 384, new[]{"龍","飛行"}),
+            ("帝牙盧卡", 483, new[]{"鋼","龍"}),
+            ("帕路奇亞", 484, new[]{"水","龍"}),
+            ("騎拉帝納", 487, new[]{"幽靈","龍"}),
+            ("克雷色利亞", 488, new[]{"超能力"}),
+            ("席多藍恩", 638, new[]{"鋼","格鬥"}),
+            ("焰輝鳳凰", 641, new[]{"飛行"}),
+            ("土地雲",  645, new[]{"地面","飛行"}),
         };
 
         // ── 屬性剋制表 ─────────────────────────────────────────
@@ -860,6 +913,59 @@ namespace MusicBot2.Service
                     C("答案 C", "🇨", run => run.MathCorrectChoice == 2
                         ? $"✅ 答對了！{MathReward(run)}" : $"❌ 答錯了！{MathPunish(run)}"),
                 }),
+
+            new("傳說神獸現身！", "✨",
+                "前方出現了一道耀眼的光芒——一隻傳說中的神獸出現了！你要怎麼做？",
+                new() {
+                    new EventChoice("⚔️ 正面對打", "⚔️", async run => {
+                        var leg = _legendaryPool[_rng.Next(_legendaryPool.Length)];
+                        float scale = 1.0f + (run.CurrentFloor - 1) * 0.07f;
+                        int b = Math.Max(40, (int)(600 * scale / 7));
+                        var enemy = new TowerEnemy {
+                            Name = $"✨ {leg.Name}", PokeId = leg.PokeId,
+                            Types = leg.Types.ToList(),
+                            MaxHP = (int)(b * 1.6), CurrentHP = (int)(b * 1.6),
+                            Attack = b, Defense = (int)(b * 0.9),
+                            SpecialAttack = b, SpecialDefense = (int)(b * 0.9),
+                            Speed = b, IsBoss = false, GoldReward = 0,
+                            Moves = PickMovesStatic(leg.Types.ToList()),
+                        };
+                        bool win = _rng.Next(100) < 40;
+                        int expGain = run.Level * 50;
+                        run.Exp += expGain;
+                        if (win) {
+                            run.PendingCatch = enemy;
+                            return $"⚡ 一番苦戰之後，**{leg.Name}** 精疲力竭！趁現在收服牠吧！（+{expGain} EXP）";
+                        }
+                        int dmg = Math.Max(1, (int)(run.ActivePokemon.MaxHP * 0.35));
+                        run.ActivePokemon.CurrentHP = Math.Max(1, run.ActivePokemon.CurrentHP - dmg);
+                        return $"💥 **{leg.Name}** 太強了！**{run.ActivePokemon.DisplayName}** 受到 **{dmg}** 傷害後敗退，但還是獲得了 +{expGain} EXP。";
+                    }),
+                    new EventChoice("🕸️ 丟普通網子捕捉", "🕸️", async run => {
+                        var leg = _legendaryPool[_rng.Next(_legendaryPool.Length)];
+                        float scale = 1.0f + (run.CurrentFloor - 1) * 0.07f;
+                        int b = Math.Max(40, (int)(600 * scale / 7));
+                        var enemy = new TowerEnemy {
+                            Name = $"✨ {leg.Name}", PokeId = leg.PokeId,
+                            Types = leg.Types.ToList(),
+                            MaxHP = (int)(b * 1.6), CurrentHP = (int)(b * 1.6),
+                            Attack = b, Defense = (int)(b * 0.9),
+                            SpecialAttack = b, SpecialDefense = (int)(b * 0.9),
+                            Speed = b, IsBoss = false, GoldReward = 0,
+                            Moves = PickMovesStatic(leg.Types.ToList()),
+                        };
+                        bool caught = _rng.Next(10) == 0;
+                        if (caught) {
+                            run.PendingCatch = enemy;
+                            return $"😱 哀呀我被抓到了哀呀，我堂堂神獸被一個普通網子抓了！？**{leg.Name}** 懵掉了，趁現在帶走牠！";
+                        }
+                        int dmg = Math.Max(1, (int)(run.ActivePokemon.MaxHP * 0.25));
+                        run.ActivePokemon.CurrentHP = Math.Max(1, run.ActivePokemon.CurrentHP - dmg);
+                        int expGain = run.Level * 20;
+                        run.Exp += expGain;
+                        return $"幹，當林北 **{leg.Name}** 是水君嗎？一掌把你的 **{run.ActivePokemon.DisplayName}** 掃飛 **{dmg}** 點傷害，不過還是獲得了 {expGain} EXP。";
+                    }),
+                }),
         };
 
         private static OpenRouterService _aiService;
@@ -997,6 +1103,10 @@ namespace MusicBot2.Service
                     pk.CurrentHP = Math.Min(pk.MaxHP, pk.CurrentHP + pkHeal);
                     foreach (var m in pk.Moves) m.CurrentPP = m.MaxPP;
                 }
+                // sync ActivePokemon in case it diverged from Party after Redis load
+                run.ActivePokemon.CurrentHP = Math.Min(run.ActivePokemon.MaxHP,
+                    run.ActivePokemon.CurrentHP + Math.Max(1, (int)(run.ActivePokemon.MaxHP * 0.35)));
+                foreach (var m in run.ActivePokemon.Moves) m.CurrentPP = m.MaxPP;
                 run.RunLog.Add($"🏕️ 第{run.CurrentFloor}層：全隊休息恢復 35%HP + PP全回復");
                 run.State = TowerRunState.Resting;
                 await SaveAsync(run);
@@ -1208,6 +1318,10 @@ namespace MusicBot2.Service
                 {
                     run.State = TowerRunState.Victory;
                     await RemoveAsync(channelId);
+                    // Grant shiny reward for the player's next catch
+                    PendingShinyUserIds.Add(run.PlayerId);
+                    if (_useRedis)
+                        _ = _redisDb.StringSetAsync($"{SHINY_KEY_PREFIX}{run.PlayerId}", "1", TimeSpan.FromDays(30));
                     return BuildVictoryEmbed(run);
                 }
 
@@ -1454,10 +1568,17 @@ namespace MusicBot2.Service
             run.RunLog.Add($"{ev.Emoji} 第{run.CurrentFloor}層【{ev.Title}】→ {choice.Label}");
             run.UsedEventIndices.Add(run.PendingEventIdx);
             run.PendingEventIdx = -1;
+            string eventHeader = $"{ev.Emoji} **【{ev.Title}】**\n> {choice.Emoji} {choice.Label}\n\n{result}";
+            // If the event set up a catch (e.g. legendary encounter), route to catch screen
+            if (run.PendingCatch != null)
+            {
+                run.State = TowerRunState.SelectingCatch;
+                await SaveAsync(run);
+                return BuildCatchEmbed(run, eventHeader);
+            }
             run.State = TowerRunState.SelectingPath;
             await SaveAsync(run);
-            return BuildPathEmbed(run,
-                $"{ev.Emoji} **【{ev.Title}】**\n> {choice.Emoji} {choice.Label}\n\n{result}");
+            return BuildPathEmbed(run, eventHeader);
         }
 
         /// <summary>商店購買</summary>
@@ -1474,6 +1595,7 @@ namespace MusicBot2.Service
                     if (run.Gold < 30) return BuildShopEmbed(run, "💸 金幣不足！需要 30 金幣。");
                     run.Gold -= 30;
                     foreach (var pk in run.Party) pk.CurrentHP = pk.MaxHP;
+                    run.ActivePokemon.CurrentHP = run.ActivePokemon.MaxHP;
                     msg = "💊 使用「全回復」— 全隊 HP 完全恢復！（-30💰）";
                     break;
                 case "heal_half":
@@ -1484,12 +1606,15 @@ namespace MusicBot2.Service
                         int h = Math.Max(1, pk.MaxHP / 2);
                         pk.CurrentHP = Math.Min(pk.MaxHP, pk.CurrentHP + h);
                     }
+                    run.ActivePokemon.CurrentHP = Math.Min(run.ActivePokemon.MaxHP,
+                        run.ActivePokemon.CurrentHP + Math.Max(1, run.ActivePokemon.MaxHP / 2));
                     msg = "🧃 使用「超級樹果」— 全隊恢復 50% HP！（-15💰）";
                     break;
                 case "pp_restore":
                     if (run.Gold < 20) return BuildShopEmbed(run, "💸 金幣不足！需要 20 金幣。");
                     run.Gold -= 20;
                     foreach (var pk in run.Party) foreach (var m in pk.Moves) m.CurrentPP = m.MaxPP;
+                    foreach (var m in run.ActivePokemon.Moves) m.CurrentPP = m.MaxPP;
                     msg = "🔋 全隊技能 PP 完全恢復！（-20💰）";
                     break;
                 case "new_move":
@@ -2432,7 +2557,8 @@ namespace MusicBot2.Service
                     $"• 累積傷害：{run.TotalDamageDealt}\n" +
                     $"• 剩餘 HP：{run.ActivePokemon.CurrentHP}/{run.ActivePokemon.MaxHP}\n" +
                     $"• 金幣：{run.Gold} 💰\n" +
-                    $"• 用時：{elapsed} 分鐘")
+                    $"• 用時：{elapsed} 分鐘\n\n" +
+                    $"✨ **塔頂限定獎勵**：下一次使用 /抓pokemon 保證閃光！（限一次）")
                 .WithColor(Color.Gold).Build(), new ComponentBuilder());
         }
 
