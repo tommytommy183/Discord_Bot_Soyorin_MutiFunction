@@ -23,7 +23,9 @@ namespace MusicBot2.Service
         SelectingCatch,
         SelectingCatchSwap,
         Victory,
-        Defeated
+        Defeated,
+        Resting,
+        SelectingPowerUpgrade
     }
 
     public class TowerMove
@@ -118,6 +120,10 @@ namespace MusicBot2.Service
         public int Level { get; set; } = 1;
         public int Exp { get; set; } = 0;
         public int ExpToNext => Level * 60;
+        public List<string> CurrentPaths { get; set; } = new();
+        public bool RestMoveRewardPending { get; set; } = false;
+        // "battle" | "rest" | "shop"
+        public string PowerUpgradeReturn { get; set; } = "";
     }
 
     public class PokeTowerService
@@ -753,7 +759,7 @@ namespace MusicBot2.Service
                     C("🚶 裝沒看見，繼續趕路", "🚶", run => "你假裝沒看到，快步離開，背後傳來「欸欸欸你要不要試試看～」的聲音……"),
                 }),
 
-            new("藍髮媚魔", "💙",
+            new("藍髮媚魔", "<a:95333c6fabb3e5d23e6325817ce09986:1293572566715203594>",
                 "一位藍髮媚魔出現在你面前，想找你組樂隊……",
                 new() {
                     C("🎵 同意組樂隊，而且要組一輩子", "🎵", run => {
@@ -911,11 +917,12 @@ namespace MusicBot2.Service
                 return ErrEmbed("找不到進行中的爬塔");
 
             run.CurrentFloor++;
+            run.CurrentPaths = null;
             bool isBoss = run.CurrentFloor == run.MaxFloor;
 
             if (choice == "battle" || isBoss)
             {
-                run.CurrentEnemy = await GenEnemyAsync(run.CurrentFloor, isBoss);
+                run.CurrentEnemy = GenEnemy(run.CurrentFloor, isBoss);
                 run.CurrentBattleLog = "";
                 run.State = TowerRunState.InBattle;
                 run.RunLog.Add($"⚔️ 第{run.CurrentFloor}層：遭遇 {run.CurrentEnemy.Name}！");
@@ -928,8 +935,9 @@ namespace MusicBot2.Service
                 run.ActivePokemon.CurrentHP = Math.Min(run.ActivePokemon.MaxHP, run.ActivePokemon.CurrentHP + hp);
                 foreach (var m in run.ActivePokemon.Moves) m.CurrentPP = m.MaxPP;
                 run.RunLog.Add($"🏕️ 第{run.CurrentFloor}層：休息恢復 {hp}HP + PP全回復");
+                run.State = TowerRunState.Resting;
                 await SaveAsync(run);
-                return BuildPathEmbed(run, $"🏕️ **{run.ActivePokemon.DisplayName}** 休息後恢復 **{hp} HP**，技能 PP 也全部恢復！");
+                return BuildRestEmbed(run, hp);
             }
             if (choice == "shop")
             {
@@ -1065,13 +1073,14 @@ namespace MusicBot2.Service
                     return BuildVictoryEmbed(run);
                 }
 
-                // 提供技能獎勵
+                // 提供技能獎勵（先讓玩家選強化）
                 run.PendingMoveRewards = _movePool.OrderBy(_ => _rng.Next()).Take(3).ToList();
                 // 可以捕獲
                 run.PendingCatch = enemy;
-                run.State = TowerRunState.SelectingMoveReward;
+                run.PowerUpgradeReturn = "battle";
+                run.State = TowerRunState.SelectingPowerUpgrade;
                 await SaveAsync(run);
-                return BuildMoveRewardEmbed(run);
+                return BuildPowerUpgradeEmbed(run);
             }
 
             if (poke.CurrentHP <= 0)
@@ -1106,6 +1115,13 @@ namespace MusicBot2.Service
                 // Skip → go to catch or path
                 run.PendingMoveRewards.Clear();
                 run.PendingSelectedMove = null;
+                if (run.RestMoveRewardPending)
+                {
+                    run.RestMoveRewardPending = false;
+                    run.State = TowerRunState.SelectingPath;
+                    await SaveAsync(run);
+                    return BuildPathEmbed(run);
+                }
                 await SaveAsync(run);
                 return CheckCatch(run);
             }
@@ -1144,6 +1160,13 @@ namespace MusicBot2.Service
 
             run.PendingSelectedMove = null;
             run.PendingMoveRewards.Clear();
+            if (run.RestMoveRewardPending)
+            {
+                run.RestMoveRewardPending = false;
+                run.State = TowerRunState.SelectingPath;
+                await SaveAsync(run);
+                return BuildPathEmbed(run);
+            }
             await SaveAsync(run);
             return CheckCatch(run);
         }
@@ -1212,7 +1235,7 @@ namespace MusicBot2.Service
             {
                 string ballsLeft = BallsDisplay(run);
                 await SaveAsync(run);
-                return BuildCatchEmbed(run, $"{ballInfo.Emoji} 投出 **{ballInfo.DisplayName}**……逃脫了！（剩餘：{ballsLeft}）");
+                return BuildCatchEmbed(run, $"{ballInfo.Emoji} 投出 **{ballInfo.DisplayName}**……逃脫了！真是囂張的傢伙（剩餘：{ballsLeft}）");
             }
         }
 
@@ -1411,11 +1434,80 @@ namespace MusicBot2.Service
                 return ErrEmbed("背包已滿！最多只能帶 3 隻。");
 
             var newPoke = ConvertPokemon(src);
-            newPoke.Moves = await FetchMovesFromApiAsync(src.Id, src.Types?.ToList() ?? new());
+            newPoke.Moves = PickMovesStatic(src.Types?.ToList() ?? new());
             run.Party.Add(newPoke);
             run.RunLog.Add($"➕ {newPoke.DisplayName} 加入了爬塔！");
             await SaveAsync(run);
             return BuildCurrentStateEmbed(channelId);
+        }
+
+        /// <summary>進入威力升級介面（來自商店或休息）</summary>
+        public async Task<(Embed embed, ComponentBuilder component)> EnterPowerUpgradeAsync(ulong channelId, string returnTo)
+        {
+            if (!_activeRuns.TryGetValue(channelId, out var run))
+                return ErrEmbed("找不到進行中的爬塔");
+            run.PowerUpgradeReturn = returnTo;
+            run.State = TowerRunState.SelectingPowerUpgrade;
+            await SaveAsync(run);
+            return BuildPowerUpgradeEmbed(run);
+        }
+
+        /// <summary>威力升級：選擇技能 (0-3=槽位, 4=跳過)</summary>
+        public async Task<(Embed embed, ComponentBuilder component)> HandlePowerUpgradeAsync(ulong channelId, int moveIndex)
+        {
+            if (!_activeRuns.TryGetValue(channelId, out var run))
+                return ErrEmbed("找不到進行中的爬塔");
+
+            if (moveIndex >= 0 && moveIndex < run.ActivePokemon.Moves.Count)
+            {
+                var m = run.ActivePokemon.Moves[moveIndex];
+                m.Power += 20;
+                run.RunLog.Add($"⚡ 強化【{m.Name}】威力提升至 {m.Power}！");
+            }
+            foreach (var mv in run.ActivePokemon.Moves) mv.CurrentPP = mv.MaxPP;
+
+            run.PowerUpgradeReturn = run.PowerUpgradeReturn; // keep
+            var ret = run.PowerUpgradeReturn;
+            run.PowerUpgradeReturn = "";
+
+            if (ret == "battle")
+            {
+                run.State = TowerRunState.SelectingMoveReward;
+                await SaveAsync(run);
+                return BuildMoveRewardEmbed(run);
+            }
+            if (ret == "shop")
+            {
+                run.State = TowerRunState.Shopping;
+                await SaveAsync(run);
+                return BuildShopEmbed(run);
+            }
+            // rest or default → path select
+            run.State = TowerRunState.SelectingPath;
+            await SaveAsync(run);
+            return BuildPathEmbed(run);
+        }
+
+        /// <summary>休息後繼續前進</summary>
+        public async Task<(Embed embed, ComponentBuilder component)> HandleRestContinueAsync(ulong channelId)
+        {
+            if (!_activeRuns.TryGetValue(channelId, out var run))
+                return ErrEmbed("找不到進行中的爬塔");
+            run.State = TowerRunState.SelectingPath;
+            await SaveAsync(run);
+            return BuildPathEmbed(run);
+        }
+
+        /// <summary>休息後換季能</summary>
+        public async Task<(Embed embed, ComponentBuilder component)> HandleRestMoveSwapAsync(ulong channelId)
+        {
+            if (!_activeRuns.TryGetValue(channelId, out var run))
+                return ErrEmbed("找不到進行中的爬塔");
+            run.PendingMoveRewards = _movePool.OrderBy(_ => _rng.Next()).Take(3).ToList();
+            run.RestMoveRewardPending = true;
+            run.State = TowerRunState.SelectingMoveReward;
+            await SaveAsync(run);
+            return BuildMoveRewardEmbed(run);
         }
 
         /// <summary>取消換寶可夢，回到當前狀態</summary>
@@ -1432,6 +1524,8 @@ namespace MusicBot2.Service
                 TowerRunState.SelectingMoveSlot => BuildMoveSlotEmbed(run),
                 TowerRunState.SelectingCatch => BuildCatchEmbed(run),
                 TowerRunState.SelectingCatchSwap => BuildCatchSwapEmbed(run, CatchFromEnemy(run.PendingCatch)),
+                TowerRunState.Resting => BuildRestEmbed(run, 0),
+                TowerRunState.SelectingPowerUpgrade => BuildPowerUpgradeEmbed(run),
                 _ => BuildPathEmbed(run)
             };
         }
@@ -1602,7 +1696,7 @@ namespace MusicBot2.Service
             catch { return PickMovesStatic(fallbackTypes); }
         }
 
-        private async Task<TowerEnemy> GenEnemyAsync(int floor, bool isBoss)
+        private TowerEnemy GenEnemy(int floor, bool isBoss)
         {
             IEnumerable<(string Name, string[] Types, int StatTotal, int PokeId)> tier;
             if (isBoss)          tier = _enemyPool.Where(e => e.StatTotal >= 590);
@@ -1613,8 +1707,8 @@ namespace MusicBot2.Service
             var choices = tier.ToList();
             if (choices.Count == 0) choices = _enemyPool;
             var t = choices[_rng.Next(choices.Count)];
-            float scale = isBoss ? 1.0f + (floor - 1) * 0.11f : 1.0f + (floor - 1) * 0.08f;
-            int b = Math.Max(30, (int)(t.StatTotal * scale / 6));
+            float scale = isBoss ? 1.0f + (floor - 1) * 0.09f : 1.0f + (floor - 1) * 0.06f;
+            int b = Math.Max(30, (int)(t.StatTotal * scale / 7));
             int gold = isBoss ? floor * 15 : floor * 5 + _rng.Next(5);
 
             return new TowerEnemy
@@ -1626,7 +1720,7 @@ namespace MusicBot2.Service
                 Attack = b, Defense = (int)(b * 0.85),
                 SpecialAttack = b, SpecialDefense = (int)(b * 0.85),
                 Speed = b, IsBoss = isBoss, GoldReward = gold,
-                Moves = await FetchMovesFromApiAsync(t.PokeId, t.Types.ToList()),
+                Moves = PickMovesStatic(t.Types.ToList()),
             };
         }
 
@@ -1635,7 +1729,7 @@ namespace MusicBot2.Service
             int a = move.Category == "Physical" ? atk : spAtk;
             int d = move.Category == "Physical" ? def : spDef;
             float eff = TypeEff(move.Type, defTypes);
-            int raw = (int)(move.Power * a / (float)Math.Max(1, d) * eff / 7.5f);
+            int raw = (int)(move.Power * a / (float)Math.Max(1, d) * eff / 5.0f);
             return Math.Max(1, (int)(raw * (0.85 + _rng.NextDouble() * 0.15)));
         }
 
@@ -1675,7 +1769,8 @@ namespace MusicBot2.Service
         // ── Random path generation ────────────────────────────
         private List<string> GenPaths(int floor)
         {
-            if (floor == 10) return new() { "battle" };
+            if (floor % 10 == 0) return new() { "battle" }; // boss floors 10, 20
+            if (floor == 9 || floor == 19) return new() { "shop", "rest" }; // pre-boss
             var pool = new List<string> { "rest", "shop", "event" };
             pool = pool.OrderBy(_ => _rng.Next()).Take(2).ToList();
             pool.Add("battle");
@@ -1697,7 +1792,9 @@ namespace MusicBot2.Service
         {
             bool nextIsBoss = (run.CurrentFloor + 1) == run.MaxFloor;
             var p = run.ActivePokemon;
-            var paths = GenPaths(run.CurrentFloor + 1);
+            if (run.CurrentPaths == null || run.CurrentPaths.Count == 0)
+                run.CurrentPaths = GenPaths(run.CurrentFloor + 1);
+            var paths = run.CurrentPaths;
 
             var desc = new StringBuilder();
             if (!string.IsNullOrEmpty(extra)) desc.AppendLine(extra).AppendLine();
@@ -1777,6 +1874,60 @@ namespace MusicBot2.Service
             return (embed, cb);
         }
 
+        private (Embed embed, ComponentBuilder component) BuildPowerUpgradeEmbed(TowerRun run)
+        {
+            var p = run.ActivePokemon;
+            var desc = new StringBuilder();
+            desc.AppendLine("選擇想**強化威力的招式**（+20 威力）：");
+            desc.AppendLine();
+            for (int i = 0; i < p.Moves.Count; i++)
+            {
+                var m = p.Moves[i];
+                desc.AppendLine($"{i + 1}. {m.Emoji}**{m.Name}** — {m.Type} {m.Category} 威力 **{m.Power}** → **{m.Power + 20}**");
+            }
+
+            var embed = new EmbedBuilder()
+                .WithTitle("⚡ 威力升級")
+                .WithDescription(desc.ToString())
+                .WithColor(new Color(255, 200, 0))
+                .WithFooter($"{run.PlayerName} • 第 {run.CurrentFloor}/{run.MaxFloor} 層")
+                .Build();
+
+            var cb = new ComponentBuilder();
+            for (int i = 0; i < p.Moves.Count; i++)
+            {
+                var m = p.Moves[i];
+                cb.WithButton($"{m.Emoji}{m.Name}({m.Power}→{m.Power + 20})", $"tower_powerup_select_{run.ChannelId}_{i}", ButtonStyle.Primary, row: 0);
+            }
+            cb.WithButton("跳過", $"tower_powerup_select_{run.ChannelId}_4", ButtonStyle.Secondary, row: 1);
+            return (embed, cb);
+        }
+
+        private (Embed embed, ComponentBuilder component) BuildRestEmbed(TowerRun run, int healedHp)
+        {
+            var p = run.ActivePokemon;
+            string healText = healedHp > 0 ? $"恢復了 **{healedHp} HP** 並回復所有技能 PP。" : "已休息完畢。";
+            var desc = new StringBuilder();
+            desc.AppendLine($"🏕️ **{p.DisplayName}** {healText}");
+            desc.AppendLine($"HP: {HpBar(p.CurrentHP, p.MaxHP)}");
+            desc.AppendLine($"技能: {MovesDisplay(p)}");
+            desc.AppendLine();
+            desc.AppendLine("想趁休息時**換一個技能**嗎？");
+
+            var embed = new EmbedBuilder()
+                .WithTitle("🏕️ 休息")
+                .WithDescription(desc.ToString())
+                .WithColor(new Color(100, 200, 100))
+                .WithFooter($"{run.PlayerName} • 第 {run.CurrentFloor}/{run.MaxFloor} 層")
+                .Build();
+
+            var cb = new ComponentBuilder()
+                .WithButton("🔃 換技能", $"tower_rest_swap_{run.ChannelId}", ButtonStyle.Primary, row: 0)
+                .WithButton("⚡ 強化招式", $"tower_powerup_{run.ChannelId}_rest", ButtonStyle.Primary, row: 0)
+                .WithButton("繼續前進", $"tower_rest_continue_{run.ChannelId}", ButtonStyle.Secondary, row: 0);
+            return (embed, cb);
+        }
+
         private (Embed embed, ComponentBuilder component) BuildShopEmbed(TowerRun run, string notice = "")
         {
             var p = run.ActivePokemon;
@@ -1794,6 +1945,7 @@ namespace MusicBot2.Service
             desc.AppendLine("⚽ **普通球×3** — 30%捕獲率 (8💰)");
             desc.AppendLine("🔵 **超級球×2** — 55%捕獲率 (15💰)");
             desc.AppendLine("🟡 **高級球×1** — 75%捕獲率 (25💰)");
+            desc.AppendLine("⚡ **強化招式** — 選一招威力+20（免費）");
             desc.AppendLine($"\n現有球：{BallsDisplay(run)}");
 
             var cb = new ComponentBuilder()
@@ -1804,7 +1956,8 @@ namespace MusicBot2.Service
                 .WithButton("⚽ 普通球×3(8💰)",   $"tower_shop_{run.ChannelId}_buy_normal", ButtonStyle.Secondary, row: 2)
                 .WithButton("🔵 超級球×2(15💰)",  $"tower_shop_{run.ChannelId}_buy_super",  ButtonStyle.Primary,   row: 2)
                 .WithButton("🟡 高級球×1(25💰)",  $"tower_shop_{run.ChannelId}_buy_ultra",  ButtonStyle.Primary,   row: 2)
-                .WithButton("離開商店", $"tower_shop_{run.ChannelId}_leave", ButtonStyle.Danger, row: 3);
+                .WithButton("⚡ 強化招式(免費)",  $"tower_powerup_{run.ChannelId}_shop",    ButtonStyle.Primary,   row: 3)
+                .WithButton("離開商店", $"tower_shop_{run.ChannelId}_leave", ButtonStyle.Danger, row: 4);
 
             return (new EmbedBuilder()
                 .WithTitle("🏪 神秘商店")

@@ -634,6 +634,36 @@ public class Program
                         ulong ch = ulong.Parse(id["tower_swap_cancel_".Length..]);
                         (tEmbed, tCb) = towerSvc.BuildCurrentStateEmbed(ch);
                     }
+                    // tower_powerup_{channelId}_{rest|shop}  (觸發強化介面)
+                    else if (id.StartsWith("tower_powerup_") && !id.StartsWith("tower_powerup_select_"))
+                    {
+                        var rest2 = id["tower_powerup_".Length..];
+                        int under2 = rest2.LastIndexOf('_');
+                        ulong ch = ulong.Parse(rest2[..under2]);
+                        string src = rest2[(under2 + 1)..]; // "rest" or "shop"
+                        (tEmbed, tCb) = await towerSvc.EnterPowerUpgradeAsync(ch, src);
+                    }
+                    // tower_powerup_select_{channelId}_{moveIndex}
+                    else if (id.StartsWith("tower_powerup_select_"))
+                    {
+                        var rest2 = id["tower_powerup_select_".Length..];
+                        int under2 = rest2.LastIndexOf('_');
+                        ulong ch = ulong.Parse(rest2[..under2]);
+                        int mi = int.Parse(rest2[(under2 + 1)..]);
+                        (tEmbed, tCb) = await towerSvc.HandlePowerUpgradeAsync(ch, mi);
+                    }
+                    // tower_rest_continue_{channelId}
+                    else if (id.StartsWith("tower_rest_continue_"))
+                    {
+                        ulong ch = ulong.Parse(id["tower_rest_continue_".Length..]);
+                        (tEmbed, tCb) = await towerSvc.HandleRestContinueAsync(ch);
+                    }
+                    // tower_rest_swap_{channelId}
+                    else if (id.StartsWith("tower_rest_swap_"))
+                    {
+                        ulong ch = ulong.Parse(id["tower_rest_swap_".Length..]);
+                        (tEmbed, tCb) = await towerSvc.HandleRestMoveSwapAsync(ch);
+                    }
                     // tower_swap_{channelId}_{partyIndex}
                     else if (id.StartsWith("tower_swap_"))
                     {
