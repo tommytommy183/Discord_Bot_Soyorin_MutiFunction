@@ -561,7 +561,7 @@ public class Program
                         int idx = int.Parse(p[4]);
                         var player = await pokeSvc.GetPlayerAsync(pid, component.User.Username);
                         if (player?.CaughtPokemon != null && idx < player.CaughtPokemon.Count)
-                            (tEmbed, tCb) = await towerSvc.StartRunAsync(ch, pid,
+                            (tEmbed, tCb) = towerSvc.ShowPassiveSelectionAsync(ch, pid,
                                 component.User.GlobalName ?? component.User.Username,
                                 player.CaughtPokemon[idx]);
                     }
@@ -750,6 +750,33 @@ public class Program
                         ulong ch = ulong.Parse(rest[..under]);
                         string ballKey = rest[(under + 1)..];
                         (tEmbed, tCb) = await towerSvc.HandleCatchAsync(ch, ballKey);
+                    }
+                    // tower_passive_{channelId}_{idx}
+                    else if (id.StartsWith("tower_passive_"))
+                    {
+                        var rest = id["tower_passive_".Length..];
+                        int under = rest.LastIndexOf('_');
+                        ulong ch = ulong.Parse(rest[..under]);
+                        int pi = int.Parse(rest[(under + 1)..]);
+                        (tEmbed, tCb) = await towerSvc.HandlePassiveChoiceAsync(ch, pi);
+                    }
+                    // tower_casino_{channelId}_{action}
+                    else if (id.StartsWith("tower_casino_"))
+                    {
+                        var rest = id["tower_casino_".Length..];
+                        int under = rest.LastIndexOf('_');
+                        ulong ch = ulong.Parse(rest[..under]);
+                        string action = rest[(under + 1)..];
+                        (tEmbed, tCb) = await towerSvc.HandleCasinoAsync(ch, action);
+                    }
+                    // tower_cursed_{channelId}_{idx}
+                    else if (id.StartsWith("tower_cursed_"))
+                    {
+                        var rest = id["tower_cursed_".Length..];
+                        int under = rest.LastIndexOf('_');
+                        ulong ch = ulong.Parse(rest[..under]);
+                        int ci = int.Parse(rest[(under + 1)..]);
+                        (tEmbed, tCb) = await towerSvc.HandleCursedRelicChoiceAsync(ch, ci);
                     }
                 }
                 catch (Exception ex)

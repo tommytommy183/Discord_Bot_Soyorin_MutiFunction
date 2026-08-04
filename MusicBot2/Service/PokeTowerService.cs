@@ -26,7 +26,10 @@ namespace MusicBot2.Service
         Defeated,
         Resting,
         SelectingPowerUpgrade,
-        SelectingRelic
+        SelectingRelic,
+        InCasino,
+        SelectingPassive,
+        SelectingCursedRelic
     }
 
     public class TowerMove
@@ -130,10 +133,18 @@ namespace MusicBot2.Service
         public HashSet<string> SeenRelicIds { get; set; } = new();
         public List<string> PendingRelicChoices { get; set; } = new();
         public bool ShieldActive { get; set; } = false;
-        public bool PhoenixUsed { get; set; } = false;
+        public int PhoenixUseCount { get; set; } = 0;
         public int AvengeStacks { get; set; } = 0;
         public bool WillUsed { get; set; } = false;
         public float ChainBonus { get; set; } = 0f;
+        // Casino
+        public int CasinoRound { get; set; } = 0;
+        public int CasinoProfit { get; set; } = 0;
+        // Passive
+        public string PassiveId { get; set; } = "";
+        // Cursed Relics
+        public List<string> CursedRelicIds { get; set; } = new();
+        public List<string> PendingCursedRelicChoices { get; set; } = new();
     }
 
     public class PokeTowerService
@@ -314,6 +325,43 @@ namespace MusicBot2.Service
             new("relic_will",      "意志結晶",  "✨", "每場戰鬥若全技能PP歸零則自動回復一次"),
             new("relic_chain",     "連鎖爆發",  "⛓️", "每擊倒一個敵人累積+5%傷害加成"),
         };
+
+        private static readonly List<PassiveDef> _passives = new()
+        {
+            new("passive_firstblood",  "先手必勝",   "⚡", "永遠先手攻擊，不論速度"),
+            new("passive_ironwall",    "鐵壁",       "🛡️", "所有受到的傷害減少 20%"),
+            new("passive_berserker",   "狂戰士",     "🪓", "攻擊+30% 但防禦-20%"),
+            new("passive_vampire",     "吸血鬼",     "🧛", "每次攻擊吸取傷害 30% 為HP"),
+            new("passive_catchmaster", "捕獲大師",   "🎯", "初始獲得高級球×3，捕獲率+40%，但無法在商店購買球"),
+            new("passive_richboy",     "金錢萬能",   "💵", "初始獲得 80 金幣，商店所有價格打7折"),
+            new("passive_genius",      "天才",       "📚", "獲得的 EXP 翻倍"),
+            new("passive_techgeek",    "技術宅",     "🔧", "技能強化上限提升至 8 次（原5次）"),
+            new("passive_undying",     "不死身",     "🪶", "不死鳥羽效果可觸發兩次"),
+            new("passive_tanker",      "坦克",       "🦛", "全隊最大 HP+40%，但速度-20%"),
+            new("passive_speedster",   "疾風",       "💨", "全隊速度+60%"),
+            new("passive_gambler",     "賭徒靈魂",   "🎰", "所有隨機傷害和獎勵浮動範圍×2（更高或更低）"),
+            new("passive_packrat",     "囤貨王",     "🎒", "初始背包上限4隻（原3隻）"),
+            new("passive_strategist",  "謀士",       "🔮", "可預測敵人未來兩回合的行動"),
+        };
+
+        private static readonly List<CursedRelicDef> _cursedRelics = new()
+        {
+            new("curse_half_pp",     "詛咒之語",   "💀", "全部技能 MaxPP 減半（最低1）"),
+            new("curse_gold_tax",    "貪婪詛咒",   "🪙", "每層結束扣除 10💰（扣到0為止）"),
+            new("curse_slow",        "重力詛咒",   "🔩", "全隊速度 -40%"),
+            new("curse_weak_atk",    "腐蝕之力",   "⚗️", "全隊攻擊力 -25%"),
+            new("curse_bleed",       "流血詛咒",   "🩸", "每回合強制扣 MaxHP×5%（疊加）"),
+            new("curse_fragile",     "玻璃心",     "💔", "全隊防禦力 -30%"),
+            new("curse_blind",       "蒙眼詛咒",   "👁️‍🗨️", "無法看到敵人下一招（預告消失）"),
+            new("curse_expensive",   "奸商詛咒",   "🏪", "商店所有價格×1.5"),
+            new("curse_exp_drain",   "知識吸取",   "📖", "獲得 EXP 減少 50%"),
+            new("curse_no_catch",    "鐵籠詛咒",   "🔒", "無法捕獲任何 Pokemon（球全部失效）"),
+            new("curse_hp_cap",      "生命封印",   "❤️‍🔥", "全隊最大 HP -20%"),
+            new("curse_move_random", "混亂咒語",   "🌀", "每回合 20% 機率隨機使用技能"),
+        };
+
+        // pending starts keyed by channelId (before passive is chosen)
+        private static readonly Dictionary<ulong, (ulong PlayerId, string PlayerName, PokeGamePokemon Src)> _pendingStarts = new();
 
         // ── 中文敵人池 (Name, Types, StatTotal, PokeApiId) ────────
         private static readonly List<(string Name, string[] Types, int StatTotal, int PokeId)> _enemyPool = new()
@@ -499,6 +547,8 @@ namespace MusicBot2.Service
 
         // ── 事件池（帶選項） ──────────────────────────────────────
         private record RelicDef(string Id, string Name, string Emoji, string Desc);
+        private record PassiveDef(string Id, string Name, string Emoji, string Desc);
+        private record CursedRelicDef(string Id, string Name, string Emoji, string Desc);
         private record EventChoice(string Label, string Emoji, Func<TowerRun, Task<string>> Apply);
         private record EventDef(string Title, string Emoji, string Desc, List<EventChoice> Choices);
         // 同步 choice 的語法糖
@@ -1043,7 +1093,7 @@ namespace MusicBot2.Service
 
         /// <summary>開始爬塔</summary>
         public async Task<(Embed embed, ComponentBuilder component)> StartRunAsync(
-            ulong channelId, ulong playerId, string playerName, PokeGamePokemon src)
+            ulong channelId, ulong playerId, string playerName, PokeGamePokemon src, string passiveId = "")
         {
             var pokemon = ConvertPokemon(src);
             pokemon.Moves = await FetchMovesFromApiAsync(src.Id, src.Types?.ToList() ?? new());
@@ -1055,13 +1105,97 @@ namespace MusicBot2.Service
                 ChannelId = channelId,
                 ActivePokemon = pokemon,
                 State = TowerRunState.SelectingPath,
+                PassiveId = passiveId,
             };
             run.Party.Add(pokemon);
             run.RunLog.Add($"🏔️ {playerName} 帶著 {pokemon.DisplayName} 踏入爬塔！");
 
+            // Apply immediate passive effects
+            if (!string.IsNullOrEmpty(passiveId))
+            {
+                switch (passiveId)
+                {
+                    case "passive_catchmaster":
+                        run.Balls["ultra"] = run.Balls.GetValueOrDefault("ultra") + 3;
+                        break;
+                    case "passive_richboy":
+                        run.Gold += 80;
+                        break;
+                    case "passive_tanker":
+                        foreach (var p in run.Party) { p.MaxHP = (int)(p.MaxHP * 1.4f); p.Speed = (int)(p.Speed * 0.8f); p.CurrentHP = p.MaxHP; }
+                        break;
+                    case "passive_speedster":
+                        foreach (var p in run.Party) p.Speed = (int)(p.Speed * 1.6f);
+                        break;
+                    case "passive_berserker":
+                        foreach (var p in run.Party) { p.Attack = (int)(p.Attack * 1.3f); p.SpecialAttack = (int)(p.SpecialAttack * 1.3f); p.Defense = (int)(p.Defense * 0.8f); p.SpecialDefense = (int)(p.SpecialDefense * 0.8f); }
+                        break;
+                }
+                var pv = _passives.FirstOrDefault(x => x.Id == passiveId);
+                if (pv != null) run.RunLog.Add($"🌟 被動技能【{pv.Emoji}{pv.Name}】已啟動！");
+            }
+
             _activeRuns[channelId] = run;
             await SaveAsync(run);
             return BuildPathEmbed(run);
+        }
+
+        /// <summary>顯示被動技能選擇畫面（爬塔前呼叫）</summary>
+        public (Embed embed, ComponentBuilder component) ShowPassiveSelectionAsync(
+            ulong channelId, ulong playerId, string playerName, PokeGamePokemon src)
+        {
+            // Check for existing active run
+            if (_activeRuns.TryGetValue(channelId, out var existing))
+                return (new EmbedBuilder()
+                    .WithTitle("❌ 此頻道已有爬塔進行中")
+                    .WithDescription($"**{existing.PlayerName}** 正在第 {existing.CurrentFloor} 層（共 {existing.MaxFloor} 層）。")
+                    .WithColor(Color.Red).Build(), new ComponentBuilder());
+
+            _pendingStarts[channelId] = (playerId, playerName, src);
+            return BuildPassiveSelectionEmbed(channelId);
+        }
+
+        /// <summary>玩家選擇被動後正式開始爬塔</summary>
+        public async Task<(Embed embed, ComponentBuilder component)> HandlePassiveChoiceAsync(ulong channelId, int idx)
+        {
+            if (!_pendingStarts.TryGetValue(channelId, out var pending))
+                return ErrEmbed("找不到待開始的爬塔，請重新使用 /pokemon爬塔。");
+
+            if (idx < 0 || idx >= _passives.Count)
+                return ErrEmbed("無效的被動選擇");
+
+            var chosen = _passives[idx];
+            _pendingStarts.Remove(channelId);
+            return await StartRunAsync(channelId, pending.PlayerId, pending.PlayerName, pending.Src, chosen.Id);
+        }
+
+        private (Embed embed, ComponentBuilder component) BuildPassiveSelectionEmbed(ulong channelId)
+        {
+            var desc = new StringBuilder();
+            desc.AppendLine("踏入爬塔前，選擇一個**被動技能**加持你的旅程！");
+            desc.AppendLine();
+            for (int i = 0; i < _passives.Count; i++)
+            {
+                var pv = _passives[i];
+                desc.AppendLine($"**{i + 1}. {pv.Emoji} {pv.Name}**");
+                desc.AppendLine($"　　{pv.Desc}");
+                desc.AppendLine();
+            }
+
+            var embed = new EmbedBuilder()
+                .WithTitle("🌟 選擇被動技能")
+                .WithDescription(desc.ToString())
+                .WithColor(new Color(255, 180, 0))
+                .WithFooter("選擇後不可更改，請仔細考慮！")
+                .Build();
+
+            var cb = new ComponentBuilder();
+            for (int i = 0; i < _passives.Count; i++)
+            {
+                var pv = _passives[i];
+                cb.WithButton($"{pv.Emoji}{pv.Name}", $"tower_passive_{channelId}_{i}", ButtonStyle.Primary, row: i / 5);
+            }
+            return (embed, cb);
         }
 
         /// <summary>選擇路徑</summary>
@@ -1074,6 +1208,10 @@ namespace MusicBot2.Service
             run.CurrentFloor++;
             run.CurrentPaths = null;
             bool isBoss = run.CurrentFloor % 10 == 0;
+
+            // curse_gold_tax: deduct 10 gold on floor entry
+            if (run.CursedRelicIds.Contains("curse_gold_tax") && run.Gold > 0)
+                run.Gold = Math.Max(0, run.Gold - 10);
 
             // relic_hourglass: heal on floor entry
             if (HasRelic(run, "relic_hourglass"))
@@ -1132,6 +1270,23 @@ namespace MusicBot2.Service
                 await SaveAsync(run);
                 return BuildEventEmbed(run);
             }
+            if (choice == "casino")
+            {
+                run.State = TowerRunState.InCasino;
+                run.CasinoRound = 0;
+                run.CasinoProfit = 0;
+                await SaveAsync(run);
+                return BuildCasinoEmbed(run);
+            }
+            if (choice == "cursed_relic")
+            {
+                var available = _cursedRelics.Where(r => !run.CursedRelicIds.Contains(r.Id)).ToList();
+                if (available.Count == 0) available = _cursedRelics.ToList();
+                run.PendingCursedRelicChoices = available.OrderBy(_ => _rng.Next()).Take(3).Select(r => r.Id).ToList();
+                run.State = TowerRunState.SelectingCursedRelic;
+                await SaveAsync(run);
+                return BuildCursedRelicEmbed(run);
+            }
             return ErrEmbed("未知的路徑選擇");
         }
 
@@ -1146,6 +1301,10 @@ namespace MusicBot2.Service
 
             var poke = run.ActivePokemon;
             var enemy = run.CurrentEnemy;
+
+            // curse_bleed: lose 5% MaxHP at start of turn
+            if (run.CursedRelicIds.Contains("curse_bleed"))
+                poke.CurrentHP = Math.Max(1, poke.CurrentHP - Math.Max(1, (int)(poke.MaxHP * 0.05f)));
 
             // Per-turn relic effects (start of turn)
             if (HasRelic(run, "relic_regen"))
@@ -1181,9 +1340,20 @@ namespace MusicBot2.Service
             {
                 playerMove = new TowerMove { Name="掙扎", Type="一般", Power=50, Category="Physical", Emoji="😤", MaxPP=1, CurrentPP=1 };
             }
+            // curse_move_random: 20% chance player uses a random move
+            if (run.CursedRelicIds.Contains("curse_move_random") && _rng.Next(100) < 20)
+            {
+                int ri = _rng.Next(poke.Moves.Count);
+                playerMove = poke.Moves[ri];
+                if (!(HasRelic(run, "relic_no_pp") && _rng.Next(100) < 25) && playerMove.CurrentPP > 0)
+                    playerMove.CurrentPP--;
+            }
+
             var enemyMove = enemy.Moves[enemy.NextMoveIdx % enemy.Moves.Count];
 
             bool playerFirst = poke.Speed >= enemy.Speed;
+            // passive_firstblood: always go first
+            if (HasPassive(run, "passive_firstblood")) playerFirst = true;
             // 計算目前第幾回合（現有 rounds 數 + 1）
             int roundNum = run.CurrentBattleLog.Split(new[] { "════════" }, StringSplitOptions.RemoveEmptyEntries)
                                .Count(r => r.Trim().Length > 0) + 1;
@@ -1210,6 +1380,7 @@ namespace MusicBot2.Service
                 AppendHit(sb, poke.DisplayName, enemy.Name, playerMove, d, enemy.Types, true);
                 // Post-attack relics
                 if (HasRelic(run, "relic_lifesteal")) { int ls = Math.Max(1, (int)(d * 0.20f)); poke.CurrentHP = Math.Min(poke.MaxHP, poke.CurrentHP + ls); }
+                if (HasPassive(run, "passive_vampire") && !HasRelic(run, "relic_lifesteal")) { int ls = Math.Max(1, (int)(d * 0.30f)); poke.CurrentHP = Math.Min(poke.MaxHP, poke.CurrentHP + ls); }
                 if (HasRelic(run, "relic_poison") && enemy.CurrentHP > 0) enemy.CurrentHP = Math.Max(0, enemy.CurrentHP - 15);
                 if (enemy.CurrentHP > 0)
                 {
@@ -1218,6 +1389,8 @@ namespace MusicBot2.Service
                     if (HasRelic(run, "relic_shield") && run.ShieldActive) { ed = 0; run.ShieldActive = false; }
                     // Last stand
                     if (HasRelic(run, "relic_last_stand") && poke.CurrentHP * 100 / Math.Max(1, poke.MaxHP) < 20) ed = ed / 2;
+                    // passive_ironwall: -20% damage taken
+                    if (HasPassive(run, "passive_ironwall")) ed = (int)(ed * 0.8f);
                     poke.CurrentHP = Math.Max(0, poke.CurrentHP - ed);
                     AppendHit(sb, enemy.Name, poke.DisplayName, enemyMove, ed, poke.Types, false);
                     // Thorns
@@ -1233,6 +1406,8 @@ namespace MusicBot2.Service
                 if (HasRelic(run, "relic_shield") && run.ShieldActive) { ed = 0; run.ShieldActive = false; }
                 // Last stand
                 if (HasRelic(run, "relic_last_stand") && poke.CurrentHP * 100 / Math.Max(1, poke.MaxHP) < 20) ed = ed / 2;
+                // passive_ironwall: -20% damage taken
+                if (HasPassive(run, "passive_ironwall")) ed = (int)(ed * 0.8f);
                 poke.CurrentHP = Math.Max(0, poke.CurrentHP - ed);
                 AppendHit(sb, enemy.Name, poke.DisplayName, enemyMove, ed, poke.Types, false);
                 // Thorns
@@ -1259,6 +1434,7 @@ namespace MusicBot2.Service
                     AppendHit(sb, poke.DisplayName, enemy.Name, playerMove, d, enemy.Types, true);
                     // Post-attack relics
                     if (HasRelic(run, "relic_lifesteal")) { int ls = Math.Max(1, (int)(d * 0.20f)); poke.CurrentHP = Math.Min(poke.MaxHP, poke.CurrentHP + ls); }
+                    if (HasPassive(run, "passive_vampire") && !HasRelic(run, "relic_lifesteal")) { int ls = Math.Max(1, (int)(d * 0.30f)); poke.CurrentHP = Math.Min(poke.MaxHP, poke.CurrentHP + ls); }
                     if (HasRelic(run, "relic_poison") && enemy.CurrentHP > 0) enemy.CurrentHP = Math.Max(0, enemy.CurrentHP - 15);
                 }
             }
@@ -1292,6 +1468,8 @@ namespace MusicBot2.Service
 
                 // 獲得 EXP
                 int expGain = 15 + run.CurrentFloor * 8;
+                if (HasPassive(run, "passive_genius")) expGain *= 2;
+                if (run.CursedRelicIds.Contains("curse_exp_drain")) expGain = (int)(expGain * 0.5f);
                 run.Exp += expGain;
                 var levelUpMsg = new StringBuilder();
                 while (run.Exp >= run.ExpToNext)
@@ -1348,11 +1526,12 @@ namespace MusicBot2.Service
                 return BuildPowerUpgradeEmbed(run);
             }
 
-            if (poke.CurrentHP <= 0 && HasRelic(run, "relic_phoenix") && !run.PhoenixUsed)
+            int phoenixLimit = HasPassive(run, "passive_undying") ? 2 : 1;
+            if (poke.CurrentHP <= 0 && HasRelic(run, "relic_phoenix") && run.PhoenixUseCount < phoenixLimit)
             {
                 poke.CurrentHP = 1;
-                run.PhoenixUsed = true;
-                run.CurrentBattleLog += "\n🪶 **不死鳥羽** 發動！以1HP存活！";
+                run.PhoenixUseCount++;
+                run.CurrentBattleLog += $"\n🪶 **不死鳥羽** 發動！以1HP存活！（{run.PhoenixUseCount}/{phoenixLimit}）";
             }
 
             if (poke.CurrentHP <= 0)
@@ -1481,13 +1660,19 @@ namespace MusicBot2.Service
             run.Balls[ballKey]--;
             if (run.Balls[ballKey] == 0) run.Balls.Remove(ballKey);
 
+            // curse_no_catch: cannot catch
+            if (run.CursedRelicIds.Contains("curse_no_catch"))
+                return BuildCatchEmbed(run, "🔒 **鐵籠詛咒**：無法捕獲任何 Pokemon！");
+
             float catchRate = ballInfo.Rate;
             if (HasRelic(run, "relic_hunter")) catchRate = Math.Min(1.0f, catchRate + 0.30f);
+            if (HasPassive(run, "passive_catchmaster")) catchRate = Math.Min(1.0f, catchRate + 0.40f);
             bool caught = (float)_rng.NextDouble() < catchRate;
             if (caught)
             {
                 var newPoke = CatchFromEnemy(run.PendingCatch);
-                if (run.Party.Count < 3)
+                int partyCap = HasPassive(run, "passive_packrat") ? 4 : 3;
+                if (run.Party.Count < partyCap)
                 {
                     run.Party.Add(newPoke);
                     run.PendingCatch = null;
@@ -1593,59 +1778,22 @@ namespace MusicBot2.Service
             switch (itemKey)
             {
                 case "heal_full":
-                    if (run.Gold < 30) return BuildShopEmbed(run, "💸 金幣不足！需要 30 金幣。");
-                    run.Gold -= 30;
-                    foreach (var pk in run.Party) pk.CurrentHP = pk.MaxHP;
-                    run.ActivePokemon.CurrentHP = run.ActivePokemon.MaxHP;
-                    msg = "💊 使用「全回復」— 全隊 HP 完全恢復！（-30💰）";
-                    break;
+                    { int cost = ShopCost(run, 30); if (run.Gold < cost) return BuildShopEmbed(run, $"💸 金幣不足！需要 {cost} 金幣。"); run.Gold -= cost; foreach (var pk in run.Party) pk.CurrentHP = pk.MaxHP; run.ActivePokemon.CurrentHP = run.ActivePokemon.MaxHP; msg = $"💊 使用「全回復」— 全隊 HP 完全恢復！（-{cost}💰）"; break; }
                 case "heal_half":
-                    if (run.Gold < 15) return BuildShopEmbed(run, "💸 金幣不足！需要 15 金幣。");
-                    run.Gold -= 15;
-                    foreach (var pk in run.Party)
-                    {
-                        int h = Math.Max(1, pk.MaxHP / 2);
-                        pk.CurrentHP = Math.Min(pk.MaxHP, pk.CurrentHP + h);
-                    }
-                    run.ActivePokemon.CurrentHP = Math.Min(run.ActivePokemon.MaxHP,
-                        run.ActivePokemon.CurrentHP + Math.Max(1, run.ActivePokemon.MaxHP / 2));
-                    msg = "🧃 使用「超級樹果」— 全隊恢復 50% HP！（-15💰）";
-                    break;
+                    { int cost = ShopCost(run, 15); if (run.Gold < cost) return BuildShopEmbed(run, $"💸 金幣不足！需要 {cost} 金幣。"); run.Gold -= cost; foreach (var pk in run.Party) { int h = Math.Max(1, pk.MaxHP / 2); pk.CurrentHP = Math.Min(pk.MaxHP, pk.CurrentHP + h); } run.ActivePokemon.CurrentHP = Math.Min(run.ActivePokemon.MaxHP, run.ActivePokemon.CurrentHP + Math.Max(1, run.ActivePokemon.MaxHP / 2)); msg = $"🧃 使用「超級樹果」— 全隊恢復 50% HP！（-{cost}💰）"; break; }
                 case "pp_restore":
-                    if (run.Gold < 20) return BuildShopEmbed(run, "💸 金幣不足！需要 20 金幣。");
-                    run.Gold -= 20;
-                    foreach (var pk in run.Party) foreach (var m in pk.Moves) m.CurrentPP = m.MaxPP;
-                    foreach (var m in run.ActivePokemon.Moves) m.CurrentPP = m.MaxPP;
-                    msg = "🔋 全隊技能 PP 完全恢復！（-20💰）";
-                    break;
+                    { int cost = ShopCost(run, 20); if (run.Gold < cost) return BuildShopEmbed(run, $"💸 金幣不足！需要 {cost} 金幣。"); run.Gold -= cost; foreach (var pk in run.Party) foreach (var m in pk.Moves) m.CurrentPP = m.MaxPP; foreach (var m in run.ActivePokemon.Moves) m.CurrentPP = m.MaxPP; msg = $"🔋 全隊技能 PP 完全恢復！（-{cost}💰）"; break; }
                 case "new_move":
-                    if (run.Gold < 25) return BuildShopEmbed(run, "💸 金幣不足！需要 25 金幣。");
-                    run.Gold -= 25;
-                    var pool = PickMoves(run.ActivePokemon.Types);
-                    var nm = pool.FirstOrDefault(m => run.ActivePokemon.Moves.All(em => em.Name != m.Name)) ?? pool[0];
-                    int slot = run.ActivePokemon.Moves.Select((m, i) => (m, i)).OrderBy(x => x.m.Power).First().i;
-                    string old = run.ActivePokemon.Moves[slot].Name;
-                    run.ActivePokemon.Moves[slot] = nm;
-                    msg = $"📀 忘掉【{old}】，學會了 {nm.Emoji}**{nm.Name}**！（-25💰）";
-                    break;
+                    { int cost = ShopCost(run, 25); if (run.Gold < cost) return BuildShopEmbed(run, $"💸 金幣不足！需要 {cost} 金幣。"); run.Gold -= cost; var pool = PickMoves(run.ActivePokemon.Types); var nm = pool.FirstOrDefault(m => run.ActivePokemon.Moves.All(em => em.Name != m.Name)) ?? pool[0]; int slot = run.ActivePokemon.Moves.Select((m, i) => (m, i)).OrderBy(x => x.m.Power).First().i; string old = run.ActivePokemon.Moves[slot].Name; run.ActivePokemon.Moves[slot] = nm; msg = $"📀 忘掉【{old}】，學會了 {nm.Emoji}**{nm.Name}**！（-{cost}💰）"; break; }
                 case "buy_normal":
-                    if (run.Gold < 8) return BuildShopEmbed(run, "💸 金幣不足！需要 8 金幣。");
-                    run.Gold -= 8;
-                    run.Balls["normal"] = run.Balls.GetValueOrDefault("normal") + 3;
-                    msg = "⚽ 購入 **普通球×3**！（-8💰）";
-                    break;
+                    if (HasPassive(run, "passive_catchmaster")) return BuildShopEmbed(run, "🎯 **捕獲大師**：不需要購買球！");
+                    { int cost = ShopCost(run, 8); if (run.Gold < cost) return BuildShopEmbed(run, $"💸 金幣不足！需要 {cost} 金幣。"); run.Gold -= cost; run.Balls["normal"] = run.Balls.GetValueOrDefault("normal") + 3; msg = $"⚽ 購入 **普通球×3**！（-{cost}💰）"; break; }
                 case "buy_super":
-                    if (run.Gold < 15) return BuildShopEmbed(run, "💸 金幣不足！需要 15 金幣。");
-                    run.Gold -= 15;
-                    run.Balls["super"] = run.Balls.GetValueOrDefault("super") + 2;
-                    msg = "🔵 購入 **超級球×2**！（-15💰）";
-                    break;
+                    if (HasPassive(run, "passive_catchmaster")) return BuildShopEmbed(run, "🎯 **捕獲大師**：不需要購買球！");
+                    { int cost = ShopCost(run, 15); if (run.Gold < cost) return BuildShopEmbed(run, $"💸 金幣不足！需要 {cost} 金幣。"); run.Gold -= cost; run.Balls["super"] = run.Balls.GetValueOrDefault("super") + 2; msg = $"🔵 購入 **超級球×2**！（-{cost}💰）"; break; }
                 case "buy_ultra":
-                    if (run.Gold < 25) return BuildShopEmbed(run, "💸 金幣不足！需要 25 金幣。");
-                    run.Gold -= 25;
-                    run.Balls["ultra"] = run.Balls.GetValueOrDefault("ultra") + 1;
-                    msg = "🟡 購入 **高級球×1**！（-25💰）";
-                    break;
+                    if (HasPassive(run, "passive_catchmaster")) return BuildShopEmbed(run, "🎯 **捕獲大師**：不需要購買球！");
+                    { int cost = ShopCost(run, 25); if (run.Gold < cost) return BuildShopEmbed(run, $"💸 金幣不足！需要 {cost} 金幣。"); run.Gold -= cost; run.Balls["ultra"] = run.Balls.GetValueOrDefault("ultra") + 1; msg = $"🟡 購入 **高級球×1**！（-{cost}💰）"; break; }
                 case "leave":
                     msg = "👋 離開商店，繼續爬塔！";
                     break;
@@ -1753,11 +1901,12 @@ namespace MusicBot2.Service
             if (moveIndex >= 0 && moveIndex < run.ActivePokemon.Moves.Count)
             {
                 var m = run.ActivePokemon.Moves[moveIndex];
-                if (m.UpgradeCount >= 5)
+                int upgradeLimit = HasPassive(run, "passive_techgeek") ? 8 : 5;
+                if (m.UpgradeCount >= upgradeLimit)
                 {
                     run.State = TowerRunState.SelectingPowerUpgrade;
                     run.PowerUpgradeReturn = ret;
-                    return BuildPowerUpgradeEmbed(run, $"【{m.Name}】已達強化上限（5/5）！");
+                    return BuildPowerUpgradeEmbed(run, $"【{m.Name}】已達強化上限（{upgradeLimit}/{upgradeLimit}）！");
                 }
                 if (ret == "shop")
                 {
@@ -1832,6 +1981,9 @@ namespace MusicBot2.Service
                 TowerRunState.Resting => BuildRestEmbed(run, 0),
                 TowerRunState.SelectingPowerUpgrade => BuildPowerUpgradeEmbed(run),
                 TowerRunState.SelectingRelic => BuildRelicEmbed(run),
+                TowerRunState.InCasino => BuildCasinoEmbed(run),
+                TowerRunState.SelectingPassive => BuildPassiveSelectionEmbed(run.ChannelId),
+                TowerRunState.SelectingCursedRelic => BuildCursedRelicEmbed(run),
                 _ => BuildPathEmbed(run)
             };
         }
@@ -1847,6 +1999,14 @@ namespace MusicBot2.Service
         // ── Relic system ──────────────────────────────────────
 
         private static bool HasRelic(TowerRun run, string id) => run.RelicIds.Contains(id);
+        private static bool HasPassive(TowerRun run, string id) => run.PassiveId == id;
+        private static int ShopCost(TowerRun run, int baseCost)
+        {
+            int cost = baseCost;
+            if (HasPassive(run, "passive_richboy")) cost = (int)(cost * 0.7f);
+            if (run.CursedRelicIds.Contains("curse_expensive")) cost = (int)(cost * 1.5f);
+            return Math.Max(1, cost);
+        }
 
         private void ApplyRelicOnPickup(TowerRun run, string relicId)
         {
@@ -1919,6 +2079,152 @@ namespace MusicBot2.Service
             run.State = TowerRunState.SelectingPowerUpgrade;
             await SaveAsync(run);
             return BuildPowerUpgradeEmbed(run);
+        }
+
+        // ── Casino ────────────────────────────────────────────
+
+        private (Embed embed, ComponentBuilder component) BuildCasinoEmbed(TowerRun run, string lastResult = "")
+        {
+            var desc = new StringBuilder();
+            if (!string.IsNullOrEmpty(lastResult)) desc.AppendLine(lastResult).AppendLine();
+            desc.AppendLine($"💰 現有金幣：**{run.Gold}**　本場獲利：**{(run.CasinoProfit >= 0 ? "+" : "")}{run.CasinoProfit}💰**　回合：{run.CasinoRound}");
+            desc.AppendLine();
+            desc.AppendLine("🎲 賭場到了！猜大（4-6）還是猜小（1-3）？");
+            desc.AppendLine("每局賭 **10💰**，猜中翻倍，猜錯扣 10💰。");
+
+            var embed = new EmbedBuilder()
+                .WithTitle("🎰 神秘賭場")
+                .WithDescription(desc.ToString())
+                .WithColor(new Color(255, 165, 0))
+                .WithFooter($"{run.PlayerName} • 第 {run.CurrentFloor}/{run.MaxFloor} 層")
+                .Build();
+
+            bool canBet = run.Gold >= 10;
+            var cb = new ComponentBuilder()
+                .WithButton("🔼 猜大(10💰)", $"tower_casino_{run.ChannelId}_high", canBet ? ButtonStyle.Primary : ButtonStyle.Secondary, row: 0, disabled: !canBet)
+                .WithButton("🔽 猜小(10💰)", $"tower_casino_{run.ChannelId}_low", canBet ? ButtonStyle.Primary : ButtonStyle.Secondary, row: 0, disabled: !canBet)
+                .WithButton("🚪 離開賭場", $"tower_casino_{run.ChannelId}_leave", ButtonStyle.Danger, row: 1);
+            return (embed, cb);
+        }
+
+        public async Task<(Embed embed, ComponentBuilder component)> HandleCasinoAsync(ulong channelId, string action)
+        {
+            if (!_activeRuns.TryGetValue(channelId, out var run))
+                return ErrEmbed("找不到進行中的爬塔");
+
+            if (action == "leave")
+            {
+                run.State = TowerRunState.SelectingPath;
+                string profitMsg = run.CasinoProfit >= 0
+                    ? $"🎲 離開賭場，本次贏了 {run.CasinoProfit}💰！"
+                    : $"🎲 離開賭場，本次輸了 {Math.Abs(run.CasinoProfit)}💰！";
+                await SaveAsync(run);
+                return BuildPathEmbed(run, profitMsg);
+            }
+
+            if (action == "high" || action == "low")
+            {
+                int dice = _rng.Next(1, 7);
+                bool won = (action == "high" && dice >= 4) || (action == "low" && dice <= 3);
+                string result;
+                if (won)
+                {
+                    run.Gold += 10;
+                    run.CasinoProfit += 10;
+                    result = $"🎲 骰出 **{dice}** — 猜中！+10💰（本場+{run.CasinoProfit}）";
+                }
+                else
+                {
+                    run.Gold = Math.Max(0, run.Gold - 10);
+                    run.CasinoProfit -= 10;
+                    result = $"🎲 骰出 **{dice}** — 猜錯！-10💰（本場{run.CasinoProfit}）";
+                }
+                run.CasinoRound++;
+                await SaveAsync(run);
+                return BuildCasinoEmbed(run, result);
+            }
+
+            return ErrEmbed("未知的賭場操作");
+        }
+
+        // ── Cursed Relics ─────────────────────────────────────
+
+        private (Embed embed, ComponentBuilder component) BuildCursedRelicEmbed(TowerRun run)
+        {
+            var desc = new StringBuilder();
+            desc.AppendLine("⚠️ 詛咒降臨！你**必須**選擇一個詛咒承受……無路可逃！");
+            desc.AppendLine();
+            for (int i = 0; i < run.PendingCursedRelicChoices.Count; i++)
+            {
+                var r = _cursedRelics.FirstOrDefault(x => x.Id == run.PendingCursedRelicChoices[i]);
+                if (r == null) continue;
+                desc.AppendLine($"**{i + 1}. {r.Emoji} {r.Name}**");
+                desc.AppendLine($"　　{r.Desc}");
+                desc.AppendLine();
+            }
+            if (run.CursedRelicIds.Count > 0)
+            {
+                desc.AppendLine("─────────────────");
+                desc.AppendLine($"已承受詛咒：{string.Join(" ", run.CursedRelicIds.Select(id => { var r = _cursedRelics.FirstOrDefault(x => x.Id == id); return r != null ? $"{r.Emoji}{r.Name}" : id; }))}");
+            }
+
+            var embed = new EmbedBuilder()
+                .WithTitle("💀 詛咒降臨！")
+                .WithDescription(desc.ToString())
+                .WithColor(Color.DarkRed)
+                .WithFooter($"{run.PlayerName} • 第 {run.CurrentFloor}/{run.MaxFloor} 層")
+                .Build();
+
+            var cb = new ComponentBuilder();
+            for (int i = 0; i < run.PendingCursedRelicChoices.Count; i++)
+            {
+                var r = _cursedRelics.FirstOrDefault(x => x.Id == run.PendingCursedRelicChoices[i]);
+                if (r == null) continue;
+                cb.WithButton($"{r.Emoji} {r.Name}", $"tower_cursed_{run.ChannelId}_{i}", ButtonStyle.Danger, row: 0);
+            }
+            return (embed, cb);
+        }
+
+        public async Task<(Embed embed, ComponentBuilder component)> HandleCursedRelicChoiceAsync(ulong channelId, int idx)
+        {
+            if (!_activeRuns.TryGetValue(channelId, out var run))
+                return ErrEmbed("找不到進行中的爬塔");
+
+            if (idx >= 0 && idx < run.PendingCursedRelicChoices.Count)
+            {
+                string chosenId = run.PendingCursedRelicChoices[idx];
+                run.CursedRelicIds.Add(chosenId);
+                ApplyCursedRelicOnPickup(run, chosenId);
+                var curse = _cursedRelics.FirstOrDefault(r => r.Id == chosenId);
+                run.RunLog.Add($"💀 承受詛咒【{curse?.Name}】！");
+            }
+            run.PendingCursedRelicChoices.Clear();
+            run.State = TowerRunState.SelectingPath;
+            await SaveAsync(run);
+            return BuildPathEmbed(run);
+        }
+
+        private void ApplyCursedRelicOnPickup(TowerRun run, string curseId)
+        {
+            switch (curseId)
+            {
+                case "curse_half_pp":
+                    foreach (var p in run.Party) foreach (var m in p.Moves) { m.MaxPP = Math.Max(1, m.MaxPP / 2); m.CurrentPP = Math.Min(m.CurrentPP, m.MaxPP); }
+                    foreach (var m in run.ActivePokemon.Moves) { m.MaxPP = Math.Max(1, m.MaxPP / 2); m.CurrentPP = Math.Min(m.CurrentPP, m.MaxPP); }
+                    break;
+                case "curse_slow":
+                    foreach (var p in run.Party) p.Speed = (int)(p.Speed * 0.6f);
+                    break;
+                case "curse_weak_atk":
+                    foreach (var p in run.Party) { p.Attack = (int)(p.Attack * 0.75f); p.SpecialAttack = (int)(p.SpecialAttack * 0.75f); }
+                    break;
+                case "curse_fragile":
+                    foreach (var p in run.Party) { p.Defense = (int)(p.Defense * 0.7f); p.SpecialDefense = (int)(p.SpecialDefense * 0.7f); }
+                    break;
+                case "curse_hp_cap":
+                    foreach (var p in run.Party) { int loss = Math.Max(1, (int)(p.MaxHP * 0.2f)); p.MaxHP -= loss; p.CurrentHP = Math.Min(p.CurrentHP, p.MaxHP); }
+                    break;
+            }
         }
 
         private (Embed embed, ComponentBuilder component) BuildRelicEmbed(TowerRun run)
@@ -2191,19 +2497,22 @@ namespace MusicBot2.Service
         {
             if (floor % 10 == 0) return new() { "battle" }; // boss floors 10, 20
             if (floor == 9 || floor == 19) return new() { "shop", "rest" }; // pre-boss
-            var pool = new List<string> { "rest", "shop", "event" };
-            pool = pool.OrderBy(_ => _rng.Next()).Take(2).ToList();
+            if (floor == 7 || floor == 17) return new() { "cursed_relic" }; // forced cursed relic
+            var pool = new List<string> { "rest", "shop", "event", "casino" };
+            pool = pool.OrderBy(_ => _rng.Next()).Take(1).ToList();
             pool.Add("battle");
             return pool.OrderBy(_ => _rng.Next()).ToList();
         }
 
         private (string Label, ButtonStyle Style, string Emoji) PathDisplay(string choice) => choice switch
         {
-            "battle" => ("⚔️ 戰鬥", ButtonStyle.Danger, "⚔️"),
-            "rest"   => ("🏕️ 休息 +35%HP+PP", ButtonStyle.Success, "🏕️"),
-            "shop"   => ("🏪 神秘商店", ButtonStyle.Secondary, "🏪"),
-            "event"  => ("❓ 神秘事件", ButtonStyle.Primary, "❓"),
-            _        => ("?", ButtonStyle.Secondary, "?"),
+            "battle"       => ("⚔️ 戰鬥", ButtonStyle.Danger, "⚔️"),
+            "rest"         => ("🏕️ 休息 +35%HP+PP", ButtonStyle.Success, "🏕️"),
+            "shop"         => ("🏪 神秘商店", ButtonStyle.Secondary, "🏪"),
+            "event"        => ("❓ 神秘事件", ButtonStyle.Primary, "❓"),
+            "casino"       => ("🎲 賭場", ButtonStyle.Primary, "🎲"),
+            "cursed_relic" => ("💀 詛咒降臨", ButtonStyle.Danger, "💀"),
+            _              => ("?", ButtonStyle.Secondary, "?"),
         };
 
         // ── Embed builders ────────────────────────────────────
@@ -2226,6 +2535,13 @@ namespace MusicBot2.Service
                 desc.AppendLine($"🎒 背包: {string.Join("、", run.Party.Select(pk => $"{pk.DisplayName}({pk.CurrentHP}HP)"))}");
             if (run.RelicIds.Count > 0)
                 desc.AppendLine($"🏺 {string.Join(" ", run.RelicIds.Select(id => { var r = _relics.FirstOrDefault(x => x.Id == id); return r != null ? $"{r.Emoji}{r.Name}" : ""; }))}");
+            if (run.CursedRelicIds.Count > 0)
+                desc.AppendLine($"💀 {string.Join(" ", run.CursedRelicIds.Select(id => { var r = _cursedRelics.FirstOrDefault(x => x.Id == id); return r != null ? $"{r.Emoji}{r.Name}" : ""; }))}");
+            if (!string.IsNullOrEmpty(run.PassiveId))
+            {
+                var passive = _passives.FirstOrDefault(p => p.Id == run.PassiveId);
+                if (passive != null) desc.AppendLine($"🌟 被動：{passive.Emoji} {passive.Name}");
+            }
             desc.AppendLine();
             desc.AppendLine($"─ 進入第 **{run.CurrentFloor + 1}/{run.MaxFloor}** 層 {(nextIsBoss ? "⚠️ **BOSS**" : "")} ─");
             desc.AppendLine("選擇路線：");
@@ -2262,7 +2578,17 @@ namespace MusicBot2.Service
             desc.AppendLine($"**{(e.IsBoss ? "👑" : "🎯")} {e.Name}** {TypeBadge(e.Types)}");
             desc.AppendLine($"HP: {HpBar(e.CurrentHP, e.MaxHP)}");
             desc.AppendLine();
-            desc.AppendLine($"🔮 **{e.Name}** 預告下一步：{nextMove.Emoji}**{nextMove.Name}**（{nextMove.Power}威力）");
+            bool isBlind = run.CursedRelicIds.Contains("curse_blind");
+            if (isBlind)
+                desc.AppendLine($"🔮 **{e.Name}** 的下一步：**???**（詛咒遮蔽）");
+            else if (HasPassive(run, "passive_strategist"))
+            {
+                var move1 = e.Moves[e.NextMoveIdx % e.Moves.Count];
+                var move2 = e.Moves[(e.NextMoveIdx + 1) % e.Moves.Count];
+                desc.AppendLine($"🔮 **{e.Name}** 預告未來兩步：{move1.Emoji}**{move1.Name}** → {move2.Emoji}**{move2.Name}**");
+            }
+            else
+                desc.AppendLine($"🔮 **{e.Name}** 預告下一步：{nextMove.Emoji}**{nextMove.Name}**（{nextMove.Power}威力）");
 
             if (!string.IsNullOrEmpty(run.CurrentBattleLog))
             {
@@ -2300,14 +2626,15 @@ namespace MusicBot2.Service
         {
             var p = run.ActivePokemon;
             var desc = new StringBuilder();
+            int upLimit = HasPassive(run, "passive_techgeek") ? 8 : 5;
             if (!string.IsNullOrEmpty(notice)) desc.AppendLine($"⚠️ {notice}").AppendLine();
-            desc.AppendLine("選擇想**強化威力的招式**（+20 威力，每招最多強化 5 次）：");
+            desc.AppendLine($"選擇想**強化威力的招式**（+20 威力，每招最多強化 {upLimit} 次）：");
             desc.AppendLine();
             for (int i = 0; i < p.Moves.Count; i++)
             {
                 var m = p.Moves[i];
-                string upgradeTag = m.UpgradeCount >= 5 ? "🔒 已達上限" : $"{m.UpgradeCount}/5";
-                string arrow = m.UpgradeCount >= 5 ? $"威力 **{m.Power}**" : $"威力 **{m.Power}** → **{m.Power + 20}**";
+                string upgradeTag = m.UpgradeCount >= upLimit ? "🔒 已達上限" : $"{m.UpgradeCount}/{upLimit}";
+                string arrow = m.UpgradeCount >= upLimit ? $"威力 **{m.Power}**" : $"威力 **{m.Power}** → **{m.Power + 20}**";
                 desc.AppendLine($"{i + 1}. {m.Emoji}**{m.Name}** — {m.Type} {m.Category}  {arrow}  `{upgradeTag}`");
             }
 
@@ -2323,7 +2650,7 @@ namespace MusicBot2.Service
             for (int i = 0; i < p.Moves.Count; i++)
             {
                 var m = p.Moves[i];
-                bool maxed = m.UpgradeCount >= 5;
+                bool maxed = m.UpgradeCount >= upLimit;
                 string label = maxed ? $"{m.Emoji}{m.Name}(上限)" : $"{m.Emoji}{m.Name}({m.Power}→{m.Power + 20})";
                 upgradeRow.WithButton(new ButtonBuilder()
                     .WithLabel(label)
