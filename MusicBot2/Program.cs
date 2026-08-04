@@ -565,6 +565,15 @@ public class Program
                                 component.User.GlobalName ?? component.User.Username,
                                 player.CaughtPokemon[idx]);
                     }
+                    // tower_relic_{channelId}_{idx}
+                    else if (id.StartsWith("tower_relic_"))
+                    {
+                        var rest = id["tower_relic_".Length..];
+                        int under = rest.LastIndexOf('_');
+                        ulong ch = ulong.Parse(rest[..under]);
+                        int ri = int.Parse(rest[(under + 1)..]);
+                        (tEmbed, tCb) = await towerSvc.HandleRelicChoiceAsync(ch, ri);
+                    }
                     // tower_path_{channelId}_{choice}
                     else if (id.StartsWith("tower_path_"))
                     {
@@ -642,6 +651,12 @@ public class Program
                         ulong ch = ulong.Parse(rest2[..under2]);
                         string src = rest2[(under2 + 1)..]; // "rest" or "shop"
                         (tEmbed, tCb) = await towerSvc.EnterPowerUpgradeAsync(ch, src);
+                    }
+                    // tower_powerup_switch_{channelId}  (切換到技能獎勵)
+                    else if (id.StartsWith("tower_powerup_switch_"))
+                    {
+                        ulong ch = ulong.Parse(id["tower_powerup_switch_".Length..]);
+                        (tEmbed, tCb) = await towerSvc.SwitchToMoveRewardAsync(ch);
                     }
                     // tower_powerup_select_{channelId}_{moveIndex}
                     else if (id.StartsWith("tower_powerup_select_"))
