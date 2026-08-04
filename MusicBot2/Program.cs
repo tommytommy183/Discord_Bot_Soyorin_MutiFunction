@@ -625,8 +625,7 @@ public class Program
                         var run = towerSvc.GetRun(ch);
                         if (run != null)
                         {
-                            var player = await pokeSvc.GetPlayerAsync(run.PlayerId, run.PlayerName);
-                            (tEmbed, tCb) = towerSvc.ShowSwapSelection(ch, player?.CaughtPokemon ?? new());
+                            (tEmbed, tCb) = towerSvc.ShowSwapSelection(ch);
                         }
                     }
                     // tower_swap_cancel_{channelId}

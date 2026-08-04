@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net.Http;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -111,6 +112,9 @@ namespace MusicBot2.Service
         public Dictionary<string, int> Balls { get; set; } = new() { ["normal"] = 10 };
         public int PendingEventIdx { get; set; } = -1;
         public HashSet<int> UsedEventIndices { get; set; } = new();
+        public int MathCorrectChoice { get; set; } = -1;
+        public string MathProblemText { get; set; } = "";
+        public List<string> MathChoiceLabels { get; set; } = new();
         public int Level { get; set; } = 1;
         public int Exp { get; set; } = 0;
         public int ExpToNext => Level * 60;
@@ -123,6 +127,16 @@ namespace MusicBot2.Service
         private readonly Dictionary<ulong, TowerRun> _activeRuns = new();
         private const string REDIS_PREFIX = "tower:run:";
         private static readonly Random _rng = new();
+        private static readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(8) };
+        private static readonly Dictionary<int, List<TowerMove>> _movesApiCache = new();
+        private static readonly Dictionary<string, string> _typeEnToZh = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["normal"]="一般", ["fire"]="火", ["water"]="水", ["electric"]="電",
+            ["grass"]="草", ["ice"]="冰", ["fighting"]="格鬥", ["poison"]="毒",
+            ["ground"]="地面", ["flying"]="飛行", ["psychic"]="超能力", ["bug"]="蟲",
+            ["rock"]="岩石", ["ghost"]="幽靈", ["dragon"]="龍", ["dark"]="惡",
+            ["steel"]="鋼", ["fairy"]="妖精"
+        };
 
         // ── 球種設定 ───────────────────────────────────────────
         private static readonly Dictionary<string, (string DisplayName, string Emoji, float Rate)> _balls = new()
@@ -499,7 +513,8 @@ namespace MusicBot2.Service
                     }),
                     C("💰 求賜財富", "💰", run => {
                         int g = _rng.Next(30, 70); run.Gold += g;
-                        return $"💰 精靈賜予了 **{g} 金幣**！";
+                        int expGain = 20; run.Exp += expGain;
+                        return $"💰 精靈賜予了 **{g} 金幣** 和 **{expGain} EXP**！";
                     }),
                     C("🎾 求賜精靈球", "🎾", run => {
                         run.Balls["super"] = run.Balls.GetValueOrDefault("super") + 2;
@@ -513,7 +528,8 @@ namespace MusicBot2.Service
                     C("🧭 仔細找路", "🧭", run => {
                         if (_rng.Next(2) == 0) {
                             int g = _rng.Next(10, 30); run.Gold += g;
-                            return $"🍄 在林中找到了珍稀藥草，換了 **{g} 金幣**！";
+                            int expGain = 15; run.Exp += expGain;
+                            return $"🍄 在林中找到了珍稀藥草，換了 **{g} 金幣** 和 **{expGain} EXP**！";
                         }
                         return "😵‍💫 耗費了許多時間，什麼也沒找到。";
                     }),
@@ -537,7 +553,8 @@ namespace MusicBot2.Service
                 new() {
                     C("📚 請求對練", "📚", run => {
                         int g = _rng.Next(25, 55); run.Gold += g;
-                        return $"🧠 你說想跟他實際戰鬥，結果不到10秒他就被腰斬了，從現代最強的半身口袋中獲益，收到 **{g} 金幣**。";
+                        int expGain = 35; run.Exp += expGain;
+                        return $"🧠 你說想跟他實際戰鬥，結果不到10秒他就被腰斬了，從現代最強的半身口袋中獲益，收到 **{g} 金幣** 和 **{expGain} EXP**。";
                     }),
                     C("💊 學習反轉術士", "💊", run => {
                         int h = Math.Max(1, run.ActivePokemon.MaxHP / 2);
@@ -718,18 +735,76 @@ namespace MusicBot2.Service
                 "在你準備登上下一層時，你看到了一個人在路邊推銷其他人使用自己的soyo機器人，你靠近看了看，",
                 new() {
                     new("💬 上前搭話", "💬", async run => {
-                        if (_aiService == null) return "（Soyo 你怎麼又似了啦……）";
-                        string prompt = $"你是一個名叫Soyo的可愛Discord機器人助手，個性活潑親切，說話帶有一點點傲嬌。有人在神秘塔的路上遇到了正在推銷你的程式男，並走上來搭話。請用繁體中文，以Soyo的口吻，隨機說一句有趣的自我介紹或推銷詞，不超過60字。";
+                        if (_aiService == null) return "（Soyo 好像去充電了，沒有反應……）";
+                        string prompt = "你是一個名叫Soyo的可愛Discord機器人助手，個性活潑親切，說話帶有一點點傲嬌。有人在神秘塔的路上遇到了正在推銷你的程式男，並走上來搭話。請用繁體中文，以Soyo的口吻，隨機說一句有趣的自我介紹或推銷詞，不超過60字。";
                         string reply = await _aiService.GenerateSimpleTextAsync(prompt);
-                        return $"🤖 Soyo 機器人：「{reply.Trim()}」";
+                        int expGain = 30;
+                        run.Exp += expGain;
+                        return $"🤖 Soyo 機器人：「{reply.Trim()}」\n✨ 聽了 Soyo 的自我介紹，獲得 **{expGain} EXP**！";
                     }),
                     new("🎮 試用看看", "🎮", async run => {
                         if (_aiService == null) return "（系統錯誤：找不到 Soyo……）";
-                        string prompt = $"你是Soyo，一個可愛的Discord機器人。有人想試用你，請用繁體中文給出一個簡短的寶可夢爬塔小技巧或鼓勵的話，不超過50字，口氣要俏皮可愛。";
+                        string prompt = "你是Soyo，一個可愛的Discord機器人。有人想試用你，請用繁體中文給出一個簡短的寶可夢爬塔小技巧或鼓勵的話，不超過50字，口氣要俏皮可愛。";
                         string tip = await _aiService.GenerateSimpleTextAsync(prompt);
-                        return $"💡 Soyo 給的小提示：「{tip.Trim()}」";
+                        int expGain = 50;
+                        run.Exp += expGain;
+                        return $"💡 Soyo 給的爬塔建議：「{tip.Trim()}」\n✨ 試用了 Soyo 機器人，獲得 **{expGain} EXP**！";
                     }),
                     C("🚶 裝沒看見，繼續趕路", "🚶", run => "你假裝沒看到，快步離開，背後傳來「欸欸欸你要不要試試看～」的聲音……"),
+                }),
+
+            new("藍髮媚魔", "💙",
+                "一位藍髮媚魔出現在你面前，想找你組樂隊……",
+                new() {
+                    C("🎵 同意組樂隊，而且要組一輩子", "🎵", run => {
+                        int expGain = 40; run.Exp += expGain;
+                        return $"🎸 說說而已，唱完一首歌後樂團就解散了。但這段美好回憶值得 **{expGain} EXP**！";
+                    }),
+                    C("😔 同意但根本不覺得開心過", "😔", run => {
+                        int dmg = Math.Max(1, (int)(run.ActivePokemon.MaxHP * 0.20));
+                        run.ActivePokemon.CurrentHP = Math.Max(1, run.ActivePokemon.CurrentHP - dmg);
+                        run.Balls["super"] = run.Balls.GetValueOrDefault("super") + 1;
+                        int expGain = 25; run.Exp += expGain;
+                        return $"💔 樂團解散後得了人格分裂症，**{run.ActivePokemon.DisplayName}** 受到 **{dmg}** 心靈傷害，但獲得了 **超級球×1** 和 **{expGain} EXP**。";
+                    }),
+                    C("🚫 不同意（但還是加入了）", "🚫", run => {
+                        var pool = PickMovesStatic(new List<string> { "重力", "地面", "岩石", "一般" });
+                        var gravityMove = pool.FirstOrDefault(m => m.Name == "地震" || m.Name == "岩石封鎖" || m.Name == "岩石滑落")
+                            ?? _movePool.Where(m => m.Type == "地面" || m.Type == "岩石").OrderBy(_ => _rng.Next()).FirstOrDefault()
+                            ?? pool[0];
+                        int slot = run.ActivePokemon.Moves.Select((m,i)=>(m,i)).OrderBy(x=>x.m.Power).First().i;
+                        string old = run.ActivePokemon.Moves[slot].Name;
+                        run.ActivePokemon.Moves[slot] = new TowerMove { Name=gravityMove.Name, Type=gravityMove.Type, Power=gravityMove.Power, Category=gravityMove.Category, Emoji=gravityMove.Emoji, MaxPP=gravityMove.MaxPP, CurrentPP=gravityMove.MaxPP };
+                        int expGain = 35; run.Exp += expGain;
+                        return $"🎸 嘴巴說不同意但還是加入了，成為重力樂團女！學會了 {gravityMove.Emoji}**{gravityMove.Name}**，取代 **{old}**，+**{expGain} EXP**！";
+                    }),
+                }),
+
+            new("感情修羅場", "💢",
+                "你看到一個女的在公園跪著跟另外一位女學生說話，你決定…",
+                new() {
+                    C("📢 衝上去喊676767", "📢", run => {
+                        int dmg = 67;
+                        run.ActivePokemon.CurrentHP = Math.Max(1, run.ActivePokemon.CurrentHP - dmg);
+                        int expGain = 7; run.Exp += expGain; run.Gold += 67;
+                        return $"😵 被痛扁了 67 滴！**{run.ActivePokemon.DisplayName}** 受到 **{dmg}** 傷害，但獲得了 **67 金幣** 和 **{expGain} EXP（取整）**！";
+                    }),
+                    C("🕊️ 勸架", "🕊️", run => {
+                        run.Balls["master"] = run.Balls.GetValueOrDefault("master") + 2;
+                        int expGain = 60; run.Exp += expGain;
+                        return $"😢 她哭著說只要能重新組樂隊，她什麼都願意做。你好好勸說了他們一番，收到了 **大師球×2** 和 **{expGain} EXP**！";
+                    }),
+                }),
+
+            new("神秘數學題", "🔢",
+                "一個神秘人攔住你，說要考你數學，答對有獎，答錯受罰。",
+                new() {
+                    C("答案 A", "🅰️", run => run.MathCorrectChoice == 0
+                        ? $"✅ 答對了！{MathReward(run)}" : $"❌ 答錯了！{MathPunish(run)}"),
+                    C("答案 B", "🅱️", run => run.MathCorrectChoice == 1
+                        ? $"✅ 答對了！{MathReward(run)}" : $"❌ 答錯了！{MathPunish(run)}"),
+                    C("答案 C", "🇨", run => run.MathCorrectChoice == 2
+                        ? $"✅ 答對了！{MathReward(run)}" : $"❌ 答錯了！{MathPunish(run)}"),
                 }),
         };
 
@@ -780,7 +855,7 @@ namespace MusicBot2.Service
                 .WithDescription(
                     "選一隻帶入爬塔。\n" +
                     "**HP 與技能 PP 全程保留**，打倒的敵人可以捕獲，背包最多 **3 隻**。\n\n" +
-                    "共 **10 層**，第 10 層是 Boss，加油！")
+                    "共 **20 層**，第 20 層是 Boss，加油！")
                 .WithColor(new Color(70, 130, 180))
                 .WithFooter($"{playerName} 的爬塔申請");
 
@@ -810,7 +885,7 @@ namespace MusicBot2.Service
             ulong channelId, ulong playerId, string playerName, PokeGamePokemon src)
         {
             var pokemon = ConvertPokemon(src);
-            pokemon.Moves = PickMoves(src.Types);
+            pokemon.Moves = await FetchMovesFromApiAsync(src.Id, src.Types?.ToList() ?? new());
 
             var run = new TowerRun
             {
@@ -840,7 +915,7 @@ namespace MusicBot2.Service
 
             if (choice == "battle" || isBoss)
             {
-                run.CurrentEnemy = GenEnemy(run.CurrentFloor, isBoss);
+                run.CurrentEnemy = await GenEnemyAsync(run.CurrentFloor, isBoss);
                 run.CurrentBattleLog = "";
                 run.State = TowerRunState.InBattle;
                 run.RunLog.Add($"⚔️ 第{run.CurrentFloor}層：遭遇 {run.CurrentEnemy.Name}！");
@@ -868,6 +943,9 @@ namespace MusicBot2.Service
                     .Where(i => !run.UsedEventIndices.Contains(i)).ToList();
                 if (available.Count == 0) { run.UsedEventIndices.Clear(); available = Enumerable.Range(0, _events.Count).ToList(); }
                 run.PendingEventIdx = available[_rng.Next(available.Count)];
+                // If math event, generate the problem
+                if (_events[run.PendingEventIdx].Title == "神秘數學題")
+                    GenerateMathEvent(run);
                 run.State = TowerRunState.SelectingEvent;
                 await SaveAsync(run);
                 return BuildEventEmbed(run);
@@ -1263,15 +1341,16 @@ namespace MusicBot2.Service
                     return ErrEmbed("未知的道具");
             }
 
-            run.State = TowerRunState.SelectingPath;
+            if (itemKey == "leave") run.State = TowerRunState.SelectingPath;
             run.RunLog.Add(msg);
             await SaveAsync(run);
-            return BuildPathEmbed(run, msg);
+            if (itemKey == "leave") return BuildPathEmbed(run, msg);
+            return BuildShopEmbed(run, msg);
         }
 
         /// <summary>顯示換寶可夢畫面</summary>
         public (Embed embed, ComponentBuilder component) ShowSwapSelection(
-            ulong channelId, List<PokeGamePokemon> allPlayerPokemons)
+            ulong channelId)
         {
             if (!_activeRuns.TryGetValue(channelId, out var run))
                 return ErrEmbed("找不到進行中的爬塔");
@@ -1296,22 +1375,6 @@ namespace MusicBot2.Service
                     inline: false);
                 if (!isActive && p.CurrentHP > 0)
                     cb.WithButton(p.DisplayName, $"tower_swap_{channelId}_{i}", ButtonStyle.Primary, row: btnRow++);
-            }
-
-            // Also allow adding new Pokemon from player collection that aren't in party yet
-            var newOnes = allPlayerPokemons
-                .Where(p => run.Party.All(tp => !(tp.PokeId == p.Id && tp.CaughtAt == p.CaughtDate)))
-                .Take(3).ToList();
-
-            if (newOnes.Count > 0 && run.Party.Count < 3)
-            {
-                embed.AddField("── 可加入的新成員 ──", "（加入時 HP 為最大值）", inline: false);
-                for (int i = 0; i < newOnes.Count && run.Party.Count + i < 3; i++)
-                {
-                    var p = newOnes[i];
-                    embed.AddField(p.CustomName ?? p.Name, $"HP {p.HP}", inline: true);
-                    cb.WithButton($"加入 {p.CustomName ?? p.Name}", $"tower_addnew_{channelId}_{i}", ButtonStyle.Success, row: btnRow++);
-                }
             }
 
             cb.WithButton("取消", $"tower_swap_cancel_{channelId}", ButtonStyle.Secondary, row: 4);
@@ -1348,7 +1411,7 @@ namespace MusicBot2.Service
                 return ErrEmbed("背包已滿！最多只能帶 3 隻。");
 
             var newPoke = ConvertPokemon(src);
-            newPoke.Moves = PickMoves(src.Types);
+            newPoke.Moves = await FetchMovesFromApiAsync(src.Id, src.Types?.ToList() ?? new());
             run.Party.Add(newPoke);
             run.RunLog.Add($"➕ {newPoke.DisplayName} 加入了爬塔！");
             await SaveAsync(run);
@@ -1480,7 +1543,66 @@ namespace MusicBot2.Service
             }).ToList();
         }
 
-        private TowerEnemy GenEnemy(int floor, bool isBoss)
+        private static async Task<TowerMove?> FetchMoveDetailAsync(string url)
+        {
+            try
+            {
+                var json = await _http.GetStringAsync(url);
+                using var doc = JsonDocument.Parse(json);
+                var root = doc.RootElement;
+                if (!root.TryGetProperty("power", out var pp) || pp.ValueKind == JsonValueKind.Null) return null;
+                int power = pp.GetInt32();
+                if (power <= 0) return null;
+
+                string typeEn = root.GetProperty("type").GetProperty("name").GetString() ?? "normal";
+                string typeZh = _typeEnToZh.TryGetValue(typeEn, out var tz) ? tz : "一般";
+                string dmg = root.GetProperty("damage_class").GetProperty("name").GetString() ?? "physical";
+                int maxPP = root.TryGetProperty("pp", out var ppV) ? Math.Clamp(ppV.GetInt32(), 5, 15) : 10;
+
+                string name = root.GetProperty("name").GetString() ?? "???";
+                if (root.TryGetProperty("names", out var names))
+                    foreach (var n in names.EnumerateArray())
+                        if (n.GetProperty("language").GetProperty("name").GetString() == "zh-hant")
+                        { name = n.GetProperty("name").GetString() ?? name; break; }
+
+                string emoji = _typeEmoji.TryGetValue(typeZh, out var em) ? em : "💥";
+                return new TowerMove { Name=name, Type=typeZh, Power=Math.Min(power,150),
+                    Category=dmg=="special"?"Special":"Physical", Emoji=emoji, MaxPP=maxPP, CurrentPP=maxPP };
+            }
+            catch { return null; }
+        }
+
+        private static async Task<List<TowerMove>> FetchMovesFromApiAsync(int pokeId, List<string> fallbackTypes)
+        {
+            if (pokeId <= 0) return PickMovesStatic(fallbackTypes);
+
+            if (_movesApiCache.TryGetValue(pokeId, out var cached) && cached.Count >= 4)
+                return cached.OrderBy(_ => _rng.Next()).Take(4)
+                    .Select(m => new TowerMove { Name=m.Name, Type=m.Type, Power=m.Power,
+                        Category=m.Category, Emoji=m.Emoji, MaxPP=m.MaxPP, CurrentPP=m.MaxPP }).ToList();
+
+            try
+            {
+                var json = await _http.GetStringAsync($"https://pokeapi.co/api/v2/pokemon/{pokeId}");
+                using var doc = JsonDocument.Parse(json);
+                var urls = doc.RootElement.GetProperty("moves").EnumerateArray()
+                    .Select(m => m.GetProperty("move").GetProperty("url").GetString())
+                    .Where(u => u != null).OrderBy(_ => _rng.Next()).Take(20).ToList();
+
+                var tasks = urls.Select(u => FetchMoveDetailAsync(u!)).ToArray();
+                var results = await Task.WhenAll(tasks);
+                var valid = results.Where(m => m != null).Cast<TowerMove>().ToList();
+
+                if (valid.Count > 0) _movesApiCache[pokeId] = valid;
+
+                var picked = valid.Take(4).ToList();
+                if (picked.Count < 4) picked.AddRange(PickMovesStatic(fallbackTypes).Take(4 - picked.Count));
+                return picked;
+            }
+            catch { return PickMovesStatic(fallbackTypes); }
+        }
+
+        private async Task<TowerEnemy> GenEnemyAsync(int floor, bool isBoss)
         {
             IEnumerable<(string Name, string[] Types, int StatTotal, int PokeId)> tier;
             if (isBoss)          tier = _enemyPool.Where(e => e.StatTotal >= 590);
@@ -1504,7 +1626,7 @@ namespace MusicBot2.Service
                 Attack = b, Defense = (int)(b * 0.85),
                 SpecialAttack = b, SpecialDefense = (int)(b * 0.85),
                 Speed = b, IsBoss = isBoss, GoldReward = gold,
-                Moves = PickMovesStatic(t.Types.ToList()),
+                Moves = await FetchMovesFromApiAsync(t.PokeId, t.Types.ToList()),
             };
         }
 
@@ -1698,6 +1820,12 @@ namespace MusicBot2.Service
 
             var desc = new StringBuilder();
             desc.AppendLine($"_{ev.Desc}_");
+            if (ev.Title == "神秘數學題" && !string.IsNullOrEmpty(run.MathProblemText))
+            {
+                desc.AppendLine();
+                desc.AppendLine($"```\n{run.MathProblemText}\n```");
+                desc.AppendLine("**求 x 和 y 的值：**");
+            }
             desc.AppendLine();
             desc.AppendLine("**請選擇應對方式：**");
             for (int i = 0; i < ev.Choices.Count; i++)
@@ -1706,10 +1834,12 @@ namespace MusicBot2.Service
             desc.AppendLine($"**{run.ActivePokemon.DisplayName}** HP: {HpBar(run.ActivePokemon.CurrentHP, run.ActivePokemon.MaxHP, 6)}　💰 {run.Gold}");
 
             var cb = new ComponentBuilder();
+            bool isMathEvent = ev.Title == "神秘數學題" && run.MathChoiceLabels.Count == 3;
             for (int i = 0; i < ev.Choices.Count; i++)
-                cb.WithButton($"{ev.Choices[i].Emoji} {ev.Choices[i].Label}",
-                    $"tower_event_{run.ChannelId}_{i}",
-                    ButtonStyle.Primary, row: i / 3);
+            {
+                string label = isMathEvent ? run.MathChoiceLabels[i] : ev.Choices[i].Label;
+                cb.WithButton(label, $"tower_event_{run.ChannelId}_{i}", ButtonStyle.Primary, row: i / 3);
+            }
 
             return (new EmbedBuilder()
                 .WithTitle($"{ev.Emoji} 神秘事件：{ev.Title}")
@@ -1854,16 +1984,78 @@ namespace MusicBot2.Service
         private (Embed embed, ComponentBuilder component) BuildDefeatEmbed(TowerRun run)
         {
             var elapsed = (int)(DateTime.UtcNow - run.StartedAt).TotalMinutes;
+            var desc = new StringBuilder();
+            desc.AppendLine($"**{run.PlayerName}** 的全部寶可夢在第 **{run.CurrentFloor}** 層倒下。\n");
+            desc.AppendLine($"📊 **成績**");
+            desc.AppendLine($"• 攻克：{run.CurrentFloor - 1}/{run.MaxFloor} 層");
+            desc.AppendLine($"• 累積傷害：{run.TotalDamageDealt}");
+            desc.AppendLine($"• 用時：{elapsed} 分鐘");
+            if (!string.IsNullOrEmpty(run.CurrentBattleLog))
+            {
+                desc.AppendLine();
+                desc.AppendLine("⚔️ **最後戰況：**");
+                // Show only the last round
+                var rounds = run.CurrentBattleLog.Split(new[] { "════════" }, StringSplitOptions.RemoveEmptyEntries)
+                    .Select(r => r.Trim()).Where(r => r.Length > 0).ToList();
+                if (rounds.Count > 0)
+                    desc.AppendLine(rounds.Last());
+            }
+            desc.AppendLine("\n下次再挑戰！");
             return (new EmbedBuilder()
                 .WithTitle("💀 全滅...")
-                .WithDescription(
-                    $"**{run.PlayerName}** 的全部寶可夢在第 **{run.CurrentFloor}** 層倒下。\n\n" +
-                    $"📊 **成績**\n" +
-                    $"• 攻克：{run.CurrentFloor - 1}/{run.MaxFloor} 層\n" +
-                    $"• 累積傷害：{run.TotalDamageDealt}\n" +
-                    $"• 用時：{elapsed} 分鐘\n\n" +
-                    "下次再挑戰！")
+                .WithDescription(desc.ToString())
                 .WithColor(Color.DarkRed).Build(), new ComponentBuilder());
+        }
+
+        private static string MathReward(TowerRun run)
+        {
+            int g = _rng.Next(30, 60); run.Gold += g;
+            int exp = 80; run.Exp += exp;
+            return $"獲得 **{g} 金幣** 和 **{exp} EXP**！";
+        }
+
+        private static string MathPunish(TowerRun run)
+        {
+            int dmg = Math.Max(1, (int)(run.ActivePokemon.MaxHP * 0.25));
+            run.ActivePokemon.CurrentHP = Math.Max(1, run.ActivePokemon.CurrentHP - dmg);
+            return $"**{run.ActivePokemon.DisplayName}** 受到 **{dmg}** 傷害！";
+        }
+
+        private static void GenerateMathEvent(TowerRun run)
+        {
+            var r = new Random(run.CurrentFloor * 7919 + (int)(run.PlayerId % 1000));
+            int x = r.Next(1, 9), y = r.Next(1, 9);
+            int a1 = r.Next(1, 5), b1 = r.Next(1, 5);
+            int a2 = r.Next(1, 5), b2 = r.Next(1, 5);
+            // Ensure unique equations
+            while (a1 * b2 == a2 * b1) { a2 = r.Next(1, 5); b2 = r.Next(1, 5); }
+            int c1 = a1 * x + b1 * y;
+            int c2 = a2 * x + b2 * y;
+            run.MathProblemText = $"{a1}x + {b1}y = {c1}\n{a2}x + {b2}y = {c2}";
+
+            int correct = r.Next(3);
+            run.MathCorrectChoice = correct;
+            run.MathChoiceLabels = new List<string>();
+            var usedWrong = new HashSet<string>();
+            for (int i = 0; i < 3; i++)
+            {
+                if (i == correct)
+                {
+                    run.MathChoiceLabels.Add($"x={x}, y={y}");
+                }
+                else
+                {
+                    int wx, wy;
+                    string key;
+                    do {
+                        wx = Math.Clamp(x + r.Next(-3, 4), 1, 12);
+                        wy = Math.Clamp(y + r.Next(-3, 4), 1, 12);
+                        key = $"{wx},{wy}";
+                    } while ((wx == x && wy == y) || usedWrong.Contains(key));
+                    usedWrong.Add(key);
+                    run.MathChoiceLabels.Add($"x={wx}, y={wy}");
+                }
+            }
         }
 
         private (Embed embed, ComponentBuilder component) ErrEmbed(string msg) =>
