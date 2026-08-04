@@ -38,6 +38,7 @@ namespace MusicBot2.Service
         public string Emoji { get; set; } = "⚡";
         public int MaxPP { get; set; } = 10;
         public int CurrentPP { get; set; } = 10;
+        public int UpgradeCount { get; set; } = 0;
     }
 
     public class TowerPokemon
@@ -963,7 +964,7 @@ namespace MusicBot2.Service
                         run.ActivePokemon.CurrentHP = Math.Max(1, run.ActivePokemon.CurrentHP - dmg);
                         int expGain = run.Level * 20;
                         run.Exp += expGain;
-                        return $"幹，當林北 **{leg.Name}** 是水君嗎？一掌把你的 **{run.ActivePokemon.DisplayName}** 掃飛 **{dmg}** 點傷害，不過還是獲得了 {expGain} EXP。";
+                        return $"幹，當林北 **{leg.Name}** 是水君嗎？ **{leg.Name}** 一怒之下痛扁 **{run.ActivePokemon.DisplayName}**  **{dmg}** 點傷害，不過還是獲得了 {expGain} EXP。";
                     }),
                 }),
         };
@@ -1751,18 +1752,26 @@ namespace MusicBot2.Service
 
             if (moveIndex >= 0 && moveIndex < run.ActivePokemon.Moves.Count)
             {
+                var m = run.ActivePokemon.Moves[moveIndex];
+                if (m.UpgradeCount >= 5)
+                {
+                    run.State = TowerRunState.SelectingPowerUpgrade;
+                    run.PowerUpgradeReturn = ret;
+                    return BuildPowerUpgradeEmbed(run, $"【{m.Name}】已達強化上限（5/5）！");
+                }
                 if (ret == "shop")
                 {
                     if (run.Gold < 20)
                     {
                         run.State = TowerRunState.SelectingPowerUpgrade;
+                        run.PowerUpgradeReturn = ret;
                         return BuildPowerUpgradeEmbed(run, "金幣不足！需要 20💰");
                     }
                     run.Gold -= 20;
                 }
-                var m = run.ActivePokemon.Moves[moveIndex];
                 m.Power += 20;
-                run.RunLog.Add($"⚡ 強化【{m.Name}】威力提升至 {m.Power}！");
+                m.UpgradeCount++;
+                run.RunLog.Add($"⚡ 強化【{m.Name}】威力提升至 {m.Power}！（{m.UpgradeCount}/5）");
             }
 
             if (ret == "battle")
@@ -2292,12 +2301,14 @@ namespace MusicBot2.Service
             var p = run.ActivePokemon;
             var desc = new StringBuilder();
             if (!string.IsNullOrEmpty(notice)) desc.AppendLine($"⚠️ {notice}").AppendLine();
-            desc.AppendLine("選擇想**強化威力的招式**（+20 威力）：");
+            desc.AppendLine("選擇想**強化威力的招式**（+20 威力，每招最多強化 5 次）：");
             desc.AppendLine();
             for (int i = 0; i < p.Moves.Count; i++)
             {
                 var m = p.Moves[i];
-                desc.AppendLine($"{i + 1}. {m.Emoji}**{m.Name}** — {m.Type} {m.Category} 威力 **{m.Power}** → **{m.Power + 20}**");
+                string upgradeTag = m.UpgradeCount >= 5 ? "🔒 已達上限" : $"{m.UpgradeCount}/5";
+                string arrow = m.UpgradeCount >= 5 ? $"威力 **{m.Power}**" : $"威力 **{m.Power}** → **{m.Power + 20}**";
+                desc.AppendLine($"{i + 1}. {m.Emoji}**{m.Name}** — {m.Type} {m.Category}  {arrow}  `{upgradeTag}`");
             }
 
             var embed = new EmbedBuilder()
@@ -2308,11 +2319,19 @@ namespace MusicBot2.Service
                 .Build();
 
             var cb = new ComponentBuilder();
+            var upgradeRow = new ActionRowBuilder();
             for (int i = 0; i < p.Moves.Count; i++)
             {
                 var m = p.Moves[i];
-                cb.WithButton($"{m.Emoji}{m.Name}({m.Power}→{m.Power + 20})", $"tower_powerup_select_{run.ChannelId}_{i}", ButtonStyle.Primary, row: 0);
+                bool maxed = m.UpgradeCount >= 5;
+                string label = maxed ? $"{m.Emoji}{m.Name}(上限)" : $"{m.Emoji}{m.Name}({m.Power}→{m.Power + 20})";
+                upgradeRow.WithButton(new ButtonBuilder()
+                    .WithLabel(label)
+                    .WithCustomId($"tower_powerup_select_{run.ChannelId}_{i}")
+                    .WithStyle(maxed ? ButtonStyle.Secondary : ButtonStyle.Primary)
+                    .WithDisabled(maxed));
             }
+            cb.AddRow(upgradeRow);
             cb.WithButton("跳過", $"tower_powerup_select_{run.ChannelId}_4", ButtonStyle.Secondary, row: 1);
             if (run.PowerUpgradeReturn == "battle")
                 cb.WithButton("📀 換技能代替", $"tower_powerup_switch_{run.ChannelId}", ButtonStyle.Secondary, row: 1);
