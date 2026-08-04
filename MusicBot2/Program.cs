@@ -577,10 +577,14 @@ public class Program
                     // tower_path_{channelId}_{choice}
                     else if (id.StartsWith("tower_path_"))
                     {
-                        var p = id.Split('_');
-                        ulong ch = ulong.Parse(p[2]);
+                        // choice may contain underscores (e.g. "cursed_relic"), so use LastIndexOf on the part after "tower_path_"
+                        var afterPrefix = id["tower_path_".Length..];
+                        // channelId is digits, find first '_' that follows all digits
+                        int sepIdx = afterPrefix.IndexOf('_');
+                        ulong ch = ulong.Parse(afterPrefix[..sepIdx]);
+                        string choice = afterPrefix[(sepIdx + 1)..];
                         var prevState = towerSvc.GetRun(ch)?.State;
-                        (tEmbed, tCb) = await towerSvc.HandlePathChoiceAsync(ch, p[3]);
+                        (tEmbed, tCb) = await towerSvc.HandlePathChoiceAsync(ch, choice);
                         // 戰鬥開始 → 送兩張圖片
                         var run = towerSvc.GetRun(ch);
                         if (run?.State == TowerRunState.InBattle && prevState != TowerRunState.InBattle)
