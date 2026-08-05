@@ -127,8 +127,12 @@ namespace MusicBot2.Service
         public int ExpToNext => Level * 60;
         public List<string> CurrentPaths { get; set; } = new();
         public bool RestMoveRewardPending { get; set; } = false;
+        public bool ShopMoveRewardPending { get; set; } = false;
+        public bool EventMoveRewardPending { get; set; } = false;
         // "battle" | "rest" | "shop"
         public string PowerUpgradeReturn { get; set; } = "";
+        // 商店各商品已購買次數（每買一次該商品+10💰）
+        public Dictionary<string, int> ShopBuyCounts { get; set; } = new();
         public List<string> RelicIds { get; set; } = new();
         public HashSet<string> SeenRelicIds { get; set; } = new();
         public List<string> PendingRelicChoices { get; set; } = new();
@@ -324,6 +328,20 @@ namespace MusicBot2.Service
             new("relic_no_def",    "混沌之眼",  "🌀", "攻擊有20%機率完全無視防禦"),
             new("relic_will",      "意志結晶",  "✨", "每場戰鬥若全技能PP歸零則自動回復一次"),
             new("relic_chain",     "連鎖爆發",  "⛓️", "每擊倒一個敵人累積+5%傷害加成"),
+            new("relic_time_warp",    "時光扭曲",   "⏰", "每場戰鬥開始時全部PP回復3點"),
+            new("relic_executioner",  "劊子手",     "🪓", "敵人HP低於25%時傷害×2"),
+            new("relic_mirror_coat",  "鏡面反射",   "🪞", "每場戰鬥有一次完全反射傷害機會"),
+            new("relic_parasite",     "寄生種子",   "🌱", "每擊倒一隻敵人永久+5最大HP"),
+            new("relic_feast",        "盛宴",       "🍖", "每場戰鬥勝利後回復50HP"),
+            new("relic_double_edge",  "捨身衝撞",   "💨", "攻擊傷害+40%但每次攻擊自損傷害的15%"),
+            new("relic_lucky_charm",  "幸運符",     "🍀", "所有隨機判定（暴擊/閃避/特效）機率+15%"),
+            new("relic_exp_boost",    "學習加速器", "🎓", "每場戰鬥獲得的EXP×1.5"),
+            new("relic_gold_mine",    "金礦脈",     "⛏️", "每場戰鬥勝利額外獲得20💰"),
+            new("relic_berserker_r",  "狂暴之心",   "❤️‍🔥", "HP低於50%時傷害+40%（疊加enrage）"),
+            new("relic_swift",        "迅捷之羽",   "🪽",  "速度+30%（疊加被動）"),
+            new("relic_scholar",      "學者之冠",   "🎩", "每升一級額外獲得所有技能+5PP"),
+            new("relic_comeback",     "逆轉勝負",   "🔄", "HP低於10%時下一次攻擊傷害×3"),
+            new("relic_shared_pain",  "共苦盟約",   "🤝", "受到傷害時對敵人反彈30%傷害（疊加thorns）"),
         };
 
         private static readonly List<PassiveDef> _passives = new()
@@ -358,6 +376,16 @@ namespace MusicBot2.Service
             new("curse_no_catch",    "鐵籠詛咒",   "🔒", "無法捕獲任何 Pokemon（球全部失效）"),
             new("curse_hp_cap",      "生命封印",   "❤️‍🔥", "全隊最大 HP -20%"),
             new("curse_move_random", "混亂咒語",   "🌀", "每回合 20% 機率隨機使用技能"),
+            new("curse_forget",      "遺忘詛咒",   "🧠", "每過一層隨機忘掉一個技能，換成隨機技能"),
+            new("curse_weaken",      "虛弱加身",   "⚠️", "已強化過的技能威力減半"),
+            new("curse_gold_drain",  "黃金枷鎖",   "🔗", "擊倒敵人時不給金幣，改扣現有金幣10%"),
+            new("curse_mirror",      "角色互換",   "🔀", "每奇數回合玩家隨機使用技能（無法控制）"),
+            new("curse_fragile2",    "紙糊護甲",   "📄", "每次受傷後防禦永久-3（下限1）"),
+            new("curse_hungry",      "飢餓詛咒",   "🍽️", "每回合技能PP額外消耗1點"),
+            new("curse_unlucky",     "厄運纏身",   "🎭", "所有暴擊/捕獲等機率減少30%"),
+            new("curse_decay",       "腐敗詛咒",   "🦠", "神器效果減弱50%（攻擊類加成減半）"),
+            new("curse_paranoia",    "妄想症",     "👻", "無法使用商店（商店路徑強制跳過）"),
+            new("curse_silence",     "沉默詛咒",   "🔇", "威力最高的技能PP上限變為1"),
         };
 
         // pending starts keyed by channelId (before passive is chosen)
@@ -425,7 +453,7 @@ namespace MusicBot2.Service
             ("班基拉斯", new[]{"岩石","惡"},    600, 248),
             ("烈咬陸鯊", new[]{"龍","地面"},    600, 445),
             ("暴飛龍",   new[]{"龍","飛行"},    600, 373),
-            ("三地鼠",   new[]{"地面"},         600, 450),
+            ("河馬獸",   new[]{"地面"},         600, 450),
             ("水箭龜Mega",new[]{"水"},          630, 9),
             ("噴火龍X",  new[]{"火","龍"},      634, 6),
         };
@@ -612,12 +640,10 @@ namespace MusicBot2.Service
                 "地上有一個散發著綠色光芒的外星手錶，螢幕還微微發亮。要觸碰看看嗎？",
                 new() {
                     C("📀 摸摸看", "📀", run => {
-                        var pool = PickMovesStatic(run.ActivePokemon.Types);
-                        var nm = pool.FirstOrDefault(m => run.ActivePokemon.Moves.All(e => e.Name != m.Name)) ?? pool[0];
-                        int slot = run.ActivePokemon.Moves.Select((m,i)=>(m,i)).OrderBy(x=>x.m.Power).First().i;
-                        string old = run.ActivePokemon.Moves[slot].Name;
-                        run.ActivePokemon.Moves[slot] = nm;
-                        return $"📀 手錶黏到你手上了，完全拿不掉！ 但你的寶可夢忘掉 **{old}**，學會了 {nm.Emoji}**{nm.Name}**！";
+                        var pool = PickMovesStatic(run.ActivePokemon.Types).OrderBy(_ => _rng.Next()).ToList();
+                        run.PendingMoveRewards = pool.Take(3).ToList();
+                        run.EventMoveRewardPending = true;
+                        return "📀 手錶黏到你手上了，完全拿不掉！請從以下技能中選一個讓你的寶可夢學習：";
                     }),
                     C("💰 賣給其他人", "💰", run => {
                         int g = _rng.Next(15, 30); run.Gold += g;
@@ -720,12 +746,10 @@ namespace MusicBot2.Service
                         return $"🌿 現代最強飄在空中，喊著甚麼對不起天內...你聽不懂，但**全隊**睡著了，恢復約 50% HP + PP 全回！";
                     }),
                     C("📀 學習領域展開", "📀", run => {
-                        var pool = PickMovesStatic(run.ActivePokemon.Types);
-                        var nm = pool.FirstOrDefault(m => run.ActivePokemon.Moves.All(e => e.Name != m.Name)) ?? pool[0];
-                        int slot = run.ActivePokemon.Moves.Select((m,i)=>(m,i)).OrderBy(x=>x.m.Power).First().i;
-                        string old = run.ActivePokemon.Moves[slot].Name;
-                        run.ActivePokemon.Moves[slot] = nm;
-                        return $"📀 現代最強開出領域，**{run.ActivePokemon.DisplayName}** 大腦直接當機，但醒過來後學會了新招，{nm.Emoji}**{nm.Name}**，取代了 **{old}**！";
+                        var pool = PickMovesStatic(run.ActivePokemon.Types).OrderBy(_ => _rng.Next()).ToList();
+                        run.PendingMoveRewards = pool.Take(3).ToList();
+                        run.EventMoveRewardPending = true;
+                        return $"📀 現代最強開出領域，**{run.ActivePokemon.DisplayName}** 大腦直接當機！醒過來後感覺學到了新東西，請選一個技能：";
                     }),
                 }),
 
@@ -776,12 +800,10 @@ namespace MusicBot2.Service
                 "前方出現一顆頭飄在空中，定睛一看才發現是一個人，他似乎說了些甚麼。",
                 new() {
                     C("📀 這個增幅裝置不能虧，鬼轉ap", "📀", run => {
-                        var pool = PickMovesStatic(run.ActivePokemon.Types);
-                        var nm = pool.FirstOrDefault(m => run.ActivePokemon.Moves.All(e => e.Name != m.Name)) ?? pool[0];
-                        int slot = run.ActivePokemon.Moves.Select((m,i)=>(m,i)).OrderBy(x=>x.m.Power).First().i;
-                        string old = run.ActivePokemon.Moves[slot].Name;
-                        run.ActivePokemon.Moves[slot] = nm;
-                        return $"📀 忘掉了 **{old}**，學會了 {nm.Emoji}**{nm.Name}**！";
+                        var pool = PickMovesStatic(run.ActivePokemon.Types).OrderBy(_ => _rng.Next()).ToList();
+                        run.PendingMoveRewards = pool.Take(3).ToList();
+                        run.EventMoveRewardPending = true;
+                        return "📀 長脖男塞給你一個增幅裝置，你的寶可夢感受到了能量！請選一個新技能：";
                     }),
                     C("🎁 這邊獎勵一把食魂者ap特朗德", "🎁", run => {
                         int lost = Math.Min(run.Gold, _rng.Next(10, 25));
@@ -1017,6 +1039,168 @@ namespace MusicBot2.Service
                         return $"幹，當林北 **{leg.Name}** 是水君嗎？ **{leg.Name}** 一怒之下痛扁 **{run.ActivePokemon.DisplayName}**  **{dmg}** 點傷害，不過還是獲得了 {expGain} EXP。";
                     }),
                 }),
+
+            new("神秘快遞", "📦",
+                "前方有一個包裝完好的神秘包裹，上面沒有寄件人，也沒有收件人……",
+                new() {
+                    C("📦 打開來看看", "📦", run => {
+                        if (_rng.Next(10) < 7) {
+                            int g = _rng.Next(40, 81); run.Gold += g;
+                            return $"🎉 裡面是一大堆金幣！獲得 **{g}💰**！";
+                        }
+                        foreach (var p in run.Party) p.CurrentHP = p.MaxHP;
+                        return "💚 裡面裝著神奇藥水，**全隊 HP 完全回滿**！";
+                    }),
+                    C("📮 退回去", "📮", run => {
+                        run.Gold += 30;
+                        return "📮 你把包裹退回去，郵局給了你 **30💰** 的手續費。";
+                    }),
+                }),
+
+            new("時光機", "⏰",
+                "角落有一台生鏽的時光機，還在嗡嗡作響，似乎還能用……",
+                new() {
+                    C("⏪ 回到過去", "⏪", run => {
+                        foreach (var p in run.Party) { p.CurrentHP = p.MaxHP; foreach (var m in p.Moves) m.CurrentPP = m.MaxPP; }
+                        run.Gold += 30;
+                        return "✨ 回到了一個沒有詛咒的時刻，**全隊 HP、PP 完全回復**，並額外獲得 **30💰**！";
+                    }),
+                    new EventChoice("⏩ 跳到未來", "⏩", async run => {
+                        var available = _relics.Where(r => !run.RelicIds.Contains(r.Id)).ToList();
+                        if (available.Count == 0) { run.Gold += 80; return "🔮 未來中你已擁有所有神器！獲得 **80💰** 作為補償。"; }
+                        var picked = available[_rng.Next(available.Count)];
+                        run.RelicIds.Add(picked.Id);
+                        ApplyRelicOnPickup(run, picked.Id);
+                        run.RunLog.Add($"🏺 時光機帶來神器【{picked.Name}】！");
+                        return $"🔮 從未來帶回了神器 **{picked.Emoji}{picked.Name}**！{picked.Desc}";
+                    }),
+                }),
+
+            new("神秘修行者", "🧘",
+                "山洞中有一位閉目養神的修行者，感覺到你靠近後緩緩睜開眼睛。",
+                new() {
+                    C("📖 接受指導", "📖", run => {
+                        foreach (var m in run.ActivePokemon.Moves) m.Power += 10;
+                        int expGain = 50; run.Exp += expGain;
+                        return $"🔥 修行者的智慧灌入腦海，**{run.ActivePokemon.DisplayName}** 的所有技能威力 **+10**，並獲得 **{expGain} EXP**！";
+                    }),
+                    C("🌙 學習秘術", "🌙", run => {
+                        foreach (var p in run.Party) foreach (var m in p.Moves) { m.MaxPP += 3; m.CurrentPP = m.MaxPP; }
+                        return "🌙 全隊所有技能 **MaxPP+3** 並完全回滿！";
+                    }),
+                }),
+
+            new("廢棄寶箱", "🎁",
+                "路邊有一個布滿灰塵的大寶箱，上面的鎖看起來很老舊……",
+                new() {
+                    C("💥 用力砸開", "💥", run => {
+                        if (_rng.Next(2) == 0) {
+                            run.Balls["super"] = run.Balls.GetValueOrDefault("super") + 2;
+                            run.Gold += 30;
+                            return "💥 箱子被砸開了！裡面有 **超級球×2** 和 **30💰**！";
+                        }
+                        foreach (var p in run.Party) p.CurrentHP = p.MaxHP;
+                        run.Balls["ultra"] = run.Balls.GetValueOrDefault("ultra") + 1;
+                        return "✨ 箱子裡的聖光讓**全隊 HP 全回**，還有一顆 **高級球**！";
+                    }),
+                    new EventChoice("🔑 用鑰匙開（消耗20💰）", "🔑", async run => {
+                        if (run.Gold < 20) return "💸 沒有足夠的金幣打開寶箱……（需要20💰）";
+                        run.Gold -= 20;
+                        run.Balls["ultra"] = run.Balls.GetValueOrDefault("ultra") + 2;
+                        run.Gold += 60;
+                        return "🔑 寶箱緩緩打開，裡面整整齊齊！獲得 **高級球×2** 和 **60💰**！";
+                    }),
+                }),
+
+            new("Pokemon 救援隊", "🚁",
+                "天空中突然飛來一架直升機，上面有一支 Pokemon 救援隊正在執行任務！",
+                new() {
+                    C("🆘 請求支援", "🆘", run => {
+                        foreach (var p in run.Party) { p.CurrentHP = p.MaxHP; foreach (var m in p.Moves) m.CurrentPP = m.MaxPP; }
+                        return "🚁 救援隊立刻展開行動，**全隊 HP 和 PP 完全回復**！";
+                    }),
+                    C("🎒 分享物資", "🎒", run => {
+                        run.Balls["normal"] = run.Balls.GetValueOrDefault("normal") + 3;
+                        run.Balls["super"] = run.Balls.GetValueOrDefault("super") + 1;
+                        run.Gold += 30;
+                        return "🎒 救援隊分享了物資：**普通球×3**、**超級球×1** 和 **30💰**！";
+                    }),
+                }),
+
+            new("傳說中的廚師", "👨‍🍳",
+                "傳說中的廚師長正在野外開伙，香氣飄散了整個迷宮……",
+                new() {
+                    C("🍽️ 吃一頓大餐", "🍽️", run => {
+                        foreach (var p in run.Party) p.CurrentHP = p.MaxHP;
+                        foreach (var p in run.Party) { p.Attack = (int)(p.Attack * 1.10f); p.SpecialAttack = (int)(p.SpecialAttack * 1.10f); }
+                        return "🍖 美食的力量！**全隊 HP 全回**，並且全隊攻擊力 **永久+10%**！";
+                    }),
+                    C("🥡 外帶走", "🥡", run => {
+                        int g = _rng.Next(50, 81); run.Gold += g;
+                        return $"🥡 廚師說外帶更貴，你賣給了路過的商人，獲得 **{g}💰**！";
+                    }),
+                }),
+
+            new("幸運骰子", "🎲",
+                "地上有一顆發光的骰子，感覺只要擲一下就會有事發生……",
+                new() {
+                    new EventChoice("🎲 擲骰子", "🎲", async run => {
+                        int roll = _rng.Next(1, 7);
+                        switch (roll) {
+                            case 1: {
+                                int lost = Math.Min(run.Gold, 20); run.Gold -= lost;
+                                return $"⚀ 骰到 **1**！倒楣，扣了 **{lost}💰**。（剩餘 {run.Gold}💰）";
+                            }
+                            case 2: return "⚁ 骰到 **2**，無事發生，也算是一種幸運。";
+                            case 3: { run.Gold += 30; return "⚂ 骰到 **3**！獲得 **30💰**！"; }
+                            case 4: { run.Gold += 50; return "⚃ 骰到 **4**！獲得 **50💰**！"; }
+                            case 5: {
+                                foreach (var p in run.Party) p.CurrentHP = p.MaxHP;
+                                return "⚄ 骰到 **5**！超級幸運，**全隊 HP 全回**！";
+                            }
+                            default: {
+                                var avail = _relics.Where(r => !run.RelicIds.Contains(r.Id)).ToList();
+                                if (avail.Count == 0) { run.Gold += 80; return "⚅ 骰到 **6**！但神器已集齊，獲得 **80💰**！"; }
+                                var picked = avail[_rng.Next(avail.Count)];
+                                run.RelicIds.Add(picked.Id);
+                                ApplyRelicOnPickup(run, picked.Id);
+                                run.RunLog.Add($"🏺 骰子帶來神器【{picked.Name}】！");
+                                return $"⚅ 骰到 **6**！天降神器 **{picked.Emoji}{picked.Name}**！{picked.Desc}";
+                            }
+                        }
+                    }),
+                    C("🚫 不賭了", "🚫", run => {
+                        run.Gold += 20;
+                        return "🚫 你果斷拒絕，骰子自動消失，卻留下了 **20💰**！";
+                    }),
+                }),
+
+            new("古代遺跡", "🏛️",
+                "眼前出現了神秘的古代遺跡，壁畫上有各種奇異的符號……",
+                new() {
+                    C("🔍 破解謎題", "🔍", run => {
+                        foreach (var m in run.ActivePokemon.Moves) m.Power += 15;
+                        var pool = PickMovesStatic(run.ActivePokemon.Types);
+                        var nm = pool.FirstOrDefault(m => run.ActivePokemon.Moves.All(e => e.Name != m.Name)) ?? pool[0];
+                        int slot = run.ActivePokemon.Moves.Select((m,i)=>(m,i)).OrderBy(x=>x.m.Power).First().i;
+                        string old = run.ActivePokemon.Moves[slot].Name;
+                        run.ActivePokemon.Moves[slot] = new TowerMove { Name=nm.Name, Type=nm.Type, Power=nm.Power, Category=nm.Category, Emoji=nm.Emoji, MaxPP=nm.MaxPP, CurrentPP=nm.MaxPP };
+                        return $"📜 謎題解開！所有技能威力 **+15**，並學會新技能 {nm.Emoji}**{nm.Name}**，取代了 **{old}**！";
+                    }),
+                    new EventChoice("🏺 帶走神器", "🏺", async run => {
+                        var available = _relics.Where(r => !run.RelicIds.Contains(r.Id)).ToList();
+                        if (available.Count == 0) { run.Gold += 80; return "🏛️ 遺跡中的神器你都已擁有，獲得 **80💰** 作為補償。"; }
+                        var picked = available[_rng.Next(available.Count)];
+                        run.RelicIds.Add(picked.Id);
+                        ApplyRelicOnPickup(run, picked.Id);
+                        run.RunLog.Add($"🏺 遺跡神器【{picked.Name}】！");
+                        return $"🏺 從遺跡中取出神器 **{picked.Emoji}{picked.Name}**！{picked.Desc}";
+                    }),
+                    C("↩️ 原路返回", "↩️", run => {
+                        foreach (var p in run.Party) p.CurrentHP = Math.Min(p.MaxHP, p.CurrentHP + Math.Max(1, p.MaxHP / 2));
+                        return "↩️ 明智地撤退，在外面休息了一下，**全隊回復 50% HP**！";
+                    }),
+                }),
         };
 
         private static OpenRouterService _aiService;
@@ -1220,6 +1404,18 @@ namespace MusicBot2.Service
                 run.ActivePokemon.CurrentHP = Math.Min(run.ActivePokemon.MaxHP, run.ActivePokemon.CurrentHP + hourglass);
             }
 
+            // curse_forget: randomly replace a move on floor entry
+            if (run.CursedRelicIds.Contains("curse_forget") && run.CurrentFloor > 1)
+            {
+                var cpoke = run.ActivePokemon;
+                int slot = _rng.Next(cpoke.Moves.Count);
+                var newMovePool = PickMovesStatic(cpoke.Types);
+                var newMove = newMovePool.FirstOrDefault(m => cpoke.Moves.All(e => e.Name != m.Name)) ?? newMovePool[0];
+                string oldName = cpoke.Moves[slot].Name;
+                cpoke.Moves[slot] = new TowerMove { Name=newMove.Name, Type=newMove.Type, Power=newMove.Power, Category=newMove.Category, Emoji=newMove.Emoji, MaxPP=newMove.MaxPP, CurrentPP=newMove.MaxPP };
+                run.RunLog.Add($"💀 遺忘詛咒：{cpoke.DisplayName} 忘掉了【{oldName}】，學會了【{newMove.Name}】！");
+            }
+
             if (choice == "battle" || isBoss)
             {
                 run.CurrentEnemy = GenEnemy(run.CurrentFloor, isBoss);
@@ -1230,6 +1426,9 @@ namespace MusicBot2.Service
                 run.ShieldActive = HasRelic(run, "relic_shield");
                 run.WillUsed = false;
                 run.AvengeStacks = 0;
+                // relic_time_warp: restore 3 PP to all moves at battle start
+                if (HasRelic(run, "relic_time_warp"))
+                    foreach (var mv in run.ActivePokemon.Moves) mv.CurrentPP = Math.Min(mv.MaxPP, mv.CurrentPP + 3);
                 await SaveAsync(run);
                 return BuildBattleEmbed(run);
             }
@@ -1348,6 +1547,12 @@ namespace MusicBot2.Service
                 if (!(HasRelic(run, "relic_no_pp") && _rng.Next(100) < 25) && playerMove.CurrentPP > 0)
                     playerMove.CurrentPP--;
             }
+            // curse_mirror: 50% chance player uses a random move
+            if (run.CursedRelicIds.Contains("curse_mirror") && _rng.Next(2) == 0)
+            {
+                int randomSlot = _rng.Next(poke.Moves.Count);
+                playerMove = poke.Moves[randomSlot];
+            }
 
             var enemyMove = enemy.Moves[enemy.NextMoveIdx % enemy.Moves.Count];
 
@@ -1364,18 +1569,26 @@ namespace MusicBot2.Service
             {
                 int d = CalcDamage(playerMove, poke.Attack, poke.SpecialAttack, enemy.Defense, enemy.SpecialDefense, enemy.Types);
                 // Relic damage modifiers
-                if (HasRelic(run, "relic_crit") && _rng.Next(100) < 15) d = d * 2;
-                if (HasRelic(run, "relic_no_def") && _rng.Next(100) < 20)
+                int critThreshold = 15 + (HasRelic(run, "relic_lucky_charm") ? 15 : 0) - (run.CursedRelicIds.Contains("curse_unlucky") ? 15 : 0);
+                if (HasRelic(run, "relic_crit") && _rng.Next(100) < Math.Max(1, critThreshold)) d = d * 2;
+                int noDefThreshold = 20 + (HasRelic(run, "relic_lucky_charm") ? 15 : 0);
+                if (HasRelic(run, "relic_no_def") && _rng.Next(100) < noDefThreshold)
                     d = Math.Max(d, (int)(playerMove.Power * (playerMove.Category == "Physical" ? poke.Attack : poke.SpecialAttack) / 5.0f));
                 if (HasRelic(run, "relic_boss_dmg") && enemy.IsBoss) d = (int)(d * 1.5f);
                 if (HasRelic(run, "relic_fullhp") && poke.CurrentHP == poke.MaxHP) d = (int)(d * 1.3f);
                 if (HasRelic(run, "relic_amplify")) d = (int)(d * 1.3f);
                 if (HasRelic(run, "relic_blood")) d = (int)(d * 1.3f);
                 if (HasRelic(run, "relic_enrage") && poke.CurrentHP * 100 / Math.Max(1, poke.MaxHP) < 30) d = (int)(d * 1.6f);
+                if (HasRelic(run, "relic_berserker_r") && poke.CurrentHP * 2 < poke.MaxHP) d = (int)(d * 1.4f);
+                if (HasRelic(run, "relic_double_edge")) d = (int)(d * 1.4f);
+                if (HasRelic(run, "relic_executioner") && enemy.CurrentHP * 4 < enemy.MaxHP) d *= 2;
+                if (HasRelic(run, "relic_comeback") && poke.CurrentHP * 10 < poke.MaxHP) d *= 3;
+                if (run.CursedRelicIds.Contains("curse_weaken") && playerMove.UpgradeCount > 0) d /= 2;
                 if (HasRelic(run, "relic_chain") && run.ChainBonus > 0) d = (int)(d * (1f + run.ChainBonus));
                 bool avengeProc = HasRelic(run, "relic_avenge") && run.AvengeStacks >= 3;
                 if (avengeProc) { d = d * 2; run.AvengeStacks = 0; }
                 enemy.CurrentHP = Math.Max(0, enemy.CurrentHP - d);
+                if (HasRelic(run, "relic_double_edge")) poke.CurrentHP = Math.Max(1, poke.CurrentHP - Math.Max(1, (int)(d * 0.15f)));
                 run.TotalDamageDealt += d;
                 AppendHit(sb, poke.DisplayName, enemy.Name, playerMove, d, enemy.Types, true);
                 // Post-attack relics
@@ -1395,6 +1608,13 @@ namespace MusicBot2.Service
                     AppendHit(sb, enemy.Name, poke.DisplayName, enemyMove, ed, poke.Types, false);
                     // Thorns
                     if (HasRelic(run, "relic_thorns") && ed > 0) enemy.CurrentHP = Math.Max(0, enemy.CurrentHP - Math.Min(25, (int)(ed * 0.25f)));
+                    // relic_shared_pain
+                    if (HasRelic(run, "relic_shared_pain") && ed > 0) enemy.CurrentHP = Math.Max(0, enemy.CurrentHP - Math.Max(1, (int)(ed * 0.3f)));
+                    // curse_fragile2
+                    if (run.CursedRelicIds.Contains("curse_fragile2") && ed > 0) poke.Defense = Math.Max(1, poke.Defense - 3);
+                    // curse_hungry
+                    if (run.CursedRelicIds.Contains("curse_hungry"))
+                        foreach (var mv in poke.Moves) mv.CurrentPP = Math.Max(0, mv.CurrentPP - 1);
                     // Avenge
                     if (HasRelic(run, "relic_avenge") && ed > 0) run.AvengeStacks++;
                 }
@@ -1412,24 +1632,39 @@ namespace MusicBot2.Service
                 AppendHit(sb, enemy.Name, poke.DisplayName, enemyMove, ed, poke.Types, false);
                 // Thorns
                 if (HasRelic(run, "relic_thorns") && ed > 0) enemy.CurrentHP = Math.Max(0, enemy.CurrentHP - Math.Min(25, (int)(ed * 0.25f)));
+                // relic_shared_pain
+                if (HasRelic(run, "relic_shared_pain") && ed > 0) enemy.CurrentHP = Math.Max(0, enemy.CurrentHP - Math.Max(1, (int)(ed * 0.3f)));
+                // curse_fragile2
+                if (run.CursedRelicIds.Contains("curse_fragile2") && ed > 0) poke.Defense = Math.Max(1, poke.Defense - 3);
+                // curse_hungry
+                if (run.CursedRelicIds.Contains("curse_hungry"))
+                    foreach (var mv in poke.Moves) mv.CurrentPP = Math.Max(0, mv.CurrentPP - 1);
                 // Avenge
                 if (HasRelic(run, "relic_avenge") && ed > 0) run.AvengeStacks++;
                 if (poke.CurrentHP > 0)
                 {
                     int d = CalcDamage(playerMove, poke.Attack, poke.SpecialAttack, enemy.Defense, enemy.SpecialDefense, enemy.Types);
                     // Relic damage modifiers
-                    if (HasRelic(run, "relic_crit") && _rng.Next(100) < 15) d = d * 2;
-                    if (HasRelic(run, "relic_no_def") && _rng.Next(100) < 20)
+                    int critThreshold2 = 15 + (HasRelic(run, "relic_lucky_charm") ? 15 : 0) - (run.CursedRelicIds.Contains("curse_unlucky") ? 15 : 0);
+                    if (HasRelic(run, "relic_crit") && _rng.Next(100) < Math.Max(1, critThreshold2)) d = d * 2;
+                    int noDefThreshold2 = 20 + (HasRelic(run, "relic_lucky_charm") ? 15 : 0);
+                    if (HasRelic(run, "relic_no_def") && _rng.Next(100) < noDefThreshold2)
                         d = Math.Max(d, (int)(playerMove.Power * (playerMove.Category == "Physical" ? poke.Attack : poke.SpecialAttack) / 5.0f));
                     if (HasRelic(run, "relic_boss_dmg") && enemy.IsBoss) d = (int)(d * 1.5f);
                     if (HasRelic(run, "relic_fullhp") && poke.CurrentHP == poke.MaxHP) d = (int)(d * 1.3f);
                     if (HasRelic(run, "relic_amplify")) d = (int)(d * 1.3f);
                     if (HasRelic(run, "relic_blood")) d = (int)(d * 1.3f);
                     if (HasRelic(run, "relic_enrage") && poke.CurrentHP * 100 / Math.Max(1, poke.MaxHP) < 30) d = (int)(d * 1.6f);
+                    if (HasRelic(run, "relic_berserker_r") && poke.CurrentHP * 2 < poke.MaxHP) d = (int)(d * 1.4f);
+                    if (HasRelic(run, "relic_double_edge")) d = (int)(d * 1.4f);
+                    if (HasRelic(run, "relic_executioner") && enemy.CurrentHP * 4 < enemy.MaxHP) d *= 2;
+                    if (HasRelic(run, "relic_comeback") && poke.CurrentHP * 10 < poke.MaxHP) d *= 3;
+                    if (run.CursedRelicIds.Contains("curse_weaken") && playerMove.UpgradeCount > 0) d /= 2;
                     if (HasRelic(run, "relic_chain") && run.ChainBonus > 0) d = (int)(d * (1f + run.ChainBonus));
                     bool avengeProc2 = HasRelic(run, "relic_avenge") && run.AvengeStacks >= 3;
                     if (avengeProc2) { d = d * 2; run.AvengeStacks = 0; }
                     enemy.CurrentHP = Math.Max(0, enemy.CurrentHP - d);
+                    if (HasRelic(run, "relic_double_edge")) poke.CurrentHP = Math.Max(1, poke.CurrentHP - Math.Max(1, (int)(d * 0.15f)));
                     run.TotalDamageDealt += d;
                     AppendHit(sb, poke.DisplayName, enemy.Name, playerMove, d, enemy.Types, true);
                     // Post-attack relics
@@ -1454,13 +1689,23 @@ namespace MusicBot2.Service
             // Check end
             if (enemy.CurrentHP <= 0)
             {
-                run.Gold += enemy.GoldReward;
+                // curse_gold_drain: drain gold instead of gaining
+                if (run.CursedRelicIds.Contains("curse_gold_drain"))
+                    run.Gold = Math.Max(0, run.Gold - Math.Max(1, (int)(run.Gold * 0.1f)));
+                else
+                    run.Gold += enemy.GoldReward;
+                // relic_gold_mine: extra gold on kill
+                if (HasRelic(run, "relic_gold_mine")) run.Gold += 20;
 
                 // relic_kill_pp
                 if (HasRelic(run, "relic_kill_pp"))
                     foreach (var mv in poke.Moves) mv.CurrentPP = Math.Min(mv.MaxPP, mv.CurrentPP + 3);
                 // relic_chain
                 if (HasRelic(run, "relic_chain")) run.ChainBonus += 0.05f;
+                // relic_feast: restore 50 HP
+                if (HasRelic(run, "relic_feast")) poke.CurrentHP = Math.Min(poke.MaxHP, poke.CurrentHP + 50);
+                // relic_parasite: +5 max HP
+                if (HasRelic(run, "relic_parasite")) { poke.MaxHP += 5; poke.CurrentHP += 5; }
 
                 // 回復 10% HP
                 int heal = Math.Max(1, poke.MaxHP / 10);
@@ -1469,6 +1714,7 @@ namespace MusicBot2.Service
                 // 獲得 EXP
                 int expGain = 15 + run.CurrentFloor * 8;
                 if (HasPassive(run, "passive_genius")) expGain *= 2;
+                if (HasRelic(run, "relic_exp_boost")) expGain = (int)(expGain * 1.5f);
                 if (run.CursedRelicIds.Contains("curse_exp_drain")) expGain = (int)(expGain * 0.5f);
                 run.Exp += expGain;
                 var levelUpMsg = new StringBuilder();
@@ -1487,6 +1733,9 @@ namespace MusicBot2.Service
                         member.MaxHP     += hpBoost;
                         member.CurrentHP += hpBoost;
                     }
+                    // relic_scholar: +5 PP to all moves on level up
+                    if (HasRelic(run, "relic_scholar"))
+                        foreach (var mv in poke.Moves) { mv.MaxPP += 5; mv.CurrentPP = Math.Min(mv.MaxPP, mv.CurrentPP + 5); }
                     levelUpMsg.Append($" ⬆️ **Lv.{run.Level}！全隊能力上升！**");
                 }
 
@@ -1563,9 +1812,23 @@ namespace MusicBot2.Service
 
             if (idx == 3 || idx >= run.PendingMoveRewards.Count)
             {
-                // Skip → go to catch or path
+                // Skip → go back based on origin
                 run.PendingMoveRewards.Clear();
                 run.PendingSelectedMove = null;
+                if (run.ShopMoveRewardPending)
+                {
+                    run.ShopMoveRewardPending = false;
+                    run.State = TowerRunState.Shopping;
+                    await SaveAsync(run);
+                    return BuildShopEmbed(run, "📀 跳過技能選擇。");
+                }
+                if (run.EventMoveRewardPending)
+                {
+                    run.EventMoveRewardPending = false;
+                    run.State = TowerRunState.SelectingPath;
+                    await SaveAsync(run);
+                    return BuildPathEmbed(run, "📀 跳過技能選擇。");
+                }
                 if (run.RestMoveRewardPending)
                 {
                     run.RestMoveRewardPending = false;
@@ -1600,6 +1863,7 @@ namespace MusicBot2.Service
                 return BuildMoveRewardEmbed(run);
             }
 
+            string learnedMoveName = "";
             if (slot < run.ActivePokemon.Moves.Count)
             {
                 string old = run.ActivePokemon.Moves[slot].Name;
@@ -1607,11 +1871,26 @@ namespace MusicBot2.Service
                 var nm = new TowerMove { Name=src.Name, Type=src.Type, Power=src.Power,
                     Category=src.Category, Emoji=src.Emoji, MaxPP=src.MaxPP, CurrentPP=src.MaxPP };
                 run.ActivePokemon.Moves[slot] = nm;
+                learnedMoveName = nm.Name;
                 run.RunLog.Add($"📀 換掉【{old}】，學會了【{nm.Name}】");
             }
 
             run.PendingSelectedMove = null;
             run.PendingMoveRewards.Clear();
+            if (run.ShopMoveRewardPending)
+            {
+                run.ShopMoveRewardPending = false;
+                run.State = TowerRunState.Shopping;
+                await SaveAsync(run);
+                return BuildShopEmbed(run, $"📀 學會了【{learnedMoveName}】！");
+            }
+            if (run.EventMoveRewardPending)
+            {
+                run.EventMoveRewardPending = false;
+                run.State = TowerRunState.SelectingPath;
+                await SaveAsync(run);
+                return BuildPathEmbed(run, $"📀 學會了【{learnedMoveName}】！");
+            }
             if (run.RestMoveRewardPending)
             {
                 run.RestMoveRewardPending = false;
@@ -1667,6 +1946,7 @@ namespace MusicBot2.Service
             float catchRate = ballInfo.Rate;
             if (HasRelic(run, "relic_hunter")) catchRate = Math.Min(1.0f, catchRate + 0.30f);
             if (HasPassive(run, "passive_catchmaster")) catchRate = Math.Min(1.0f, catchRate + 0.40f);
+            if (run.CursedRelicIds.Contains("curse_unlucky")) catchRate = Math.Max(0.02f, catchRate - 0.30f);
             bool caught = (float)_rng.NextDouble() < catchRate;
             if (caught)
             {
@@ -1762,6 +2042,13 @@ namespace MusicBot2.Service
                 await SaveAsync(run);
                 return BuildCatchEmbed(run, eventHeader);
             }
+            // If the event set up a move learning choice
+            if (run.EventMoveRewardPending)
+            {
+                run.State = TowerRunState.SelectingMoveReward;
+                await SaveAsync(run);
+                return BuildMoveRewardEmbed(run, eventHeader);
+            }
             run.State = TowerRunState.SelectingPath;
             await SaveAsync(run);
             return BuildPathEmbed(run, eventHeader);
@@ -1774,26 +2061,41 @@ namespace MusicBot2.Service
             if (!_activeRuns.TryGetValue(channelId, out var run))
                 return ErrEmbed("找不到進行中的爬塔");
 
+            // curse_paranoia: cannot use shop
+            if (run.CursedRelicIds.Contains("curse_paranoia"))
+                return ErrEmbed("😱 **妄想症詛咒**：商店老闆看起來很危險，你不敢進去！");
+
             string msg;
             switch (itemKey)
             {
                 case "heal_full":
-                    { int cost = ShopCost(run, 30); if (run.Gold < cost) return BuildShopEmbed(run, $"💸 金幣不足！需要 {cost} 金幣。"); run.Gold -= cost; foreach (var pk in run.Party) pk.CurrentHP = pk.MaxHP; run.ActivePokemon.CurrentHP = run.ActivePokemon.MaxHP; msg = $"💊 使用「全回復」— 全隊 HP 完全恢復！（-{cost}💰）"; break; }
+                    { int cost = ShopCost(run, 30, "heal_full"); if (run.Gold < cost) return BuildShopEmbed(run, $"💸 金幣不足！需要 {cost} 金幣。"); run.Gold -= cost; foreach (var pk in run.Party) pk.CurrentHP = pk.MaxHP; run.ActivePokemon.CurrentHP = run.ActivePokemon.MaxHP; msg = $"💊 使用「全回復」— 全隊 HP 完全恢復！（-{cost}💰）"; break; }
                 case "heal_half":
-                    { int cost = ShopCost(run, 15); if (run.Gold < cost) return BuildShopEmbed(run, $"💸 金幣不足！需要 {cost} 金幣。"); run.Gold -= cost; foreach (var pk in run.Party) { int h = Math.Max(1, pk.MaxHP / 2); pk.CurrentHP = Math.Min(pk.MaxHP, pk.CurrentHP + h); } run.ActivePokemon.CurrentHP = Math.Min(run.ActivePokemon.MaxHP, run.ActivePokemon.CurrentHP + Math.Max(1, run.ActivePokemon.MaxHP / 2)); msg = $"🧃 使用「超級樹果」— 全隊恢復 50% HP！（-{cost}💰）"; break; }
+                    { int cost = ShopCost(run, 15, "heal_half"); if (run.Gold < cost) return BuildShopEmbed(run, $"💸 金幣不足！需要 {cost} 金幣。"); run.Gold -= cost; foreach (var pk in run.Party) { int h = Math.Max(1, pk.MaxHP / 2); pk.CurrentHP = Math.Min(pk.MaxHP, pk.CurrentHP + h); } run.ActivePokemon.CurrentHP = Math.Min(run.ActivePokemon.MaxHP, run.ActivePokemon.CurrentHP + Math.Max(1, run.ActivePokemon.MaxHP / 2)); msg = $"🧃 使用「超級樹果」— 全隊恢復 50% HP！（-{cost}💰）"; break; }
                 case "pp_restore":
-                    { int cost = ShopCost(run, 20); if (run.Gold < cost) return BuildShopEmbed(run, $"💸 金幣不足！需要 {cost} 金幣。"); run.Gold -= cost; foreach (var pk in run.Party) foreach (var m in pk.Moves) m.CurrentPP = m.MaxPP; foreach (var m in run.ActivePokemon.Moves) m.CurrentPP = m.MaxPP; msg = $"🔋 全隊技能 PP 完全恢復！（-{cost}💰）"; break; }
+                    { int cost = ShopCost(run, 20, "pp_restore"); if (run.Gold < cost) return BuildShopEmbed(run, $"💸 金幣不足！需要 {cost} 金幣。"); run.Gold -= cost; foreach (var pk in run.Party) foreach (var m in pk.Moves) m.CurrentPP = m.MaxPP; foreach (var m in run.ActivePokemon.Moves) m.CurrentPP = m.MaxPP; msg = $"🔋 全隊技能 PP 完全恢復！（-{cost}💰）"; break; }
                 case "new_move":
-                    { int cost = ShopCost(run, 25); if (run.Gold < cost) return BuildShopEmbed(run, $"💸 金幣不足！需要 {cost} 金幣。"); run.Gold -= cost; var pool = PickMoves(run.ActivePokemon.Types); var nm = pool.FirstOrDefault(m => run.ActivePokemon.Moves.All(em => em.Name != m.Name)) ?? pool[0]; int slot = run.ActivePokemon.Moves.Select((m, i) => (m, i)).OrderBy(x => x.m.Power).First().i; string old = run.ActivePokemon.Moves[slot].Name; run.ActivePokemon.Moves[slot] = nm; msg = $"📀 忘掉【{old}】，學會了 {nm.Emoji}**{nm.Name}**！（-{cost}💰）"; break; }
+                    {
+                        int cost = ShopCost(run, 25, "new_move");
+                        if (run.Gold < cost) return BuildShopEmbed(run, $"💸 金幣不足！需要 {cost} 金幣。");
+                        run.Gold -= cost;
+                        run.ShopBuyCounts["new_move"] = run.ShopBuyCounts.GetValueOrDefault("new_move", 0) + 1;
+                        var movePool = PickMoves(run.ActivePokemon.Types);
+                        run.PendingMoveRewards = movePool.OrderBy(_ => _rng.Next()).Take(3).ToList();
+                        run.ShopMoveRewardPending = true;
+                        run.State = TowerRunState.SelectingMoveReward;
+                        await SaveAsync(run);
+                        return BuildMoveRewardEmbed(run, $"📀 **技能學習器**（-{cost}💰）\n請選擇一個技能讓你的寶可夢學習！");
+                    }
                 case "buy_normal":
                     if (HasPassive(run, "passive_catchmaster")) return BuildShopEmbed(run, "🎯 **捕獲大師**：不需要購買球！");
-                    { int cost = ShopCost(run, 8); if (run.Gold < cost) return BuildShopEmbed(run, $"💸 金幣不足！需要 {cost} 金幣。"); run.Gold -= cost; run.Balls["normal"] = run.Balls.GetValueOrDefault("normal") + 3; msg = $"⚽ 購入 **普通球×3**！（-{cost}💰）"; break; }
+                    { int cost = ShopCost(run, 8, "buy_normal"); if (run.Gold < cost) return BuildShopEmbed(run, $"💸 金幣不足！需要 {cost} 金幣。"); run.Gold -= cost; run.Balls["normal"] = run.Balls.GetValueOrDefault("normal") + 3; msg = $"⚽ 購入 **普通球×3**！（-{cost}💰）"; break; }
                 case "buy_super":
                     if (HasPassive(run, "passive_catchmaster")) return BuildShopEmbed(run, "🎯 **捕獲大師**：不需要購買球！");
-                    { int cost = ShopCost(run, 15); if (run.Gold < cost) return BuildShopEmbed(run, $"💸 金幣不足！需要 {cost} 金幣。"); run.Gold -= cost; run.Balls["super"] = run.Balls.GetValueOrDefault("super") + 2; msg = $"🔵 購入 **超級球×2**！（-{cost}💰）"; break; }
+                    { int cost = ShopCost(run, 15, "buy_super"); if (run.Gold < cost) return BuildShopEmbed(run, $"💸 金幣不足！需要 {cost} 金幣。"); run.Gold -= cost; run.Balls["super"] = run.Balls.GetValueOrDefault("super") + 2; msg = $"🔵 購入 **超級球×2**！（-{cost}💰）"; break; }
                 case "buy_ultra":
                     if (HasPassive(run, "passive_catchmaster")) return BuildShopEmbed(run, "🎯 **捕獲大師**：不需要購買球！");
-                    { int cost = ShopCost(run, 25); if (run.Gold < cost) return BuildShopEmbed(run, $"💸 金幣不足！需要 {cost} 金幣。"); run.Gold -= cost; run.Balls["ultra"] = run.Balls.GetValueOrDefault("ultra") + 1; msg = $"🟡 購入 **高級球×1**！（-{cost}💰）"; break; }
+                    { int cost = ShopCost(run, 25, "buy_ultra"); if (run.Gold < cost) return BuildShopEmbed(run, $"💸 金幣不足！需要 {cost} 金幣。"); run.Gold -= cost; run.Balls["ultra"] = run.Balls.GetValueOrDefault("ultra") + 1; msg = $"🟡 購入 **高級球×1**！（-{cost}💰）"; break; }
                 case "leave":
                     msg = "👋 離開商店，繼續爬塔！";
                     break;
@@ -1801,6 +2103,9 @@ namespace MusicBot2.Service
                     return ErrEmbed("未知的道具");
             }
 
+            // 每購買一次，下次購買同商品+10💰（new_move 已在 case 內自行處理）
+            if (itemKey != "leave" && itemKey != "new_move")
+                run.ShopBuyCounts[itemKey] = run.ShopBuyCounts.GetValueOrDefault(itemKey, 0) + 1;
             if (itemKey == "leave") run.State = TowerRunState.SelectingPath;
             run.RunLog.Add(msg);
             await SaveAsync(run);
@@ -2000,15 +2305,17 @@ namespace MusicBot2.Service
 
         private static bool HasRelic(TowerRun run, string id) => run.RelicIds.Contains(id);
         private static bool HasPassive(TowerRun run, string id) => run.PassiveId == id;
-        private static int ShopCost(TowerRun run, int baseCost)
+        private static int ShopCost(TowerRun run, int baseCost, string itemKey = "")
         {
             int cost = baseCost;
+            if (!string.IsNullOrEmpty(itemKey))
+                cost += run.ShopBuyCounts.GetValueOrDefault(itemKey, 0) * 10;
             if (HasPassive(run, "passive_richboy")) cost = (int)(cost * 0.7f);
             if (run.CursedRelicIds.Contains("curse_expensive")) cost = (int)(cost * 1.5f);
             return Math.Max(1, cost);
         }
 
-        private void ApplyRelicOnPickup(TowerRun run, string relicId)
+        private static void ApplyRelicOnPickup(TowerRun run, string relicId)
         {
             switch (relicId)
             {
@@ -2055,6 +2362,15 @@ namespace MusicBot2.Service
                             }
                         }
                     }
+                    break;
+                case "relic_swift":
+                    foreach (var p in run.Party) p.Speed = (int)(p.Speed * 1.3f);
+                    break;
+                // relic_time_warp, relic_executioner, relic_mirror_coat, relic_parasite,
+                // relic_feast, relic_double_edge, relic_lucky_charm, relic_exp_boost,
+                // relic_gold_mine, relic_berserker_r, relic_scholar, relic_comeback,
+                // relic_shared_pain: passive effects applied in HandleMoveAsync
+                default:
                     break;
             }
         }
@@ -2223,6 +2539,14 @@ namespace MusicBot2.Service
                     break;
                 case "curse_hp_cap":
                     foreach (var p in run.Party) { int loss = Math.Max(1, (int)(p.MaxHP * 0.2f)); p.MaxHP -= loss; p.CurrentHP = Math.Min(p.CurrentHP, p.MaxHP); }
+                    break;
+                case "curse_silence":
+                    var strongestMove = run.ActivePokemon.Moves.OrderByDescending(m => m.Power).FirstOrDefault();
+                    if (strongestMove != null) { strongestMove.MaxPP = 1; strongestMove.CurrentPP = Math.Min(1, strongestMove.CurrentPP); }
+                    break;
+                // curse_forget, curse_weaken, curse_gold_drain, curse_mirror, curse_fragile2,
+                // curse_hungry, curse_unlucky, curse_decay, curse_paranoia: effects in battle/path methods
+                default:
                     break;
             }
         }
@@ -2710,26 +3034,33 @@ namespace MusicBot2.Service
             desc.AppendLine($"技能: {MovesDisplay(p)}");
             desc.AppendLine($"💰 金幣: **{run.Gold}**");
             desc.AppendLine();
+            int cHealFull   = ShopCost(run, 30, "heal_full");
+            int cHealHalf   = ShopCost(run, 15, "heal_half");
+            int cPpRestore  = ShopCost(run, 20, "pp_restore");
+            int cNewMove    = ShopCost(run, 25, "new_move");
+            int cNormal     = ShopCost(run, 8,  "buy_normal");
+            int cSuper      = ShopCost(run, 15, "buy_super");
+            int cUltra      = ShopCost(run, 25, "buy_ultra");
             desc.AppendLine("**商品：**");
-            desc.AppendLine("💊 **全回復** — HP完全恢復 (30💰)");
-            desc.AppendLine("🧃 **超級樹果** — 恢復50% HP (15💰)");
-            desc.AppendLine("🔋 **PP全回復** — 所有技能PP滿 (20💰)");
-            desc.AppendLine("📀 **技能學習器** — 隨機換一個技能 (25💰)");
-            desc.AppendLine("⚽ **普通球×3** — 30%捕獲率 (8💰)");
-            desc.AppendLine("🔵 **超級球×2** — 55%捕獲率 (15💰)");
-            desc.AppendLine("🟡 **高級球×1** — 75%捕獲率 (25💰)");
+            desc.AppendLine($"💊 **全回復** — HP完全恢復 ({cHealFull}💰)");
+            desc.AppendLine($"🧃 **超級樹果** — 恢復50% HP ({cHealHalf}💰)");
+            desc.AppendLine($"🔋 **PP全回復** — 所有技能PP滿 ({cPpRestore}💰)");
+            desc.AppendLine($"📀 **技能學習器** — 三選一學習技能 ({cNewMove}💰)");
+            desc.AppendLine($"⚽ **普通球×3** — 30%捕獲率 ({cNormal}💰)");
+            desc.AppendLine($"🔵 **超級球×2** — 55%捕獲率 ({cSuper}💰)");
+            desc.AppendLine($"🟡 **高級球×1** — 75%捕獲率 ({cUltra}💰)");
             desc.AppendLine("⚡ **強化招式** — 選一招威力+20 (20💰)");
             desc.AppendLine($"\n現有球：{BallsDisplay(run)}");
 
             var cb = new ComponentBuilder()
-                .WithButton("💊 全回復(30💰)",    $"tower_shop_{run.ChannelId}_heal_full",  ButtonStyle.Success,   row: 0)
-                .WithButton("🧃 超級樹果(15💰)",  $"tower_shop_{run.ChannelId}_heal_half",  ButtonStyle.Primary,   row: 0)
-                .WithButton("🔋 PP全回復(20💰)",  $"tower_shop_{run.ChannelId}_pp_restore", ButtonStyle.Primary,   row: 1)
-                .WithButton("📀 技能學習器(25💰)",$"tower_shop_{run.ChannelId}_new_move",   ButtonStyle.Secondary, row: 1)
-                .WithButton("⚽ 普通球×3(8💰)",   $"tower_shop_{run.ChannelId}_buy_normal", ButtonStyle.Secondary, row: 2)
-                .WithButton("🔵 超級球×2(15💰)",  $"tower_shop_{run.ChannelId}_buy_super",  ButtonStyle.Primary,   row: 2)
-                .WithButton("🟡 高級球×1(25💰)",  $"tower_shop_{run.ChannelId}_buy_ultra",  ButtonStyle.Primary,   row: 2)
-                .WithButton("⚡ 強化招式(20💰)",  $"tower_powerup_{run.ChannelId}_shop",    ButtonStyle.Primary,   row: 3)
+                .WithButton($"💊 全回復({cHealFull}💰)",    $"tower_shop_{run.ChannelId}_heal_full",  ButtonStyle.Success,   row: 0)
+                .WithButton($"🧃 超級樹果({cHealHalf}💰)",  $"tower_shop_{run.ChannelId}_heal_half",  ButtonStyle.Primary,   row: 0)
+                .WithButton($"🔋 PP全回復({cPpRestore}💰)", $"tower_shop_{run.ChannelId}_pp_restore", ButtonStyle.Primary,   row: 1)
+                .WithButton($"📀 學習技能({cNewMove}💰)",   $"tower_shop_{run.ChannelId}_new_move",   ButtonStyle.Secondary, row: 1)
+                .WithButton($"⚽ 普通球×3({cNormal}💰)",   $"tower_shop_{run.ChannelId}_buy_normal", ButtonStyle.Secondary, row: 2)
+                .WithButton($"🔵 超級球×2({cSuper}💰)",    $"tower_shop_{run.ChannelId}_buy_super",  ButtonStyle.Primary,   row: 2)
+                .WithButton($"🟡 高級球×1({cUltra}💰)",    $"tower_shop_{run.ChannelId}_buy_ultra",  ButtonStyle.Primary,   row: 2)
+                .WithButton("⚡ 強化招式(20💰)",            $"tower_powerup_{run.ChannelId}_shop",    ButtonStyle.Primary,   row: 3)
                 .WithButton("離開商店", $"tower_shop_{run.ChannelId}_leave", ButtonStyle.Danger, row: 4);
 
             return (new EmbedBuilder()
@@ -2773,12 +3104,12 @@ namespace MusicBot2.Service
                 .WithColor(new Color(148, 0, 211)).Build(), cb);
         }
 
-        private (Embed embed, ComponentBuilder component) BuildMoveRewardEmbed(TowerRun run)
+        private (Embed embed, ComponentBuilder component) BuildMoveRewardEmbed(TowerRun run, string notice = "")
         {
             var desc = new StringBuilder();
-            desc.AppendLine($"🎉 擊倒 **{run.CurrentEnemy?.Name ?? "敵人"}**，獲得 **{run.CurrentEnemy?.GoldReward ?? 0} 💰**！");
-            desc.AppendLine();
-            desc.AppendLine("✨ **戰鬥獎勵 — 選擇一個技能學習（可跳過）：**");
+            if (!string.IsNullOrEmpty(notice)) desc.AppendLine(notice).AppendLine("---").AppendLine();
+            else desc.AppendLine($"🎉 擊倒 **{run.CurrentEnemy?.Name ?? "敵人"}**，獲得 **{run.CurrentEnemy?.GoldReward ?? 0} 💰**！").AppendLine();
+            desc.AppendLine("✨ **選擇一個技能學習（可跳過）：**");
             for (int i = 0; i < run.PendingMoveRewards.Count; i++)
             {
                 var m = run.PendingMoveRewards[i];
