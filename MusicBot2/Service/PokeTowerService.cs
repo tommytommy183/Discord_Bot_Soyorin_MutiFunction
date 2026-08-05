@@ -45,6 +45,24 @@ namespace MusicBot2.Service
         public int MaxPP { get; set; } = 10;
         public int CurrentPP { get; set; } = 10;
         public int UpgradeCount { get; set; } = 0;
+        // ── 技能效果 ──────────────────────────────────────────────
+        /// <summary>附加狀態："burn"|"para"|"freeze"|"sleep"|"poison"|"flinch"</summary>
+        public string EffectAilment { get; set; } = "";
+        /// <summary>附加機率 0-100（0 = 必定觸發，但只在 StatTarget 時用）</summary>
+        public int EffectChance { get; set; } = 0;
+        /// <summary>吸血/後座力：正=吸傷害X%，負=自損傷害X%</summary>
+        public int DrainPercent { get; set; } = 0;
+        /// <summary>能力目標："foe_atk"|"foe_def"|"foe_spd"|"foe_spatk"|"foe_spdef"
+        ///              或 "self_atk"|"self_def"|"self_spd"|"self_spatk"</summary>
+        public string StatTarget { get; set; } = "";
+        /// <summary>能力變化段數（-2 ~ +2）</summary>
+        public int StatStageChange { get; set; } = 0;
+        /// <summary>高暴擊率（命中率提升）</summary>
+        public bool HighCrit { get; set; } = false;
+        /// <summary>連打最少次數</summary>
+        public int MinHits { get; set; } = 1;
+        /// <summary>連打最多次數</summary>
+        public int MaxHits { get; set; } = 1;
     }
 
     public class TowerPokemon
@@ -65,6 +83,14 @@ namespace MusicBot2.Service
         public DateTime CaughtAt { get; set; }
         public string? ImageUrl { get; set; }
         public string? BackImageUrl { get; set; }
+        // ── 戰鬥狀態（每場戰鬥開始重置）────────────────────────────
+        public string BattleStatus { get; set; } = "";   // "burn","para","freeze","sleep","poison"
+        public int SleepTurns { get; set; } = 0;
+        public int AtkStage { get; set; } = 0;
+        public int DefStage { get; set; } = 0;
+        public int SpdStage { get; set; } = 0;
+        public int SpAtkStage { get; set; } = 0;
+        public int SpDefStage { get; set; } = 0;
 
         [JsonIgnore]
         public string DisplayName => !string.IsNullOrWhiteSpace(CustomName) ? CustomName : Name;
@@ -86,6 +112,15 @@ namespace MusicBot2.Service
         public int NextMoveIdx { get; set; }
         public bool IsBoss { get; set; }
         public int GoldReward { get; set; }
+        // ── 戰鬥狀態（每場戰鬥開始重置）────────────────────────────
+        public string BattleStatus { get; set; } = "";
+        public int SleepTurns { get; set; } = 0;
+        public int AtkStage { get; set; } = 0;
+        public int DefStage { get; set; } = 0;
+        public int SpdStage { get; set; } = 0;
+        public int SpAtkStage { get; set; } = 0;
+        public int SpDefStage { get; set; } = 0;
+        public bool Flinched { get; set; } = false;
 
         [JsonIgnore]
         public string FrontGifUrl => PokeId > 0
@@ -446,7 +481,7 @@ namespace MusicBot2.Service
             new("passive_techgeek",    "技術宅",     "🔧", "技能強化上限提升至 8 次（原5次）"),
             new("passive_undying",     "不死身",     "🪶", "不死鳥羽效果可觸發兩次"),
             new("passive_tanker",      "坦克",       "🦛", "全隊最大 HP+40%，但速度-20%"),
-            new("passive_speedster",   "疾風",       "💨", "全隊速度+60%"),
+            new("passive_chaosmaster", "渾沌大師",   "🌀", "所有負面狀態施加成功機率+30%（燒/麻/凍/眠/毒/降能力）"),
             new("passive_gambler",     "賭徒靈魂",   "🎰", "所有隨機傷害和獎勵浮動範圍×2（更高或更低）"),
             new("passive_packrat",     "囤貨王",     "🎒", "初始背包上限4隻（原3隻）"),
             new("passive_strategist",  "謀士",       "🔮", "可預測敵人未來兩回合的行動"),
@@ -1431,10 +1466,143 @@ namespace MusicBot2.Service
         private static OpenRouterService _aiService;
         private static GetChampService _champService;
 
+        #region 技能效果初始化
+        // ── 把效果資料打入 _movePool（不動現有 entry 的其他欄位）────────
+        private static bool _moveEffectsLoaded = false;
+        private static void InitMoveEffects()
+        {
+            if (_moveEffectsLoaded) return;
+            _moveEffectsLoaded = true;
+
+            void E(string name, string ailment = "", int chance = 0, int drain = 0,
+                   string stat = "", int statChg = 0, bool hc = false, int min = 1, int max = 1)
+            {
+                var m = _movePool.FirstOrDefault(x => x.Name == name);
+                if (m == null) return;
+                if (ailment != "")  { m.EffectAilment = ailment; m.EffectChance = chance; }
+                if (drain != 0)       m.DrainPercent = drain;
+                if (stat != "")     { m.StatTarget = stat; m.StatStageChange = statChg;
+                                      if (m.EffectChance == 0 && chance > 0) m.EffectChance = chance; }
+                if (hc)               m.HighCrit = true;
+                if (max > 1)        { m.MinHits = min; m.MaxHits = max; }
+            }
+
+            // ── 火 ──────────────────────────────────────────────────
+            E("火焰放射", ailment:"burn",  chance:10);
+            E("大字爆",   ailment:"burn",  chance:10);
+            E("火焰輪",   ailment:"burn",  chance:10);
+            E("熱風",     ailment:"burn",  chance:10);
+            E("火焰齒",   ailment:"burn",  chance:10);
+            E("熾焰決戰", stat:"self_spatk", statChg:-2);
+            E("旭日一擊", ailment:"burn",  chance:10);
+            E("火炎旋渦", ailment:"burn",  chance:10);
+            E("沸水",     ailment:"burn",  chance:30);          // Scald 特色：30%燒傷
+
+            // ── 水 ──────────────────────────────────────────────────
+            E("泡沫光線", stat:"foe_spd", statChg:-1, chance:10);
+
+            // ── 電 ──────────────────────────────────────────────────
+            E("十萬伏特", ailment:"para", chance:10);
+            E("打雷",     ailment:"para", chance:30);
+            E("雷電拳",   ailment:"para", chance:10);
+            E("野蠻電力", drain:-25);                            // 後座力 25%
+            E("放電",     ailment:"para", chance:30);
+            E("電磁炮",   ailment:"para", chance:50);
+            E("伏特替換", ailment:"para", chance:10);
+
+            // ── 草 ──────────────────────────────────────────────────
+            E("剃刀葉",   hc:true);
+            E("奇異植物", drain:50);                             // 吸血 50%
+            E("葉片風暴", stat:"self_spatk", statChg:-2);
+            E("花瓣舞",   stat:"self_spatk", statChg:-1);        // 簡化：用完降特攻
+
+            // ── 冰 ──────────────────────────────────────────────────
+            E("冰凍光線", ailment:"freeze", chance:10);
+            E("暴風雪",   ailment:"freeze", chance:10);
+            E("冰拳",     ailment:"freeze", chance:10);
+            E("冰柱墜落", ailment:"flinch", chance:30);
+            E("冰凍乾燥", ailment:"freeze", chance:10);
+            E("霧化",     stat:"foe_spd",   statChg:-1);
+            E("極寒之地", ailment:"freeze", chance:10);
+            E("冰封世界", ailment:"freeze", chance:10);
+
+            // ── 格鬥 ──────────────────────────────────────────────
+            E("近身格鬥", stat:"self_def", statChg:-1);
+            E("超強力",   stat:"self_atk", statChg:-1);
+            E("剪刀十字", hc:true);
+            E("腦力衝擊", stat:"foe_spdef", statChg:-1, chance:10);
+            E("旋風踢",   ailment:"flinch", chance:30);
+
+            // ── 超能力 ──────────────────────────────────────────────
+            E("精神力",   stat:"foe_spdef", statChg:-1, chance:10);
+            E("念力射線", stat:"foe_spatk", statChg:-1, chance:10);
+            E("夢幻之吻", drain:50);
+
+            // ── 龍 ──────────────────────────────────────────────────
+            E("龍之隕石", stat:"self_spatk", statChg:-2);
+            E("神秘龍脈", stat:"self_spatk", statChg:-2);
+            E("逆鱗",     stat:"self_def",   statChg:-1);        // 簡化：用完降防
+            E("龍爪",     hc:true);
+            E("龍之怒",   hc:true);
+
+            // ── 惡 ──────────────────────────────────────────────────
+            E("咬碎",     stat:"foe_def",   statChg:-1, chance:20);
+            E("橫掃千軍", hc:true);
+            E("夜斬",     hc:true);
+            E("奸詐拳",   stat:"foe_atk",   statChg:-1, chance:10);
+
+            // ── 幽靈 ──────────────────────────────────────────────
+            E("影子球",   stat:"foe_spdef", statChg:-1, chance:20);
+            E("影爪",     ailment:"flinch", chance:10);
+            E("幻影突擊", ailment:"flinch", chance:20);
+
+            // ── 岩石 ──────────────────────────────────────────────
+            E("古代力量", stat:"self_atk",  statChg:1, chance:10); // 10%全升（簡化為攻擊）
+            E("猛岩炮彈", hc:true);
+            E("礫石衝",   min:2, max:5);                          // 2-5連打
+
+            // ── 地面 ──────────────────────────────────────────────
+            E("大地之力", stat:"foe_spdef", statChg:-1, chance:10);
+            E("土撥球",   stat:"foe_spd",   statChg:-1);
+
+            // ── 飛行 ──────────────────────────────────────────────
+            E("勇鳥急衝", drain:-33);                             // 後座力 33%
+            E("颶風",     ailment:"para",   chance:30);           // 簡化：30%麻痺
+            E("空氣切割", ailment:"flinch", chance:30);
+
+            // ── 蟲 ──────────────────────────────────────────────
+            E("蟲鳴",     stat:"foe_spdef", statChg:-1, chance:10);
+            E("信號束",   ailment:"para",   chance:10);
+            E("蟲咬",     ailment:"flinch", chance:10);
+
+            // ── 毒 ──────────────────────────────────────────────
+            E("毒菌炸彈", ailment:"poison", chance:30);
+            E("毒刺",     ailment:"poison", chance:30);
+            E("骯臟射擊", ailment:"poison", chance:30);
+            E("污泥炸彈", ailment:"poison", chance:30);
+            E("毒素衝擊", ailment:"poison", chance:30);
+            E("酸液",     stat:"foe_spdef", statChg:-2);          // Acid Spray：必降特防2段
+
+            // ── 鋼 ──────────────────────────────────────────────
+            E("鐵頭",     ailment:"flinch", chance:30);
+            E("子彈拳",   ailment:"flinch", chance:10);
+
+            // ── 一般 ──────────────────────────────────────────────
+            E("身體猛撞", ailment:"para",   chance:30);
+            E("劈斬",     hc:true);
+
+            // ── 妖精 ──────────────────────────────────────────────
+            E("月亮之力", stat:"foe_spatk", statChg:-1, chance:30);
+            E("粗野播弄", stat:"foe_atk",   statChg:-1, chance:10);
+            E("夢幻接觸", stat:"foe_atk",   statChg:-1, chance:10);
+        }
+        #endregion
+
         #region 建構子 / 初始化
         // ── Constructor ────────────────────────────────────────
         public PokeTowerService(string redisConnectionString = null, OpenRouterService aiService = null, GetChampService champService = null)
         {
+            InitMoveEffects();
             if (!string.IsNullOrWhiteSpace(redisConnectionString))
             {
                 try
@@ -1538,8 +1706,8 @@ namespace MusicBot2.Service
                     case "passive_tanker":
                         foreach (var p in run.Party) { p.MaxHP = (int)(p.MaxHP * 1.4f); p.Speed = (int)(p.Speed * 0.8f); p.CurrentHP = p.MaxHP; }
                         break;
-                    case "passive_speedster":
-                        foreach (var p in run.Party) p.Speed = (int)(p.Speed * 1.6f);
+                    case "passive_chaosmaster":
+                        // 效果純戰鬥時觸發，開局無需改數值
                         break;
                     case "passive_berserker":
                         foreach (var p in run.Party) { p.Attack = (int)(p.Attack * 1.3f); p.SpecialAttack = (int)(p.SpecialAttack * 1.3f); p.Defense = (int)(p.Defense * 0.8f); p.SpecialDefense = (int)(p.SpecialDefense * 0.8f); }
@@ -1656,6 +1824,16 @@ namespace MusicBot2.Service
                 run.ShieldActive = HasRelic(run, "relic_shield");
                 run.WillUsed = false;
                 run.AvengeStacks = 0;
+                // 重置戰鬥狀態（每場戰鬥清空）
+                foreach (var pk in run.Party)
+                {
+                    pk.BattleStatus = ""; pk.SleepTurns = 0;
+                    pk.AtkStage = pk.DefStage = pk.SpdStage = pk.SpAtkStage = pk.SpDefStage = 0;
+                }
+                run.CurrentEnemy.BattleStatus = ""; run.CurrentEnemy.SleepTurns = 0;
+                run.CurrentEnemy.AtkStage = run.CurrentEnemy.DefStage = run.CurrentEnemy.SpdStage =
+                run.CurrentEnemy.SpAtkStage = run.CurrentEnemy.SpDefStage = 0;
+                run.CurrentEnemy.Flinched = false;
                 // relic_time_warp: restore 3 PP to all moves at battle start
                 if (HasRelic(run, "relic_time_warp"))
                     foreach (var mv in run.ActivePokemon.Moves) mv.CurrentPP = Math.Min(mv.MaxPP, mv.CurrentPP + 3);
@@ -1790,24 +1968,48 @@ namespace MusicBot2.Service
 
             var enemyMove = enemy.Moves[enemy.NextMoveIdx % enemy.Moves.Count];
 
-            bool playerFirst = poke.Speed >= enemy.Speed;
-            // passive_firstblood: always go first
-            if (HasPassive(run, "passive_firstblood")) playerFirst = true;
+            bool playerFirst = poke.Speed >= enemy.Speed; // 後面的速度計算會覆蓋此值
             // 計算目前第幾回合（現有 rounds 數 + 1）
             int roundNum = run.CurrentBattleLog.Split(new[] { "════════" }, StringSplitOptions.RemoveEmptyEntries)
                                .Count(r => r.Trim().Length > 0) + 1;
             var sb = new StringBuilder();
             sb.AppendLine($"【回合 {roundNum}】");
 
-            if (playerFirst)
+            // ── 局部函式：玩家攻擊一次 ───────────────────────────────
+            void DoPlayerAttack()
             {
-                int d = CalcDamage(playerMove, poke.Attack, poke.SpecialAttack, enemy.Defense, enemy.SpecialDefense, enemy.Types);
+                // 狀態判斷
+                if (poke.BattleStatus == "para" && _rng.Next(100) < 25)
+                    { sb.AppendLine($"⚡ {poke.DisplayName} 麻痺無法行動！"); return; }
+                if (poke.BattleStatus == "freeze")
+                {
+                    if (_rng.Next(100) < 20) { sb.AppendLine($"❄️ {poke.DisplayName} 解凍了！"); poke.BattleStatus = ""; }
+                    else { sb.AppendLine($"❄️ {poke.DisplayName} 被凍住無法行動！"); return; }
+                }
+                if (poke.BattleStatus == "sleep")
+                {
+                    if (poke.SleepTurns <= 0) { sb.AppendLine($"💤 {poke.DisplayName} 醒來了！"); poke.BattleStatus = ""; }
+                    else { poke.SleepTurns--; sb.AppendLine($"💤 {poke.DisplayName} 在睡覺，無法行動！"); return; }
+                }
+
+                // 傷害計算（套用 stat stage）
+                int effAtk   = (int)(poke.Attack        * StatMult(poke.AtkStage  + (poke.BattleStatus=="burn" ? -1 : 0)));
+                int effSpAtk = (int)(poke.SpecialAttack  * StatMult(poke.SpAtkStage));
+                int effDef   = (int)(enemy.Defense       * StatMult(enemy.DefStage));
+                int effSpDef = (int)(enemy.SpecialDefense* StatMult(enemy.SpDefStage));
+
+                int hits = playerMove.MaxHits > 1 ? _rng.Next(playerMove.MinHits, playerMove.MaxHits + 1) : 1;
+                int d = 0;
+                for (int h = 0; h < hits; h++)
+                    d += CalcDamage(playerMove, effAtk, effSpAtk, effDef, effSpDef, enemy.Types);
+                if (hits > 1) sb.AppendLine($"  (連打 {hits} 次！)");
+
                 // Relic damage modifiers
                 int critThreshold = 15 + (HasRelic(run, "relic_lucky_charm") ? 15 : 0) - (run.CursedRelicIds.Contains("curse_unlucky") ? 15 : 0);
                 if (HasRelic(run, "relic_crit") && _rng.Next(100) < Math.Max(1, critThreshold)) d = d * 2;
                 int noDefThreshold = 20 + (HasRelic(run, "relic_lucky_charm") ? 15 : 0);
                 if (HasRelic(run, "relic_no_def") && _rng.Next(100) < noDefThreshold)
-                    d = Math.Max(d, (int)(playerMove.Power * (playerMove.Category == "Physical" ? poke.Attack : poke.SpecialAttack) / 5.0f));
+                    d = Math.Max(d, (int)(playerMove.Power * (playerMove.Category == "Physical" ? effAtk : effSpAtk) / 5.0f));
                 if (HasRelic(run, "relic_boss_dmg") && enemy.IsBoss) d = (int)(d * 1.5f);
                 if (HasRelic(run, "relic_fullhp") && poke.CurrentHP == poke.MaxHP) d = (int)(d * 1.3f);
                 if (HasRelic(run, "relic_amplify")) d = (int)(d * 1.3f);
@@ -1821,52 +2023,60 @@ namespace MusicBot2.Service
                 if (HasRelic(run, "relic_chain") && run.ChainBonus > 0) d = (int)(d * (1f + run.ChainBonus));
                 bool avengeProc = HasRelic(run, "relic_avenge") && run.AvengeStacks >= 3;
                 if (avengeProc) { d = d * 2; run.AvengeStacks = 0; }
+
                 enemy.CurrentHP = Math.Max(0, enemy.CurrentHP - d);
                 if (HasRelic(run, "relic_double_edge")) poke.CurrentHP = Math.Max(1, poke.CurrentHP - Math.Max(1, (int)(d * 0.15f)));
                 run.TotalDamageDealt += d;
                 AppendHit(sb, poke.DisplayName, enemy.Name, playerMove, d, enemy.Types, true);
+
                 // Post-attack relics
                 if (HasRelic(run, "relic_lifesteal")) { int ls = Math.Max(1, (int)(d * 0.20f)); poke.CurrentHP = Math.Min(poke.MaxHP, poke.CurrentHP + ls); }
                 if (HasPassive(run, "passive_vampire") && !HasRelic(run, "relic_lifesteal")) { int ls = Math.Max(1, (int)(d * 0.30f)); poke.CurrentHP = Math.Min(poke.MaxHP, poke.CurrentHP + ls); }
                 if (HasRelic(run, "relic_poison") && enemy.CurrentHP > 0) enemy.CurrentHP = Math.Max(0, enemy.CurrentHP - 15);
-                if (enemy.CurrentHP > 0)
-                {
-                    int ed = CalcDamage(enemyMove, enemy.Attack, enemy.SpecialAttack, poke.Defense, poke.SpecialDefense, poke.Types);
-                    // Shield check
-                    if (HasRelic(run, "relic_shield") && run.ShieldActive) { ed = 0; run.ShieldActive = false; }
-                    // Last stand
-                    if (HasRelic(run, "relic_last_stand") && poke.CurrentHP * 100 / Math.Max(1, poke.MaxHP) < 20) ed = ed / 2;
-                    // passive_ironwall: -20% damage taken
-                    if (HasPassive(run, "passive_ironwall")) ed = (int)(ed * 0.8f);
-                    poke.CurrentHP = Math.Max(0, poke.CurrentHP - ed);
-                    AppendHit(sb, enemy.Name, poke.DisplayName, enemyMove, ed, poke.Types, false);
-                    // Thorns
-                    if (HasRelic(run, "relic_thorns") && ed > 0) enemy.CurrentHP = Math.Max(0, enemy.CurrentHP - Math.Min(25, (int)(ed * 0.25f)));
-                    // relic_shared_pain
-                    if (HasRelic(run, "relic_shared_pain") && ed > 0) enemy.CurrentHP = Math.Max(0, enemy.CurrentHP - Math.Max(1, (int)(ed * 0.3f)));
-                    // curse_fragile2
-                    if (run.CursedRelicIds.Contains("curse_fragile2") && ed > 0) poke.Defense = Math.Max(1, poke.Defense - 3);
-                    // curse_hungry
-                    if (run.CursedRelicIds.Contains("curse_hungry"))
-                        foreach (var mv in poke.Moves) mv.CurrentPP = Math.Max(0, mv.CurrentPP - 1);
-                    // Avenge
-                    if (HasRelic(run, "relic_avenge") && ed > 0) run.AvengeStacks++;
-                }
+
+                // 技能效果（狀態/stat/吸血）
+                if (enemy.CurrentHP > 0 || playerMove.DrainPercent > 0)
+                    ApplyMoveEffect(playerMove, true, poke, enemy, d, sb, run);
             }
-            else
+
+            // ── 局部函式：敵人攻擊一次 ───────────────────────────────
+            void DoEnemyAttack()
             {
-                int ed = CalcDamage(enemyMove, enemy.Attack, enemy.SpecialAttack, poke.Defense, poke.SpecialDefense, poke.Types);
+                // 畏縮 / 狀態判斷
+                if (enemy.Flinched) { enemy.Flinched = false; sb.AppendLine($"  😨 {enemy.Name} 因畏縮跳過攻擊！"); return; }
+                if (enemy.BattleStatus == "para" && _rng.Next(100) < 25)
+                    { sb.AppendLine($"⚡ {enemy.Name} 麻痺無法行動！"); return; }
+                if (enemy.BattleStatus == "freeze")
+                {
+                    if (_rng.Next(100) < 20) { sb.AppendLine($"❄️ {enemy.Name} 解凍了！"); enemy.BattleStatus = ""; }
+                    else { sb.AppendLine($"❄️ {enemy.Name} 被凍住無法行動！"); return; }
+                }
+                if (enemy.BattleStatus == "sleep")
+                {
+                    if (enemy.SleepTurns <= 0) { sb.AppendLine($"💤 {enemy.Name} 醒來了！"); enemy.BattleStatus = ""; }
+                    else { enemy.SleepTurns--; sb.AppendLine($"💤 {enemy.Name} 在睡覺，無法行動！"); return; }
+                }
+
+                // 傷害計算（套用 stat stage）
+                int effEAtk   = (int)(enemy.Attack        * StatMult(enemy.AtkStage  + (enemy.BattleStatus=="burn" ? -1 : 0)));
+                int effESpAtk = (int)(enemy.SpecialAttack  * StatMult(enemy.SpAtkStage));
+                int effPDef   = (int)(poke.Defense         * StatMult(poke.DefStage));
+                int effPSpDef = (int)(poke.SpecialDefense  * StatMult(poke.SpDefStage));
+
+                int ed = CalcDamage(enemyMove, effEAtk, effESpAtk, effPDef, effPSpDef, poke.Types);
+
                 // Shield check
                 if (HasRelic(run, "relic_shield") && run.ShieldActive) { ed = 0; run.ShieldActive = false; }
                 // Last stand
                 if (HasRelic(run, "relic_last_stand") && poke.CurrentHP * 100 / Math.Max(1, poke.MaxHP) < 20) ed = ed / 2;
                 // passive_ironwall: -20% damage taken
                 if (HasPassive(run, "passive_ironwall")) ed = (int)(ed * 0.8f);
+
                 poke.CurrentHP = Math.Max(0, poke.CurrentHP - ed);
                 AppendHit(sb, enemy.Name, poke.DisplayName, enemyMove, ed, poke.Types, false);
-                // Thorns
+
+                // Thorns / shared_pain
                 if (HasRelic(run, "relic_thorns") && ed > 0) enemy.CurrentHP = Math.Max(0, enemy.CurrentHP - Math.Min(25, (int)(ed * 0.25f)));
-                // relic_shared_pain
                 if (HasRelic(run, "relic_shared_pain") && ed > 0) enemy.CurrentHP = Math.Max(0, enemy.CurrentHP - Math.Max(1, (int)(ed * 0.3f)));
                 // curse_fragile2
                 if (run.CursedRelicIds.Contains("curse_fragile2") && ed > 0) poke.Defense = Math.Max(1, poke.Defense - 3);
@@ -1875,38 +2085,33 @@ namespace MusicBot2.Service
                     foreach (var mv in poke.Moves) mv.CurrentPP = Math.Max(0, mv.CurrentPP - 1);
                 // Avenge
                 if (HasRelic(run, "relic_avenge") && ed > 0) run.AvengeStacks++;
-                if (poke.CurrentHP > 0)
-                {
-                    int d = CalcDamage(playerMove, poke.Attack, poke.SpecialAttack, enemy.Defense, enemy.SpecialDefense, enemy.Types);
-                    // Relic damage modifiers
-                    int critThreshold2 = 15 + (HasRelic(run, "relic_lucky_charm") ? 15 : 0) - (run.CursedRelicIds.Contains("curse_unlucky") ? 15 : 0);
-                    if (HasRelic(run, "relic_crit") && _rng.Next(100) < Math.Max(1, critThreshold2)) d = d * 2;
-                    int noDefThreshold2 = 20 + (HasRelic(run, "relic_lucky_charm") ? 15 : 0);
-                    if (HasRelic(run, "relic_no_def") && _rng.Next(100) < noDefThreshold2)
-                        d = Math.Max(d, (int)(playerMove.Power * (playerMove.Category == "Physical" ? poke.Attack : poke.SpecialAttack) / 5.0f));
-                    if (HasRelic(run, "relic_boss_dmg") && enemy.IsBoss) d = (int)(d * 1.5f);
-                    if (HasRelic(run, "relic_fullhp") && poke.CurrentHP == poke.MaxHP) d = (int)(d * 1.3f);
-                    if (HasRelic(run, "relic_amplify")) d = (int)(d * 1.3f);
-                    if (HasRelic(run, "relic_blood")) d = (int)(d * 1.3f);
-                    if (HasRelic(run, "relic_enrage") && poke.CurrentHP * 100 / Math.Max(1, poke.MaxHP) < 30) d = (int)(d * 1.6f);
-                    if (HasRelic(run, "relic_berserker_r") && poke.CurrentHP * 2 < poke.MaxHP) d = (int)(d * 1.4f);
-                    if (HasRelic(run, "relic_double_edge")) d = (int)(d * 1.4f);
-                    if (HasRelic(run, "relic_executioner") && enemy.CurrentHP * 4 < enemy.MaxHP) d *= 2;
-                    if (HasRelic(run, "relic_comeback") && poke.CurrentHP * 10 < poke.MaxHP) d *= 3;
-                    if (run.CursedRelicIds.Contains("curse_weaken") && playerMove.UpgradeCount > 0) d /= 2;
-                    if (HasRelic(run, "relic_chain") && run.ChainBonus > 0) d = (int)(d * (1f + run.ChainBonus));
-                    bool avengeProc2 = HasRelic(run, "relic_avenge") && run.AvengeStacks >= 3;
-                    if (avengeProc2) { d = d * 2; run.AvengeStacks = 0; }
-                    enemy.CurrentHP = Math.Max(0, enemy.CurrentHP - d);
-                    if (HasRelic(run, "relic_double_edge")) poke.CurrentHP = Math.Max(1, poke.CurrentHP - Math.Max(1, (int)(d * 0.15f)));
-                    run.TotalDamageDealt += d;
-                    AppendHit(sb, poke.DisplayName, enemy.Name, playerMove, d, enemy.Types, true);
-                    // Post-attack relics
-                    if (HasRelic(run, "relic_lifesteal")) { int ls = Math.Max(1, (int)(d * 0.20f)); poke.CurrentHP = Math.Min(poke.MaxHP, poke.CurrentHP + ls); }
-                    if (HasPassive(run, "passive_vampire") && !HasRelic(run, "relic_lifesteal")) { int ls = Math.Max(1, (int)(d * 0.30f)); poke.CurrentHP = Math.Min(poke.MaxHP, poke.CurrentHP + ls); }
-                    if (HasRelic(run, "relic_poison") && enemy.CurrentHP > 0) enemy.CurrentHP = Math.Max(0, enemy.CurrentHP - 15);
-                }
+
+                // 敵方技能效果（可對玩家造成狀態）
+                if (poke.CurrentHP > 0 || enemyMove.DrainPercent > 0)
+                    ApplyMoveEffect(enemyMove, false, poke, enemy, ed, sb, run);
             }
+
+            // ── 出手順序 ───────────────────────────────────────────
+            // 麻痺降速（速度減半算入先後手）
+            int pSpeed = poke.BattleStatus == "para" ? poke.Speed / 2 : (int)(poke.Speed * StatMult(poke.SpdStage));
+            int eSpeed = enemy.BattleStatus == "para" ? enemy.Speed / 2 : (int)(enemy.Speed * StatMult(enemy.SpdStage));
+            if (HasRelic(run, "relic_swift")) pSpeed = (int)(pSpeed * 1.3f);
+            if (HasPassive(run, "passive_firstblood")) playerFirst = true;
+            else playerFirst = pSpeed >= eSpeed;
+
+            if (playerFirst)
+            {
+                DoPlayerAttack();
+                if (enemy.CurrentHP > 0) DoEnemyAttack();
+            }
+            else
+            {
+                DoEnemyAttack();
+                if (poke.CurrentHP > 0) DoPlayerAttack();
+            }
+
+            // ── 回合末狀態傷害（燒傷/毒）────────────────────────────
+            ApplyEndOfTurnStatus(poke, enemy, sb);
 
             enemy.NextMoveIdx = (enemy.NextMoveIdx + 1) % enemy.Moves.Count;
 
@@ -3462,7 +3667,174 @@ namespace MusicBot2.Service
             int d = move.Category == "Physical" ? def : spDef;
             float eff = TypeEff(move.Type, defTypes);
             int raw = (int)(move.Power * a / (float)Math.Max(1, d) * eff / 5.0f);
-            return Math.Max(1, (int)(raw * (0.85 + _rng.NextDouble() * 0.15)));
+            int base_ = Math.Max(1, (int)(raw * (0.85 + _rng.NextDouble() * 0.15)));
+            // 高暴擊率：15% → 30%
+            if (move.HighCrit && _rng.Next(100) < 30) base_ = (int)(base_ * 1.5f);
+            return base_;
+        }
+
+        // ── 技能效果 Helper ────────────────────────────────────────
+
+        /// <summary>能力段數倍率（-6~+6）</summary>
+        private static float StatMult(int stage) =>
+            (float)Math.Max(2, 2 + stage) / Math.Max(2, 2 - stage);
+
+        private static string BuildStageStr(int atk, int def, int spAtk, int spDef, int spd)
+        {
+            var parts = new List<string>();
+            if (atk   != 0) parts.Add($"攻{(atk>0?"+":"")}{atk}");
+            if (def   != 0) parts.Add($"防{(def>0?"+":"")}{def}");
+            if (spAtk != 0) parts.Add($"特攻{(spAtk>0?"+":"")}{spAtk}");
+            if (spDef != 0) parts.Add($"特防{(spDef>0?"+":"")}{spDef}");
+            if (spd   != 0) parts.Add($"速{(spd>0?"+":"")}{spd}");
+            return parts.Count > 0 ? $"`{string.Join(" ", parts)}`" : "";
+        }
+
+        private static string StatusEmoji(string s) => s switch
+        {
+            "burn"   => "🔥", "para"   => "⚡", "freeze" => "❄️",
+            "sleep"  => "💤", "poison" => "☠️", _ => ""
+        };
+        private static string StatusName(string s) => s switch
+        {
+            "burn"   => "燒傷", "para" => "麻痺", "freeze" => "冰凍",
+            "sleep"  => "睡眠", "poison" => "中毒", _ => ""
+        };
+
+        /// <summary>應用攻擊方的招式效果（狀態/stat變化/吸血）至防守方。
+        /// isPlayerAttacking: true=玩家打敵人，false=敵人打玩家</summary>
+        private static void ApplyMoveEffect(
+            TowerMove move, bool isPlayerAttacking,
+            TowerPokemon player, TowerEnemy enemy,
+            int damageDealt, StringBuilder sb, TowerRun run = null)
+        {
+            // 渾沌大師：玩家攻擊時，負面效果機率+30%
+            int chaosBonus = (isPlayerAttacking && run != null && HasPassive(run, "passive_chaosmaster")) ? 30 : 0;
+
+            // 吸血 / 後座力
+            if (move.DrainPercent != 0 && damageDealt > 0)
+            {
+                int val = Math.Max(1, Math.Abs(damageDealt * move.DrainPercent / 100));
+                if (move.DrainPercent > 0) // 吸血
+                {
+                    if (isPlayerAttacking) { player.CurrentHP = Math.Min(player.MaxHP, player.CurrentHP + val); sb.AppendLine($"  💚 {player.DisplayName} 吸收 +{val}HP"); }
+                    else                   { enemy.CurrentHP  = Math.Min(enemy.MaxHP,  enemy.CurrentHP  + val); sb.AppendLine($"  💚 {enemy.Name} 吸收 +{val}HP"); }
+                }
+                else // 後座力
+                {
+                    if (isPlayerAttacking) { player.CurrentHP = Math.Max(1, player.CurrentHP - val); sb.AppendLine($"  💥 {player.DisplayName} 後座力 -{val}HP"); }
+                    else                   { enemy.CurrentHP  = Math.Max(1, enemy.CurrentHP  - val); sb.AppendLine($"  💥 {enemy.Name} 後座力 -{val}HP"); }
+                }
+            }
+
+            // 附加狀態（只對存活目標）
+            if (!string.IsNullOrEmpty(move.EffectAilment) && move.EffectChance > 0)
+            {
+                if (move.EffectAilment == "flinch")
+                {
+                    // flinch 畏縮只影響敵方
+                    int flinchChance = Math.Min(100, move.EffectChance + (isPlayerAttacking ? chaosBonus : 0));
+                    if (isPlayerAttacking && enemy.CurrentHP > 0 && _rng.Next(100) < flinchChance)
+                    { enemy.Flinched = true; sb.AppendLine($"  😨 {enemy.Name} 因畏縮無法行動！"); }
+                }
+                else
+                {
+                    int ailmentChance = Math.Min(100, move.EffectChance + chaosBonus);
+                    if (_rng.Next(100) < ailmentChance)
+                    {
+                        if (isPlayerAttacking && string.IsNullOrEmpty(enemy.BattleStatus) && enemy.CurrentHP > 0)
+                        {
+                            enemy.BattleStatus = move.EffectAilment;
+                            if (move.EffectAilment == "sleep") enemy.SleepTurns = _rng.Next(1, 4);
+                            sb.AppendLine($"  {StatusEmoji(move.EffectAilment)} {enemy.Name} 陷入{StatusName(move.EffectAilment)}！");
+                        }
+                        else if (!isPlayerAttacking && string.IsNullOrEmpty(player.BattleStatus) && player.CurrentHP > 0)
+                        {
+                            player.BattleStatus = move.EffectAilment;
+                            if (move.EffectAilment == "sleep") player.SleepTurns = _rng.Next(1, 4);
+                            sb.AppendLine($"  {StatusEmoji(move.EffectAilment)} {player.DisplayName} 陷入{StatusName(move.EffectAilment)}！");
+                        }
+                    }
+                }
+            }
+
+            // 能力變化
+            if (!string.IsNullOrEmpty(move.StatTarget))
+            {
+                // 降能力也受渾沌大師加成（只針對負向變化打對方）
+                bool isFoeDebuff = move.StatTarget.StartsWith("foe_") && move.StatStageChange < 0;
+                int statChance = move.EffectChance == 0 ? 100
+                    : Math.Min(100, move.EffectChance + (isFoeDebuff ? chaosBonus : 0));
+                if (_rng.Next(100) < statChance)
+                    ApplyStatChange(move.StatTarget, move.StatStageChange, isPlayerAttacking, player, enemy, sb);
+            }
+        }
+
+        private static void ApplyStatChange(string statTarget, int change, bool isPlayerAttacking,
+            TowerPokemon player, TowerEnemy enemy, StringBuilder sb)
+        {
+            bool isFoe  = statTarget.StartsWith("foe_");
+            string stat = statTarget[(isFoe ? 4 : 5)..];
+            // 「foe」相對攻擊方 → 攻擊方為玩家時 foe=敵人，攻擊方為敵人時 foe=玩家
+            bool affectsPlayer = (isFoe && !isPlayerAttacking) || (!isFoe && isPlayerAttacking);
+
+            string targetName;
+            if (affectsPlayer)
+            {
+                switch (stat)
+                {
+                    case "atk":   player.AtkStage   = Math.Clamp(player.AtkStage   + change, -6, 6); break;
+                    case "def":   player.DefStage   = Math.Clamp(player.DefStage   + change, -6, 6); break;
+                    case "spd":   player.SpdStage   = Math.Clamp(player.SpdStage   + change, -6, 6); break;
+                    case "spatk": player.SpAtkStage = Math.Clamp(player.SpAtkStage + change, -6, 6); break;
+                    case "spdef": player.SpDefStage = Math.Clamp(player.SpDefStage + change, -6, 6); break;
+                }
+                targetName = player.DisplayName;
+            }
+            else
+            {
+                switch (stat)
+                {
+                    case "atk":   enemy.AtkStage   = Math.Clamp(enemy.AtkStage   + change, -6, 6); break;
+                    case "def":   enemy.DefStage   = Math.Clamp(enemy.DefStage   + change, -6, 6); break;
+                    case "spd":   enemy.SpdStage   = Math.Clamp(enemy.SpdStage   + change, -6, 6); break;
+                    case "spatk": enemy.SpAtkStage = Math.Clamp(enemy.SpAtkStage + change, -6, 6); break;
+                    case "spdef": enemy.SpDefStage = Math.Clamp(enemy.SpDefStage + change, -6, 6); break;
+                }
+                targetName = enemy.Name;
+            }
+            string sn = stat switch { "atk"=>"攻擊","def"=>"防禦","spd"=>"速度","spatk"=>"特攻","spdef"=>"特防",_=>stat };
+            string dir = change > 0 ? $"⬆️上升{Math.Abs(change)}段" : $"⬇️下降{Math.Abs(change)}段";
+            sb.AppendLine($"  💫 {targetName} 的{sn}{dir}！");
+        }
+
+        private static void ApplyEndOfTurnStatus(TowerPokemon poke, TowerEnemy enemy, StringBuilder sb)
+        {
+            if (poke.BattleStatus == "burn")
+            {
+                int d = Math.Max(1, poke.MaxHP / 16);
+                poke.CurrentHP = Math.Max(0, poke.CurrentHP - d);
+                sb.AppendLine($"  🔥 {poke.DisplayName} 受到燒傷 -{d}HP");
+            }
+            else if (poke.BattleStatus == "poison")
+            {
+                int d = Math.Max(1, poke.MaxHP / 8);
+                poke.CurrentHP = Math.Max(0, poke.CurrentHP - d);
+                sb.AppendLine($"  ☠️ {poke.DisplayName} 受到毒傷 -{d}HP");
+            }
+
+            if (enemy.BattleStatus == "burn")
+            {
+                int d = Math.Max(1, enemy.MaxHP / 16);
+                enemy.CurrentHP = Math.Max(0, enemy.CurrentHP - d);
+                sb.AppendLine($"  🔥 {enemy.Name} 受到燒傷 -{d}HP");
+            }
+            else if (enemy.BattleStatus == "poison")
+            {
+                int d = Math.Max(1, enemy.MaxHP / 8);
+                enemy.CurrentHP = Math.Max(0, enemy.CurrentHP - d);
+                sb.AppendLine($"  ☠️ {enemy.Name} 受到毒傷 -{d}HP");
+            }
         }
 
         private float TypeEff(string moveType, List<string> defTypes)
@@ -3579,12 +3951,16 @@ namespace MusicBot2.Service
             var nextMove = e.Moves[e.NextMoveIdx % e.Moves.Count];
 
             var desc = new StringBuilder();
-            desc.AppendLine($"**你的 {p.DisplayName}** {TypeBadge(p.Types)}");
-            desc.AppendLine($"HP: {HpBar(p.CurrentHP, p.MaxHP)}");
+            string pStatus = !string.IsNullOrEmpty(p.BattleStatus) ? $" {StatusEmoji(p.BattleStatus)}" : "";
+            string pStages = BuildStageStr(p.AtkStage, p.DefStage, p.SpAtkStage, p.SpDefStage, p.SpdStage);
+            desc.AppendLine($"**你的 {p.DisplayName}**{pStatus} {TypeBadge(p.Types)}");
+            desc.AppendLine($"HP: {HpBar(p.CurrentHP, p.MaxHP)}{(pStages != "" ? $"  {pStages}" : "")}");
             desc.AppendLine($"技能: {MovesDisplay(p)}");
             desc.AppendLine();
-            desc.AppendLine($"**{(e.IsBoss ? "👑" : "🎯")} {e.Name}** {TypeBadge(e.Types)}");
-            desc.AppendLine($"HP: {HpBar(e.CurrentHP, e.MaxHP)}");
+            string eStatus = !string.IsNullOrEmpty(e.BattleStatus) ? $" {StatusEmoji(e.BattleStatus)}" : "";
+            string eStages = BuildStageStr(e.AtkStage, e.DefStage, e.SpAtkStage, e.SpDefStage, e.SpdStage);
+            desc.AppendLine($"**{(e.IsBoss ? "👑" : "🎯")} {e.Name}**{eStatus} {TypeBadge(e.Types)}");
+            desc.AppendLine($"HP: {HpBar(e.CurrentHP, e.MaxHP)}{(eStages != "" ? $"  {eStages}" : "")}");
             desc.AppendLine();
             bool isBlind = run.CursedRelicIds.Contains("curse_blind");
             if (isBlind)
