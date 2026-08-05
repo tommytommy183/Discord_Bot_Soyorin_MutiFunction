@@ -59,8 +59,9 @@ namespace MusicBot2.Service
         {
             // === 第0梯隊：短時間內免費 ===
             //"tencent/hy3:free",                          //無法傳出
-            //"inclusionai/ling-3.0-flash:free", //測試新的MoE模型 > 爛 還是要$$
-
+            "inclusionai/ling-3.0-flash:free",
+            "cohere/north-mini-code:free",
+            "poolside/laguna-s-2.1:free",
 
             // === 第一梯隊：大型高品質模型 ===
             //"nvidia/nemotron-3.5-content-safety:free",    // 安全檢測模型，非聊天模型，會直接失敗

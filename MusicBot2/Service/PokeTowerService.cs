@@ -2593,6 +2593,7 @@ namespace MusicBot2.Service
                     if (HasPassive(run, "passive_catchmaster")) return BuildShopEmbed(run, "🎯 **捕獲大師**：不需要購買球！");
                     { int cost = ShopCost(run, 25, "buy_ultra"); if (run.Gold < cost) return BuildShopEmbed(run, $"💸 金幣不足！需要 {cost} 金幣。"); run.Gold -= cost; run.Balls["ultra"] = run.Balls.GetValueOrDefault("ultra") + 1; msg = $"🟡 購入 **高級球×1**！（-{cost}💰）"; break; }
                 case "leave":
+                    run.ShopBuyCounts = new();  // 離開商店時重置，下次進來恢復原價
                     msg = "👋 離開商店，繼續爬塔！";
                     break;
                 default:
