@@ -29,7 +29,10 @@ namespace MusicBot2.Service
         SelectingRelic,
         InCasino,
         SelectingPassive,
-        SelectingCursedRelic
+        SelectingCursedRelic,
+        InMiniGame2048,
+        InMiniGameMine,
+        InMiniGameQuiz,
     }
 
     public class TowerMove
@@ -144,6 +147,21 @@ namespace MusicBot2.Service
         // Casino
         public int CasinoRound { get; set; } = 0;
         public int CasinoProfit { get; set; } = 0;
+        public int CasinoBet { get; set; } = 0;   // 本局下注金額（0=未下注）
+        // Mini-game: 2048 (16 ints, row-major; 0=empty)
+        public List<int> MiniGame2048Board { get; set; } = new();
+        public int MiniGame2048MovesLeft { get; set; } = 0;
+        public int MiniGame2048Reward { get; set; } = 0;
+        // Mini-game: Minesweeper (9 ints: -1=mine, 0-8=nearby mines)
+        public List<int> MiniGameMineBoard { get; set; } = new();
+        public List<bool> MiniGameMineRevealed { get; set; } = new();
+        public int MiniGameMineSafeLeft { get; set; } = 0;   // 還需要安全踩幾步
+        public int MiniGameMineReward { get; set; } = 0;
+        // Mini-game: Quiz (champion / word)
+        public string MiniGameQuizQuestion { get; set; } = "";
+        public List<string> MiniGameQuizChoices { get; set; } = new();  // display labels
+        public int MiniGameQuizAnswerIdx { get; set; } = 0;
+        public int MiniGameQuizReward { get; set; } = 0;
         // Passive
         public string PassiveId { get; set; } = "";
         // Cursed Relics
@@ -1201,12 +1219,84 @@ namespace MusicBot2.Service
                         return "↩️ 明智地撤退，在外面休息了一下，**全隊回復 50% HP**！";
                     }),
                 }),
+
+            // ── 小遊戲特殊事件 ─────────────────────────────────────
+
+            new("204..1532?", "🎮",
+                "走廊角落有台散落零件的老舊機器，螢幕閃著 1532 的字樣……「挑戰成功送好禮！」",
+                new() {
+                    new("🎮 接受挑戰（15步內到32）", "🎮", async run => {
+                        int reward = 30 + run.CurrentFloor * 2;
+                        Setup2048(run, reward);
+                        run.State = TowerRunState.InMiniGame2048;
+                        return $"🎮 機器啟動！**15步**內讓方塊到達 **32**，獲得 **{reward}💰**！";
+                    })
+                }),
+
+            new("非洲小孩訓練場", "💣",
+                "前方是一片黑暗的訓練場，地上貼著標語「沒有網路也能玩踩地雷」",
+                new() {
+                    new("💣 接受踩地雷挑戰（連踩5步安全）", "💣", async run => {
+                        int reward = 40 + run.CurrentFloor * 2;
+                        SetupMinesweeper(run, reward, mineCount: 3);
+                        run.State = TowerRunState.InMiniGameMine;
+                        return $"💣 3×3 地圖，藏了 **3 顆地雷**！連踩 **5 步**不爆炸，獲得 **{reward}💰**！";
+                    })
+                }),
+
+            new("一具手指放在嘴巴前的木乃伊", "⚔️",
+                "他今年還在打，這一冠，為了自己，他向你問到：「阿一古 西巴西八 這是哪個英雄的能力描述牙 猜對有獎私密打！」",
+                new() {
+                    new("⚔️ 接受挑戰！", "⚔️", async run => {
+                        if (_champService?.allChampionData?.data == null || _champService.allChampionData.data.Count < 4)
+                            return "😕 英雄資料庫暫時不可用，改天再來！";
+                        var champs = _champService.allChampionData.data.Values.ToList();
+                        var picks = champs.OrderBy(_ => _rng.Next()).Take(4).ToList();
+                        int answerIdx = _rng.Next(4);
+                        var answer = picks[answerIdx];
+                        string blurb = string.IsNullOrWhiteSpace(answer.blurb)
+                            ? $"一位神秘英雄，代號 {answer.id}。"
+                            : answer.blurb.Replace("\n", " ").Length > 120
+                                ? answer.blurb.Replace("\n", " ")[..120] + "…"
+                                : answer.blurb.Replace("\n", " ");
+                        int reward = 50 + run.CurrentFloor;
+                        run.MiniGameQuizQuestion = $"⚔️ **英雄描述：**\n_{blurb}_\n猜猜這是誰呀？（猜對 +{reward}💰）";
+                        run.MiniGameQuizChoices = picks.Select(p => p.name).ToList();
+                        run.MiniGameQuizAnswerIdx = answerIdx;
+                        run.MiniGameQuizReward = reward;
+                        run.State = TowerRunState.InMiniGameQuiz;
+                        return "⚔️ 好！讓我看看你對英雄聯盟了解多少……";
+                    }),
+                }),
+
+            new("wordle", "📚",
+                "Your group is on a 1 day streak! 🔥 Here are yesterday's results:",
+                new() {
+                    new("📚 接受挑戰！", "📚", async run => {
+                        try {
+                            var words = WordGuessingService.LoadWords().Where(w => w.word.Length >= 4 && w.word.Length <= 6).ToList();
+                            if (words.Count < 4) return "📚 單字庫太少了，找不到題目。";
+                            var picks = words.OrderBy(_ => _rng.Next()).Take(4).ToList();
+                            int answerIdx = _rng.Next(4);
+                            var answer = picks[answerIdx];
+                            string hint = answer.word[0].ToString().ToUpper() + new string('_', answer.word.Length - 1);
+                            int reward = 30 + run.CurrentFloor;
+                            run.MiniGameQuizQuestion = $"📖 **提示：** `{hint}` （{answer.word.Length} 個字母）\n意思：**{answer.translate}**\n\n哪個是正確的單字？（猜對 +{reward}💰）";
+                            run.MiniGameQuizChoices = picks.Select(p => p.word.ToUpper()).ToList();
+                            run.MiniGameQuizAnswerIdx = answerIdx;
+                            run.MiniGameQuizReward = reward;
+                            run.State = TowerRunState.InMiniGameQuiz;
+                            return "📚 單字測驗開始！";
+                        } catch { return "📚 載入單字庫失敗，改天再試。"; }
+                    }),
+                }),
         };
 
         private static OpenRouterService _aiService;
+        private static GetChampService _champService;
 
         // ── Constructor ────────────────────────────────────────
-        public PokeTowerService(string redisConnectionString = null, OpenRouterService aiService = null)
+        public PokeTowerService(string redisConnectionString = null, OpenRouterService aiService = null, GetChampService champService = null)
         {
             if (!string.IsNullOrWhiteSpace(redisConnectionString))
             {
@@ -1220,6 +1310,7 @@ namespace MusicBot2.Service
                 catch (Exception ex) { Console.WriteLine($"[Tower] Redis 連線失敗: {ex.Message}"); }
             }
             _aiService = aiService;
+            _champService = champService;
             _ = LoadRunsAsync();
         }
 
@@ -2049,6 +2140,24 @@ namespace MusicBot2.Service
                 await SaveAsync(run);
                 return BuildMoveRewardEmbed(run, eventHeader);
             }
+            // If the event set up a quiz
+            if (run.State == TowerRunState.InMiniGameQuiz)
+            {
+                await SaveAsync(run);
+                return BuildQuizEmbed(run, eventHeader);
+            }
+            // If the event set up a 2048 game
+            if (run.State == TowerRunState.InMiniGame2048)
+            {
+                await SaveAsync(run);
+                return Build2048Embed(run, eventHeader);
+            }
+            // If the event set up a minesweeper game
+            if (run.State == TowerRunState.InMiniGameMine)
+            {
+                await SaveAsync(run);
+                return BuildMinesweeperEmbed(run, eventHeader);
+            }
             run.State = TowerRunState.SelectingPath;
             await SaveAsync(run);
             return BuildPathEmbed(run, eventHeader);
@@ -2289,6 +2398,9 @@ namespace MusicBot2.Service
                 TowerRunState.InCasino => BuildCasinoEmbed(run),
                 TowerRunState.SelectingPassive => BuildPassiveSelectionEmbed(run.ChannelId),
                 TowerRunState.SelectingCursedRelic => BuildCursedRelicEmbed(run),
+                TowerRunState.InMiniGame2048 => Build2048Embed(run),
+                TowerRunState.InMiniGameMine => BuildMinesweeperEmbed(run),
+                TowerRunState.InMiniGameQuiz => BuildQuizEmbed(run),
                 _ => BuildPathEmbed(run)
             };
         }
@@ -2402,24 +2514,41 @@ namespace MusicBot2.Service
         private (Embed embed, ComponentBuilder component) BuildCasinoEmbed(TowerRun run, string lastResult = "")
         {
             var desc = new StringBuilder();
-            if (!string.IsNullOrEmpty(lastResult)) desc.AppendLine(lastResult).AppendLine();
-            desc.AppendLine($"💰 現有金幣：**{run.Gold}**　本場獲利：**{(run.CasinoProfit >= 0 ? "+" : "")}{run.CasinoProfit}💰**　回合：{run.CasinoRound}");
+            if (!string.IsNullOrEmpty(lastResult)) desc.AppendLine(lastResult).AppendLine("---").AppendLine();
+            desc.AppendLine($"💰 現有金幣：**{run.Gold}**　本場總損益：**{(run.CasinoProfit >= 0 ? "+" : "")}{run.CasinoProfit}💰**");
             desc.AppendLine();
-            desc.AppendLine("🎲 賭場到了！猜大（4-6）還是猜小（1-3）？");
-            desc.AppendLine("每局賭 **10💰**，猜中翻倍，猜錯扣 10💰。");
+
+            ComponentBuilder cb;
+            if (run.CasinoBet == 0)
+            {
+                // Phase 1: 選下注金額
+                desc.AppendLine("🎰 **選擇你的籌碼：**（贏 = 籌碼×2 進袋，輸 = 籌碼全沒）");
+                int q = Math.Max(5, run.Gold / 4);
+                int h = Math.Max(5, run.Gold / 2);
+                int a = run.Gold;
+                cb = new ComponentBuilder()
+                    .WithButton($"🟡 小注 {q}💰（贏+{q}）", $"tower_casino_{run.ChannelId}_bet_{q}", run.Gold >= 5 ? ButtonStyle.Primary : ButtonStyle.Secondary, row: 0, disabled: run.Gold < 5)
+                    .WithButton($"🟠 中注 {h}💰（贏+{h}）", $"tower_casino_{run.ChannelId}_bet_{h}", run.Gold >= 5 ? ButtonStyle.Primary : ButtonStyle.Secondary, row: 0, disabled: run.Gold < 5)
+                    .WithButton($"🔴 全押 {a}💰（贏+{a}）", $"tower_casino_{run.ChannelId}_bet_{a}", run.Gold > 0 ? ButtonStyle.Danger : ButtonStyle.Secondary, row: 1, disabled: run.Gold == 0)
+                    .WithButton("🚪 離開賭場", $"tower_casino_{run.ChannelId}_leave", ButtonStyle.Secondary, row: 1);
+            }
+            else
+            {
+                // Phase 2: 猜大小
+                desc.AppendLine($"🎯 籌碼：**{run.CasinoBet}💰** — 猜大（4-6）還是猜小（1-3）？");
+                desc.AppendLine("猜中 → 賺回籌碼×2 💰　猜錯 → 籌碼歸零 💀");
+                cb = new ComponentBuilder()
+                    .WithButton("🔼 猜大 (4~6)", $"tower_casino_{run.ChannelId}_high", ButtonStyle.Primary, row: 0)
+                    .WithButton("🔽 猜小 (1~3)", $"tower_casino_{run.ChannelId}_low", ButtonStyle.Success, row: 0)
+                    .WithButton("😅 反悔不賭了", $"tower_casino_{run.ChannelId}_cancel", ButtonStyle.Secondary, row: 1);
+            }
 
             var embed = new EmbedBuilder()
-                .WithTitle("🎰 神秘賭場")
+                .WithTitle("🎰 老虎機賭場")
                 .WithDescription(desc.ToString())
-                .WithColor(new Color(255, 165, 0))
-                .WithFooter($"{run.PlayerName} • 第 {run.CurrentFloor}/{run.MaxFloor} 層")
+                .WithColor(new Color(220, 50, 47))
+                .WithFooter($"{run.PlayerName} • 第 {run.CurrentFloor}/{run.MaxFloor} 層 • 本場 {run.CasinoRound} 局")
                 .Build();
-
-            bool canBet = run.Gold >= 10;
-            var cb = new ComponentBuilder()
-                .WithButton("🔼 猜大(10💰)", $"tower_casino_{run.ChannelId}_high", canBet ? ButtonStyle.Primary : ButtonStyle.Secondary, row: 0, disabled: !canBet)
-                .WithButton("🔽 猜小(10💰)", $"tower_casino_{run.ChannelId}_low", canBet ? ButtonStyle.Primary : ButtonStyle.Secondary, row: 0, disabled: !canBet)
-                .WithButton("🚪 離開賭場", $"tower_casino_{run.ChannelId}_leave", ButtonStyle.Danger, row: 1);
             return (embed, cb);
         }
 
@@ -2431,29 +2560,60 @@ namespace MusicBot2.Service
             if (action == "leave")
             {
                 run.State = TowerRunState.SelectingPath;
-                string profitMsg = run.CasinoProfit >= 0
-                    ? $"🎲 離開賭場，本次贏了 {run.CasinoProfit}💰！"
-                    : $"🎲 離開賭場，本次輸了 {Math.Abs(run.CasinoProfit)}💰！";
+                run.CasinoBet = 0;
+                string profitMsg = run.CasinoProfit == 0 ? "🎲 不輸不贏，拍拍屁股離開了。"
+                    : run.CasinoProfit > 0 ? $"🤑 賭場贏家！本次淨賺 **+{run.CasinoProfit}💰**！"
+                    : $"😭 輸光了！本次虧了 **{Math.Abs(run.CasinoProfit)}💰**！";
                 await SaveAsync(run);
                 return BuildPathEmbed(run, profitMsg);
             }
 
+            if (action == "cancel")
+            {
+                // 反悔：退回籌碼，回到下注選擇
+                run.Gold += run.CasinoBet;
+                run.CasinoProfit += run.CasinoBet; // 補回已扣的
+                run.CasinoBet = 0;
+                await SaveAsync(run);
+                return BuildCasinoEmbed(run, "😅 算了算了，籌碼還你，重新選吧。");
+            }
+
+            // bet_{amount}: 下注
+            if (action.StartsWith("bet_"))
+            {
+                if (int.TryParse(action["bet_".Length..], out int betAmt) && betAmt > 0)
+                {
+                    betAmt = Math.Min(betAmt, run.Gold); // 不能超過現有金幣
+                    run.Gold -= betAmt;
+                    run.CasinoBet = betAmt;
+                    await SaveAsync(run);
+                    return BuildCasinoEmbed(run);
+                }
+                return ErrEmbed("無效的下注金額");
+            }
+
             if (action == "high" || action == "low")
             {
+                if (run.CasinoBet <= 0)
+                    return BuildCasinoEmbed(run, "⚠️ 先選籌碼再猜大小！");
+
+                int bet = run.CasinoBet;
+                run.CasinoBet = 0;
                 int dice = _rng.Next(1, 7);
+                string diceFace = dice switch { 1 => "⚀", 2 => "⚁", 3 => "⚂", 4 => "⚃", 5 => "⚄", 6 => "⚅", _ => $"{dice}" };
                 bool won = (action == "high" && dice >= 4) || (action == "low" && dice <= 3);
                 string result;
                 if (won)
                 {
-                    run.Gold += 10;
-                    run.CasinoProfit += 10;
-                    result = $"🎲 骰出 **{dice}** — 猜中！+10💰（本場+{run.CasinoProfit}）";
+                    run.Gold += bet * 2;  // 還回本金 + 獎金
+                    run.CasinoProfit += bet;
+                    result = $"🎲 {diceFace} 骰出 **{dice}** — 猜中！**+{bet}💰** 入袋！（現在 {run.Gold}💰）";
                 }
                 else
                 {
-                    run.Gold = Math.Max(0, run.Gold - 10);
-                    run.CasinoProfit -= 10;
-                    result = $"🎲 骰出 **{dice}** — 猜錯！-10💰（本場{run.CasinoProfit}）";
+                    // 本金已在下注時扣掉，輸了就什麼都沒了
+                    run.CasinoProfit -= bet;
+                    result = $"🎲 {diceFace} 骰出 **{dice}** — 猜錯！**{bet}💰** 被吃掉 💀（現在 {run.Gold}💰）";
                 }
                 run.CasinoRound++;
                 await SaveAsync(run);
@@ -2461,6 +2621,327 @@ namespace MusicBot2.Service
             }
 
             return ErrEmbed("未知的賭場操作");
+        }
+
+        // ── Mini-game: 2048 ────────────────────────────────────
+
+        /// <summary>初始化2048爬塔挑戰（由事件觸發）</summary>
+        private static void Setup2048(TowerRun run, int reward)
+        {
+            run.MiniGame2048Board = Enumerable.Repeat(0, 16).ToList();
+            run.MiniGame2048Reward = reward;
+            run.MiniGame2048MovesLeft = 15;
+            Place2048Tile(run);
+            Place2048Tile(run);
+        }
+
+        private static void Place2048Tile(TowerRun run)
+        {
+            var empty = Enumerable.Range(0, 16).Where(i => run.MiniGame2048Board[i] == 0).ToList();
+            if (empty.Count == 0) return;
+            int idx = empty[_rng.Next(empty.Count)];
+            run.MiniGame2048Board[idx] = _rng.Next(10) < 9 ? 2 : 4;
+        }
+
+        private static int[] Slide2048Row(int[] row)
+        {
+            var nonZero = row.Where(x => x != 0).ToArray();
+            var merged = new List<int>();
+            for (int i = 0; i < nonZero.Length; i++)
+            {
+                if (i + 1 < nonZero.Length && nonZero[i] == nonZero[i + 1]) { merged.Add(nonZero[i] * 2); i++; }
+                else merged.Add(nonZero[i]);
+            }
+            while (merged.Count < 4) merged.Add(0);
+            return merged.ToArray();
+        }
+
+        private bool Apply2048Move(TowerRun run, string dir)
+        {
+            var old = run.MiniGame2048Board.ToList();
+            var b = run.MiniGame2048Board.ToArray();
+            // Extract rows
+            int[][] rows = new int[4][];
+            for (int r = 0; r < 4; r++) rows[r] = new[] { b[r*4], b[r*4+1], b[r*4+2], b[r*4+3] };
+
+            switch (dir)
+            {
+                case "left":
+                    for (int r = 0; r < 4; r++) rows[r] = Slide2048Row(rows[r]);
+                    break;
+                case "right":
+                    for (int r = 0; r < 4; r++) { Array.Reverse(rows[r]); rows[r] = Slide2048Row(rows[r]); Array.Reverse(rows[r]); }
+                    break;
+                case "up":
+                    // Transpose → slide left → transpose
+                    int[][] cols = new int[4][];
+                    for (int c = 0; c < 4; c++) cols[c] = new[] { rows[0][c], rows[1][c], rows[2][c], rows[3][c] };
+                    for (int c = 0; c < 4; c++) cols[c] = Slide2048Row(cols[c]);
+                    for (int r = 0; r < 4; r++) for (int c = 0; c < 4; c++) rows[r][c] = cols[c][r];
+                    break;
+                case "down":
+                    cols = new int[4][];
+                    for (int c = 0; c < 4; c++) cols[c] = new[] { rows[3][c], rows[2][c], rows[1][c], rows[0][c] };
+                    for (int c = 0; c < 4; c++) cols[c] = Slide2048Row(cols[c]);
+                    for (int r = 0; r < 4; r++) for (int c = 0; c < 4; c++) rows[3-r][c] = cols[c][r];
+                    break;
+            }
+            for (int r = 0; r < 4; r++) for (int c = 0; c < 4; c++) run.MiniGame2048Board[r*4+c] = rows[r][c];
+            bool changed = !run.MiniGame2048Board.SequenceEqual(old);
+            if (changed) Place2048Tile(run);
+            return changed;
+        }
+
+        private (Embed embed, ComponentBuilder component) Build2048Embed(TowerRun run, string notice = "")
+        {
+            var desc = new StringBuilder();
+            if (!string.IsNullOrEmpty(notice)) desc.AppendLine(notice).AppendLine();
+            int maxTile = run.MiniGame2048Board.Max();
+            desc.AppendLine($"🎯 目標：達到 **32** 以上！　剩餘步數：**{run.MiniGame2048MovesLeft}**　最高方塊：**{maxTile}**");
+            desc.AppendLine($"獎勵：**{run.MiniGame2048Reward}💰**");
+            desc.AppendLine();
+            desc.AppendLine("```");
+            for (int r = 0; r < 4; r++)
+            {
+                var rowStr = "";
+                for (int c = 0; c < 4; c++)
+                {
+                    int v = run.MiniGame2048Board[r*4+c];
+                    rowStr += v == 0 ? "  .  " : v.ToString().PadLeft(4) + " ";
+                }
+                desc.AppendLine(rowStr.TrimEnd());
+            }
+            desc.AppendLine("```");
+
+            var cb = new ComponentBuilder()
+                .WithButton("⬆️", $"tower_2048_{run.ChannelId}_up",    ButtonStyle.Primary, row: 0)
+                .WithButton("⬅️", $"tower_2048_{run.ChannelId}_left",  ButtonStyle.Primary, row: 1)
+                .WithButton("⬇️", $"tower_2048_{run.ChannelId}_down",  ButtonStyle.Primary, row: 1)
+                .WithButton("➡️", $"tower_2048_{run.ChannelId}_right", ButtonStyle.Primary, row: 1)
+                .WithButton("🏳️ 放棄", $"tower_2048_{run.ChannelId}_give_up", ButtonStyle.Danger, row: 2);
+
+            return (new EmbedBuilder()
+                .WithTitle("🎮 2048 爬塔挑戰")
+                .WithDescription(desc.ToString())
+                .WithColor(new Color(237, 194, 46))
+                .WithFooter($"{run.PlayerName} • 第 {run.CurrentFloor}/{run.MaxFloor} 層")
+                .Build(), cb);
+        }
+
+        public async Task<(Embed embed, ComponentBuilder component)> Handle2048Async(ulong channelId, string dir)
+        {
+            if (!_activeRuns.TryGetValue(channelId, out var run))
+                return ErrEmbed("找不到進行中的爬塔");
+
+            if (dir == "give_up")
+            {
+                run.State = TowerRunState.SelectingPath;
+                await SaveAsync(run);
+                return BuildPathEmbed(run, "🏳️ 放棄了 2048 挑戰，什麼獎勵都沒有。");
+            }
+
+            Apply2048Move(run, dir);
+            run.MiniGame2048MovesLeft--;
+
+            int maxTile = run.MiniGame2048Board.Max();
+            if (maxTile >= 32)
+            {
+                run.Gold += run.MiniGame2048Reward;
+                run.RunLog.Add($"🎮 2048 成功！+{run.MiniGame2048Reward}💰");
+                run.State = TowerRunState.SelectingPath;
+                await SaveAsync(run);
+                return BuildPathEmbed(run, $"🎉 太厲害了！達到了 **{maxTile}**！獲得 **+{run.MiniGame2048Reward}💰**！");
+            }
+
+            if (run.MiniGame2048MovesLeft <= 0)
+            {
+                run.State = TowerRunState.SelectingPath;
+                await SaveAsync(run);
+                return BuildPathEmbed(run, $"⏰ 用完了所有步數！最高方塊是 **{maxTile}**，差一點點就成功了……");
+            }
+
+            await SaveAsync(run);
+            return Build2048Embed(run);
+        }
+
+        // ── Mini-game: Minesweeper ──────────────────────────────
+
+        /// <summary>初始化地雷挑戰（由事件觸發）</summary>
+        private static void SetupMinesweeper(TowerRun run, int reward, int mineCount = 3)
+        {
+            // 3x3 grid
+            var board = Enumerable.Repeat(0, 9).ToList();
+            var minePositions = Enumerable.Range(0, 9).OrderBy(_ => _rng.Next()).Take(mineCount).ToList();
+            foreach (int pos in minePositions) board[pos] = -1;
+            // Calculate numbers
+            for (int i = 0; i < 9; i++)
+            {
+                if (board[i] == -1) continue;
+                int r = i / 3, c = i % 3, count = 0;
+                for (int dr = -1; dr <= 1; dr++) for (int dc = -1; dc <= 1; dc++)
+                {
+                    int nr = r+dr, nc = c+dc;
+                    if (nr>=0 && nr<3 && nc>=0 && nc<3 && board[nr*3+nc] == -1) count++;
+                }
+                board[i] = count;
+            }
+            run.MiniGameMineBoard = board;
+            run.MiniGameMineRevealed = Enumerable.Repeat(false, 9).ToList();
+            run.MiniGameMineSafeLeft = 5;
+            run.MiniGameMineReward = reward;
+        }
+
+        private (Embed embed, ComponentBuilder component) BuildMinesweeperEmbed(TowerRun run, string notice = "")
+        {
+            var desc = new StringBuilder();
+            if (!string.IsNullOrEmpty(notice)) desc.AppendLine(notice).AppendLine();
+            desc.AppendLine($"🎯 安全踩 **{run.MiniGameMineSafeLeft}** 步就能獲得 **{run.MiniGameMineReward}💰**！");
+            desc.AppendLine("3×3 地圖，裡面有 **3 個地雷**。踩到地雷 → 立即失敗！");
+            desc.AppendLine();
+
+            // Display revealed cells
+            string[] nums = { "⬜", "1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣" };
+            for (int r = 0; r < 3; r++)
+            {
+                for (int c = 0; c < 3; c++)
+                {
+                    int i = r*3+c;
+                    if (run.MiniGameMineRevealed[i])
+                    {
+                        int v = run.MiniGameMineBoard[i];
+                        desc.Append(v == -1 ? "💥" : (v == 0 ? "🟩" : nums[v]));
+                    }
+                    else desc.Append("⬛");
+                    desc.Append(" ");
+                }
+                desc.AppendLine();
+            }
+
+            var cb = new ComponentBuilder();
+            for (int r = 0; r < 3; r++)
+            {
+                var row = new ActionRowBuilder();
+                for (int c = 0; c < 3; c++)
+                {
+                    int i = r*3+c;
+                    bool revealed = run.MiniGameMineRevealed[i];
+                    row.WithButton(new ButtonBuilder()
+                        .WithLabel(revealed ? "✓" : $"{(char)('A'+i)}")
+                        .WithCustomId($"tower_mine_{run.ChannelId}_{i}")
+                        .WithStyle(revealed ? ButtonStyle.Secondary : ButtonStyle.Primary)
+                        .WithDisabled(revealed));
+                }
+                cb.AddRow(row);
+            }
+            cb.WithButton("🏳️ 放棄", $"tower_mine_{run.ChannelId}_give_up", ButtonStyle.Danger, row: 3);
+
+            return (new EmbedBuilder()
+                .WithTitle("💣 踩地雷挑戰！")
+                .WithDescription(desc.ToString())
+                .WithColor(new Color(100, 200, 100))
+                .WithFooter($"{run.PlayerName} • 第 {run.CurrentFloor}/{run.MaxFloor} 層")
+                .Build(), cb);
+        }
+
+        public async Task<(Embed embed, ComponentBuilder component)> HandleMinesweeperAsync(ulong channelId, string action)
+        {
+            if (!_activeRuns.TryGetValue(channelId, out var run))
+                return ErrEmbed("找不到進行中的爬塔");
+
+            if (action == "give_up")
+            {
+                run.State = TowerRunState.SelectingPath;
+                await SaveAsync(run);
+                return BuildPathEmbed(run, "🏳️ 你膽怯了，一步都沒踩就跑了。");
+            }
+
+            if (!int.TryParse(action, out int cellIdx) || cellIdx < 0 || cellIdx >= 9)
+                return ErrEmbed("無效操作");
+            if (run.MiniGameMineRevealed[cellIdx])
+                return BuildMinesweeperEmbed(run, "⚠️ 那格已經翻開了！");
+
+            run.MiniGameMineRevealed[cellIdx] = true;
+            int cellVal = run.MiniGameMineBoard[cellIdx];
+
+            if (cellVal == -1)
+            {
+                // 踩到地雷！揭示全部
+                for (int i = 0; i < 9; i++) run.MiniGameMineRevealed[i] = true;
+                run.State = TowerRunState.SelectingPath;
+                await SaveAsync(run);
+                return BuildPathEmbed(run, "💥 **踩到地雷了！** 爆炸聲在塔裡迴響，什麼獎勵都沒有……");
+            }
+
+            run.MiniGameMineSafeLeft--;
+            if (run.MiniGameMineSafeLeft <= 0)
+            {
+                run.Gold += run.MiniGameMineReward;
+                run.RunLog.Add($"💣 踩地雷挑戰成功！+{run.MiniGameMineReward}💰");
+                for (int i = 0; i < 9; i++) run.MiniGameMineRevealed[i] = true;
+                run.State = TowerRunState.SelectingPath;
+                await SaveAsync(run);
+                return BuildPathEmbed(run, $"🎉 安全通過！**+{run.MiniGameMineReward}💰** 獎勵到手！");
+            }
+
+            await SaveAsync(run);
+            return BuildMinesweeperEmbed(run, $"✅ 安全！還需再踩 **{run.MiniGameMineSafeLeft}** 步！");
+        }
+
+        // ── Mini-game: Quiz ────────────────────────────────────
+
+        private (Embed embed, ComponentBuilder component) BuildQuizEmbed(TowerRun run, string notice = "")
+        {
+            var desc = new StringBuilder();
+            if (!string.IsNullOrEmpty(notice)) desc.AppendLine(notice).AppendLine();
+            desc.AppendLine(run.MiniGameQuizQuestion);
+            desc.AppendLine();
+            string[] labels = { "A", "B", "C", "D" };
+            for (int i = 0; i < run.MiniGameQuizChoices.Count; i++)
+                desc.AppendLine($"**{labels[i]}. {run.MiniGameQuizChoices[i]}**");
+
+            var cb = new ComponentBuilder();
+            for (int i = 0; i < run.MiniGameQuizChoices.Count; i++)
+                cb.WithButton($"{labels[i]}. {run.MiniGameQuizChoices[i]}", $"tower_quiz_{run.ChannelId}_{i}", ButtonStyle.Primary, row: 0);
+            cb.WithButton("🚶 跳過", $"tower_quiz_{run.ChannelId}_skip", ButtonStyle.Secondary, row: 1);
+
+            return (new EmbedBuilder()
+                .WithTitle("🧠 知識問答")
+                .WithDescription(desc.ToString())
+                .WithColor(new Color(100, 100, 220))
+                .WithFooter($"{run.PlayerName} • 第 {run.CurrentFloor}/{run.MaxFloor} 層")
+                .Build(), cb);
+        }
+
+        public async Task<(Embed embed, ComponentBuilder component)> HandleQuizAsync(ulong channelId, string action)
+        {
+            if (!_activeRuns.TryGetValue(channelId, out var run))
+                return ErrEmbed("找不到進行中的爬塔");
+
+            if (action == "skip")
+            {
+                run.State = TowerRunState.SelectingPath;
+                await SaveAsync(run);
+                return BuildPathEmbed(run, "🚶 跳過了問題，繼續爬塔。");
+            }
+
+            if (!int.TryParse(action, out int choiceIdx) || choiceIdx < 0 || choiceIdx >= run.MiniGameQuizChoices.Count)
+                return ErrEmbed("無效選項");
+
+            bool correct = choiceIdx == run.MiniGameQuizAnswerIdx;
+            string answerLabel = $"**{run.MiniGameQuizChoices[run.MiniGameQuizAnswerIdx]}**";
+            run.State = TowerRunState.SelectingPath;
+            if (correct)
+            {
+                run.Gold += run.MiniGameQuizReward;
+                run.RunLog.Add($"🧠 答題正確！+{run.MiniGameQuizReward}💰");
+                await SaveAsync(run);
+                return BuildPathEmbed(run, $"✅ 答對了！正確答案是 {answerLabel}。**+{run.MiniGameQuizReward}💰** 入袋！");
+            }
+            else
+            {
+                await SaveAsync(run);
+                return BuildPathEmbed(run, $"❌ 答錯了！正確答案是 {answerLabel}。很可惜，下次加油！");
+            }
         }
 
         // ── Cursed Relics ─────────────────────────────────────

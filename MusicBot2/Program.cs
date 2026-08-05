@@ -144,7 +144,7 @@ public class Program
             .AddSingleton<GroqWhisperService>(sp =>
                 new GroqWhisperService(groqApiKey))
             .AddSingleton<PokeTowerService>(sp =>
-                new PokeTowerService(redisConn, sp.GetService<OpenRouterService>()))
+                new PokeTowerService(redisConn, sp.GetService<OpenRouterService>(), sp.GetService<GetChampService>()))
               .BuildServiceProvider();
 
         _googleAIStudioService = _services.GetRequiredService<GoogleAIStudioService>();
@@ -764,11 +764,11 @@ public class Program
                         int pi = int.Parse(rest[(under + 1)..]);
                         (tEmbed, tCb) = await towerSvc.HandlePassiveChoiceAsync(ch, pi);
                     }
-                    // tower_casino_{channelId}_{action}
+                    // tower_casino_{channelId}_{action}  (action 本身可能含 _ 如 bet_50)
                     else if (id.StartsWith("tower_casino_"))
                     {
                         var rest = id["tower_casino_".Length..];
-                        int under = rest.LastIndexOf('_');
+                        int under = rest.IndexOf('_');  // 第一個 _ 分隔 channelId 和 action
                         ulong ch = ulong.Parse(rest[..under]);
                         string action = rest[(under + 1)..];
                         (tEmbed, tCb) = await towerSvc.HandleCasinoAsync(ch, action);
@@ -781,6 +781,33 @@ public class Program
                         ulong ch = ulong.Parse(rest[..under]);
                         int ci = int.Parse(rest[(under + 1)..]);
                         (tEmbed, tCb) = await towerSvc.HandleCursedRelicChoiceAsync(ch, ci);
+                    }
+                    // tower_2048_{channelId}_{direction}  (direction: up/down/left/right/give_up)
+                    else if (id.StartsWith("tower_2048_"))
+                    {
+                        var rest = id["tower_2048_".Length..];
+                        int under = rest.IndexOf('_');
+                        ulong ch = ulong.Parse(rest[..under]);
+                        string dir = rest[(under + 1)..];
+                        (tEmbed, tCb) = await towerSvc.Handle2048Async(ch, dir);
+                    }
+                    // tower_mine_{channelId}_{cellIdx or give_up}
+                    else if (id.StartsWith("tower_mine_"))
+                    {
+                        var rest = id["tower_mine_".Length..];
+                        int under = rest.IndexOf('_');
+                        ulong ch = ulong.Parse(rest[..under]);
+                        string action = rest[(under + 1)..];
+                        (tEmbed, tCb) = await towerSvc.HandleMinesweeperAsync(ch, action);
+                    }
+                    // tower_quiz_{channelId}_{choiceIdx or skip}
+                    else if (id.StartsWith("tower_quiz_"))
+                    {
+                        var rest = id["tower_quiz_".Length..];
+                        int under = rest.IndexOf('_');
+                        ulong ch = ulong.Parse(rest[..under]);
+                        string action = rest[(under + 1)..];
+                        (tEmbed, tCb) = await towerSvc.HandleQuizAsync(ch, action);
                     }
                 }
                 catch (Exception ex)
