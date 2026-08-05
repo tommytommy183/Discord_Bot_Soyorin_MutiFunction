@@ -190,6 +190,7 @@ namespace MusicBot2.Service
             ["steel"]="鋼", ["fairy"]="妖精"
         };
 
+        #region 靜態資料表（球種 / 技能池 / 敵人池 / 屬性相剋）
         // ── 球種設定 ───────────────────────────────────────────
         private static readonly Dictionary<string, (string DisplayName, string Emoji, float Rate)> _balls = new()
         {
@@ -591,6 +592,9 @@ namespace MusicBot2.Service
             return c;
         }
 
+        #endregion
+
+        #region 事件池（含小遊戲特殊事件）
         // ── 事件池（帶選項） ──────────────────────────────────────
         private record RelicDef(string Id, string Name, string Emoji, string Desc);
         private record PassiveDef(string Id, string Name, string Emoji, string Desc);
@@ -1292,9 +1296,12 @@ namespace MusicBot2.Service
                 }),
         };
 
+        #endregion
+
         private static OpenRouterService _aiService;
         private static GetChampService _champService;
 
+        #region 建構子 / 初始化
         // ── Constructor ────────────────────────────────────────
         public PokeTowerService(string redisConnectionString = null, OpenRouterService aiService = null, GetChampService champService = null)
         {
@@ -1314,7 +1321,9 @@ namespace MusicBot2.Service
             _ = LoadRunsAsync();
         }
 
-        // ── Public API ─────────────────────────────────────────
+        #endregion
+
+        #region 核心爬塔流程（開始 / 路徑選擇 / 被動）
 
         public bool HasActiveRun(ulong channelId) => _activeRuns.ContainsKey(channelId);
         public TowerRun GetRun(ulong channelId) => _activeRuns.TryGetValue(channelId, out var r) ? r : null;
@@ -1579,6 +1588,10 @@ namespace MusicBot2.Service
             }
             return ErrEmbed("未知的路徑選擇");
         }
+
+        #endregion
+
+        #region 戰鬥系統
 
         /// <summary>戰鬥選技能</summary>
         public async Task<(Embed embed, ComponentBuilder component)> HandleMoveAsync(
@@ -1894,6 +1907,10 @@ namespace MusicBot2.Service
             return BuildBattleEmbed(run);
         }
 
+        #endregion
+
+        #region 技能獎勵 / 學習
+
         /// <summary>選擇技能獎勵（0-2=選技能, 3=跳過）</summary>
         public async Task<(Embed embed, ComponentBuilder component)> HandleMoveRewardAsync(
             ulong channelId, int idx)
@@ -2005,6 +2022,10 @@ namespace MusicBot2.Service
             return BuildPathEmbed(run);
         }
 
+        #endregion
+
+        #region 捕獲系統
+
         /// <summary>投球捕獲（ballKey = "normal"/"super"/"ultra"/"master"/"pass"）</summary>
         public async Task<(Embed embed, ComponentBuilder component)> HandleCatchAsync(
             ulong channelId, string ballKey)
@@ -2108,6 +2129,10 @@ namespace MusicBot2.Service
             return BuildPathEmbed(run, $"🔄 釋放了 **{releasedName}**，🎉 捕獲了 **{newPoke.Name}**！");
         }
 
+        #endregion
+
+        #region 事件處理
+
         /// <summary>選擇事件選項（choiceIdx）</summary>
         public async Task<(Embed embed, ComponentBuilder component)> HandleEventChoiceAsync(
             ulong channelId, int choiceIdx)
@@ -2162,6 +2187,10 @@ namespace MusicBot2.Service
             await SaveAsync(run);
             return BuildPathEmbed(run, eventHeader);
         }
+
+        #endregion
+
+        #region 休息 & 商店
 
         /// <summary>商店購買</summary>
         public async Task<(Embed embed, ComponentBuilder component)> HandleShopItemAsync(
@@ -2292,6 +2321,10 @@ namespace MusicBot2.Service
             return BuildCurrentStateEmbed(channelId);
         }
 
+        #endregion
+
+        #region 威力升級系統
+
         /// <summary>進入威力升級介面（來自商店或休息）</summary>
         public async Task<(Embed embed, ComponentBuilder component)> EnterPowerUpgradeAsync(ulong channelId, string returnTo)
         {
@@ -2413,6 +2446,9 @@ namespace MusicBot2.Service
             return true;
         }
 
+        #endregion
+
+        #region 神器系統（Relic）
         // ── Relic system ──────────────────────────────────────
 
         private static bool HasRelic(TowerRun run, string id) => run.RelicIds.Contains(id);
@@ -2509,6 +2545,9 @@ namespace MusicBot2.Service
             return BuildPowerUpgradeEmbed(run);
         }
 
+        #endregion
+
+        #region 賭場（Casino）
         // ── Casino ────────────────────────────────────────────
 
         private (Embed embed, ComponentBuilder component) BuildCasinoEmbed(TowerRun run, string lastResult = "")
@@ -2521,16 +2560,28 @@ namespace MusicBot2.Service
             ComponentBuilder cb;
             if (run.CasinoBet == 0)
             {
-                // Phase 1: 選下注金額
+                // Phase 1: 選下注金額（動態去重，避免 CustomId 重複）
                 desc.AppendLine("🎰 **選擇你的籌碼：**（贏 = 籌碼×2 進袋，輸 = 籌碼全沒）");
-                int q = Math.Max(5, run.Gold / 4);
-                int h = Math.Max(5, run.Gold / 2);
-                int a = run.Gold;
-                cb = new ComponentBuilder()
-                    .WithButton($"🟡 小注 {q}💰（贏+{q}）", $"tower_casino_{run.ChannelId}_bet_{q}", run.Gold >= 5 ? ButtonStyle.Primary : ButtonStyle.Secondary, row: 0, disabled: run.Gold < 5)
-                    .WithButton($"🟠 中注 {h}💰（贏+{h}）", $"tower_casino_{run.ChannelId}_bet_{h}", run.Gold >= 5 ? ButtonStyle.Primary : ButtonStyle.Secondary, row: 0, disabled: run.Gold < 5)
-                    .WithButton($"🔴 全押 {a}💰（贏+{a}）", $"tower_casino_{run.ChannelId}_bet_{a}", run.Gold > 0 ? ButtonStyle.Danger : ButtonStyle.Secondary, row: 1, disabled: run.Gold == 0)
-                    .WithButton("🚪 離開賭場", $"tower_casino_{run.ChannelId}_leave", ButtonStyle.Secondary, row: 1);
+                // 建立不重複的下注選項：固定 10、金幣一半、全押
+                var betOptions = new List<(int Amount, string Label, ButtonStyle Style)>();
+                var seenAmounts = new HashSet<int>();
+                void AddBet(int amt, string label, ButtonStyle style)
+                {
+                    if (amt > 0 && amt <= run.Gold && seenAmounts.Add(amt))
+                        betOptions.Add((amt, label, style));
+                }
+                AddBet(10,            "🟡 小注 10💰",                 ButtonStyle.Primary);
+                AddBet(run.Gold / 2,  $"🟠 半押 {run.Gold / 2}💰",   ButtonStyle.Primary);
+                AddBet(run.Gold,      $"🔴 全押 {run.Gold}💰",        ButtonStyle.Danger);
+
+                cb = new ComponentBuilder();
+                bool canBet = run.Gold > 0;
+                if (betOptions.Count == 0)
+                    desc.AppendLine("💸 金幣不足，無法下注！");
+                else
+                    foreach (var (amt, lbl, sty) in betOptions)
+                        cb.WithButton($"{lbl}（贏+{amt}）", $"tower_casino_{run.ChannelId}_bet_{amt}", canBet ? sty : ButtonStyle.Secondary, row: 0, disabled: !canBet);
+                cb.WithButton("🚪 離開賭場", $"tower_casino_{run.ChannelId}_leave", ButtonStyle.Secondary, row: 1);
             }
             else
             {
@@ -2623,6 +2674,9 @@ namespace MusicBot2.Service
             return ErrEmbed("未知的賭場操作");
         }
 
+        #endregion
+
+        #region 小遊戲：2048
         // ── Mini-game: 2048 ────────────────────────────────────
 
         /// <summary>初始化2048爬塔挑戰（由事件觸發）</summary>
@@ -2764,6 +2818,9 @@ namespace MusicBot2.Service
             return Build2048Embed(run);
         }
 
+        #endregion
+
+        #region 小遊戲：踩地雷
         // ── Mini-game: Minesweeper ──────────────────────────────
 
         /// <summary>初始化地雷挑戰（由事件觸發）</summary>
@@ -2887,6 +2944,9 @@ namespace MusicBot2.Service
             return BuildMinesweeperEmbed(run, $"✅ 安全！還需再踩 **{run.MiniGameMineSafeLeft}** 步！");
         }
 
+        #endregion
+
+        #region 小遊戲：問答（英雄 / 單字）
         // ── Mini-game: Quiz ────────────────────────────────────
 
         private (Embed embed, ComponentBuilder component) BuildQuizEmbed(TowerRun run, string notice = "")
@@ -2944,6 +3004,9 @@ namespace MusicBot2.Service
             }
         }
 
+        #endregion
+
+        #region 詛咒神器（Cursed Relic）
         // ── Cursed Relics ─────────────────────────────────────
 
         private (Embed embed, ComponentBuilder component) BuildCursedRelicEmbed(TowerRun run)
@@ -3069,7 +3132,9 @@ namespace MusicBot2.Service
             return (embed, cb);
         }
 
-        // ── Private helpers ───────────────────────────────────
+        #endregion
+
+        #region 通用輔助方法
 
         private TowerPokemon ConvertPokemon(PokeGamePokemon src) => new()
         {
@@ -3320,7 +3385,9 @@ namespace MusicBot2.Service
             _              => ("?", ButtonStyle.Secondary, "?"),
         };
 
-        // ── Embed builders ────────────────────────────────────
+        #endregion
+
+        #region Embed 建構器
 
         private (Embed embed, ComponentBuilder component) BuildPathEmbed(TowerRun run, string extra = "")
         {
@@ -3801,7 +3868,9 @@ namespace MusicBot2.Service
             (new EmbedBuilder().WithTitle("❌ 錯誤").WithDescription(msg).WithColor(Color.Red).Build(),
              new ComponentBuilder());
 
-        // ── Persistence ───────────────────────────────────────
+        #endregion
+
+        #region 資料持久化（Redis / 記憶體）
 
         private async Task SaveAsync(TowerRun run)
         {
@@ -3842,5 +3911,7 @@ namespace MusicBot2.Service
             }
             catch (Exception ex) { Console.WriteLine($"[Tower] Redis load: {ex.Message}"); }
         }
+
+        #endregion
     }
 }
