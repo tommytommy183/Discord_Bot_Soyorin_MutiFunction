@@ -305,10 +305,81 @@ namespace MusicBot2.Service
             new() { Name="鐵頭",       Type="鋼",     Power=80,  Category="Physical", Emoji="⚙️", MaxPP=15 },
             new() { Name="閃光炮",     Type="鋼",     Power=80,  Category="Special",  Emoji="💡", MaxPP=10 },
             new() { Name="隕石衝",     Type="鋼",     Power=90,  Category="Physical", Emoji="🌠", MaxPP=10 },
+            new() { Name="鋼翼",       Type="鋼",     Power=70,  Category="Physical", Emoji="🪽",  MaxPP=15 },
+            new() { Name="磁鐵炸彈",   Type="鋼",     Power=60,  Category="Physical", Emoji="🧲", MaxPP=20 },
+            new() { Name="子彈拳",     Type="鋼",     Power=40,  Category="Physical", Emoji="🔩", MaxPP=20 },
             // 妖精
             new() { Name="月亮之力",   Type="妖精",   Power=95,  Category="Special",  Emoji="🌸", MaxPP=10 },
             new() { Name="粗野播弄",   Type="妖精",   Power=90,  Category="Physical", Emoji="🎀", MaxPP=10 },
             new() { Name="耀眼魅力",   Type="妖精",   Power=80,  Category="Special",  Emoji="✨", MaxPP=10 },
+            new() { Name="夢幻接觸",   Type="妖精",   Power=90,  Category="Physical", Emoji="🌷", MaxPP=10 },
+            new() { Name="少女之吻",   Type="妖精",   Power=40,  Category="Special",  Emoji="💋", MaxPP=20 },
+            new() { Name="迷惑射線",   Type="妖精",   Power=80,  Category="Special",  Emoji="🌈", MaxPP=10 },
+            // ── 補充：每屬性再擴充 ──────────────────────────────────
+            // 一般
+            new() { Name="快速攻擊",   Type="一般",   Power=40,  Category="Physical", Emoji="💨", MaxPP=20 },
+            new() { Name="歸還",       Type="一般",   Power=102, Category="Physical", Emoji="🤝", MaxPP=15 },
+            new() { Name="鬼火擊",     Type="一般",   Power=70,  Category="Physical", Emoji="🔥", MaxPP=15 },
+            // 火
+            new() { Name="熾焰決戰",   Type="火",     Power=130, Category="Special",  Emoji="🌋", MaxPP=5  },
+            new() { Name="旭日一擊",   Type="火",     Power=120, Category="Physical", Emoji="☀️", MaxPP=5  },
+            new() { Name="火炎旋渦",   Type="火",     Power=35,  Category="Special",  Emoji="🌀", MaxPP=15 },
+            // 水
+            new() { Name="泡沫光線",   Type="水",     Power=65,  Category="Special",  Emoji="🫧", MaxPP=15 },
+            new() { Name="潛水",       Type="水",     Power=80,  Category="Physical", Emoji="🤿", MaxPP=10 },
+            new() { Name="急流",       Type="水",     Power=40,  Category="Physical", Emoji="💦", MaxPP=20 },
+            // 電
+            new() { Name="放電",       Type="電",     Power=80,  Category="Special",  Emoji="🌩️", MaxPP=15 },
+            new() { Name="電磁炮",     Type="電",     Power=120, Category="Special",  Emoji="🔫", MaxPP=5  },
+            new() { Name="電網",       Type="電",     Power=55,  Category="Special",  Emoji="🕸️", MaxPP=15 },
+            // 草
+            new() { Name="奇異植物",   Type="草",     Power=75,  Category="Special",  Emoji="🌱", MaxPP=10 },
+            new() { Name="花瓣舞",     Type="草",     Power=120, Category="Special",  Emoji="🌺", MaxPP=10 },
+            new() { Name="草結",       Type="草",     Power=80,  Category="Special",  Emoji="🌿", MaxPP=20 },
+            // 冰
+            new() { Name="霧化",       Type="冰",     Power=55,  Category="Special",  Emoji="🌫️", MaxPP=15 },
+            new() { Name="極寒之地",   Type="冰",     Power=70,  Category="Special",  Emoji="🥶", MaxPP=10 },
+            new() { Name="冰封世界",   Type="冰",     Power=95,  Category="Special",  Emoji="🌨️", MaxPP=10 },
+            // 格鬥
+            new() { Name="腦力衝擊",   Type="格鬥",   Power=120, Category="Special",  Emoji="🧠", MaxPP=5  },
+            new() { Name="真空波",     Type="格鬥",   Power=40,  Category="Special",  Emoji="🌬️", MaxPP=20 },
+            new() { Name="旋風踢",     Type="格鬥",   Power=85,  Category="Physical", Emoji="🦵", MaxPP=10 },
+            // 超能力
+            new() { Name="未來預知",   Type="超能力", Power=120, Category="Special",  Emoji="🔭", MaxPP=10 },
+            new() { Name="意念頭槌",   Type="超能力", Power=80,  Category="Special",  Emoji="🧿", MaxPP=10 },
+            new() { Name="夢幻之吻",   Type="超能力", Power=100, Category="Special",  Emoji="💭", MaxPP=10 },
+            // 龍
+            new() { Name="龍尾",       Type="龍",     Power=60,  Category="Physical", Emoji="🐲", MaxPP=10 },
+            new() { Name="神秘龍脈",   Type="龍",     Power=130, Category="Special",  Emoji="🌌", MaxPP=5  },
+            new() { Name="龍之怒",     Type="龍",     Power=100, Category="Special",  Emoji="🔴", MaxPP=10 },
+            // 惡
+            new() { Name="奸詐拳",     Type="惡",     Power=95,  Category="Physical", Emoji="🤛", MaxPP=15 },
+            new() { Name="追打",       Type="惡",     Power=40,  Category="Physical", Emoji="👣", MaxPP=20 },
+            new() { Name="橫掃千軍",   Type="惡",     Power=70,  Category="Physical", Emoji="⚔️", MaxPP=15 },
+            // 幽靈
+            new() { Name="幽冥爆破",   Type="幽靈",   Power=110, Category="Physical", Emoji="💣", MaxPP=5  },
+            new() { Name="惡魔之吻",   Type="幽靈",   Power=65,  Category="Special",  Emoji="😈", MaxPP=15 },
+            new() { Name="影子偷襲",   Type="幽靈",   Power=40,  Category="Physical", Emoji="🌑", MaxPP=20 },
+            // 岩石
+            new() { Name="古代力量",   Type="岩石",   Power=60,  Category="Special",  Emoji="⛰️", MaxPP=5  },
+            new() { Name="猛岩炮彈",   Type="岩石",   Power=100, Category="Physical", Emoji="🪨", MaxPP=5  },
+            new() { Name="礫石衝",     Type="岩石",   Power=50,  Category="Physical", Emoji="💢", MaxPP=20 },
+            // 地面
+            new() { Name="土撥球",     Type="地面",   Power=55,  Category="Special",  Emoji="🟤", MaxPP=15 },
+            new() { Name="礫石擊",     Type="地面",   Power=60,  Category="Physical", Emoji="🌏", MaxPP=20 },
+            new() { Name="流沙地獄",   Type="地面",   Power=35,  Category="Physical", Emoji="⌛", MaxPP=15 },
+            // 飛行
+            new() { Name="翅膀攻擊",   Type="飛行",   Power=60,  Category="Physical", Emoji="🪶", MaxPP=20 },
+            new() { Name="燕返",       Type="飛行",   Power=60,  Category="Physical", Emoji="🐦", MaxPP=20 },
+            new() { Name="空氣切割",   Type="飛行",   Power=75,  Category="Special",  Emoji="✈️", MaxPP=15 },
+            // 蟲
+            new() { Name="蟲爆",       Type="蟲",     Power=90,  Category="Special",  Emoji="🐛", MaxPP=10 },
+            new() { Name="信號束",     Type="蟲",     Power=75,  Category="Special",  Emoji="📡", MaxPP=15 },
+            new() { Name="蟲咬",       Type="蟲",     Power=60,  Category="Physical", Emoji="🐝", MaxPP=20 },
+            // 毒
+            new() { Name="毒素衝擊",   Type="毒",     Power=120, Category="Physical", Emoji="💀", MaxPP=5  },
+            new() { Name="酸液",       Type="毒",     Power=40,  Category="Special",  Emoji="🧪", MaxPP=20 },
+            new() { Name="污泥炸彈",   Type="毒",     Power=90,  Category="Special",  Emoji="💚", MaxPP=10 },
         };
 
         private static readonly List<RelicDef> _relics = new()
@@ -431,6 +502,18 @@ namespace MusicBot2.Service
             ("獨角蟲",   new[]{"蟲","毒"},      395, 15),
             ("喇叭芽",   new[]{"草","毒"},      300, 69),
             ("海星星",   new[]{"水"},           340, 120),
+            ("喵喵",     new[]{"一般"},         290, 52),
+            ("謎擬Q",    new[]{"超能力"},       320, 122),
+            ("小拳石",   new[]{"岩石"},         300, 74),
+            ("哈達",     new[]{"一般"},         253, 100),
+            ("菊草葉",   new[]{"草"},           318, 152),
+            ("火球鼠",   new[]{"火"},           309, 155),
+            ("波克比",   new[]{"水"},           314, 158),
+            ("幸福蛋",   new[]{"一般"},         430, 113),
+            ("人偶",     new[]{"超能力"},       328, 202),
+            ("毛毛蟲",   new[]{"蟲"},           195, 10),
+            ("鐵甲蛹",   new[]{"蟲"},           205, 11),
+            ("鴿子",     new[]{"一般","飛行"},  251, 16),
             // 中階 (floor 4-6)  430 <= StatTotal < 545
             ("暴鯉龍",   new[]{"水","飛行"},    540, 130),
             ("拉普拉斯", new[]{"水","冰"},      535, 131),
@@ -448,6 +531,21 @@ namespace MusicBot2.Service
             ("冰蝎王",   new[]{"冰"},           510, 473),
             ("苦栗寶",   new[]{"草"},           405, 470),
             ("格鬥鼬",   new[]{"格鬥"},         484, 286),
+            ("妙蛙花",   new[]{"草","毒"},      525, 3),
+            ("水箭龜",   new[]{"水"},           530, 9),
+            ("水君",     new[]{"水"},           530, 245),
+            ("雷公",     new[]{"電"},           530, 243),
+            ("炎帝",     new[]{"火"},           530, 244),
+            ("索羅亞克", new[]{"惡"},           510, 571),
+            ("鐵臂膀",   new[]{"龍","格鬥"},    490, 783),
+            ("蒼翠鳥",   new[]{"水","飛行"},    500, 130),
+            ("伊布",     new[]{"一般"},         525, 133),
+            ("電氣龍",   new[]{"電"},           490, 135),
+            ("土地雲(戰) ",new[]{"地面","飛行"},580, 645),
+            ("沙奈朵",   new[]{"超能力","妖精"},518, 282),
+            ("颶風雲",   new[]{"電","飛行"},    580, 641),
+            ("鐵甲弄蝶", new[]{"蟲","鋼"},      575, 205),
+            ("泥偶巨人", new[]{"地面"},         580, 260),
             // 高階 (floor 7-9)  545 <= StatTotal < 590
             ("怪力",     new[]{"格鬥"},         505, 68),
             ("耿鬼",     new[]{"幽靈","毒"},    500, 94),
@@ -467,14 +565,46 @@ namespace MusicBot2.Service
             ("鐵甲弄蝶", new[]{"蟲","鋼"},      575, 205),
             ("泥偶巨人", new[]{"地面"},         580, 260),
             // Boss (floor 10, 20)  StatTotal >= 590
-            ("快龍",     new[]{"龍","飛行"},    600, 149),
-            ("超夢",     new[]{"超能力"},       680, 150),
-            ("班基拉斯", new[]{"岩石","惡"},    600, 248),
-            ("烈咬陸鯊", new[]{"龍","地面"},    600, 445),
-            ("暴飛龍",   new[]{"龍","飛行"},    600, 373),
-            ("河馬獸",   new[]{"地面"},         600, 450),
-            ("水箭龜Mega",new[]{"水"},          630, 9),
-            ("噴火龍X",  new[]{"火","龍"},      634, 6),
+            // ── 擬龍 / 偽傳說 ──
+            ("快龍",       new[]{"龍","飛行"},      600, 149),
+            ("班基拉斯",   new[]{"岩石","惡"},      600, 248),
+            ("烈咬陸鯊",   new[]{"龍","地面"},      600, 445),
+            ("暴飛龍",     new[]{"龍","飛行"},      600, 373),
+            ("鋼鐵蛇",     new[]{"鋼","超能力"},    600, 376),
+            ("藤藤蛇",     new[]{"龍"},             600, 706),
+            ("骸骨龍",     new[]{"龍","幽靈"},      600, 887),
+            ("鬥鬥蝦",     new[]{"龍","格鬥"},      600, 784),
+            // ── 傳說 ──
+            ("超夢",       new[]{"超能力"},         680, 150),
+            ("夢幻",       new[]{"超能力"},         600, 151),
+            ("路基亞",     new[]{"超能力","飛行"},  680, 249),
+            ("鳳王",       new[]{"火","飛行"},      680, 250),
+            ("固拉多",     new[]{"地面"},           670, 383),
+            ("蓋歐卡",     new[]{"水"},             670, 382),
+            ("烈空坐",     new[]{"龍","飛行"},      680, 384),
+            ("帝牙盧卡",   new[]{"鋼","龍"},        680, 483),
+            ("帕路奇亞",   new[]{"水","龍"},        680, 484),
+            ("騎拉帝納",   new[]{"幽靈","龍"},      680, 487),
+            ("雷希拉姆",   new[]{"龍","火"},        680, 643),
+            ("捷克羅姆",   new[]{"龍","電"},        680, 644),
+            ("酋雷姆",     new[]{"龍","冰"},        660, 646),
+            ("哲爾尼亞斯", new[]{"妖精"},           680, 716),
+            ("伊裂卡爾",   new[]{"惡","飛行"},      680, 717),
+            ("索爾迦雷歐", new[]{"超能力","鋼"},    680, 791),
+            ("露奈雅拉",   new[]{"超能力","幽靈"},  680, 792),
+            ("藏瑪然特",   new[]{"妖精","鋼"},      720, 888),
+            ("蒼響",       new[]{"格鬥","鋼"},      720, 889),
+            ("依布",       new[]{"毒","龍"},        690, 890),
+            ("天冠馬",     new[]{"超能力","幽靈"},  680, 898),
+            ("亢龍",       new[]{"格鬥","龍"},      670, 1007),
+            ("騰飛龍",     new[]{"電","龍"},        670, 1008),
+            // ── Mega 進化 ──
+            ("水箭龜Mega", new[]{"水"},             630, 9),
+            ("噴火龍X",    new[]{"火","龍"},        634, 6),
+            ("噴火龍Y",    new[]{"火","飛行"},      634, 6),
+            ("超夢X",      new[]{"超能力","格鬥"},  780, 150),
+            ("烈咬陸鯊Mega",new[]{"龍","地面"},     700, 445),
+            ("班基拉斯Mega",new[]{"岩石","惡"},     700, 248),
         };
 
         // ── 神獸池 ────────────────────────────────────────────
@@ -2217,6 +2347,7 @@ namespace MusicBot2.Service
                         int cost = ShopCost(run, 25, "new_move");
                         if (run.Gold < cost) return BuildShopEmbed(run, $"💸 金幣不足！需要 {cost} 金幣。");
                         run.Gold -= cost;
+                        run.ShopBuyCounts ??= new();
                         run.ShopBuyCounts["new_move"] = run.ShopBuyCounts.GetValueOrDefault("new_move", 0) + 1;
                         var movePool = PickMoves(run.ActivePokemon.Types);
                         run.PendingMoveRewards = movePool.OrderBy(_ => _rng.Next()).Take(3).ToList();
@@ -2242,6 +2373,7 @@ namespace MusicBot2.Service
             }
 
             // 每購買一次，下次購買同商品+10💰（new_move 已在 case 內自行處理）
+            run.ShopBuyCounts ??= new();
             if (itemKey != "leave" && itemKey != "new_move")
                 run.ShopBuyCounts[itemKey] = run.ShopBuyCounts.GetValueOrDefault(itemKey, 0) + 1;
             if (itemKey == "leave") run.State = TowerRunState.SelectingPath;
@@ -2357,13 +2489,16 @@ namespace MusicBot2.Service
                 }
                 if (ret == "shop")
                 {
-                    if (run.Gold < 20)
+                    int cost = ShopCost(run, 20, "powerup");
+                    if (run.Gold < cost)
                     {
                         run.State = TowerRunState.SelectingPowerUpgrade;
                         run.PowerUpgradeReturn = ret;
-                        return BuildPowerUpgradeEmbed(run, "金幣不足！需要 20💰");
+                        return BuildPowerUpgradeEmbed(run, $"金幣不足！需要 {cost}💰");
                     }
-                    run.Gold -= 20;
+                    run.Gold -= cost;
+                    run.ShopBuyCounts ??= new();
+                    run.ShopBuyCounts["powerup"] = run.ShopBuyCounts.GetValueOrDefault("powerup", 0) + 1;
                 }
                 m.Power += 20;
                 m.UpgradeCount++;
@@ -2455,6 +2590,7 @@ namespace MusicBot2.Service
         private static bool HasPassive(TowerRun run, string id) => run.PassiveId == id;
         private static int ShopCost(TowerRun run, int baseCost, string itemKey = "")
         {
+            run.ShopBuyCounts ??= new();   // 舊存檔反序列化後可能為 null
             int cost = baseCost;
             if (!string.IsNullOrEmpty(itemKey))
                 cost += run.ShopBuyCounts.GetValueOrDefault(itemKey, 0) * 10;
@@ -3589,6 +3725,7 @@ namespace MusicBot2.Service
             int cNormal     = ShopCost(run, 8,  "buy_normal");
             int cSuper      = ShopCost(run, 15, "buy_super");
             int cUltra      = ShopCost(run, 25, "buy_ultra");
+            int cPowerUp    = ShopCost(run, 20, "powerup");
             desc.AppendLine("**商品：**");
             desc.AppendLine($"💊 **全回復** — HP完全恢復 ({cHealFull}💰)");
             desc.AppendLine($"🧃 **超級樹果** — 恢復50% HP ({cHealHalf}💰)");
@@ -3597,7 +3734,7 @@ namespace MusicBot2.Service
             desc.AppendLine($"⚽ **普通球×3** — 30%捕獲率 ({cNormal}💰)");
             desc.AppendLine($"🔵 **超級球×2** — 55%捕獲率 ({cSuper}💰)");
             desc.AppendLine($"🟡 **高級球×1** — 75%捕獲率 ({cUltra}💰)");
-            desc.AppendLine("⚡ **強化招式** — 選一招威力+20 (20💰)");
+            desc.AppendLine($"⚡ **強化招式** — 選一招威力+20 ({cPowerUp}💰)");
             desc.AppendLine($"\n現有球：{BallsDisplay(run)}");
 
             var cb = new ComponentBuilder()
@@ -3608,7 +3745,7 @@ namespace MusicBot2.Service
                 .WithButton($"⚽ 普通球×3({cNormal}💰)",   $"tower_shop_{run.ChannelId}_buy_normal", ButtonStyle.Secondary, row: 2)
                 .WithButton($"🔵 超級球×2({cSuper}💰)",    $"tower_shop_{run.ChannelId}_buy_super",  ButtonStyle.Primary,   row: 2)
                 .WithButton($"🟡 高級球×1({cUltra}💰)",    $"tower_shop_{run.ChannelId}_buy_ultra",  ButtonStyle.Primary,   row: 2)
-                .WithButton("⚡ 強化招式(20💰)",            $"tower_powerup_{run.ChannelId}_shop",    ButtonStyle.Primary,   row: 3)
+                .WithButton($"⚡ 強化招式({cPowerUp}💰)",    $"tower_powerup_{run.ChannelId}_shop",    ButtonStyle.Primary,   row: 3)
                 .WithButton("離開商店", $"tower_shop_{run.ChannelId}_leave", ButtonStyle.Danger, row: 4);
 
             return (new EmbedBuilder()
