@@ -2497,7 +2497,7 @@ namespace MusicBot2.Service
                 foreach (var member in run.Party)
                 {
                     member.MaxHP += 8; member.CurrentHP = Math.Min(member.CurrentHP + 8, member.MaxHP);
-                    member.Attack += 3; member.Defense += 3; member.SpAttack += 3; member.SpDefense += 3; member.Speed += 3;
+                    member.Attack += 3; member.Defense += 3; member.SpecialAttack += 3; member.SpecialDefense += 3; member.Speed += 3;
                 }
                 if (HasRelic(run, "relic_scholar"))
                     foreach (var pk in run.Party) foreach (var mv in pk.Moves) { mv.MaxPP += 5; mv.CurrentPP = Math.Min(mv.MaxPP, mv.CurrentPP + 5); }
