@@ -2482,10 +2482,32 @@ namespace MusicBot2.Service
 
             var choice = ev.Choices[choiceIdx];
             string result = await choice.Apply(run);
+
+            // 事件完成也獲得與戰鬥相同的 EXP
+            int eventExpGain = 15 + run.CurrentFloor * 8;
+            if (HasPassive(run, "passive_genius")) eventExpGain *= 2;
+            if (HasRelic(run, "relic_exp_boost")) eventExpGain = (int)(eventExpGain * 1.5f);
+            if (run.CursedRelicIds.Contains("curse_exp_drain")) eventExpGain = (int)(eventExpGain * 0.5f);
+            run.Exp += eventExpGain;
+            var eventLevelUpMsg = new StringBuilder();
+            while (run.Exp >= run.ExpToNext)
+            {
+                run.Exp -= run.ExpToNext;
+                run.Level++;
+                foreach (var member in run.Party)
+                {
+                    member.MaxHP += 8; member.CurrentHP = Math.Min(member.CurrentHP + 8, member.MaxHP);
+                    member.Attack += 3; member.Defense += 3; member.SpAttack += 3; member.SpDefense += 3; member.Speed += 3;
+                }
+                if (HasRelic(run, "relic_scholar"))
+                    foreach (var pk in run.Party) foreach (var mv in pk.Moves) { mv.MaxPP += 5; mv.CurrentPP = Math.Min(mv.MaxPP, mv.CurrentPP + 5); }
+                eventLevelUpMsg.Append($" ⬆️ **Lv.{run.Level}！全隊能力上升！**");
+            }
+
             run.RunLog.Add($"{ev.Emoji} 第{run.CurrentFloor}層【{ev.Title}】→ {choice.Label}");
             run.UsedEventIndices.Add(run.PendingEventIdx);
             run.PendingEventIdx = -1;
-            string eventHeader = $"{ev.Emoji} **【{ev.Title}】**\n> {choice.Emoji} {choice.Label}\n\n{result}";
+            string eventHeader = $"{ev.Emoji} **【{ev.Title}】**\n> {choice.Emoji} {choice.Label}\n\n{result}\n✨ 完成事件，獲得 **{eventExpGain} EXP**{eventLevelUpMsg}";
             // If the event set up a catch (e.g. legendary encounter), route to catch screen
             if (run.PendingCatch != null)
             {
