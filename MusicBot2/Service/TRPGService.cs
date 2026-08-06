@@ -419,7 +419,7 @@ SAN 值（0-100）：
                    $"⚔️ 技能: {string.Join("、", creatorCharacter.ClassAbilities)}";
         }
 
-        /// <summary>
+        /// <summary> 
         /// 生成遊戲開場
         /// </summary>
         private async Task<string> GenerateOpeningAsync(string playerName, TRPGClass playerClass)
