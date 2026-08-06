@@ -1141,10 +1141,28 @@ public class Program
             // 如果訊息不是指令，則視為冒險行動
             if (!message.Content.StartsWith("/"))
             {
-                var response = await _trpgService.ProcessAdventureActionAsync(message.Channel.Id, trpgUser, message.Content);
-                if (!string.IsNullOrEmpty(response))
+                var (trpgText, trpgImagePrompt) = await _trpgService.ProcessAdventureActionAsync(message.Channel.Id, trpgUser, message.Content);
+                if (!string.IsNullOrEmpty(trpgText))
                 {
-                    await message.Channel.SendMessageAsync(response);
+                    await message.Channel.SendMessageAsync(trpgText);
+                    // 異步生成並發送場景圖片
+                    if (!string.IsNullOrWhiteSpace(trpgImagePrompt))
+                    {
+                        _ = Task.Run(async () =>
+                        {
+                            try
+                            {
+                                var imgSvc = _services.GetRequiredService<AIImageService>();
+                                var stream = await imgSvc.GenerateImageAsync(trpgImagePrompt);
+                                if (stream != null)
+                                    await message.Channel.SendFileAsync(stream, "scene.png", $"🖼️ *{trpgImagePrompt}*");
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine($"[TRPG Image] 場景圖片生成失敗: {ex.Message}");
+                            }
+                        });
+                    }
                 }
                 return;
             }

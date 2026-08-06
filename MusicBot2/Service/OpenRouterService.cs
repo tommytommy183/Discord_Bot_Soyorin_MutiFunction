@@ -871,38 +871,7 @@ namespace MusicBot2.Service
         {
             const int maxRetry = 2;
 
-            // Google AI 路徑
-            if (_useGoogleAI)
-            {
-                var msgs = new List<OpenRouterMessage>
-                {
-                    new() { Role = "user", Content = userMessage }
-                };
-                foreach (var model in _googleModelsForSimpleText)
-                {
-                    var availableKeys = GetAvailableGoogleKeys().ToList();
-                    if (availableKeys.Count == 0) availableKeys = _googleApiKeys.ToList();
-
-                    foreach (var key in availableKeys)
-                    {
-                        try
-                        {
-                            var r = await CallGoogleAIOnceAsync(msgs, 0.7f, 0.9f, 512, null, model, key, retry: 0);
-                            if (r.ShouldContinue) continue;   // key 429 → 換下一個 key
-                            if (r.ShouldBreak) break;         // model 不可用 → 換下一個 model
-                            if (!string.IsNullOrWhiteSpace(r.Text)) return r.Text;
-                            break;
-                        }
-                        catch (Exception ex)
-                        {
-                            Console.WriteLine($"[GoogleAI SimpleText Exception] Model:{model} key:...{key[^6..]} => {ex.Message}");
-                            await Task.Delay(500);
-                        }
-                    }
-                }
-                return null;
-            }
-
+            // SimpleText 永遠使用 OpenRouter（內部用途：摘要、搜尋意圖判斷等不需要 persona 的呼叫）
             // OpenRouter 路徑
             foreach (var model in _modelsForSimpleText)
             {

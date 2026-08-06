@@ -199,7 +199,17 @@ SAN 值（0-100）：
 如果需要擲骰，回覆格式必須包含：
 「請擲骰（輸入 /投骰）— 判定：[屬性]檢定（DC [X]，你的[屬性]修正: [+Y]，實際需要擲出 [X-Y] 以上）」
 
-如果玩家剛擲完骰子，根據點數結果 + 屬性修正值敘述後續發展。";
+如果玩家剛擲完骰子，根據點數結果 + 屬性修正值敘述後續發展。
+
+【場景圖片提示詞】
+在每次回覆的最末尾，必須附上一行英文 Stable Diffusion 風格提示詞，用來描述當前場景畫面，格式固定為：
+[SCENE: (英文提示詞)]
+要求：
+- 描述當前視覺場景：環境、角色動作、敵人、光線、氣氛
+- 使用英文，逗號分隔關鍵詞，30字以內
+- 風格偏向 dark fantasy, dramatic lighting, oil painting
+- 範例：[SCENE: dark dungeon corridor, warrior fighting skeleton, torch light, dramatic shadows, dark fantasy]
+- 這一行不算在 300 字限制內，也不要用中文";
 
         public TRPGService(string apiKey, string redisConnectionString)
         {
@@ -435,19 +445,37 @@ SAN 值（0-100）：
         }
 
         /// <summary>
+        /// 從 GM 回應中提取 [SCENE: ...] 圖片提示詞，同時從文字中移除那一行
+        /// </summary>
+        private static (string cleanText, string imagePrompt) ExtractScenePrompt(string gmResponse)
+        {
+            if (string.IsNullOrWhiteSpace(gmResponse))
+                return (gmResponse, null);
+
+            var match = Regex.Match(gmResponse, @"\[SCENE:\s*(.+?)\]", RegexOptions.IgnoreCase);
+            if (!match.Success)
+                return (gmResponse, null);
+
+            var prompt = match.Groups[1].Value.Trim();
+            // 移除 [SCENE: ...] 那整行（含換行）
+            var clean = Regex.Replace(gmResponse, @"\n?\[SCENE:\s*.+?\]", "", RegexOptions.IgnoreCase).Trim();
+            return (clean, prompt);
+        }
+
+        /// <summary>
         /// 處理玩家的冒險行動
         /// </summary>
-        public async Task<string> ProcessAdventureActionAsync(ulong channelId, SocketGuildUser user, string message)
+        public async Task<(string text, string imagePrompt)> ProcessAdventureActionAsync(ulong channelId, SocketGuildUser user, string message)
         {
             var gameState = await LoadGameStateAsync(channelId);
             if (gameState == null)
             {
-                return string.Empty; // 不是冒險頻道，忽略
+                return (string.Empty, null); // 不是冒險頻道，忽略
             }
 
             if (!gameState.IsActive)
             {
-                return string.Empty;
+                return (string.Empty, null);
             }
 
             Console.WriteLine($"[TRPG] 玩家 {user.Username} 在頻道 {channelId} 進行行動: {message}");
@@ -455,12 +483,8 @@ SAN 值（0-100）：
             // 檢查玩家是否已經加入冒險
             if (!gameState.Characters.ContainsKey(user.Id))
             {
-                //Console.WriteLine($"[TRPG] 玩家 {user.Username} 尚未加入冒險");
-                //return $"❌ {user.DisplayName ?? user.Username}，你還沒有加入這場冒險！\n" +
-                //       $"💡 請使用 `/加入冒險` 指令來加入遊戲。";
-
                 // 如果玩家尚未加入冒險，直接忽略訊息（不回覆）
-                return "";
+                return ("", null);
             }
 
             // 確保角色存在（自動加入冒險）
@@ -469,7 +493,7 @@ SAN 值（0-100）：
             // 檢查角色是否還活著
             if (!character.IsAlive)
             {
-                return $"💀 {character.UserName} 已經死亡，無法進行行動。請等待冒險結束或使用管理指令復活。";
+                return ($"💀 {character.UserName} 已經死亡，無法進行行動。請等待冒險結束或使用管理指令復活。", null);
             }
 
             // 記錄玩家訊息
@@ -488,7 +512,7 @@ SAN 值（0-100）：
                 // 如果是等待中的玩家，提醒他先擲骰
                 if (gameState.WaitingPlayerId == user.Id)
                 {
-                    return "⏳ 請先使用 `/投骰` 完成骰子判定，才能繼續冒險！";
+                    return ("⏳ 請先使用 `/投骰` 完成骰子判定，才能繼續冒險！", null);
                 }
                 // 如果是其他玩家，允許他們也進行行動（多玩家模式）
                 Console.WriteLine($"[TRPG] 其他玩家 {user.Username} 加入行動（目前等待 {gameState.WaitingPlayerId} 擲骰）");
@@ -530,16 +554,19 @@ SAN 值（0-100）：
             // 儲存更新後的狀態
             await SaveGameStateAsync(channelId, gameState);
 
+            // 提取圖片提示詞（從 GM 回應末尾的 [SCENE: ...] 取出）
+            var (cleanGmResponse, imagePrompt) = ExtractScenePrompt(gmResponse);
+
             // 附加角色狀態
             var statusInfo = $"\n\n{character.UserName} [{TRPGGameState.GetClassName(character.CharacterClass)}]: {character.CurrentHP}/{character.MaxHP} HP | 飢餓:{character.Hunger}/{character.MaxHunger} | SAN:{character.Sanity}/{character.MaxSanity}";
 
-            return $"🎭 **GM**: {gmResponse}{statusInfo}";
+            return ($"🎭 **GM**: {cleanGmResponse}{statusInfo}", imagePrompt);
         }
 
         /// <summary>
         /// 處理骰子投擲
         /// </summary>
-        public async Task<string> RollDiceAsync(ulong channelId, SocketGuildUser user)
+        public async Task<(string text, string imagePrompt)> RollDiceAsync(ulong channelId, SocketGuildUser user)
         {
             Console.WriteLine($"[TRPG] 玩家 {user.Username} 嘗試在頻道 {channelId} 擲骰");
 
@@ -547,20 +574,20 @@ SAN 值（0-100）：
             if (gameState == null)
             {
                 Console.WriteLine($"[TRPG] 頻道 {channelId} 沒有進行中的冒險");
-                return "❌ 此頻道沒有進行中的冒險！請先使用 `/開始冒險` 開始遊戲。";
+                return ("❌ 此頻道沒有進行中的冒險！請先使用 `/開始冒險` 開始遊戲。", null);
             }
 
             if (!gameState.WaitingForDiceRoll)
             {
                 Console.WriteLine($"[TRPG] 目前不需要擲骰");
-                return "❌ 當前不需要擲骰！等 GM 要求你擲骰時再使用此指令。";
+                return ("❌ 當前不需要擲骰！等 GM 要求你擲骰時再使用此指令。", null);
             }
 
             // 多玩家模式：檢查是否為等待擲骰的玩家
             if (gameState.WaitingPlayerId.HasValue && gameState.WaitingPlayerId.Value != user.Id)
             {
                 Console.WriteLine($"[TRPG] 玩家 {user.Username} 不是當前等待擲骰的玩家（等待中: {gameState.WaitingPlayerId.Value}）");
-                return $"⏳ 目前等待的是其他玩家擲骰，請稍候。";
+                return ($"⏳ 目前等待的是其他玩家擲骰，請稍候。", null);
             }
 
             // 擲 D20
@@ -636,7 +663,8 @@ SAN 值（0-100）：
 
             Console.WriteLine($"[TRPG] 擲骰處理完成");
 
-            return $"🎲 {user.DisplayName ?? user.Username} 擲出了 **{diceResult}** {resultEmoji}\n\n🎭 **GM**: {gmResponse}{statusInfo}";
+            var (cleanGmResponse, imagePrompt) = ExtractScenePrompt(gmResponse);
+            return ($"🎲 {user.DisplayName ?? user.Username} 擲出了 **{diceResult}** {resultEmoji}\n\n🎭 **GM**: {cleanGmResponse}{statusInfo}", imagePrompt);
         }
 
         /// <summary>

@@ -1008,8 +1008,26 @@ namespace MusicBot2.SlahCommands
                 return;
             }
 
-            var result = await _trpgService.RollDiceAsync(Context.Channel.Id, user);
-            await FollowupAsync(result);
+            var (rollText, rollImagePrompt) = await _trpgService.RollDiceAsync(Context.Channel.Id, user);
+            await FollowupAsync(rollText);
+
+            // 異步生成場景圖片
+            if (!string.IsNullOrWhiteSpace(rollImagePrompt))
+            {
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        var stream = await _aiImageService.GenerateImageAsync(rollImagePrompt);
+                        if (stream != null)
+                            await Context.Channel.SendFileAsync(stream, "scene.png", $"🖼️ *{rollImagePrompt}*");
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[TRPG Image] 擲骰場景圖片生成失敗: {ex.Message}");
+                    }
+                });
+            }
         }
 
         [SlashCommand("結束冒險", "結束當前頻道的 TRPG 冒險")]
