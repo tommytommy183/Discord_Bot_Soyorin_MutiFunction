@@ -74,11 +74,32 @@ namespace MusicBot2.Service
    - 攀爬、跳躍等體能挑戰
    - 解除陷阱、開鎖等技巧挑戰
 
-5. 難度判定標準：
-   - 1：大失敗
+5. 難度判定標準（DC = Difficulty Class）：
+   - 1：大失敗（無論DC多少都失敗，且有額外懲罰）
    - 2-5：失敗
-   - 6-19：成功
-   - 20：大成功
+   - 6-19：成功（需要 >= DC）
+   - 20：大成功（無論DC多少都成功，且有額外獎勵）
+
+   DC 參考值：
+   - 簡單任務: DC 6
+   - 普通任務: DC 10
+   - 困難任務: DC 14
+   - 極難任務: DC 17
+   - 近乎不可能: DC 19
+
+6. 屬性修正值（加到擲骰結果上）：
+   - 屬性 8-9: -1
+   - 屬性 10-11: +0
+   - 屬性 12-13: +1
+   - 屬性 14-15: +2
+   - 屬性 16-17: +3
+   例如：力量檢定時，力量16的戰士有+3修正，擲出7實際算作10
+
+7. 擲骰時必須明確告知：
+   - 這次檢定的屬性（力量/敏捷/體質/智力/感知/魅力）
+   - DC 值是多少
+   - 玩家的屬性修正值是多少
+   - 例如：「請擲骰（輸入 /投骰）— 判定：敏捷檢定（DC 12，你的敏捷修正: +2，實際需要擲出 10 以上）」
 
 6. 生命值變動指引：
    - 戰鬥失敗：依敵人強度造成 10-30 點傷害
@@ -86,6 +107,25 @@ namespace MusicBot2.Service
    - 環境危險（跌落、灼傷等）：5-20 點傷害
    - 治療、休息：恢復 10-30 點生命值
    - 致命攻擊（大失敗）：30-50 點傷害
+
+7. 一切行為都要符合角色職業，不可以因為玩家說自己突然得到什麼物品而真的讓他得到，必須符合職業和當前遊戲情況
+
+【飢餓值與 SAN 值系統】
+每位冒險者除了 HP 之外，還有「飢餓值」和「SAN 值（理智值）」：
+
+飢餓值（0-100）：
+- 每次重大行動（戰鬥、長距離移動、施法）消耗 5-15 點飢餓值
+- 飢餓值降到 30 以下時，所有檢定 DC +2
+- 飢餓值降到 0 時，開始每次行動扣血
+- 食物可以恢復飢餓值
+- 通知格式：「你消耗了 X 點飢餓值」或「你恢復了 X 點飢餓值」
+
+SAN 值（0-100）：
+- 看到恐怖景象、接觸邊緣知識、遭受詛咒時減少 5-20 點SAN值
+- SAN值降到 30 以下時，開始出現幻覺、幻聽
+- SAN值降到 0 時，角色陷入瘋狂，行動不受控制
+- 休息、牧師的祝福可以恢復SAN值
+- 通知格式：「你失去了 X 點SAN值」或「你恢復了 X 點SAN值」
 
 【物品管理規則】
 1. 物品獲取：當玩家成功完成任務、探索、擊敗敵人或發現寶箱時，可以獲得物品
@@ -123,6 +163,29 @@ namespace MusicBot2.Service
 - 「你使用了【治療藥水】，恢復了 30 點生命值」
 - 「你喝下藥水，感到傷口逐漸癒合，恢復了 20 點生命值」
 
+【職業系統】
+每位冒險者都有一個職業，職業決定了他們能做什麼：
+- 戰士：擅長近戰、格擋、重武器，不會魔法
+- 盜賊：擅長潛行、開鎖、背刺、偵測陷阱，不會魔法
+- 法師：擅長火球術、冰霜護盾、魔法偵測、傳送術，體力弱
+- 牧師：擅長治療術、神聖護盾、驅散不死、祝福，攻擊力低
+- 遊俠：擅長追蹤、動物溝通、精準射擊、野外求生，魔法能力有限
+
+【反作弊規則 - 極其重要】
+你必須嚴格執行以下規則，絕不妥協：
+1. 玩家只能使用自己職業的技能。戰士不能施法、盜賊不能治療、法師不能重擊
+2. 玩家不能憑空獲得物品、能力或狀態變化（例如「我突然學會了飛行」）
+3. 玩家不能宣稱已經完成某件事來跳過過程（例如「我已經逃出地牢了」「我直接殺了魔王」）
+4. 玩家的行動必須符合當前場景邏輯（被鎖在牢房裡不能說「我走出去了」）
+5. 如果玩家嘗試作弊或不合理行動，你必須拒絕並解釋原因，例如：「你的職業是戰士，你不具備施展魔法的能力。」「你被鐵鏈鎖住了，無法直接離開。請描述你要如何嘗試掙脫。」
+6. 數值判定要嚴格參照角色屬性：力量影響物理攻擊、敏捷影響閃避和命中、智力影響魔法威力等
+7. 任何超出角色能力範圍的行動，一律要求擲骰且提高難度門檻（DC 15+）
+
+【通關目標】
+每場冒險必須有明確的通關目標。在開場時你必須暗示或明確告知玩家他們需要完成什麼任務才能結束冒險。
+目標範例：找到失落的神器、消滅區域Boss、逃離詛咒之地、護送NPC到安全地點等。
+當玩家完成目標時，明確宣布冒險通關。
+
 【重要指示】
 - 當需要擲骰時，你必須停下來，明確告訴玩家「請擲骰（輸入 /投骰）」，並說明這次擲骰是為了判定什麼
 - 等待玩家擲骰後，才能繼續敘述結果
@@ -134,9 +197,9 @@ namespace MusicBot2.Service
 
 【回覆格式】
 如果需要擲骰，回覆格式必須包含：
-「請擲骰（輸入 /投骰）— 判定：[說明這次要判定什麼]」
+「請擲骰（輸入 /投骰）— 判定：[屬性]檢定（DC [X]，你的[屬性]修正: [+Y]，實際需要擲出 [X-Y] 以上）」
 
-如果玩家剛擲完骰子，根據點數結果敘述後續發展。";
+如果玩家剛擲完骰子，根據點數結果 + 屬性修正值敘述後續發展。";
 
         public TRPGService(string apiKey, string redisConnectionString)
         {
@@ -292,14 +355,20 @@ namespace MusicBot2.Service
         /// <summary>
         /// 開始新的 TRPG 遊戲
         /// </summary>
-        public async Task<string> StartAdventureAsync(ulong channelId, SocketGuildUser user)
+        public async Task<string> StartAdventureAsync(ulong channelId, SocketGuildUser user, string classChoice)
         {
-            Console.WriteLine($"[TRPG] 玩家 {user.Username} 嘗試在頻道 {channelId} 開始冒險");
+            Console.WriteLine($"[TRPG] 玩家 {user.Username} 嘗試在頻道 {channelId} 開始冒險，職業選擇: {classChoice}");
 
             if (await GameExistsAsync(channelId))
             {
                 Console.WriteLine($"[TRPG] 頻道 {channelId} 已有進行中的冒險");
                 return "❌ 此頻道已有進行中的冒險！請先使用 /結束冒險 來結束當前遊戲。";
+            }
+
+            var selectedClass = TRPGGameState.ParseClass(classChoice);
+            if (selectedClass == TRPGClass.None)
+            {
+                return "❌ 請選擇有效的職業！可選：戰士、盜賊、法師、牧師、遊俠";
             }
 
             var gameState = new TRPGGameState
@@ -311,12 +380,19 @@ namespace MusicBot2.Service
                 WaitingForDiceRoll = false
             };
 
+            // 創建者自動加入冒險（含職業）
+            var creatorCharacter = gameState.GetOrCreateCharacter(user.Id, user.DisplayName ?? user.Username, selectedClass);
+            Console.WriteLine($"[TRPG] 創建者 {user.Username} 自動加入冒險，職業: {TRPGGameState.GetClassName(selectedClass)}，HP: {creatorCharacter.CurrentHP}/{creatorCharacter.MaxHP}");
+
             Console.WriteLine($"[TRPG] 開始生成開場訊息...");
 
-            // 生成開場
-            var openingMessage = await GenerateOpeningAsync(user.DisplayName ?? user.Username);
+            // 生成開場（含職業資訊）
+            var openingMessage = await GenerateOpeningAsync(user.DisplayName ?? user.Username, selectedClass);
 
             Console.WriteLine($"[TRPG] 開場訊息生成完成");
+
+            // 從開場訊息中提取目標（或使用預設）
+            gameState.ObjectiveDescription = "在開場敘述中揭示";
 
             gameState.GameHistory.Add(new TRPGMessage
             {
@@ -327,30 +403,32 @@ namespace MusicBot2.Service
                 Type = TRPGMessageType.GMNarration
             });
 
-            // 創建者自動加入冒險
-            var creatorCharacter = gameState.GetOrCreateCharacter(user.Id, user.DisplayName ?? user.Username);
-            Console.WriteLine($"[TRPG] 創建者 {user.Username} 自動加入冒險，初始 HP: {creatorCharacter.CurrentHP}/{creatorCharacter.MaxHP}");
-
             await SaveGameStateAsync(channelId, gameState);
 
             Console.WriteLine($"[TRPG] 冒險成功開始於頻道 {channelId}");
 
+            var className = TRPGGameState.GetClassName(selectedClass);
             return $"🌑 **永夜國度 - 黑暗奇幻冒險開始**\n\n{openingMessage}\n\n" +
                    $"💀 從現在開始，這個頻道的所有訊息都會成為冒險的一部分。\n" +
-                   $"👥 其他玩家請使用 `/加入冒險` 指令來加入遊戲！\n" +
+                   $"👥 其他玩家請使用 `/加入冒險 [職業]` 指令來加入遊戲！\n" +
+                   $"📋 可選職業：戰士、盜賊、法師、牧師、遊俠\n" +
                    $"🎲 當需要擲骰時，請使用 `/投骰` 指令。\n\n" +
-                   $"✅ {user.DisplayName ?? user.Username} 已加入冒險 ({creatorCharacter.CurrentHP}/{creatorCharacter.MaxHP} HP)";
+                   $"✅ {user.DisplayName ?? user.Username} [{className}] 已加入冒險\n" +
+                   $"💊 HP: {creatorCharacter.CurrentHP}/{creatorCharacter.MaxHP} | 飢餓: {creatorCharacter.Hunger}/{creatorCharacter.MaxHunger} | SAN: {creatorCharacter.Sanity}/{creatorCharacter.MaxSanity}\n" +
+                   $"📊 {creatorCharacter.Stats}\n" +
+                   $"⚔️ 技能: {string.Join("、", creatorCharacter.ClassAbilities)}";
         }
 
         /// <summary>
         /// 生成遊戲開場
         /// </summary>
-        private async Task<string> GenerateOpeningAsync(string playerName)
+        private async Task<string> GenerateOpeningAsync(string playerName, TRPGClass playerClass)
         {
+            var className = TRPGGameState.GetClassName(playerClass);
             var messages = new List<object>
             {
                 new { role = "system", content = DarkFantasySystemPrompt },
-                new { role = "user", content = $"玩家名字是 {playerName}，請為他生成一個黑暗奇幻冒險的開場。開場要描述他在一個危險的環境中醒來，不知道自己為何在此。保持神秘感，不要超過 200 字。" }
+                new { role = "user", content = $"玩家名字是 {playerName}，職業是{className}。請為他生成一個黑暗奇幻冒險的開場。開場要：1) 描述他在一個危險的環境中醒來 2) 根據他的職業給予符合的初始裝備描述 3) 明確暗示或說明這場冒險的通關目標是什麼（例如：找到某個神器、消滅某個Boss、逃離某個地方等）。保持神秘感，不要超過 250 字。" }
             };
 
             return await CallOpenRouterAsync(messages);
@@ -424,6 +502,9 @@ namespace MusicBot2.Service
             // 解析並處理物品變化
             ProcessInventoryChanges(gameState, gmResponse);
 
+            // 解析並處理飢餓值與SAN值變化
+            ProcessHungerAndSanityChanges(gameState, gmResponse);
+
             // 記錄 GM 回應
             gameState.GameHistory.Add(new TRPGMessage
             {
@@ -447,7 +528,7 @@ namespace MusicBot2.Service
             await SaveGameStateAsync(channelId, gameState);
 
             // 附加角色狀態
-            var statusInfo = $"\n\n{character.UserName}: {character.CurrentHP}/{character.MaxHP} HP";
+            var statusInfo = $"\n\n{character.UserName} [{TRPGGameState.GetClassName(character.CharacterClass)}]: {character.CurrentHP}/{character.MaxHP} HP | 飢餓:{character.Hunger}/{character.MaxHunger} | SAN:{character.Sanity}/{character.MaxSanity}";
 
             return $"🎭 **GM**: {gmResponse}{statusInfo}";
         }
@@ -511,6 +592,9 @@ namespace MusicBot2.Service
             // 解析並處理物品變化
             ProcessInventoryChanges(gameState, gmResponse);
 
+            // 解析並處理飢餓值與SAN值變化
+            ProcessHungerAndSanityChanges(gameState, gmResponse);
+
             // 記錄 GM 回應
             gameState.GameHistory.Add(new TRPGMessage
             {
@@ -542,8 +626,10 @@ namespace MusicBot2.Service
             };
 
             // 獲取玩家角色
-            var character = gameState.GetOrCreateCharacter(user.Id, user.DisplayName ?? user.Username);
-            var statusInfo = $"\n\n {character.UserName}: {character.CurrentHP}/{character.MaxHP} HP";
+            var character = gameState.Characters.ContainsKey(user.Id)
+                ? gameState.Characters[user.Id]
+                : gameState.GetOrCreateCharacter(user.Id, user.DisplayName ?? user.Username);
+            var statusInfo = $"\n\n {character.UserName} [{TRPGGameState.GetClassName(character.CharacterClass)}]: {character.CurrentHP}/{character.MaxHP} HP | 飢餓:{character.Hunger}/{character.MaxHunger} | SAN:{character.Sanity}/{character.MaxSanity}";
 
             Console.WriteLine($"[TRPG] 擲骰處理完成");
 
@@ -553,9 +639,9 @@ namespace MusicBot2.Service
         /// <summary>
         /// 加入冒險
         /// </summary>
-        public async Task<string> JoinAdventureAsync(ulong channelId, SocketGuildUser user)
+        public async Task<string> JoinAdventureAsync(ulong channelId, SocketGuildUser user, string classChoice)
         {
-            Console.WriteLine($"[TRPG] 玩家 {user.Username} 嘗試加入頻道 {channelId} 的冒險");
+            Console.WriteLine($"[TRPG] 玩家 {user.Username} 嘗試加入頻道 {channelId} 的冒險，職業: {classChoice}");
 
             var gameState = await LoadGameStateAsync(channelId);
             if (gameState == null)
@@ -577,25 +663,34 @@ namespace MusicBot2.Service
                        $"💊 當前狀態: {existingCharacter.CurrentHP}/{existingCharacter.MaxHP} HP";
             }
 
-            // 創建新角色
-            var character = gameState.GetOrCreateCharacter(user.Id, user.DisplayName ?? user.Username);
+            var selectedClass = TRPGGameState.ParseClass(classChoice);
+            if (selectedClass == TRPGClass.None)
+            {
+                return "❌ 請選擇有效的職業！可選：戰士、盜賊、法師、牧師、遊俠";
+            }
+
+            // 創建新角色（含職業）
+            var character = gameState.GetOrCreateCharacter(user.Id, user.DisplayName ?? user.Username, selectedClass);
 
             // 記錄系統訊息
             gameState.GameHistory.Add(new TRPGMessage
             {
                 UserId = 0,
                 UserName = "System",
-                Message = $"{user.DisplayName ?? user.Username} 加入了冒險",
+                Message = $"{user.DisplayName ?? user.Username} [{TRPGGameState.GetClassName(selectedClass)}] 加入了冒險",
                 Timestamp = DateTime.UtcNow,
                 Type = TRPGMessageType.SystemMessage
             });
 
             await SaveGameStateAsync(channelId, gameState);
 
-            Console.WriteLine($"[TRPG] 玩家 {user.Username} 成功加入冒險，HP: {character.CurrentHP}/{character.MaxHP}");
+            var className = TRPGGameState.GetClassName(selectedClass);
+            Console.WriteLine($"[TRPG] 玩家 {user.Username} 成功加入冒險，職業: {className}，HP: {character.CurrentHP}/{character.MaxHP}");
 
-            return $"✅ **{user.DisplayName ?? user.Username} 加入了冒險！**\n\n" +
-                   $"💊 初始狀態: {character.CurrentHP}/{character.MaxHP} HP\n" +
+            return $"✅ **{user.DisplayName ?? user.Username} [{className}] 加入了冒險！**\n\n" +
+                   $"💊 HP: {character.CurrentHP}/{character.MaxHP} | 飢餓: {character.Hunger}/{character.MaxHunger} | SAN: {character.Sanity}/{character.MaxSanity}\n" +
+                   $"📊 {character.Stats}\n" +
+                   $"⚔️ 技能: {string.Join("、", character.ClassAbilities)}\n\n" +
                    $"🌑 你踏入了永夜國度的黑暗之中...\n\n" +
                    $"💡 現在你可以直接在頻道中輸入文字來進行冒險，當需要擲骰時請使用 `/投骰` 指令。";
         }
@@ -654,7 +749,9 @@ namespace MusicBot2.Service
                 statusText += "👥 **冒險者狀態**\n";
                 foreach (var character in gameState.Characters.Values.OrderByDescending(c => c.CurrentHP))
                 {
-                    statusText += $"{character.UserName}: {character.CurrentHP}/{character.MaxHP} HP ({character.GetHealthDescription()})\n";
+                    var className = TRPGGameState.GetClassName(character.CharacterClass);
+                    statusText += $"{character.UserName} [{className}]: {character.CurrentHP}/{character.MaxHP} HP | 飢餓:{character.Hunger}/{character.MaxHunger} | SAN:{character.Sanity}/{character.MaxSanity} ({character.GetHealthDescription()})\n";
+                    statusText += $"  📊 {character.Stats}\n";
                 }
             }
             else
@@ -701,11 +798,15 @@ namespace MusicBot2.Service
             }
 
             // 加入當前玩家訊息
-            var character = gameState.GetOrCreateCharacter(user.Id, user.DisplayName ?? user.Username);
+            var character = gameState.Characters.ContainsKey(user.Id) 
+                ? gameState.Characters[user.Id] 
+                : gameState.GetOrCreateCharacter(user.Id, user.DisplayName ?? user.Username);
+            var className = TRPGGameState.GetClassName(character.CharacterClass);
             var inventoryInfo = character.Inventory.Count > 0 
                 ? $"背包: {character.GetInventorySummary()}"
                 : "背包: 空";
-            messages.Add(new { role = "user", content = $"{user.DisplayName ?? user.Username} ({character.CurrentHP}/{character.MaxHP} HP, {inventoryInfo}): {playerMessage}" });
+            var abilitiesInfo = string.Join("、", character.ClassAbilities);
+            messages.Add(new { role = "user", content = $"{user.DisplayName ?? user.Username} [{className}] ({character.CurrentHP}/{character.MaxHP} HP, 飢餓:{character.Hunger}/{character.MaxHunger}, SAN:{character.Sanity}/{character.MaxSanity}, {inventoryInfo}, 可用技能: {abilitiesInfo}): {playerMessage}" });
 
             return await CallOpenRouterAsync(messages);
         }
@@ -746,11 +847,15 @@ namespace MusicBot2.Service
             }
 
             // 加入當前玩家及骰子結果
-            var character = gameState.GetOrCreateCharacter(user.Id, user.DisplayName ?? user.Username);
+            var character = gameState.Characters.ContainsKey(user.Id) 
+                ? gameState.Characters[user.Id] 
+                : gameState.GetOrCreateCharacter(user.Id, user.DisplayName ?? user.Username);
+            var className = TRPGGameState.GetClassName(character.CharacterClass);
             var inventoryInfo = character.Inventory.Count > 0 
                 ? $"背包: {character.GetInventorySummary()}"
                 : "背包: 空";
-            messages.Add(new { role = "user", content = $"{user.DisplayName ?? user.Username} ({character.CurrentHP}/{character.MaxHP} HP, {inventoryInfo}) 擲骰結果: {diceResult}" });
+            var abilitiesInfo = string.Join("、", character.ClassAbilities);
+            messages.Add(new { role = "user", content = $"{user.DisplayName ?? user.Username} [{className}] ({character.CurrentHP}/{character.MaxHP} HP, 飢餓:{character.Hunger}/{character.MaxHunger}, SAN:{character.Sanity}/{character.MaxSanity}, {inventoryInfo}, 可用技能: {abilitiesInfo}) 擲骰結果: {diceResult}" });
 
             return await CallOpenRouterAsync(messages);
         }
@@ -1033,6 +1138,62 @@ namespace MusicBot2.Service
             catch (Exception ex)
             {
                 Console.WriteLine($"[TRPG] ProcessInventoryChanges 錯誤: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 處理飢餓值與SAN值變化（從 GM 回應中解析）
+        /// </summary>
+        private void ProcessHungerAndSanityChanges(TRPGGameState gameState, string gmResponse)
+        {
+            try
+            {
+                var lastPlayerAction = gameState.GameHistory
+                    .Where(m => m.Type == TRPGMessageType.PlayerAction || m.Type == TRPGMessageType.DiceRoll)
+                    .LastOrDefault();
+
+                if (lastPlayerAction == null || !gameState.Characters.TryGetValue(lastPlayerAction.UserId, out var character))
+                    return;
+
+                // 飢餓值消耗
+                var hungerLossPattern = @"你消耗了[\s]*(\d+)[\s]*點飢餓值";
+                var hungerLossMatch = Regex.Match(gmResponse, hungerLossPattern);
+                if (hungerLossMatch.Success && int.TryParse(hungerLossMatch.Groups[1].Value, out int hungerLoss))
+                {
+                    character.ReduceHunger(hungerLoss);
+                    Console.WriteLine($"[TRPG] {character.UserName} 消耗 {hungerLoss} 點飢餓值，當前: {character.Hunger}/{character.MaxHunger}");
+                }
+
+                // 飢餓值恢復
+                var hungerGainPattern = @"你恢復了[\s]*(\d+)[\s]*點飢餓值";
+                var hungerGainMatch = Regex.Match(gmResponse, hungerGainPattern);
+                if (hungerGainMatch.Success && int.TryParse(hungerGainMatch.Groups[1].Value, out int hungerGain))
+                {
+                    character.RestoreHunger(hungerGain);
+                    Console.WriteLine($"[TRPG] {character.UserName} 恢復 {hungerGain} 點飢餓值，當前: {character.Hunger}/{character.MaxHunger}");
+                }
+
+                // SAN值減少
+                var sanityLossPattern = @"你失去了[\s]*(\d+)[\s]*點SAN值";
+                var sanityLossMatch = Regex.Match(gmResponse, sanityLossPattern);
+                if (sanityLossMatch.Success && int.TryParse(sanityLossMatch.Groups[1].Value, out int sanityLoss))
+                {
+                    character.ReduceSanity(sanityLoss);
+                    Console.WriteLine($"[TRPG] {character.UserName} 失去 {sanityLoss} 點SAN值，當前: {character.Sanity}/{character.MaxSanity}");
+                }
+
+                // SAN值恢復
+                var sanityGainPattern = @"你恢復了[\s]*(\d+)[\s]*點SAN值";
+                var sanityGainMatch = Regex.Match(gmResponse, sanityGainPattern);
+                if (sanityGainMatch.Success && int.TryParse(sanityGainMatch.Groups[1].Value, out int sanityGain))
+                {
+                    character.RestoreSanity(sanityGain);
+                    Console.WriteLine($"[TRPG] {character.UserName} 恢復 {sanityGain} 點SAN值，當前: {character.Sanity}/{character.MaxSanity}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[TRPG] ProcessHungerAndSanityChanges 錯誤: {ex.Message}");
             }
         }
 
