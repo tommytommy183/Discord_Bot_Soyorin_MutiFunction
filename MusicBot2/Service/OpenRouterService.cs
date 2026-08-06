@@ -46,6 +46,13 @@ namespace MusicBot2.Service
         private readonly SemaphoreSlim _saveLock = new(1, 1);
         private readonly HashSet<string> _summarizingChannels = new();
 
+        // ── Google AI Studio 後端 ──────────────────────────────────────────
+        private readonly string[] _googleApiKeys;   // 最多 3 個 key，輪流使用
+        private readonly bool _useGoogleAI;
+        private readonly HttpClient _googleHttpClient;
+        // key → 冷卻到期時間（429 後暫停此 key）
+        private readonly Dictionary<string, DateTime> _googleKeyCooldown = new();
+
         private const int MaxRecentMessages = 16;
         private const int MaxTotalMessages = 40;      // 提高觸發摘要的門檻
         private const int MaxContextChars = 5000;
@@ -59,9 +66,9 @@ namespace MusicBot2.Service
         {
             // === 第0梯隊：短時間內免費 ===
             //"tencent/hy3:free",                          //無法傳出
-            "inclusionai/ling-3.0-flash:free",
-            "cohere/north-mini-code:free",
-            "poolside/laguna-s-2.1:free",
+            //"inclusionai/ling-3.0-flash:free",
+            //"cohere/north-mini-code:free",
+            //"poolside/laguna-s-2.1:free",
 
             // === 第一梯隊：大型高品質模型 ===
             //"nvidia/nemotron-3.5-content-safety:free",    // 安全檢測模型，非聊天模型，會直接失敗
@@ -126,7 +133,32 @@ namespace MusicBot2.Service
             //"poolside/laguna-xs.2:free",   這兩個會用超級奇怪的中國用語講話
             //"poolside/laguna-m.1:free",
         };
-        
+
+        // ── Google AI Studio 模型列表（聰明 → 笨，梯次降級） ───────────────
+        // 第一梯：最強，主力聊天
+        // 第二梯：快速且夠聰明，主力備援
+        // 第三梯：輕量，最後保底
+        private readonly string[] _googleModels =
+        {
+            // === 第一梯：最強 ===
+            "gemini-2.5-pro",           // 最強推理，適合複雜問題
+            // === 第二梯：快速+聰明，日常主力 ===
+            "gemini-2.5-flash",         // 速度快、品質高，最推薦日常用
+            "gemini-2.0-flash",         // 穩定老牌，品質可靠
+            // === 第三梯：輕量保底 ===
+            "gemini-2.5-flash-lite",    // 輕量版 2.5，速度優先
+            "gemini-2.0-flash-lite",    // 最輕量，救急用
+        };
+
+        private readonly string[] _googleModelsForSimpleText =
+        {
+            // 無記憶呼叫（摘要/搜尋判斷），用速度快的就好
+            "gemini-2.5-flash",
+            "gemini-2.0-flash",
+            "gemini-2.5-flash-lite",
+            "gemini-2.0-flash-lite",
+        };
+
         private const string Persona = @"你是「長崎爽世（Soyo）」——MyGO!!!!! 的貝斯手，個性溫柔可愛、有禮貌、稍微毒舌但不傷人，珍惜朋友。
 你正在 Discord 群組裡和朋友聊天。
 
@@ -188,7 +220,7 @@ namespace MusicBot2.Service
             "查查", "查看", "找找", "幫我查", "幫我找", "搜索", "幫查", "幫找"
         };
 
-        public OpenRouterService(string apiKey, string redisConnectionString = null, string tavilyApiKey = null)
+        public OpenRouterService(string apiKey, string redisConnectionString = null, string tavilyApiKey = null, string googleApiKey = null)
         {
             _apiKey = apiKey;
             _wikiService = new MediaWikiService();
@@ -203,6 +235,23 @@ namespace MusicBot2.Service
                 new AuthenticationHeaderValue("Bearer", apiKey);
             _httpClient.DefaultRequestHeaders.Add("HTTP-Referer", "https://github.com/tommytommy183/Soyorin_Tense");
             _httpClient.DefaultRequestHeaders.Add("X-Title", "Soyorin Discord Bot");
+
+            // Google AI Studio 後端初始化
+            _googleApiKeys = (googleApiKey ?? "")
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Where(k => !string.IsNullOrWhiteSpace(k))
+                .Distinct()
+                .ToArray();
+            _useGoogleAI = _googleApiKeys.Length > 0;
+            if (_useGoogleAI)
+            {
+                _googleHttpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
+                Console.WriteLine($"✅ [AI Service] Google AI Studio 模式，共 {_googleApiKeys.Length} 個 key");
+            }
+            else
+            {
+                Console.WriteLine("✅ [AI Service] OpenRouter 模式");
+            }
 
             if (!string.IsNullOrEmpty(redisConnectionString))
             {
@@ -617,7 +666,8 @@ namespace MusicBot2.Service
 
 
 
-            foreach (var model in _models)
+            var modelsToUse = _useGoogleAI ? _googleModels : _models;
+            foreach (var model in modelsToUse)
             {
                 for (int retry = 0; retry < maxRetry; retry++)
                 {
@@ -628,7 +678,7 @@ namespace MusicBot2.Service
                             new() { Role = "system", Content = systemPrompt }
                         };
 
-                        // 歷史對話：把 model 角色轉成 assistant
+                        // 歷史對話：把 model 角色轉成 assistant（OpenRouter 用）
                         var recentMessages = GetRecentMessages(channelKey);
                         foreach (var msg in recentMessages)
                         {
@@ -659,24 +709,50 @@ namespace MusicBot2.Service
                         }
                         messages.Add(new OpenRouterMessage { Role = "user", Content = userMessageWithName });
 
-                        var jsonOptions = new JsonSerializerOptions
+                        ApiCallResult r;
+                        if (_useGoogleAI)
                         {
-                            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-                        };
-
-                        var apiRequest = new OpenRouterChatRequest
+                            // 同一個 model，輪流嘗試所有可用的 key
+                            var availableKeys = GetAvailableGoogleKeys().ToList();
+                            if (availableKeys.Count == 0)
+                            {
+                                Console.WriteLine("[GoogleAI] 所有 key 都在冷卻中，等 5s 後繼續");
+                                await Task.Delay(5000);
+                                availableKeys = _googleApiKeys.ToList();  // 等完強制重試
+                            }
+                            r = new ApiCallResult(null, true, false, null, null);  // 預設 break（換 model）
+                            foreach (var key in availableKeys)
+                            {
+                                r = await CallGoogleAIOnceAsync(
+                                    messages,
+                                    request.Temperature,
+                                    request.TopP,
+                                    request.MaxOutputTokens > 0 ? request.MaxOutputTokens : 512,
+                                    new[] { "使用者名稱:", "\n使用者名稱" },
+                                    model, key, retry: 0);
+                                if (!r.ShouldContinue) break;  // 成功或 ShouldBreak → 不用再試下一個 key
+                                // ShouldContinue（429 或暫時錯誤）→ 試下一個 key
+                            }
+                        }
+                        else
                         {
-                            Model = model,
-                            Messages = messages,
-                            Temperature = request.Temperature,
-                            TopP = request.TopP,
-                            MaxTokens = request.MaxOutputTokens > 0 ? request.MaxOutputTokens : 512,
-                            Stop = new[] { "使用者名稱:", "\n使用者名稱" }
-                        };
+                            var jsonOptions = new JsonSerializerOptions
+                            {
+                                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+                            };
+                            var apiRequest = new OpenRouterChatRequest
+                            {
+                                Model = model,
+                                Messages = messages,
+                                Temperature = request.Temperature,
+                                TopP = request.TopP,
+                                MaxTokens = request.MaxOutputTokens > 0 ? request.MaxOutputTokens : 512,
+                                Stop = new[] { "使用者名稱:", "\n使用者名稱" }
+                            };
+                            Console.WriteLine($"[OpenRouter] ch:{channelKey} model:{model} msgs:{messages.Count}");
+                            r = await CallOnceAsync(apiRequest, jsonOptions, model, retry);
+                        }
 
-                        Console.WriteLine($"[OpenRouter] ch:{channelKey} model:{model} msgs:{messages.Count}");
-
-                        var r = await CallOnceAsync(apiRequest, jsonOptions, model, retry);
                         if (r.ShouldBreak) break;
                         if (r.ShouldContinue) continue;
 
@@ -778,6 +854,39 @@ namespace MusicBot2.Service
         {
             const int maxRetry = 2;
 
+            // Google AI 路徑
+            if (_useGoogleAI)
+            {
+                var msgs = new List<OpenRouterMessage>
+                {
+                    new() { Role = "user", Content = userMessage }
+                };
+                foreach (var model in _googleModelsForSimpleText)
+                {
+                    var availableKeys = GetAvailableGoogleKeys().ToList();
+                    if (availableKeys.Count == 0) availableKeys = _googleApiKeys.ToList();
+
+                    foreach (var key in availableKeys)
+                    {
+                        try
+                        {
+                            var r = await CallGoogleAIOnceAsync(msgs, 0.7f, 0.9f, 512, null, model, key, retry: 0);
+                            if (r.ShouldContinue) continue;   // key 429 → 換下一個 key
+                            if (r.ShouldBreak) break;         // model 不可用 → 換下一個 model
+                            if (!string.IsNullOrWhiteSpace(r.Text)) return r.Text;
+                            break;
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"[GoogleAI SimpleText Exception] Model:{model} key:...{key[^6..]} => {ex.Message}");
+                            await Task.Delay(500);
+                        }
+                    }
+                }
+                return null;
+            }
+
+            // OpenRouter 路徑
             foreach (var model in _modelsForSimpleText)
             {
                 for (int retry = 0; retry < maxRetry; retry++)
@@ -785,9 +894,9 @@ namespace MusicBot2.Service
                     try
                     {
                         var messages = new List<OpenRouterMessage>
-                {
-                    new() { Role = "user", Content = userMessage }
-                };
+                        {
+                            new() { Role = "user", Content = userMessage }
+                        };
 
                         var apiRequest = new OpenRouterChatRequest
                         {
@@ -841,13 +950,9 @@ namespace MusicBot2.Service
                             text = contentEl.GetString();
                         }
 
-
-
                         if (string.IsNullOrWhiteSpace(text)) break;
 
                         Console.WriteLine($"[OpenRouter] Model:{model}=> {text}");
-
-
                         return text;
                     }
                     catch (TaskCanceledException)
@@ -862,7 +967,7 @@ namespace MusicBot2.Service
                 }
             }
 
-            return null; // 或丟 exception，看你怎麼處理
+            return null;
         }
         /// <summary>
         /// 簡化版本：直接傳入訊息
@@ -994,6 +1099,171 @@ namespace MusicBot2.Service
 
             return new ApiCallResult(text, false, false, toolCalls, finishReason);
         }
+        /// <summary>
+        /// 取得目前沒有在冷卻中的 Google API key 清單（依序輪流）。
+        /// </summary>
+        private IEnumerable<string> GetAvailableGoogleKeys()
+        {
+            var now = DateTime.UtcNow;
+            return _googleApiKeys.Where(k =>
+                !_googleKeyCooldown.TryGetValue(k, out var until) || now >= until);
+        }
+
+        /// <summary>
+        /// 標記某個 key 進入冷卻（429 rate limit），冷卻時間 seconds 秒。
+        /// </summary>
+        private void CooldownGoogleKey(string key, int seconds = 60)
+        {
+            _googleKeyCooldown[key] = DateTime.UtcNow.AddSeconds(seconds);
+            Console.WriteLine($"[GoogleAI] key ...{key[^6..]} 冷卻 {seconds}s");
+        }
+
+        /// <summary>
+        /// 呼叫 Google AI Studio (Gemini) API，回傳與 CallOnceAsync 相同格式的結果。
+        /// </summary>
+        private async Task<ApiCallResult> CallGoogleAIOnceAsync(
+            List<OpenRouterMessage> messages,   // 含 system 在 [0]
+            float temperature,
+            float topP,
+            int maxTokens,
+            string[] stopSequences,
+            string model,
+            string apiKey,   // 由外層輪流傳入
+            int retry)
+        {
+            // 分離 system prompt
+            string systemPrompt = null;
+            var contentMessages = messages.ToList();
+            if (contentMessages.Count > 0 && contentMessages[0].Role == "system")
+            {
+                systemPrompt = contentMessages[0].Content;
+                contentMessages = contentMessages.Skip(1).ToList();
+            }
+
+            // Google AI 使用 user/model 角色，且不能有連續同角色訊息
+            var merged = new List<(string role, string text)>();
+            foreach (var m in contentMessages)
+            {
+                var role = m.Role == "assistant" ? "model" : m.Role;
+                var text = m.Content ?? "";
+                if (merged.Count > 0 && merged[merged.Count - 1].role == role)
+                {
+                    var last = merged[merged.Count - 1];
+                    merged[merged.Count - 1] = (last.role, last.text + "\n" + text);
+                }
+                else
+                {
+                    merged.Add((role, text));
+                }
+            }
+            // 必須以 user 開頭
+            while (merged.Count > 0 && merged[0].role != "user")
+                merged.RemoveAt(0);
+
+            if (merged.Count == 0)
+                return new ApiCallResult(null, true, false, null, null);
+
+            // 建立請求 body
+            var contents = merged.Select(m => new
+            {
+                role = m.role,
+                parts = new[] { new { text = m.text } }
+            }).ToArray();
+
+            var genCfg = new Dictionary<string, object>
+            {
+                { "temperature", (object)temperature },
+                { "topP", (object)topP },
+                { "maxOutputTokens", (object)maxTokens },
+            };
+            if (stopSequences != null && stopSequences.Length > 0)
+                genCfg["stopSequences"] = stopSequences;
+
+            object requestBody;
+            if (!string.IsNullOrEmpty(systemPrompt))
+            {
+                requestBody = new
+                {
+                    system_instruction = new { parts = new[] { new { text = systemPrompt } } },
+                    contents,
+                    generationConfig = genCfg
+                };
+            }
+            else
+            {
+                requestBody = new { contents, generationConfig = genCfg };
+            }
+
+            var jsonOpts = new JsonSerializerOptions { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull };
+            var json = JsonSerializer.Serialize(requestBody, jsonOpts);
+            var url = $"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={apiKey}";
+
+            Console.WriteLine($"[GoogleAI] model:{model} key:...{apiKey[^6..]} msgs:{merged.Count}");
+
+            HttpResponseMessage response;
+            try
+            {
+                response = await _googleHttpClient.PostAsync(
+                    url, new StringContent(json, Encoding.UTF8, "application/json"));
+            }
+            catch (TaskCanceledException)
+            {
+                Console.WriteLine($"[GoogleAI Timeout] Model:{model} Retry:{retry}");
+                await Task.Delay(500 * (retry + 1));
+                return new ApiCallResult(null, false, true, null, null);  // ShouldContinue → 換下一個 key
+            }
+
+            var resultJson = await ReadAsUtf8StringAsync(response);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                int status = (int)response.StatusCode;
+                Console.WriteLine($"[GoogleAI Error] Model:{model} key:...{apiKey[^6..]} Status:{status} => {Truncate(resultJson, 300)}");
+                if (status == 429)
+                {
+                    // 這個 key 達到 rate limit，冷卻 60s，由外層換下一個 key
+                    CooldownGoogleKey(apiKey, 60);
+                    return new ApiCallResult(null, false, true, null, "key_ratelimit");   // ShouldContinue
+                }
+                if (status is 500 or 502 or 503 or 504)
+                {
+                    await Task.Delay(1000 * (retry + 1));
+                    return new ApiCallResult(null, false, true, null, null);  // ShouldContinue → 換 key 試
+                }
+                // 其他 4xx（400/404/403 等），此 model 不能用，換下一個 model
+                return new ApiCallResult(null, true, false, null, null);   // ShouldBreak
+            }
+
+            try
+            {
+                using var doc = JsonDocument.Parse(resultJson);
+                if (!doc.RootElement.TryGetProperty("candidates", out var candidates) || candidates.GetArrayLength() == 0)
+                {
+                    Console.WriteLine($"[GoogleAI] 空回應: {Truncate(resultJson, 400)}");
+                    return new ApiCallResult(null, true, false, null, null);
+                }
+
+                var candidate = candidates[0];
+                string finishReason = candidate.TryGetProperty("finishReason", out var fr) ? fr.GetString() : null;
+                string text = null;
+                if (candidate.TryGetProperty("content", out var content) &&
+                    content.TryGetProperty("parts", out var parts) &&
+                    parts.GetArrayLength() > 0 &&
+                    parts[0].TryGetProperty("text", out var textEl))
+                {
+                    text = textEl.GetString();
+                }
+
+                Console.WriteLine($"[GoogleAI] Model:{model}=> {Truncate(text, 100)}");
+                return new ApiCallResult(text, false, false, null, finishReason);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[GoogleAI Parse Error] {ex.Message}: {Truncate(resultJson, 200)}");
+                return new ApiCallResult(null, true, false, null, null);
+            }
+        }
+
         /// <summary>
         /// 若訊息含查詢意圖關鍵字，解析出要搜尋的詞。
         /// 優先抓括號/書名號內的文字，否則去掉觸發詞後取剩餘文字。

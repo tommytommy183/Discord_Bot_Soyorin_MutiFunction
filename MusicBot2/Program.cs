@@ -128,8 +128,19 @@ public class Program
                 new GoogleAIStudioService(googleAIStudioApiKey, googleAIStudioApiKey2)
                 )
             .AddSingleton<OpenRouterService>(sp =>
-                  new OpenRouterService(openRouterApiKey, redisConn, tavilyApiKey)
-                  )
+                {
+                    // AI:Provider = "google" → 使用 Google AI Studio；其他/未設定 → OpenRouter
+                    string aiProvider = configer["AI:Provider"] ?? "openrouter";
+                    // 將多個 key 用逗號串接，OpenRouterService 內部會拆分輪用
+                    string googleAIStudioApiKey3 = configer["GoogleAIStudio:dcBotKey3"] ?? "";
+                    string allGoogleKeys = string.Join(",",
+                        new[] { googleAIStudioApiKey, googleAIStudioApiKey2, googleAIStudioApiKey3 }
+                        .Where(k => !string.IsNullOrWhiteSpace(k)));
+                    string googleKey = aiProvider.Equals("google", StringComparison.OrdinalIgnoreCase)
+                        ? allGoogleKeys
+                        : null;
+                    return new OpenRouterService(openRouterApiKey, redisConn, tavilyApiKey, googleKey);
+                })
             .AddSingleton<TRPGService>(sp =>
                   new TRPGService(openRouterApiKey, redisConn)
                   )
