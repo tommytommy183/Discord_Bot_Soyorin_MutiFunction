@@ -140,6 +140,7 @@ namespace MusicBot2.Service
         public int CurrentFloor { get; set; } = 0;
         public int MaxFloor { get; set; } = 20;
         public TowerPokemon ActivePokemon { get; set; }
+        public int ActivePokemonIndex { get; set; } = 0;   // Party 中目前上場的索引，用於同步
         public List<TowerPokemon> Party { get; set; } = new();
         public TowerEnemy CurrentEnemy { get; set; }
         public TowerRunState State { get; set; } = TowerRunState.SelectingPath;
@@ -558,7 +559,7 @@ namespace MusicBot2.Service
             ("鴨嘴火獸", new[]{"火"},           495, 126),
             ("椰蛋樹",   new[]{"草","超能力"},  530, 103),
             ("刺殼菊兒", new[]{"水","冰"},      525, 91),
-            ("嗡嗡蝙",   new[]{"地面","岩石"},  485, 105),
+            ("嗡嗡蝙",   new[]{"地面","岩石"},  714, 105),
             ("多刺球",   new[]{"蟲"},           395, 14),
             ("班夏",     new[]{"幽靈"},         435, 292),
             ("電龍",     new[]{"電"},           520, 466),
@@ -1509,6 +1510,7 @@ namespace MusicBot2.Service
             E("放電",     ailment:"para", chance:30);
             E("電磁炮",   ailment:"para", chance:50);
             E("伏特替換", ailment:"para", chance:10);
+            E("電網",     stat:"foe_spd", statChg:-1);            // Electroweb：必降對方速度
 
             // ── 草 ──────────────────────────────────────────────────
             E("剃刀葉",   hc:true);
@@ -1536,7 +1538,10 @@ namespace MusicBot2.Service
             // ── 超能力 ──────────────────────────────────────────────
             E("精神力",   stat:"foe_spdef", statChg:-1, chance:10);
             E("念力射線", stat:"foe_spatk", statChg:-1, chance:10);
+            E("精神切割", hc:true);
+            E("禪宗頭槌", ailment:"flinch", chance:20);
             E("夢幻之吻", drain:50);
+            E("意念頭槌", stat:"foe_spdef", statChg:-1, chance:10);
 
             // ── 龍 ──────────────────────────────────────────────────
             E("龍之隕石", stat:"self_spatk", statChg:-2);
@@ -1549,28 +1554,39 @@ namespace MusicBot2.Service
             E("咬碎",     stat:"foe_def",   statChg:-1, chance:20);
             E("橫掃千軍", hc:true);
             E("夜斬",     hc:true);
+            E("惡波",     ailment:"flinch", chance:20);
             E("奸詐拳",   stat:"foe_atk",   statChg:-1, chance:10);
+            E("追打",     hc:true);
+            E("惡魔之吻", ailment:"flinch", chance:30);
 
             // ── 幽靈 ──────────────────────────────────────────────
             E("影子球",   stat:"foe_spdef", statChg:-1, chance:20);
             E("影爪",     ailment:"flinch", chance:10);
             E("幻影突擊", ailment:"flinch", chance:20);
+            E("幽冥爆破", ailment:"flinch", chance:20);
+            E("影子偷襲", ailment:"flinch", chance:30);
 
             // ── 岩石 ──────────────────────────────────────────────
             E("古代力量", stat:"self_atk",  statChg:1, chance:10); // 10%全升（簡化為攻擊）
             E("猛岩炮彈", hc:true);
+            E("尖石攻擊", hc:true);
+            E("岩石滑落", ailment:"flinch", chance:30);
             E("礫石衝",   min:2, max:5);                          // 2-5連打
 
             // ── 地面 ──────────────────────────────────────────────
             E("大地之力", stat:"foe_spdef", statChg:-1, chance:10);
             E("土撥球",   stat:"foe_spd",   statChg:-1);
+            E("流沙地獄", stat:"foe_spd",   statChg:-1);
 
             // ── 飛行 ──────────────────────────────────────────────
             E("勇鳥急衝", drain:-33);                             // 後座力 33%
             E("颶風",     ailment:"para",   chance:30);           // 簡化：30%麻痺
             E("空氣切割", ailment:"flinch", chance:30);
+            E("空中斬",   hc:true);                               // Night Slash-like：高暴擊
 
             // ── 蟲 ──────────────────────────────────────────────
+            E("X剪刀",    hc:true);                               // X-Scissor：高暴擊
+            E("蟲爆",     stat:"foe_spatk", statChg:-1, chance:10); // Bug Buzz：10%降特攻
             E("蟲鳴",     stat:"foe_spdef", statChg:-1, chance:10);
             E("信號束",   ailment:"para",   chance:10);
             E("蟲咬",     ailment:"flinch", chance:10);
@@ -1585,15 +1601,25 @@ namespace MusicBot2.Service
 
             // ── 鋼 ──────────────────────────────────────────────
             E("鐵頭",     ailment:"flinch", chance:30);
+            E("閃光炮",   stat:"foe_spatk", statChg:-1, chance:10);
+            E("隕石衝",   stat:"self_atk",  statChg:1,  chance:20);
+            E("鋼翼",     stat:"self_def",  statChg:1,  chance:10);
             E("子彈拳",   ailment:"flinch", chance:10);
 
             // ── 一般 ──────────────────────────────────────────────
+            E("三重攻擊", ailment:"triple", chance:1); // chance參數在triple模式下固定10%，不用這裡的值
+            E("破壞死光", stat:"self_spatk", statChg:-2);  // 模擬必須蓄力的懲罰
+            E("高速移動", stat:"self_spd",  statChg:1);    // 提升自身速度
+            E("鬼火擊",   ailment:"burn",   chance:10);
             E("身體猛撞", ailment:"para",   chance:30);
             E("劈斬",     hc:true);
 
             // ── 妖精 ──────────────────────────────────────────────
             E("月亮之力", stat:"foe_spatk", statChg:-1, chance:30);
             E("粗野播弄", stat:"foe_atk",   statChg:-1, chance:10);
+            E("耀眼魅力", stat:"foe_spatk", statChg:-1, chance:30);
+            E("少女之吻", ailment:"sleep",  chance:10);
+            E("迷惑射線", stat:"foe_spatk", statChg:-1, chance:30);
             E("夢幻接觸", stat:"foe_atk",   statChg:-1, chance:10);
         }
         #endregion
@@ -2234,6 +2260,7 @@ namespace MusicBot2.Service
                 if (alive != null)
                 {
                     run.ActivePokemon = alive;
+                    run.ActivePokemonIndex = run.Party.IndexOf(alive);
                     run.CurrentBattleLog += $"\n💀 **{poke.DisplayName}** 倒下了！換上 **{alive.DisplayName}**！\n";
                     await SaveAsync(run);
                     return BuildBattleEmbed(run);
@@ -2459,7 +2486,7 @@ namespace MusicBot2.Service
             bool wasActive = run.Party[partyIdx].PokeId == run.ActivePokemon.PokeId
                           && run.Party[partyIdx].CaughtAt == run.ActivePokemon.CaughtAt;
             run.Party[partyIdx] = newPoke;
-            if (wasActive) run.ActivePokemon = newPoke;
+            if (wasActive) { run.ActivePokemon = newPoke; run.ActivePokemonIndex = partyIdx; }
 
             run.PendingCatch = null;
             run.State = TowerRunState.SelectingPath;
@@ -2664,6 +2691,7 @@ namespace MusicBot2.Service
 
             string prev = run.ActivePokemon.DisplayName;
             run.ActivePokemon = target;
+            run.ActivePokemonIndex = partyIndex;
             run.RunLog.Add($"🔄 換上了 {target.DisplayName}（換下 {prev}）");
             await SaveAsync(run);
             return BuildCurrentStateEmbed(channelId);
@@ -3759,7 +3787,37 @@ namespace MusicBot2.Service
             // 附加狀態（只對存活目標）
             if (!string.IsNullOrEmpty(move.EffectAilment) && move.EffectChance > 0)
             {
-                if (move.EffectAilment == "flinch")
+                if (move.EffectAilment == "triple")
+                {
+                    // 三重攻擊：燒傷/麻痺/冰凍各10%獨立判定
+                    if (isPlayerAttacking && enemy.CurrentHP > 0 && string.IsNullOrEmpty(enemy.BattleStatus))
+                    {
+                        int bonus = chaosBonus;
+                        foreach (var (ail, _) in new[] {("burn","燒傷"),("para","麻痺"),("freeze","冰凍")})
+                        {
+                            if (_rng.Next(100) < 10 + bonus)
+                            {
+                                enemy.BattleStatus = ail;
+                                if (ail == "sleep") enemy.SleepTurns = _rng.Next(1, 4);
+                                sb.AppendLine($"  {StatusEmoji(ail)} {enemy.Name} 陷入{StatusName(ail)}！");
+                                break; // 一回合只附一種
+                            }
+                        }
+                    }
+                    else if (!isPlayerAttacking && player.CurrentHP > 0 && string.IsNullOrEmpty(player.BattleStatus))
+                    {
+                        foreach (var (ail, _) in new[] {("burn","燒傷"),("para","麻痺"),("freeze","冰凍")})
+                        {
+                            if (_rng.Next(100) < 10)
+                            {
+                                player.BattleStatus = ail;
+                                sb.AppendLine($"  {StatusEmoji(ail)} {player.DisplayName} 陷入{StatusName(ail)}！");
+                                break;
+                            }
+                        }
+                    }
+                }
+                else if (move.EffectAilment == "flinch")
                 {
                     // flinch 畏縮只影響敵方
                     int flinchChance = Math.Min(100, move.EffectChance + (isPlayerAttacking ? chaosBonus : 0));
@@ -4418,8 +4476,29 @@ namespace MusicBot2.Service
 
         #region 資料持久化（Redis / 記憶體）
 
+        /// <summary>存檔前：把 ActivePokemon 最新狀態寫回 Party[ActivePokemonIndex]，確保序列化一致。</summary>
+        private static void SyncActivePokemonToParty(TowerRun run)
+        {
+            if (run.ActivePokemon == null || run.Party == null || run.Party.Count == 0) return;
+            int idx = run.ActivePokemonIndex;
+            if (idx < 0 || idx >= run.Party.Count) idx = 0;
+            run.Party[idx] = run.ActivePokemon;
+            run.ActivePokemonIndex = idx;
+        }
+
+        /// <summary>載入後：讓 ActivePokemon 指向 Party[ActivePokemonIndex] 同一物件，避免序列化後參照斷裂。</summary>
+        private static void SyncActiveFromParty(TowerRun run)
+        {
+            if (run.Party == null || run.Party.Count == 0) return;
+            int idx = run.ActivePokemonIndex;
+            if (idx < 0 || idx >= run.Party.Count) idx = 0;
+            run.ActivePokemon = run.Party[idx];
+            run.ActivePokemonIndex = idx;
+        }
+
         private async Task SaveAsync(TowerRun run)
         {
+            SyncActivePokemonToParty(run);   // 存前同步，確保 Party 與 ActivePokemon 資料一致
             _activeRuns[run.ChannelId] = run;
             if (!_useRedis) return;
             try
@@ -4451,7 +4530,10 @@ namespace MusicBot2.Service
                     if (!val.HasValue) continue;
                     var run = JsonSerializer.Deserialize<TowerRun>(val.ToString());
                     if (run != null && run.State != TowerRunState.Victory && run.State != TowerRunState.Defeated)
+                    {
+                        SyncActiveFromParty(run);   // 載入後修復 ActivePokemon 參照
                         _activeRuns[run.ChannelId] = run;
+                    }
                 }
                 Console.WriteLine($"[Tower] 載入 {_activeRuns.Count} 個進行中爬塔");
             }
