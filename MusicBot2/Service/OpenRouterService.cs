@@ -140,8 +140,8 @@ namespace MusicBot2.Service
         private readonly string[] _googleModels =
         {
             // ══ 第一梯：最強 Pro（複雜推理首選）══
-            "gemini-3.1-pro-preview",       // 最新一代 Pro，頂峰
-            "gemini-3-pro-preview",         // Gen3 Pro，穩定強力
+            //"gemini-3.1-pro-preview",       // 最新一代 Pro，頂峰 無回應
+            //"gemini-3-pro-preview",         // Gen3 Pro，穩定強力 無回應
 
             // ══ 第二梯：最新 Flash 主力（速度+智慧平衡）══
             "gemini-3.6-flash",             // 最新 Flash 旗艦

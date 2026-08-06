@@ -1,11 +1,11 @@
-using System;
+ï»¿using System;
 using System.Collections.Generic;
 using System.Linq;
 
 namespace MusicBot2.Models
 {
     /// <summary>
-    /// TRPG ¹CÀ¸ª¬ºA
+    /// TRPG éŠæˆ²ç‹€æ…‹
     /// </summary>
     public class TRPGGameState
     {
@@ -20,20 +20,20 @@ namespace MusicBot2.Models
         public ulong? WaitingPlayerId { get; set; }
 
         /// <summary>
-        /// ³qÃö¥Ø¼Ğ
+        /// é€šé—œç›®æ¨™
         /// </summary>
         public string ObjectiveDescription { get; set; } = string.Empty;
 
         /// <summary>
-        /// Àò¨ú©Î³Ğ«Ø¨¤¦â¡]»İ«ü©wÂ¾·~¡^
+        /// ç²å–æˆ–å‰µå»ºè§’è‰²ï¼ˆéœ€æŒ‡å®šè·æ¥­ï¼‰
         /// </summary>
         public TRPGCharacter GetOrCreateCharacter(ulong userId, string userName, TRPGClass characterClass = TRPGClass.None)
         {
             if (!Characters.ContainsKey(userId))
             {
                 var stats = GetBaseStats(characterClass);
-                var maxHp = 80 + stats.Constitution * 2; // °òÂ¦80 + Åé½è¥[¦¨
-                var maxSanity = 70 + stats.Wisdom * 2;   // °òÂ¦70 + ·Pª¾¥[¦¨
+                var maxHp = 80 + stats.Constitution * 2; // åŸºç¤80 + é«”è³ªåŠ æˆ
+                var maxSanity = 70 + stats.Wisdom * 2;   // åŸºç¤70 + æ„ŸçŸ¥åŠ æˆ
                 Characters[userId] = new TRPGCharacter
                 {
                     UserId = userId,
@@ -64,79 +64,79 @@ namespace MusicBot2.Models
 
         private static List<string> GetClassAbilities(TRPGClass cls) => cls switch
         {
-            TRPGClass.Warrior => new List<string> { "­«À»", "®æ¾×", "¾Ô§q", "ªñ¾ÔªZ¾¹ºë³q" },
-            TRPGClass.Rogue => new List<string> { "¼ç¦æ", "¶}Âê", "­I¨ë", "°»´ú³´¨À" },
-            TRPGClass.Mage => new List<string> { "¤õ²y³N", "¦BÁ÷Å@¬Ş", "Å]ªk°»´ú", "¶Ç°e³N" },
-            TRPGClass.Cleric => new List<string> { "ªvÀø³N", "¯«¸tÅ@¬Ş", "ÅX´²¤£¦º", "¯¬ºÖ" },
-            TRPGClass.Ranger => new List<string> { "°lÂÜ", "°Êª«·¾³q", "ºë·Ç®gÀ»", "³¥¥~¨D¥Í" },
+            TRPGClass.Warrior => new List<string> { "é‡æ“Š", "æ ¼æ“‹", "æˆ°å¼", "è¿‘æˆ°æ­¦å™¨ç²¾é€š" },
+            TRPGClass.Rogue => new List<string> { "æ½›è¡Œ", "é–‹é–", "èƒŒåˆº", "åµæ¸¬é™·é˜±" },
+            TRPGClass.Mage => new List<string> { "ç«çƒè¡“", "å†°éœœè­·ç›¾", "é­”æ³•åµæ¸¬", "å‚³é€è¡“" },
+            TRPGClass.Cleric => new List<string> { "æ²»ç™‚è¡“", "ç¥è–è­·ç›¾", "é©…æ•£ä¸æ­»", "ç¥ç¦" },
+            TRPGClass.Ranger => new List<string> { "è¿½è¹¤", "å‹•ç‰©æºé€š", "ç²¾æº–å°„æ“Š", "é‡å¤–æ±‚ç”Ÿ" },
             _ => new List<string>()
         };
 
         public static string GetClassName(TRPGClass cls) => cls switch
         {
-            TRPGClass.Warrior => "¾Ô¤h",
-            TRPGClass.Rogue => "µs¸é",
-            TRPGClass.Mage => "ªk®v",
-            TRPGClass.Cleric => "ªª®v",
-            TRPGClass.Ranger => "¹C«L",
-            _ => "µLÂ¾·~"
+            TRPGClass.Warrior => "æˆ°å£«",
+            TRPGClass.Rogue => "ç›œè³Š",
+            TRPGClass.Mage => "æ³•å¸«",
+            TRPGClass.Cleric => "ç‰§å¸«",
+            TRPGClass.Ranger => "éŠä¿ ",
+            _ => "ç„¡è·æ¥­"
         };
 
         public static TRPGClass ParseClass(string input) => input.Trim().ToLower() switch
         {
-            "¾Ô¤h" or "warrior" or "1" => TRPGClass.Warrior,
-            "µs¸é" or "rogue" or "2" => TRPGClass.Rogue,
-            "ªk®v" or "mage" or "3" => TRPGClass.Mage,
-            "ªª®v" or "cleric" or "4" => TRPGClass.Cleric,
-            "¹C«L" or "ranger" or "5" => TRPGClass.Ranger,
+            "æˆ°å£«" or "warrior" or "1" => TRPGClass.Warrior,
+            "ç›œè³Š" or "rogue" or "2" => TRPGClass.Rogue,
+            "æ³•å¸«" or "mage" or "3" => TRPGClass.Mage,
+            "ç‰§å¸«" or "cleric" or "4" => TRPGClass.Cleric,
+            "éŠä¿ " or "ranger" or "5" => TRPGClass.Ranger,
             _ => TRPGClass.None
         };
 
         /// <summary>
-        /// Àò¨ú©Ò¦³¨¤¦âªºª¬ºAºK­n
+        /// ç²å–æ‰€æœ‰è§’è‰²çš„ç‹€æ…‹æ‘˜è¦
         /// </summary>
         public string GetCharactersStatusSummary()
         {
             if (Characters.Count == 0)
-                return "¥Ø«e¨S¦³¨¤¦â";
+                return "ç›®å‰æ²’æœ‰è§’è‰²";
 
             var lines = Characters.Values.Select(c => 
-                $"- {c.UserName} [{GetClassName(c.CharacterClass)}]: {c.CurrentHP}/{c.MaxHP} HP | °§¾j:{c.Hunger}/{c.MaxHunger} | SAN:{c.Sanity}/{c.MaxSanity} | {c.Stats} | §Ş¯à: {string.Join(", ", c.ClassAbilities)}");
+                $"- {c.UserName} [{GetClassName(c.CharacterClass)}]: {c.CurrentHP}/{c.MaxHP} HP | é£¢é¤“:{c.Hunger}/{c.MaxHunger} | SAN:{c.Sanity}/{c.MaxSanity} | {c.Stats} | æŠ€èƒ½: {string.Join(", ", c.ClassAbilities)}");
             return string.Join("\n", lines);
         }
     }
 
     /// <summary>
-    /// TRPG Â¾·~¦Cªí
+    /// TRPG è·æ¥­åˆ—è¡¨
     /// </summary>
     public enum TRPGClass
     {
         None = 0,
-        Warrior,    // ¾Ô¤h
-        Rogue,      // µs¸é
-        Mage,       // ªk®v
-        Cleric,     // ªª®v
-        Ranger      // ¹C«L
+        Warrior,    // æˆ°å£«
+        Rogue,      // ç›œè³Š
+        Mage,       // æ³•å¸«
+        Cleric,     // ç‰§å¸«
+        Ranger      // éŠä¿ 
     }
 
     /// <summary>
-    /// TRPG ¨¤¦â¼Æ­È
+    /// TRPG è§’è‰²æ•¸å€¼
     /// </summary>
     public class TRPGStats
     {
-        public int Strength { get; set; }     // ¤O¶q
-        public int Dexterity { get; set; }    // ±Ó±¶
-        public int Constitution { get; set; } // Åé½è
-        public int Intelligence { get; set; } // ´¼¤O
-        public int Wisdom { get; set; }       // ·Pª¾
-        public int Charisma { get; set; }     // ¾y¤O
+        public int Strength { get; set; }     // åŠ›é‡
+        public int Dexterity { get; set; }    // æ•æ·
+        public int Constitution { get; set; } // é«”è³ª
+        public int Intelligence { get; set; } // æ™ºåŠ›
+        public int Wisdom { get; set; }       // æ„ŸçŸ¥
+        public int Charisma { get; set; }     // é­…åŠ›
 
         public override string ToString() =>
-            $"¤O¶q:{Strength} ±Ó±¶:{Dexterity} Åé½è:{Constitution} ´¼¤O:{Intelligence} ·Pª¾:{Wisdom} ¾y¤O:{Charisma}";
+            $"åŠ›é‡:{Strength} æ•æ·:{Dexterity} é«”è³ª:{Constitution} æ™ºåŠ›:{Intelligence} æ„ŸçŸ¥:{Wisdom} é­…åŠ›:{Charisma}";
     }
 
     /// <summary>
-    /// TRPG ¨¤¦â¸ê°T
+    /// TRPG è§’è‰²è³‡è¨Š
     /// </summary>
     public class TRPGCharacter
     {
@@ -147,16 +147,16 @@ namespace MusicBot2.Models
         public List<string> ClassAbilities { get; set; } = new();
         public int CurrentHP { get; set; } = 100;
         public int MaxHP { get; set; } = 100;
-        public int Hunger { get; set; } = 100;       // °§¾j­È 0-100¡A0=¾j¦º
+        public int Hunger { get; set; } = 100;       // é£¢é¤“å€¼ 0-100ï¼Œ0=é¤“æ­»
         public int MaxHunger { get; set; } = 100;
-        public int Sanity { get; set; } = 100;       // SAN­È 0-100¡A0=ºÆ¨g
+        public int Sanity { get; set; } = 100;       // SANå€¼ 0-100ï¼Œ0=ç˜‹ç‹‚
         public int MaxSanity { get; set; } = 100;
         public DateTime LastActionTime { get; set; } = DateTime.UtcNow;
 
         public List<InventoryItem> Inventory { get; set; } = new List<InventoryItem>();
 
         /// <summary>
-        /// ¨ü¨ì¶Ë®`
+        /// å—åˆ°å‚·å®³
         /// </summary>
         public void TakeDamage(int damage)
         {
@@ -164,7 +164,7 @@ namespace MusicBot2.Models
         }
 
         /// <summary>
-        /// «ì´_¥Í©R­È
+        /// æ¢å¾©ç”Ÿå‘½å€¼
         /// </summary>
         public void Heal(int amount)
         {
@@ -172,7 +172,7 @@ namespace MusicBot2.Models
         }
 
         /// <summary>
-        /// ´î¤Ö°§¾j­È
+        /// æ¸›å°‘é£¢é¤“å€¼
         /// </summary>
         public void ReduceHunger(int amount)
         {
@@ -180,7 +180,7 @@ namespace MusicBot2.Models
         }
 
         /// <summary>
-        /// «ì´_°§¾j­È
+        /// æ¢å¾©é£¢é¤“å€¼
         /// </summary>
         public void RestoreHunger(int amount)
         {
@@ -188,7 +188,7 @@ namespace MusicBot2.Models
         }
 
         /// <summary>
-        /// ´î¤ÖSAN­È
+        /// æ¸›å°‘SANå€¼
         /// </summary>
         public void ReduceSanity(int amount)
         {
@@ -196,7 +196,7 @@ namespace MusicBot2.Models
         }
 
         /// <summary>
-        /// «ì´_SAN­È
+        /// æ¢å¾©SANå€¼
         /// </summary>
         public void RestoreSanity(int amount)
         {
@@ -204,17 +204,17 @@ namespace MusicBot2.Models
         }
 
         /// <summary>
-        /// ¬O§_¦s¬¡
+        /// æ˜¯å¦å­˜æ´»
         /// </summary>
         public bool IsAlive => CurrentHP > 0 && Hunger > 0;
 
         /// <summary>
-        /// ¬O§_ºÆ¨g
+        /// æ˜¯å¦ç˜‹ç‹‚
         /// </summary>
         public bool IsInsane => Sanity <= 0;
 
         /// <summary>
-        /// Àò¨ú°·±dª¬ºA¹Ï¥Ü
+        /// ç²å–å¥åº·ç‹€æ…‹åœ–ç¤º
         /// </summary>
         public string GetHealthStatus()
         {
@@ -230,23 +230,23 @@ namespace MusicBot2.Models
         }
 
         /// <summary>
-        /// Àò¨ú°·±dª¬ºA´y­z
+        /// ç²å–å¥åº·ç‹€æ…‹æè¿°
         /// </summary>
         public string GetHealthDescription()
         {
             var percentage = (double)CurrentHP / MaxHP;
             return percentage switch
             {
-                >= 0.8 => "ª¬ºA¨}¦n",
-                >= 0.5 => "»´¶Ë",
-                >= 0.3 => "¤¤¶Ë",
-                > 0 => "­«¶Ë",
-                _ => "¤w¦º¤`"
+                >= 0.8 => "ç‹€æ…‹è‰¯å¥½",
+                >= 0.5 => "è¼•å‚·",
+                >= 0.3 => "ä¸­å‚·",
+                > 0 => "é‡å‚·",
+                _ => "å·²æ­»äº¡"
             };
         }
 
         /// <summary>
-        /// ²K¥[ª««~¨ì­I¥]
+        /// æ·»åŠ ç‰©å“åˆ°èƒŒåŒ…
         /// </summary>
         public void AddItem(string itemName, string description)
         {
@@ -259,7 +259,7 @@ namespace MusicBot2.Models
         }
 
         /// <summary>
-        /// ±q­I¥]²¾°£ª««~
+        /// å¾èƒŒåŒ…ç§»é™¤ç‰©å“
         /// </summary>
         public bool RemoveItem(string itemName)
         {
@@ -273,7 +273,7 @@ namespace MusicBot2.Models
         }
 
         /// <summary>
-        /// ÀË¬d¬O§_¾Ö¦³ª««~
+        /// æª¢æŸ¥æ˜¯å¦æ“æœ‰ç‰©å“
         /// </summary>
         public bool HasItem(string itemName)
         {
@@ -281,12 +281,12 @@ namespace MusicBot2.Models
         }
 
         /// <summary>
-        /// Àò¨ú­I¥]¤º®eºK­n
+        /// ç²å–èƒŒåŒ…å…§å®¹æ‘˜è¦
         /// </summary>
         public string GetInventorySummary()
         {
             if (Inventory.Count == 0)
-                return "­I¥]¬OªÅªº";
+                return "èƒŒåŒ…æ˜¯ç©ºçš„";
 
             return string.Join("\n", Inventory.Select((item, index) => 
                 $"{index + 1}. {item.Name} - {item.Description}"));
@@ -294,7 +294,7 @@ namespace MusicBot2.Models
     }
 
     /// <summary>
-    /// ­I¥]ª««~
+    /// èƒŒåŒ…ç‰©å“
     /// </summary>
     public class InventoryItem
     {
@@ -304,7 +304,7 @@ namespace MusicBot2.Models
     }
 
     /// <summary>
-    /// TRPG °T®§°O¿ı
+    /// TRPG è¨Šæ¯è¨˜éŒ„
     /// </summary>
     public class TRPGMessage
     {
@@ -317,18 +317,18 @@ namespace MusicBot2.Models
     }
 
     /// <summary>
-    /// TRPG °T®§Ãş«¬
+    /// TRPG è¨Šæ¯é¡å‹
     /// </summary>
     public enum TRPGMessageType
     {
-        PlayerAction,    // ª±®a¦æ°Ê
-        DiceRoll,       // »ë¤lµ²ªG
-        GMNarration,    // GM ®Ç¥Õ
-        SystemMessage   // ¨t²Î°T®§
+        PlayerAction,    // ç©å®¶è¡Œå‹•
+        DiceRoll,       // éª°å­çµæœ
+        GMNarration,    // GM æ—ç™½
+        SystemMessage   // ç³»çµ±è¨Šæ¯
     }
 
     /// <summary>
-    /// OpenRouter TRPG ½Ğ¨D
+    /// OpenRouter TRPG è«‹æ±‚
     /// </summary>
     public class TRPGRequest
     {

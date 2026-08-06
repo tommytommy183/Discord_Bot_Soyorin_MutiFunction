@@ -956,7 +956,13 @@ namespace MusicBot2.SlahCommands
 
         #region TRPG 黑暗奇幻冒險
         [SlashCommand("開始冒險", "開始一個黑暗奇幻 TRPG 冒險（此頻道所有訊息將成為遊戲內容）")]
-        public async Task StartAdventureAsync([Summary("職業", "選擇職業：戰士、盜賊、法師、牧師、遊俠")] string 職業)
+        public async Task StartAdventureAsync([Summary("職業", "選擇職業：戰士、盜賊、法師、牧師、遊俠")]
+        [Choice("戰士", "1")]
+        [Choice("盜賊", "2")]
+        [Choice("法師", "3")]
+        [Choice("牧師", "4")]
+        [Choice("遊俠", "5")]
+        string classChoice)
         {
             await DeferAsync();
             var user = Context.User as SocketGuildUser;
@@ -966,12 +972,18 @@ namespace MusicBot2.SlahCommands
                 return;
             }
 
-            var result = await _trpgService.StartAdventureAsync(Context.Channel.Id, user, 職業);
+            var result = await _trpgService.StartAdventureAsync(Context.Channel.Id, user, classChoice);
             await FollowupAsync(result);
         }
 
         [SlashCommand("加入冒險", "加入當前頻道進行中的 TRPG 冒險")]
-        public async Task JoinAdventureAsync([Summary("職業", "選擇職業：戰士、盜賊、法師、牧師、遊俠")] string 職業)
+        public async Task JoinAdventureAsync([Summary("職業", "選擇職業：戰士、盜賊、法師、牧師、遊俠")]
+        [Choice("戰士", "1")]
+        [Choice("盜賊", "2")]
+        [Choice("法師", "3")]
+        [Choice("牧師", "4")]
+        [Choice("遊俠", "5")]
+        string classChoice)
         {
             await DeferAsync();
             var user = Context.User as SocketGuildUser;
@@ -981,7 +993,7 @@ namespace MusicBot2.SlahCommands
                 return;
             }
 
-            var result = await _trpgService.JoinAdventureAsync(Context.Channel.Id, user, 職業);
+            var result = await _trpgService.JoinAdventureAsync(Context.Channel.Id, user, classChoice);
             await FollowupAsync(result);
         }
 
