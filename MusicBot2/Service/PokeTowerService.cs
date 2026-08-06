@@ -515,7 +515,7 @@ namespace MusicBot2.Service
         };
 
         // pending starts keyed by channelId (before passive is chosen)
-        private static readonly Dictionary<ulong, (ulong PlayerId, string PlayerName, PokeGamePokemon Src)> _pendingStarts = new();
+        private static readonly Dictionary<ulong, (ulong PlayerId, string PlayerName, PokeGamePokemon Src, List<PassiveDef> Choices)> _pendingStarts = new();
 
         // ── 中文敵人池 (Name, Types, StatTotal, PokeApiId) ────────
         private static readonly List<(string Name, string[] Types, int StatTotal, int PokeId)> _enemyPool = new()
@@ -1759,7 +1759,9 @@ namespace MusicBot2.Service
                     .WithDescription($"**{existing.PlayerName}** 正在第 {existing.CurrentFloor} 層（共 {existing.MaxFloor} 層）。")
                     .WithColor(Color.Red).Build(), new ComponentBuilder());
 
-            _pendingStarts[channelId] = (playerId, playerName, src);
+            // 每次開局隨機抽 3 個職業供選擇
+            var choices = _passives.OrderBy(_ => _rng.Next()).Take(3).ToList();
+            _pendingStarts[channelId] = (playerId, playerName, src, choices);
             return BuildPassiveSelectionEmbed(channelId);
         }
 
@@ -1769,39 +1771,43 @@ namespace MusicBot2.Service
             if (!_pendingStarts.TryGetValue(channelId, out var pending))
                 return ErrEmbed("找不到待開始的爬塔，請重新使用 /pokemon爬塔。");
 
-            if (idx < 0 || idx >= _passives.Count)
+            if (idx < 0 || idx >= pending.Choices.Count)
                 return ErrEmbed("無效的被動選擇");
 
-            var chosen = _passives[idx];
+            var chosen = pending.Choices[idx];
             _pendingStarts.Remove(channelId);
             return await StartRunAsync(channelId, pending.PlayerId, pending.PlayerName, pending.Src, chosen.Id);
         }
 
         private (Embed embed, ComponentBuilder component) BuildPassiveSelectionEmbed(ulong channelId)
         {
+            if (!_pendingStarts.TryGetValue(channelId, out var pending))
+                return ErrEmbed("找不到待開始的爬塔");
+
+            var choices = pending.Choices;
             var desc = new StringBuilder();
-            desc.AppendLine("踏入爬塔前，選擇一個**被動技能**加持你的旅程！");
+            desc.AppendLine("踏入爬塔前，從本次隨機出現的三個**職業**中選擇一個！");
             desc.AppendLine();
-            for (int i = 0; i < _passives.Count; i++)
+            for (int i = 0; i < choices.Count; i++)
             {
-                var pv = _passives[i];
+                var pv = choices[i];
                 desc.AppendLine($"**{i + 1}. {pv.Emoji} {pv.Name}**");
                 desc.AppendLine($"　　{pv.Desc}");
                 desc.AppendLine();
             }
 
             var embed = new EmbedBuilder()
-                .WithTitle("🌟 選擇被動技能")
+                .WithTitle("🌟 選擇職業（三選一）")
                 .WithDescription(desc.ToString())
                 .WithColor(new Color(255, 180, 0))
                 .WithFooter("選擇後不可更改，請仔細考慮！")
                 .Build();
 
             var cb = new ComponentBuilder();
-            for (int i = 0; i < _passives.Count; i++)
+            for (int i = 0; i < choices.Count; i++)
             {
-                var pv = _passives[i];
-                cb.WithButton($"{pv.Emoji}{pv.Name}", $"tower_passive_{channelId}_{i}", ButtonStyle.Primary, row: i / 5);
+                var pv = choices[i];
+                cb.WithButton($"{pv.Emoji}{pv.Name}", $"tower_passive_{channelId}_{i}", ButtonStyle.Primary, row: 0);
             }
             return (embed, cb);
         }
