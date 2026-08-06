@@ -134,28 +134,45 @@ namespace MusicBot2.Service
             //"poolside/laguna-m.1:free",
         };
 
-        // ── Google AI Studio 模型列表（聰明 → 笨，梯次降級） ───────────────
-        // 第一梯：最強，主力聊天
-        // 第二梯：快速且夠聰明，主力備援
-        // 第三梯：輕量，最後保底
+        // ── Google AI Studio 聊天模型列表（聰明 → 笨，梯次降級） ────────────
+        // 排除：TTS / Image / Embedding / Music(Lyria) / Robotics / ComputerUse / DeepResearch / Imagen / Veo
+        // 只保留 generateContent 聊天用模型
         private readonly string[] _googleModels =
         {
-            // === 第一梯：最強 ===
-            "gemini-2.5-pro",           // 最強推理，適合複雜問題
-            // === 第二梯：快速+聰明，日常主力 ===
-            "gemini-2.5-flash",         // 速度快、品質高，最推薦日常用
-            "gemini-2.0-flash",         // 穩定老牌，品質可靠
-            // === 第三梯：輕量保底 ===
-            "gemini-2.5-flash-lite",    // 輕量版 2.5，速度優先
-            "gemini-2.0-flash-lite",    // 最輕量，救急用
+            // ══ 第一梯：最強 Pro（複雜推理首選）══
+            "gemini-3.1-pro-preview",       // 最新一代 Pro，頂峰
+            "gemini-3-pro-preview",         // Gen3 Pro，穩定強力
+
+            // ══ 第二梯：最新 Flash 主力（速度+智慧平衡）══
+            "gemini-3.6-flash",             // 最新 Flash 旗艦
+            "gemini-3.5-flash",             // 3.5 Flash，品質優秀
+            "gemini-3.1-flash-lite",        // 3.1 Flash-Lite 穩定版
+            "gemini-3-flash-preview",       // Gen3 Flash Preview
+            "gemini-omni-flash-preview",    // Omni Flash
+
+            // ══ 第三梯：2.5 穩定版（久經考驗）══
+            "gemini-2.5-pro",               // 2.5 Pro 穩定版
+            "gemini-2.5-flash",             // 2.5 Flash 穩定版（日常最推薦）
+            "gemini-2.5-flash-lite",        // 2.5 Flash-Lite 穩定版
+
+            // ══ 第四梯：2.0 舊世代備援 ══
+            "gemini-2.0-flash",             // 2.0 Flash 可靠老牌
+            "gemini-2.0-flash-lite",        // 2.0 Flash-Lite 輕量
+
+            // ══ 第五梯：Gemma 開源（最後保底）══
+            "gemma-4-31b-it",               // Gemma 4 31B
+            "gemma-4-26b-a4b-it",           // Gemma 4 26B MoE
         };
 
         private readonly string[] _googleModelsForSimpleText =
         {
-            // 無記憶呼叫（摘要/搜尋判斷），用速度快的就好
+            // 無記憶呼叫（摘要/搜尋意圖判斷），速度優先，不需要最強
+            "gemini-3.6-flash",
+            "gemini-3.5-flash",
+            "gemini-3.1-flash-lite",
             "gemini-2.5-flash",
-            "gemini-2.0-flash",
             "gemini-2.5-flash-lite",
+            "gemini-2.0-flash",
             "gemini-2.0-flash-lite",
         };
 
