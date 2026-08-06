@@ -1945,7 +1945,12 @@ namespace MusicBot2.Service
             {
                 playerMove = poke.Moves[moveIdx];
                 if (!(HasRelic(run, "relic_no_pp") && _rng.Next(100) < 25))
-                    playerMove.CurrentPP--;
+                    playerMove.CurrentPP = Math.Max(0, playerMove.CurrentPP - 1);
+            }
+            else if (moveIdx == 99)
+            {
+                // 普通攻擊：全PP耗盡時可用，無限次但傷害極低
+                playerMove = new TowerMove { Name="超認真普通一拳", Type="一般", Power=20, Category="Physical", Emoji="👊", MaxPP=999, CurrentPP=999 };
             }
             else
             {
@@ -2030,8 +2035,8 @@ namespace MusicBot2.Service
                 AppendHit(sb, poke.DisplayName, enemy.Name, playerMove, d, enemy.Types, true);
 
                 // Post-attack relics
-                if (HasRelic(run, "relic_lifesteal")) { int ls = Math.Max(1, (int)(d * 0.20f)); poke.CurrentHP = Math.Min(poke.MaxHP, poke.CurrentHP + ls); }
-                if (HasPassive(run, "passive_vampire") && !HasRelic(run, "relic_lifesteal")) { int ls = Math.Max(1, (int)(d * 0.30f)); poke.CurrentHP = Math.Min(poke.MaxHP, poke.CurrentHP + ls); }
+                if (HasRelic(run, "relic_lifesteal")) { int ls = Math.Max(1, (int)(d * 0.20f)); poke.CurrentHP = Math.Min(poke.MaxHP, poke.CurrentHP + ls); sb.AppendLine($"  🩸 生命吸取 +{ls}HP"); }
+                if (HasPassive(run, "passive_vampire") && !HasRelic(run, "relic_lifesteal")) { int ls = Math.Max(1, (int)(d * 0.30f)); poke.CurrentHP = Math.Min(poke.MaxHP, poke.CurrentHP + ls); sb.AppendLine($"  🧛 吸血鬼 +{ls}HP"); }
                 if (HasRelic(run, "relic_poison") && enemy.CurrentHP > 0) enemy.CurrentHP = Math.Max(0, enemy.CurrentHP - 15);
 
                 // 技能效果（狀態/stat/吸血）
@@ -2841,10 +2846,11 @@ namespace MusicBot2.Service
                     foreach (var p in run.Party) { int boost = Math.Max(1, (int)(p.MaxHP * 0.25f)); p.MaxHP += boost; p.CurrentHP = Math.Min(p.MaxHP, p.CurrentHP + boost); }
                     break;
                 case "relic_move_pow":
-                    foreach (var m in run.ActivePokemon.Moves) m.Power += 20;
+                    foreach (var p in run.Party) foreach (var m in p.Moves) m.Power += 20;
                     break;
                 case "relic_move_pp":
-                    foreach (var m in run.ActivePokemon.Moves) { m.MaxPP += 5; m.CurrentPP = m.MaxPP; }
+                    // 同步更新所有黨員的PP上限（避免 ActivePokemon / Party 物件不同步）
+                    foreach (var p in run.Party) foreach (var m in p.Moves) { m.MaxPP += 5; m.CurrentPP = Math.Min(m.MaxPP, m.CurrentPP + 5); }
                     break;
                 case "relic_all_stats":
                     foreach (var p in run.Party)
@@ -3433,8 +3439,8 @@ namespace MusicBot2.Service
             switch (curseId)
             {
                 case "curse_half_pp":
+                    // Party 已包含 ActivePokemon，只需迴圈一次，避免雙重砍半
                     foreach (var p in run.Party) foreach (var m in p.Moves) { m.MaxPP = Math.Max(1, m.MaxPP / 2); m.CurrentPP = Math.Min(m.CurrentPP, m.MaxPP); }
-                    foreach (var m in run.ActivePokemon.Moves) { m.MaxPP = Math.Max(1, m.MaxPP / 2); m.CurrentPP = Math.Min(m.CurrentPP, m.MaxPP); }
                     break;
                 case "curse_slow":
                     foreach (var p in run.Party) p.Speed = (int)(p.Speed * 0.6f);
@@ -4014,18 +4020,22 @@ namespace MusicBot2.Service
 
             var cb = new ComponentBuilder();
             var row = new ActionRowBuilder();
+            bool allPPEmpty = p.Moves.All(m => m.CurrentPP <= 0);
             for (int i = 0; i < p.Moves.Count; i++)
             {
                 var m = p.Moves[i];
-                bool noPP = m.CurrentPP <= 0;
+                int dispPP = Math.Min(m.CurrentPP, m.MaxPP);  // 安全 clamp，防止顯示超過上限
+                bool noPP = dispPP <= 0;
                 row.AddComponent(new ButtonBuilder()
-                    .WithLabel($"{m.Emoji}{m.Name}({m.CurrentPP}PP)")
+                    .WithLabel($"{m.Emoji}{m.Name}({dispPP}PP)")
                     .WithCustomId($"tower_move_{run.ChannelId}_{i}")
                     .WithStyle(noPP ? ButtonStyle.Secondary : ButtonStyle.Primary)
                     .WithDisabled(noPP));
             }
             cb.AddRow(row);
-            cb.WithButton("🔄 換寶可夢", $"tower_swap_request_{run.ChannelId}", ButtonStyle.Secondary, row: 1);
+            if (allPPEmpty)
+                cb.WithButton("👊 普通攻擊（無限次，很癢）", $"tower_move_{run.ChannelId}_99", ButtonStyle.Danger, row: 1);
+            cb.WithButton("🔄 換寶可夢", $"tower_swap_request_{run.ChannelId}", ButtonStyle.Secondary, row: allPPEmpty ? 2 : 1);
             return (embed, cb);
         }
 
