@@ -455,9 +455,12 @@ SAN 值（0-100）：
             // 檢查玩家是否已經加入冒險
             if (!gameState.Characters.ContainsKey(user.Id))
             {
-                Console.WriteLine($"[TRPG] 玩家 {user.Username} 尚未加入冒險");
-                return $"❌ {user.DisplayName ?? user.Username}，你還沒有加入這場冒險！\n" +
-                       $"💡 請使用 `/加入冒險` 指令來加入遊戲。";
+                //Console.WriteLine($"[TRPG] 玩家 {user.Username} 尚未加入冒險");
+                //return $"❌ {user.DisplayName ?? user.Username}，你還沒有加入這場冒險！\n" +
+                //       $"💡 請使用 `/加入冒險` 指令來加入遊戲。";
+
+                // 如果玩家尚未加入冒險，直接忽略訊息（不回覆）
+                return "";
             }
 
             // 確保角色存在（自動加入冒險）
