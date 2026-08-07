@@ -175,7 +175,7 @@ namespace MusicBot2.Service
                 if (_servantPool.Count == 0)
                     return CommonHelper.BuildErrorResponse("無法取得 FGO 從者資料");
 
-                // 反覆抽，直到找到有 NP 名的從者
+                // 找一位有 NP 名的從者當答案
                 FgoBasicServant answer = null;
                 string npName = null;
                 string charaUrl = null;
@@ -195,8 +195,31 @@ namespace MusicBot2.Service
                 if (answer == null)
                     return CommonHelper.BuildErrorResponse("找不到有效的寶具資料，請稍後再試");
 
-                // 6 個寶具名選項
-                var options = PickOptions(npName, FgoGuessMode.NoblePhantasm);
+                // 現抓 5 個其他從者的寶具名作錯誤選項（不依賴預載快取）
+                var wrongNps = new List<string>();
+                var tried = new HashSet<int> { answer.CollectionNo };
+                int maxTries = 40;
+                while (wrongNps.Count < 5 && maxTries-- > 0)
+                {
+                    var c = _servantPool[_rng.Next(_servantPool.Count)];
+                    if (!tried.Add(c.CollectionNo)) continue;
+
+                    // 先查快取，再 fetch
+                    string wp;
+                    if (_npCache.TryGetValue(c.CollectionNo, out var cached))
+                        wp = cached;
+                    else
+                    {
+                        var (_, wn) = await FetchServantAssetsAsync(c.CollectionNo);
+                        wp = wn;
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(wp) && wp != npName && !wrongNps.Contains(wp))
+                        wrongNps.Add(wp);
+                }
+
+                // 若湊不夠 5 個就用現有的
+                var options = wrongNps.Append(npName).OrderBy(_ => _rng.Next()).ToList();
 
                 _games[channelId] = new FgoGuessState
                 {
@@ -232,25 +255,18 @@ namespace MusicBot2.Service
             }
         }
 
-        /// <summary>處理玩家點按鈕作答。</summary>
-        public async Task<(Embed embed, ComponentBuilder component)> HandleAnswerAsync(
+        /// <summary>處理玩家點按鈕作答（一次性，任何作答後立刻結束並揭曉答案）。</summary>
+        public Task<(Embed embed, ComponentBuilder component)> HandleAnswerAsync(
             ulong channelId, ulong userId, string userName, int optionIndex)
         {
             if (!_games.TryGetValue(channelId, out var state))
-                return (CommonHelper.BuildErrorResponse("找不到進行中的遊戲").Item2, new ComponentBuilder());
-
-            if (state.IsAnswered)
-            {
-                var alreadyEmbed = new EmbedBuilder()
-                    .WithTitle("⚔️ FGO 猜謎")
-                    .WithDescription("這題已經被答對了！使用指令開始下一題。")
-                    .WithColor(Discord.Color.LightGrey)
-                    .Build();
-                return (alreadyEmbed, new ComponentBuilder());
-            }
+                return Task.FromResult((CommonHelper.BuildErrorResponse("找不到進行中的遊戲").Item2, new ComponentBuilder()));
 
             if (optionIndex < 0 || optionIndex >= state.Options.Count)
-                return (CommonHelper.BuildErrorResponse("無效的選項").Item2, new ComponentBuilder());
+                return Task.FromResult((CommonHelper.BuildErrorResponse("無效的選項").Item2, new ComponentBuilder()));
+
+            // 任何回答都立刻結束遊戲
+            _games.Remove(channelId);
 
             var selected = state.Options[optionIndex];
             string correctAnswer = state.Mode switch
@@ -260,9 +276,6 @@ namespace MusicBot2.Service
                 _                          => state.AnswerName
             };
             bool isCorrect = selected == correctAnswer;
-
-            if (isCorrect)
-                state.IsAnswered = true;
 
             string classEmoji = ClassEmoji(_servantPool.FirstOrDefault(s => s.CollectionNo == state.AnswerCollectionNo)?.ClassName ?? "");
 
@@ -287,18 +300,24 @@ namespace MusicBot2.Service
             }
             else
             {
+                string wrongDesc = state.Mode switch
+                {
+                    FgoGuessMode.NoblePhantasm =>
+                        $"**{userName}** 答了「{selected}」❌\n正確答案是 {classEmoji} **{state.AnswerName}** 的寶具\n「**{state.AnswerNpName}**」",
+                    FgoGuessMode.Ascension =>
+                        $"**{userName}** 答了「{selected}」❌\n正確答案是 {classEmoji} **{state.AnswerName}** 的{StageLabel(state.AnswerAscensionStage)}",
+                    _ =>
+                        $"**{userName}** 答了「{selected}」❌\n正確答案是 {classEmoji} **{state.AnswerName}**！"
+                };
                 resultEmbed = new EmbedBuilder()
                     .WithTitle("❌ 答錯了！")
-                    .WithDescription($"**{userName}** 答了「{selected}」，但不正確！\n繼續猜猜看～")
+                    .WithDescription(wrongDesc)
                     .WithColor(Discord.Color.Red)
+                    .WithImageUrl(state.CharaImageUrl)  // 揭曉正確圖片
                     .WithCurrentTimestamp();
             }
 
-            // 答對後移除遊戲狀態；答錯保留讓他人繼續
-            if (isCorrect)
-                _games.Remove(channelId);
-
-            return (resultEmbed.Build(), new ComponentBuilder());
+            return Task.FromResult((resultEmbed.Build(), new ComponentBuilder()));
         }
 
         /// <summary>強制結束當前頻道的猜謎遊戲，顯示答案。</summary>
