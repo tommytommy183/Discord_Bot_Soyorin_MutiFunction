@@ -49,14 +49,14 @@ namespace MusicBot2.Service
         //  Public API
         // ─────────────────────────────────────────────────────────────────
 
-        /// <summary>模式 1：剪影猜角色。回傳 embed + component + 剪影圖片 Stream。</summary>
-        public async Task<((ComponentBuilder component, Embed embed), Stream silhouette)> StartSilhouetteGameAsync(ulong channelId)
+        /// <summary>模式 1：猜角色名稱。回傳 embed + component（直接顯示原圖）。</summary>
+        public async Task<(ComponentBuilder component, Embed embed)> StartSilhouetteGameAsync(ulong channelId)
         {
             try
             {
                 await EnsureInitAsync();
                 if (_servantPool.Count == 0)
-                    return (CommonHelper.BuildErrorResponse("無法取得 FGO 從者資料"), null);
+                    return CommonHelper.BuildErrorResponse("無法取得 FGO 從者資料");
 
                 // 選答案 + 5 個錯誤選項
                 var answer = _servantPool[_rng.Next(_servantPool.Count)];
@@ -65,7 +65,7 @@ namespace MusicBot2.Service
                 // 取全圖 URL
                 var (charaUrl, _) = await FetchServantAssetsAsync(answer.CollectionNo);
                 if (charaUrl == null)
-                    return (CommonHelper.BuildErrorResponse("找不到角色圖片"), null);
+                    return CommonHelper.BuildErrorResponse("找不到角色圖片");
 
                 // 儲存遊戲狀態
                 _games[channelId] = new FgoGuessState
@@ -77,33 +77,92 @@ namespace MusicBot2.Service
                     Options = options
                 };
 
-                // 剪影圖
-                Stream silhouette;
-                try
-                {
-                    silhouette = await MakeSilhouetteAsync(charaUrl);
-                }
-                catch
-                {
-                    silhouette = null;
-                }
-
                 var embed = new EmbedBuilder()
                     .WithTitle("⚔️ FGO 猜謎 — 這位從者是誰？")
-                    .WithDescription("看看這個剪影，猜猜是哪位從者！\n請點擊下方按鈕作答。")
+                    .WithDescription("猜猜圖中是哪位從者！\n請點擊下方按鈕作答。")
                     .WithColor(new Discord.Color(0xC8A800))
-                    .WithImageUrl(silhouette != null ? "attachment://servant.png" : charaUrl)
+                    .WithImageUrl(charaUrl)
                     .WithFooter($"共 {_servantPool.Count} 位從者可出題")
                     .WithCurrentTimestamp()
                     .Build();
 
                 var component = BuildOptionButtons(channelId, options, answer.Name, isNpMode: false);
-                return ((component, embed), silhouette);
+                return (component, embed);
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[FgoGuess] Silhouette error: {ex.Message}");
-                return (CommonHelper.BuildErrorResponse($"發生錯誤: {ex.Message}"), null);
+                Console.WriteLine($"[FgoGuess] StartSilhouette error: {ex.Message}");
+                return CommonHelper.BuildErrorResponse($"發生錯誤: {ex.Message}");
+            }
+        }
+
+        /// <summary>模式 3：猜從者升階（顯示某一階段圖，猜是第幾階段）。</summary>
+        public async Task<(ComponentBuilder component, Embed embed)> StartAscensionGameAsync(ulong channelId)
+        {
+            try
+            {
+                await EnsureInitAsync();
+                if (_servantPool.Count == 0)
+                    return CommonHelper.BuildErrorResponse("無法取得 FGO 從者資料");
+
+                // 反覆抽，直到找到有至少 2 個升階圖的從者（只有 1 張猜不了）
+                FgoBasicServant answer = null;
+                Dictionary<string, string> ascImages = null;
+                for (int attempt = 0; attempt < 20; attempt++)
+                {
+                    var candidate = _servantPool[_rng.Next(_servantPool.Count)];
+                    var imgs = await FetchAscensionImagesAsync(candidate.CollectionNo);
+                    if (imgs != null && imgs.Count >= 2)
+                    {
+                        answer = candidate;
+                        ascImages = imgs;
+                        break;
+                    }
+                }
+
+                if (answer == null)
+                    return CommonHelper.BuildErrorResponse("找不到有效的升階圖資料，請稍後再試");
+
+                // 從可用階段中隨機挑一張
+                var availableKeys = ascImages.Keys.OrderBy(k => k).ToList();
+                var chosenKey = availableKeys[_rng.Next(availableKeys.Count)];
+                int chosenStage = int.TryParse(chosenKey, out int s) ? s : 1;
+                string imageUrl = ascImages[chosenKey];
+
+                // 選項：只列出這位從者「實際有圖的」階段，不足 4 個也沒關係
+                var options = availableKeys.Select(k =>
+                    StageLabel(int.TryParse(k, out int n) ? n : 0)).ToList();
+
+                _games[channelId] = new FgoGuessState
+                {
+                    ChannelId = channelId,
+                    Mode = FgoGuessMode.Ascension,
+                    AnswerCollectionNo = answer.CollectionNo,
+                    AnswerName = answer.Name,
+                    AnswerAscensionStage = chosenStage,
+                    CharaImageUrl = imageUrl,
+                    Options = options
+                };
+
+                string classEmoji = ClassEmoji(answer.ClassName);
+                string rarityStars = new string('★', answer.Rarity);
+
+                var embed = new EmbedBuilder()
+                    .WithTitle("⚔️ FGO 猜謎 — 這是第幾階段？")
+                    .WithDescription($"{classEmoji} **{answer.Name}**\n{rarityStars}\n\n這張圖是哪個升階階段？")
+                    .WithColor(new Discord.Color(0x3A7BDD))
+                    .WithImageUrl(imageUrl)
+                    .WithFooter("請點擊下方按鈕作答")
+                    .WithCurrentTimestamp()
+                    .Build();
+
+                var component = BuildAscensionButtons(channelId, options, chosenStage);
+                return (component, embed);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[FgoGuess] Ascension game error: {ex.Message}");
+                return CommonHelper.BuildErrorResponse($"發生錯誤: {ex.Message}");
             }
         }
 
@@ -155,8 +214,8 @@ namespace MusicBot2.Service
                 string rarityStars = new string('★', answer.Rarity);
 
                 var embed = new EmbedBuilder()
-                    .WithTitle($"⚔️ FGO 猜謎 — 這位從者的寶具名稱是？")
-                    .WithDescription($"{classEmoji} **{answer.Name}**\n{rarityStars}\n\n猜猜這位從者的寶具叫什麼名字！")
+                    .WithTitle($"⚔️ FGO 猜謎 — {answer.Name}的寶具名稱是？")
+                    .WithDescription($"{classEmoji} **{answer.Name}**\n{rarityStars}\n\n這位從者的寶具是？")
                     .WithColor(new Discord.Color(0xBF2020))
                     .WithImageUrl(charaUrl)
                     .WithFooter("請點擊下方按鈕選擇正確的寶具名")
@@ -194,8 +253,12 @@ namespace MusicBot2.Service
                 return (CommonHelper.BuildErrorResponse("無效的選項").Item2, new ComponentBuilder());
 
             var selected = state.Options[optionIndex];
-            bool isNpMode = state.Mode == FgoGuessMode.NoblePhantasm;
-            string correctAnswer = isNpMode ? state.AnswerNpName : state.AnswerName;
+            string correctAnswer = state.Mode switch
+            {
+                FgoGuessMode.NoblePhantasm => state.AnswerNpName,
+                FgoGuessMode.Ascension     => StageLabel(state.AnswerAscensionStage),
+                _                          => state.AnswerName
+            };
             bool isCorrect = selected == correctAnswer;
 
             if (isCorrect)
@@ -206,11 +269,18 @@ namespace MusicBot2.Service
             EmbedBuilder resultEmbed;
             if (isCorrect)
             {
+                string desc = state.Mode switch
+                {
+                    FgoGuessMode.NoblePhantasm =>
+                        $"**{userName}** 答對了！\n{classEmoji} **{state.AnswerName}** 的寶具是\n「**{state.AnswerNpName}**」",
+                    FgoGuessMode.Ascension =>
+                        $"**{userName}** 答對了！\n這張正是 {classEmoji} **{state.AnswerName}** 的{StageLabel(state.AnswerAscensionStage)}！",
+                    _ =>
+                        $"**{userName}** 答對了！\n這位從者正是 {classEmoji} **{state.AnswerName}**！"
+                };
                 resultEmbed = new EmbedBuilder()
                     .WithTitle("✅ 答對了！")
-                    .WithDescription(isNpMode
-                        ? $"**{userName}** 答對了！\n{classEmoji} **{state.AnswerName}** 的寶具是\n「**{state.AnswerNpName}**」"
-                        : $"**{userName}** 答對了！\n這位從者正是 {classEmoji} **{state.AnswerName}**！")
+                    .WithDescription(desc)
                     .WithColor(Discord.Color.Green)
                     .WithImageUrl(state.CharaImageUrl)
                     .WithCurrentTimestamp();
@@ -238,14 +308,21 @@ namespace MusicBot2.Service
                 return (CommonHelper.BuildErrorResponse("此頻道沒有進行中的猜謎遊戲").Item2, new ComponentBuilder());
 
             _games.Remove(channelId);
-            bool isNpMode = state.Mode == FgoGuessMode.NoblePhantasm;
             string classEmoji = ClassEmoji(_servantPool.FirstOrDefault(s => s.CollectionNo == state.AnswerCollectionNo)?.ClassName ?? "");
+
+            string desc = state.Mode switch
+            {
+                FgoGuessMode.NoblePhantasm =>
+                    $"沒人猜出來～\n{classEmoji} **{state.AnswerName}** 的寶具是「**{state.AnswerNpName}**」",
+                FgoGuessMode.Ascension =>
+                    $"沒人猜出來～\n正確答案是 {classEmoji} **{state.AnswerName}** 的{StageLabel(state.AnswerAscensionStage)}！",
+                _ =>
+                    $"沒人猜出來～\n正確答案是 {classEmoji} **{state.AnswerName}**！"
+            };
 
             var embed = new EmbedBuilder()
                 .WithTitle("🏳️ 公布答案")
-                .WithDescription(isNpMode
-                    ? $"沒人猜出來～\n{classEmoji} **{state.AnswerName}** 的寶具是「**{state.AnswerNpName}**」"
-                    : $"沒人猜出來～\n正確答案是 {classEmoji} **{state.AnswerName}**！")
+                .WithDescription(desc)
                 .WithColor(Discord.Color.Gold)
                 .WithImageUrl(state.CharaImageUrl)
                 .WithCurrentTimestamp()
@@ -274,20 +351,53 @@ namespace MusicBot2.Service
             }
         }
 
+        // 預先快取一批 NP 名，供「猜寶具」模式產生錯誤選項用
+        private const string NiceServantExportUrl =
+            "https://api.atlasacademy.io/export/TW/nice_servant.json";
+
         private async Task LoadServantPoolAsync()
         {
             try
             {
+                // 1. 載入基本從者清單
                 var json = await _http.GetStringAsync(BasicServantUrl);
                 var opts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
                 var all = JsonSerializer.Deserialize<List<FgoBasicServant>>(json, opts);
-                // 只保留正式從者（collectionNo > 0，不含隱藏/測試角色 id > 1000000）
                 _servantPool = all?
                     .Where(s => s.CollectionNo > 0 && s.Id < 1_000_000 && !string.IsNullOrEmpty(s.Name))
                     .OrderBy(s => s.CollectionNo)
                     .ToList() ?? new();
 
                 Console.WriteLine($"[FgoGuess] 載入 {_servantPool.Count} 位從者");
+
+                // 2. 異步預載 NP 名快取（從 nice export，不阻塞啟動）
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        Console.WriteLine("[FgoGuess] 開始預載 NP 快取...");
+                        var niceJson = await _http.GetStringAsync(NiceServantExportUrl);
+                        var niceOpts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                        var niceAll = JsonSerializer.Deserialize<List<FgoNiceServant>>(niceJson, niceOpts);
+                        if (niceAll == null) return;
+
+                        foreach (var svt in niceAll)
+                        {
+                            var np = svt.NoblePhantasms?
+                                .Where(n => !string.IsNullOrWhiteSpace(n.Name))
+                                .OrderByDescending(n => n.Num)
+                                .Select(n => n.Name)
+                                .FirstOrDefault();
+                            if (np != null)
+                                _npCache[svt.CollectionNo] = np;
+                        }
+                        Console.WriteLine($"[FgoGuess] NP 快取預載完成，共 {_npCache.Count} 筆");
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[FgoGuess] NP 快取預載失敗（不影響遊戲）: {ex.Message}");
+                    }
+                });
             }
             catch (Exception ex)
             {
@@ -306,11 +416,11 @@ namespace MusicBot2.Service
                 var data = JsonSerializer.Deserialize<FgoNiceServant>(json, opts);
                 if (data == null) return (null, null);
 
-                // 取升階 1 的全身圖
+                // 取最後升階的全身圖
                 string charaUrl = data.ExtraAssets?.CharaGraph?.Ascension?
                     .OrderBy(kv => kv.Key)
                     .Select(kv => kv.Value)
-                    .FirstOrDefault();
+                    .LastOrDefault();
 
                 // 取最新版本的 NP（num 最大）
                 string npName = data.NoblePhantasms?
@@ -330,6 +440,54 @@ namespace MusicBot2.Service
                 Console.WriteLine($"[FgoGuess] FetchAssets({collectionNo}) 失敗: {ex.Message}");
                 return (null, null);
             }
+        }
+
+        /// <summary>取得某從者所有升階全身圖（key = "1"~"4"）。</summary>
+        private async Task<Dictionary<string, string>> FetchAscensionImagesAsync(int collectionNo)
+        {
+            try
+            {
+                var url = string.Format(NiceServantUrl, collectionNo);
+                var json = await _http.GetStringAsync(url);
+                var opts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                var data = JsonSerializer.Deserialize<FgoNiceServant>(json, opts);
+
+                var asc = data?.ExtraAssets?.CharaGraph?.Ascension;
+                if (asc == null || asc.Count == 0) return null;
+
+                // 只保留 key 為純數字且有實際 URL 的項目
+                return asc
+                    .Where(kv => int.TryParse(kv.Key, out _) && !string.IsNullOrWhiteSpace(kv.Value))
+                    .ToDictionary(kv => kv.Key, kv => kv.Value);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static string StageLabel(int stage) => stage switch
+        {
+            1 => "第一階段",
+            2 => "第二階段",
+            3 => "第三階段",
+            4 => "第四階段",
+            _ => $"第{stage}階段"
+        };
+
+        private ComponentBuilder BuildAscensionButtons(ulong channelId, List<string> options, int correctStage)
+        {
+            var cb = new ComponentBuilder();
+            for (int i = 0; i < options.Count && i < 4; i++)
+            {
+                cb.WithButton(
+                    label: options[i],
+                    customId: $"fgo_guess_{channelId}_{i}",
+                    style: ButtonStyle.Primary,
+                    row: i / 2  // 每行最多 2 個，擺 2 行
+                );
+            }
+            return cb;
         }
 
         /// <summary>

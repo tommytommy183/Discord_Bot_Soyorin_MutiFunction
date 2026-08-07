@@ -75,17 +75,18 @@ namespace MusicBot2.Models
     }
 
     // ── 遊戲狀態 ───────────────────────────────────────────────────────────
-    public enum FgoGuessMode { Silhouette, NoblePhantasm }
+    public enum FgoGuessMode { Silhouette, NoblePhantasm, Ascension }
 
     public class FgoGuessState
     {
         public ulong ChannelId { get; set; }
         public FgoGuessMode Mode { get; set; }
         public int AnswerCollectionNo { get; set; }
-        public string AnswerName { get; set; }       // 正確角色名
-        public string AnswerNpName { get; set; }     // 正確寶具名（NP 模式）
-        public string CharaImageUrl { get; set; }    // 角色圖（NP 模式顯示用）
-        public List<string> Options { get; set; } = new();  // 6 個選項（按鈕文字）
+        public string AnswerName { get; set; }        // 正確角色名
+        public string AnswerNpName { get; set; }      // 正確寶具名（NP 模式）
+        public int AnswerAscensionStage { get; set; } // 正確階段 1-4（Ascension 模式）
+        public string CharaImageUrl { get; set; }     // 角色圖（NP / Ascension 模式顯示用）
+        public List<string> Options { get; set; } = new();  // 選項（按鈕文字）
         public bool IsAnswered { get; set; } = false;
         public DateTime StartTime { get; set; } = DateTime.UtcNow;
     }

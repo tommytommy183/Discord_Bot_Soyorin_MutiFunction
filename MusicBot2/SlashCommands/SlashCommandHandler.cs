@@ -1384,11 +1384,8 @@ namespace MusicBot2.SlahCommands
         public async Task FgoSilhouetteAsync()
         {
             await DeferAsync();
-            var ((component, embed), silhouette) = await _fgoGuessService.StartSilhouetteGameAsync(Context.Channel.Id);
-            if (silhouette != null)
-                await FollowupWithFileAsync(silhouette, "servant.png", embed: embed, components: component.Build());
-            else
-                await FollowupAsync(embed: embed, components: component.Build());
+            var (component, embed) = await _fgoGuessService.StartSilhouetteGameAsync(Context.Channel.Id);
+            await FollowupAsync(embed: embed, components: component.Build());
         }
 
         [SlashCommand("fgo猜寶具", "看角色猜 FGO 寶具名稱")]
@@ -1396,6 +1393,14 @@ namespace MusicBot2.SlahCommands
         {
             await DeferAsync();
             var (component, embed) = await _fgoGuessService.StartNpGameAsync(Context.Channel.Id);
+            await FollowupAsync(embed: embed, components: component.Build());
+        }
+
+        [SlashCommand("fgo猜階段", "看從者圖猜是第幾升階階段（1～4）")]
+        public async Task FgoAscensionGuessAsync()
+        {
+            await DeferAsync();
+            var (component, embed) = await _fgoGuessService.StartAscensionGameAsync(Context.Channel.Id);
             await FollowupAsync(embed: embed, components: component.Build());
         }
 
