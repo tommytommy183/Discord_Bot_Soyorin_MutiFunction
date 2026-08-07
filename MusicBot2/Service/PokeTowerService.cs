@@ -3633,7 +3633,12 @@ namespace MusicBot2.Service
             {
                 Name = m.Name, Type = m.Type, Power = m.Power,
                 Category = m.Category, Emoji = m.Emoji,
-                MaxPP = m.MaxPP, CurrentPP = m.MaxPP
+                MaxPP = m.MaxPP, CurrentPP = m.MaxPP,
+                EffectAilment = m.EffectAilment, EffectChance = m.EffectChance,
+                DrainPercent = m.DrainPercent,
+                StatTarget = m.StatTarget, StatStageChange = m.StatStageChange,
+                HighCrit = m.HighCrit,
+                MinHits = m.MinHits, MaxHits = m.MaxHits
             }).ToList();
         }
 
@@ -3673,7 +3678,11 @@ namespace MusicBot2.Service
             if (_movesApiCache.TryGetValue(pokeId, out var cached) && cached.Count >= 4)
                 return cached.OrderBy(_ => _rng.Next()).Take(4)
                     .Select(m => new TowerMove { Name=m.Name, Type=m.Type, Power=m.Power,
-                        Category=m.Category, Emoji=m.Emoji, MaxPP=m.MaxPP, CurrentPP=m.MaxPP }).ToList();
+                        Category=m.Category, Emoji=m.Emoji, MaxPP=m.MaxPP, CurrentPP=m.MaxPP,
+                        EffectAilment=m.EffectAilment, EffectChance=m.EffectChance,
+                        DrainPercent=m.DrainPercent,
+                        StatTarget=m.StatTarget, StatStageChange=m.StatStageChange,
+                        HighCrit=m.HighCrit, MinHits=m.MinHits, MaxHits=m.MaxHits }).ToList();
 
             try
             {
@@ -3796,30 +3805,50 @@ namespace MusicBot2.Service
                 if (move.EffectAilment == "triple")
                 {
                     // 三重攻擊：燒傷/麻痺/冰凍各10%獨立判定
-                    if (isPlayerAttacking && enemy.CurrentHP > 0 && string.IsNullOrEmpty(enemy.BattleStatus))
+                    if (isPlayerAttacking && enemy.CurrentHP > 0)
                     {
-                        int bonus = chaosBonus;
-                        foreach (var (ail, _) in new[] {("burn","燒傷"),("para","麻痺"),("freeze","冰凍")})
+                        if (!string.IsNullOrEmpty(enemy.BattleStatus))
                         {
-                            if (_rng.Next(100) < 10 + bonus)
+                            sb.AppendLine($"  〰️ 附加狀態無效（{enemy.Name} 已有{StatusName(enemy.BattleStatus)}）");
+                        }
+                        else
+                        {
+                            int bonus = chaosBonus;
+                            bool triggered = false;
+                            foreach (var (ail, _) in new[] {("burn","燒傷"),("para","麻痺"),("freeze","冰凍")})
                             {
-                                enemy.BattleStatus = ail;
-                                if (ail == "sleep") enemy.SleepTurns = _rng.Next(1, 4);
-                                sb.AppendLine($"  {StatusEmoji(ail)} {enemy.Name} 陷入{StatusName(ail)}！");
-                                break; // 一回合只附一種
+                                if (_rng.Next(100) < 10 + bonus)
+                                {
+                                    enemy.BattleStatus = ail;
+                                    if (ail == "sleep") enemy.SleepTurns = _rng.Next(1, 4);
+                                    sb.AppendLine($"  {StatusEmoji(ail)} {enemy.Name} 陷入{StatusName(ail)}！");
+                                    triggered = true;
+                                    break;
+                                }
                             }
+                            if (!triggered) sb.AppendLine($"  〰️ 三重攻擊附加狀態未觸發（各 {10 + bonus}%）");
                         }
                     }
-                    else if (!isPlayerAttacking && player.CurrentHP > 0 && string.IsNullOrEmpty(player.BattleStatus))
+                    else if (!isPlayerAttacking && player.CurrentHP > 0)
                     {
-                        foreach (var (ail, _) in new[] {("burn","燒傷"),("para","麻痺"),("freeze","冰凍")})
+                        if (!string.IsNullOrEmpty(player.BattleStatus))
                         {
-                            if (_rng.Next(100) < 10)
+                            sb.AppendLine($"  〰️ 附加狀態無效（{player.DisplayName} 已有{StatusName(player.BattleStatus)}）");
+                        }
+                        else
+                        {
+                            bool triggered = false;
+                            foreach (var (ail, _) in new[] {("burn","燒傷"),("para","麻痺"),("freeze","冰凍")})
                             {
-                                player.BattleStatus = ail;
-                                sb.AppendLine($"  {StatusEmoji(ail)} {player.DisplayName} 陷入{StatusName(ail)}！");
-                                break;
+                                if (_rng.Next(100) < 10)
+                                {
+                                    player.BattleStatus = ail;
+                                    sb.AppendLine($"  {StatusEmoji(ail)} {player.DisplayName} 陷入{StatusName(ail)}！");
+                                    triggered = true;
+                                    break;
+                                }
                             }
+                            if (!triggered) sb.AppendLine($"  〰️ 三重攻擊附加狀態未觸發（各 10%）");
                         }
                     }
                 }
@@ -3827,26 +3856,43 @@ namespace MusicBot2.Service
                 {
                     // flinch 畏縮只影響敵方
                     int flinchChance = Math.Min(100, move.EffectChance + (isPlayerAttacking ? chaosBonus : 0));
-                    if (isPlayerAttacking && enemy.CurrentHP > 0 && _rng.Next(100) < flinchChance)
-                    { enemy.Flinched = true; sb.AppendLine($"  😨 {enemy.Name} 因畏縮無法行動！"); }
+                    if (isPlayerAttacking && enemy.CurrentHP > 0)
+                    {
+                        if (_rng.Next(100) < flinchChance)
+                        { enemy.Flinched = true; sb.AppendLine($"  😨 {enemy.Name} 因畏縮無法行動！"); }
+                        else
+                        { sb.AppendLine($"  〰️ 畏縮未觸發（{flinchChance}%）"); }
+                    }
                 }
                 else
                 {
                     int ailmentChance = Math.Min(100, move.EffectChance + chaosBonus);
-                    if (_rng.Next(100) < ailmentChance)
+                    bool rolled = _rng.Next(100) < ailmentChance;
+                    if (isPlayerAttacking && enemy.CurrentHP > 0)
                     {
-                        if (isPlayerAttacking && string.IsNullOrEmpty(enemy.BattleStatus) && enemy.CurrentHP > 0)
+                        if (!string.IsNullOrEmpty(enemy.BattleStatus))
+                            sb.AppendLine($"  〰️ {StatusName(move.EffectAilment)}無效（{enemy.Name} 已有{StatusName(enemy.BattleStatus)}）");
+                        else if (rolled)
                         {
                             enemy.BattleStatus = move.EffectAilment;
                             if (move.EffectAilment == "sleep") enemy.SleepTurns = _rng.Next(1, 4);
                             sb.AppendLine($"  {StatusEmoji(move.EffectAilment)} {enemy.Name} 陷入{StatusName(move.EffectAilment)}！");
                         }
-                        else if (!isPlayerAttacking && string.IsNullOrEmpty(player.BattleStatus) && player.CurrentHP > 0)
+                        else
+                            sb.AppendLine($"  〰️ {StatusName(move.EffectAilment)}未觸發（{ailmentChance}%）");
+                    }
+                    else if (!isPlayerAttacking && player.CurrentHP > 0)
+                    {
+                        if (!string.IsNullOrEmpty(player.BattleStatus))
+                            sb.AppendLine($"  〰️ {StatusName(move.EffectAilment)}無效（{player.DisplayName} 已有{StatusName(player.BattleStatus)}）");
+                        else if (rolled)
                         {
                             player.BattleStatus = move.EffectAilment;
                             if (move.EffectAilment == "sleep") player.SleepTurns = _rng.Next(1, 4);
                             sb.AppendLine($"  {StatusEmoji(move.EffectAilment)} {player.DisplayName} 陷入{StatusName(move.EffectAilment)}！");
                         }
+                        else
+                            sb.AppendLine($"  〰️ {StatusName(move.EffectAilment)}未觸發（{ailmentChance}%）");
                     }
                 }
             }
@@ -3860,6 +3906,8 @@ namespace MusicBot2.Service
                     : Math.Min(100, move.EffectChance + (isFoeDebuff ? chaosBonus : 0));
                 if (_rng.Next(100) < statChance)
                     ApplyStatChange(move.StatTarget, move.StatStageChange, isPlayerAttacking, player, enemy, sb);
+                else
+                    sb.AppendLine($"  〰️ 能力變化未觸發（{statChance}%）");
             }
         }
 
