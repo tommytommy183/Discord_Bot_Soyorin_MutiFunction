@@ -44,8 +44,9 @@ namespace MusicBot2.SlahCommands
         private readonly GroqWhisperService _groqWhisperService;
         private readonly FishAudioService _fishAudioService;
         private readonly PokeTowerService _pokeTowerService;
+        private readonly FgoGuessService _fgoGuessService;
 
-        public SlashCommandHandler(Program program, WordGuessingService wordService, MineGameService mineGameService, ElevenLabsService elevenLabsService, OldMaidService oldMaidService, RubiksCubeService rubiksCubeService, GoogleAIStudioService googleAIStudioService, OpenRouterService openRouterService, RVC_Service rVC_Service, SetTextService setTextService, Game2048Service game2048Service, Game1A2BService game1A2BService, Pick2Service pick2Service, JikanAnimeService animeService, PokeService pokeService, PokeGameService pokeGameService, ValorantService valorantService, TRPGService trpgService, LyrisService lyrisService, LyricsDisplayService lyricsDisplayService, UselessApiService uselessApiService, AIImageService aiImageService, GroqWhisperService groqWhisperService, FishAudioService fishAudioService, PokeTowerService pokeTowerService)
+        public SlashCommandHandler(Program program, WordGuessingService wordService, MineGameService mineGameService, ElevenLabsService elevenLabsService, OldMaidService oldMaidService, RubiksCubeService rubiksCubeService, GoogleAIStudioService googleAIStudioService, OpenRouterService openRouterService, RVC_Service rVC_Service, SetTextService setTextService, Game2048Service game2048Service, Game1A2BService game1A2BService, Pick2Service pick2Service, JikanAnimeService animeService, PokeService pokeService, PokeGameService pokeGameService, ValorantService valorantService, TRPGService trpgService, LyrisService lyrisService, LyricsDisplayService lyricsDisplayService, UselessApiService uselessApiService, AIImageService aiImageService, GroqWhisperService groqWhisperService, FishAudioService fishAudioService, PokeTowerService pokeTowerService, FgoGuessService fgoGuessService)
         {
             _program = program;
             _wordService = wordService;
@@ -72,6 +73,7 @@ namespace MusicBot2.SlahCommands
             _groqWhisperService = groqWhisperService;
             _fishAudioService = fishAudioService;
             _pokeTowerService = pokeTowerService;
+            _fgoGuessService = fgoGuessService;
         }
         #region 音樂撥放相關
         [SlashCommand("播放音樂", "播放音樂")]
@@ -1375,6 +1377,28 @@ namespace MusicBot2.SlahCommands
             var name = _fishAudioService.GetCurrentVoiceName();
             await RespondAsync($"🎙️ 目前音色: **{name}**");
         }
+        #endregion
+
+        #region FGO 猜謎
+        [SlashCommand("fgo我是誰", "猜 FGO 從者")]
+        public async Task FgoSilhouetteAsync()
+        {
+            await DeferAsync();
+            var ((component, embed), silhouette) = await _fgoGuessService.StartSilhouetteGameAsync(Context.Channel.Id);
+            if (silhouette != null)
+                await FollowupWithFileAsync(silhouette, "servant.png", embed: embed, components: component.Build());
+            else
+                await FollowupAsync(embed: embed, components: component.Build());
+        }
+
+        [SlashCommand("fgo猜寶具", "看角色猜 FGO 寶具名稱")]
+        public async Task FgoNpGuessAsync()
+        {
+            await DeferAsync();
+            var (component, embed) = await _fgoGuessService.StartNpGameAsync(Context.Channel.Id);
+            await FollowupAsync(embed: embed, components: component.Build());
+        }
+
         #endregion
     }
 }

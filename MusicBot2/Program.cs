@@ -116,6 +116,7 @@ public class Program
             .AddSingleton<PokeService>()
             .AddSingleton<ValorantService>()
             .AddSingleton<AIImageService>()
+            .AddSingleton<FgoGuessService>()
             .AddSingleton<UselessApiService>()
             .AddSingleton<RVC_Service>()
             .AddSingleton<SetTextService>(setTextService)
@@ -402,6 +403,28 @@ public class Program
                     {
                         msg.Embed = embed;
                         msg.Components = newComponent?.Build();
+                    });
+                }
+            }
+
+            // 處理 FGO 猜謎按鈕（fgo_guess_{channelId}_{optionIndex}）
+            else if (component.Data.CustomId.StartsWith("fgo_guess_"))
+            {
+                await component.DeferAsync();
+                var parts = component.Data.CustomId.Split('_');
+                // parts: ["fgo","guess",channelId,optionIndex]
+                if (parts.Length == 4
+                    && ulong.TryParse(parts[2], out ulong fgoChannelId)
+                    && int.TryParse(parts[3], out int optionIdx))
+                {
+                    var fgoSvc = _services.GetRequiredService<FgoGuessService>();
+                    var guildUser = component.User as Discord.WebSocket.SocketGuildUser;
+                    var userName = guildUser?.DisplayName ?? component.User?.Username ?? "某人";
+                    var (resultEmbed, resultComp) = await fgoSvc.HandleAnswerAsync(fgoChannelId, component.User.Id, userName, optionIdx);
+                    await component.ModifyOriginalResponseAsync(msg =>
+                    {
+                        msg.Embed = resultEmbed;
+                        msg.Components = resultComp?.Build();
                     });
                 }
             }
