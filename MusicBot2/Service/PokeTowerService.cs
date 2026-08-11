@@ -1903,7 +1903,9 @@ namespace MusicBot2.Service
                 run.ActivePokemon.CurrentHP = Math.Min(run.ActivePokemon.MaxHP,
                     run.ActivePokemon.CurrentHP + Math.Max(1, (int)(run.ActivePokemon.MaxHP * 0.35)));
                 foreach (var m in run.ActivePokemon.Moves) m.CurrentPP = m.MaxPP;
-                run.RunLog.Add($"🏕️ 第{run.CurrentFloor}層：全隊休息恢復 35%HP + PP全回復");
+                int restExp = 20 + run.CurrentFloor * 5;
+                string restExpMsg = GiveExp(run, restExp);
+                run.RunLog.Add($"🏕️ 第{run.CurrentFloor}層：全隊休息恢復 35%HP + PP全回復，{restExpMsg}");
                 run.State = TowerRunState.Resting;
                 await SaveAsync(run);
                 return BuildRestEmbed(run, hp);
@@ -2661,6 +2663,15 @@ namespace MusicBot2.Service
             if (itemKey != "leave" && itemKey != "new_move")
                 run.ShopBuyCounts[itemKey] = run.ShopBuyCounts.GetValueOrDefault(itemKey, 0) + 1;
             if (itemKey == "leave") run.State = TowerRunState.SelectingPath;
+
+            // 購買給 EXP（離開不給）
+            if (itemKey != "leave")
+            {
+                int shopExp = 15 + run.CurrentFloor * 3;
+                string shopExpMsg = GiveExp(run, shopExp);
+                msg += $"\n{shopExpMsg}";
+            }
+
             run.RunLog.Add(msg);
             await SaveAsync(run);
             if (itemKey == "leave") return BuildPathEmbed(run, msg);
@@ -3037,6 +3048,12 @@ namespace MusicBot2.Service
                 string profitMsg = run.CasinoProfit == 0 ? "🎲 不輸不贏，拍拍屁股離開了。"
                     : run.CasinoProfit > 0 ? $"🤑 賭場贏家！本次淨賺 **+{run.CasinoProfit}💰**！"
                     : $"😭 輸光了！本次虧了 **{Math.Abs(run.CasinoProfit)}💰**！";
+                // 離開賭場：依局數給完成獎勵 EXP
+                int casinoLeaveExp = 10 + run.CasinoRound * 8 + run.CurrentFloor * 3;
+                string leaveExpMsg = GiveExp(run, casinoLeaveExp);
+                profitMsg += $"\n{leaveExpMsg}";
+                run.CasinoProfit = 0;
+                run.CasinoRound = 0;
                 await SaveAsync(run);
                 return BuildPathEmbed(run, profitMsg);
             }
@@ -3089,6 +3106,9 @@ namespace MusicBot2.Service
                     result = $"🎲 {diceFace} 骰出 **{dice}** — 猜錯！**{bet}💰** 被吃掉 💀（現在 {run.Gold}💰）";
                 }
                 run.CasinoRound++;
+                int casinoRoundExp = 10 + run.CurrentFloor * 2;
+                string casinoExpMsg = GiveExp(run, casinoRoundExp);
+                result += $"\n{casinoExpMsg}";
                 await SaveAsync(run);
                 return BuildCasinoEmbed(run, result);
             }
@@ -3778,6 +3798,37 @@ namespace MusicBot2.Service
             if (spDef != 0) parts.Add($"特防{(spDef>0?"+":"")}{spDef}");
             if (spd   != 0) parts.Add($"速{(spd>0?"+":"")}{spd}");
             return parts.Count > 0 ? $"`{string.Join(" ", parts)}`" : "";
+        }
+
+        /// <summary>給予 EXP 並處理升級，回傳升級提示字串（可能為空）。</summary>
+        private string GiveExp(TowerRun run, int amount)
+        {
+            if (HasPassive(run, "passive_genius")) amount *= 2;
+            if (run.CursedRelicIds.Contains("curse_exp_drain")) amount = (int)(amount * 0.5f);
+            if (HasRelic(run, "relic_exp_boost")) amount = (int)(amount * 1.5f);
+            run.Exp += amount;
+
+            var sb = new StringBuilder();
+            while (run.Exp >= run.ExpToNext)
+            {
+                run.Exp -= run.ExpToNext;
+                run.Level++;
+                foreach (var member in run.Party)
+                {
+                    member.Attack         = (int)(member.Attack         * 1.10f);
+                    member.Defense        = (int)(member.Defense        * 1.10f);
+                    member.SpecialAttack  = (int)(member.SpecialAttack  * 1.10f);
+                    member.SpecialDefense = (int)(member.SpecialDefense * 1.10f);
+                    member.Speed          = (int)(member.Speed          * 1.10f);
+                    int hpBoost = Math.Max(1, (int)(member.MaxHP * 0.10f));
+                    member.MaxHP     += hpBoost;
+                    member.CurrentHP += hpBoost;
+                }
+                if (HasRelic(run, "relic_scholar"))
+                    foreach (var mv in run.ActivePokemon.Moves) { mv.MaxPP += 5; mv.CurrentPP = Math.Min(mv.MaxPP, mv.CurrentPP + 5); }
+                sb.Append($" ⬆️ **Lv.{run.Level}！全隊能力上升！**");
+            }
+            return $"✨ +{amount} EXP{sb}";
         }
 
         private static string StatusEmoji(string s) => s switch
