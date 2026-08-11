@@ -2249,6 +2249,9 @@ namespace MusicBot2.Service
                     return BuildVictoryEmbed(run);
                 }
 
+                // 可以捕獲（無論有沒有神器獎勵，先保存敵人資訊）
+                run.PendingCatch = enemy;
+
                 // Every 5 floors: relic selection
                 if (run.CurrentFloor % 5 == 0)
                 {
@@ -2263,8 +2266,6 @@ namespace MusicBot2.Service
 
                 // 提供技能獎勵（先讓玩家選強化）
                 run.PendingMoveRewards = _movePool.OrderBy(_ => _rng.Next()).Take(3).ToList();
-                // 可以捕獲
-                run.PendingCatch = enemy;
                 run.PowerUpgradeReturn = "battle";
                 run.State = TowerRunState.SelectingPowerUpgrade;
                 await SaveAsync(run);
@@ -2797,8 +2798,9 @@ namespace MusicBot2.Service
                     run.ShopBuyCounts["powerup"] = run.ShopBuyCounts.GetValueOrDefault("powerup", 0) + 1;
                 }
                 m.Power += 20;
+                m.CurrentPP = Math.Min(m.MaxPP, m.CurrentPP + 1);
                 m.UpgradeCount++;
-                run.RunLog.Add($"⚡ 強化【{m.Name}】威力提升至 {m.Power}！（{m.UpgradeCount}/5）");
+                run.RunLog.Add($"⚡ 強化【{m.Name}】威力提升至 {m.Power}，PP+1（{m.UpgradeCount}/5）");
             }
 
             if (ret == "battle")
@@ -3754,8 +3756,8 @@ namespace MusicBot2.Service
             var choices = tier.ToList();
             if (choices.Count == 0) choices = _enemyPool;
             var t = choices[_rng.Next(choices.Count)];
-            float scale = isBoss ? 1.0f + (floor - 1) * 0.09f : 1.0f + (floor - 1) * 0.06f;
-            int b = Math.Max(30, (int)(t.StatTotal * scale / 7));
+            float scale = isBoss ? 1.0f + (floor - 1) * 0.07f : 1.0f + (floor - 1) * 0.045f;
+            int b = Math.Max(25, (int)(t.StatTotal * scale / 8));
             int gold = isBoss ? (floor == 20 ? 120 : 80) : _rng.Next(20, 40);
 
             return new TowerEnemy
@@ -3763,9 +3765,9 @@ namespace MusicBot2.Service
                 Name = isBoss ? $"👑 {t.Name}" : t.Name,
                 PokeId = t.PokeId,
                 Types = t.Types.ToList(),
-                MaxHP = (int)(b * 1.6), CurrentHP = (int)(b * 1.6),
-                Attack = b, Defense = (int)(b * 0.85),
-                SpecialAttack = b, SpecialDefense = (int)(b * 0.85),
+                MaxHP = (int)(b * 1.5), CurrentHP = (int)(b * 1.5),
+                Attack = b, Defense = (int)(b * 0.80),
+                SpecialAttack = b, SpecialDefense = (int)(b * 0.80),
                 Speed = b, IsBoss = isBoss, GoldReward = gold,
                 Moves = PickMovesStatic(t.Types.ToList()),
             };

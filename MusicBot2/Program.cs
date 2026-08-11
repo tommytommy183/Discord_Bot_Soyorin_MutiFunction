@@ -725,6 +725,29 @@ public class Program
                         ulong ch = ulong.Parse(rest[..under]);
                         int si = int.Parse(rest[(under + 1)..]);
                         (tEmbed, tCb) = await towerSvc.HandleSwapConfirmAsync(ch, si);
+
+                        // 如果仍在戰鬥中，刪除舊圖片並重發新上場的寶可夢圖
+                        if (towerSvc.GetRun(ch)?.State == TowerRunState.InBattle)
+                        {
+                            var (oldE, oldP) = towerSvc.GetBattleImageMsgIds(ch);
+                            if (oldE != 0) try { await component.Channel.DeleteMessageAsync(oldE); } catch { }
+                            if (oldP != 0) try { await component.Channel.DeleteMessageAsync(oldP); } catch { }
+                            towerSvc.ClearBattleImageMsgIds(ch);
+
+                            var (enemyUrl, playerUrl) = towerSvc.GetBattleImageUrls(ch);
+                            ulong eMsgId = 0, pMsgId = 0;
+                            if (!string.IsNullOrEmpty(enemyUrl))
+                            {
+                                var eMsg = await component.Channel.SendMessageAsync(enemyUrl);
+                                eMsgId = eMsg.Id;
+                            }
+                            if (!string.IsNullOrEmpty(playerUrl))
+                            {
+                                var pMsg = await component.Channel.SendMessageAsync(playerUrl);
+                                pMsgId = pMsg.Id;
+                            }
+                            towerSvc.SetBattleImageMsgIds(ch, eMsgId, pMsgId);
+                        }
                     }
                     // tower_addnew_{channelId}_{playerPokemonIndex}
                     else if (id.StartsWith("tower_addnew_"))
