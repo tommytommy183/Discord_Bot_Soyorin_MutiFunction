@@ -598,9 +598,9 @@ namespace MusicBot2.Service
                     }
                 }
             }
-            // Phase 1：讓 AI 判斷是否需要搜尋，並直接給出搜尋關鍵字
+            // Phase 1：關鍵字比對判斷是否需要搜尋（取代原本的 AI round-trip）
             string searchContext = null;
-            var searchQuery = await DetectSearchQueryWithAiAsync(request.UserMessage);
+            var searchQuery = DetectSearchQueryByKeyword(request.UserMessage);
             if (searchQuery != null)
             {
                 try
@@ -833,7 +833,41 @@ namespace MusicBot2.Service
         }
 
         /// <summary>
-        /// Phase 1：讓 AI 判斷訊息是否需要搜尋。需要則回傳搜尋關鍵字，否則回傳 null。
+        /// Phase 1（快速版）：用關鍵字比對判斷是否需要搜尋，不發 AI 請求。
+        /// 比對到觸發詞則回傳去除觸發詞後的搜尋字串，否則 null。
+        /// </summary>
+        private static string DetectSearchQueryByKeyword(string userMessage)
+        {
+            if (string.IsNullOrWhiteSpace(userMessage)) return null;
+
+            string matched = null;
+            foreach (var kw in WikiTriggerKeywords)
+            {
+                if (userMessage.Contains(kw, StringComparison.OrdinalIgnoreCase))
+                {
+                    matched = kw;
+                    break;
+                }
+            }
+            if (matched == null) return null;
+
+            // 去掉觸發詞、去掉對爽世的稱呼、去掉常見填充詞，剩下的就是搜尋內容
+            var query = userMessage;
+            foreach (var kw in WikiTriggerKeywords)
+                query = query.Replace(kw, "", StringComparison.OrdinalIgnoreCase);
+
+            // 移除對 bot 的稱呼
+            foreach (var name in new[] { "爽世", "soyo", "Soyo", "soyorin" })
+                query = query.Replace(name, "", StringComparison.OrdinalIgnoreCase);
+
+            query = query.Trim(' ', '，', ',', '、', '～', '~', '！', '!', '？', '?', '。', '.');
+
+            Console.WriteLine($"[OpenRouter] 關鍵字偵測搜尋，觸發詞: 「{matched}」→ 搜尋: 「{query}」");
+            return query.Length >= 2 ? query : userMessage.Trim();
+        }
+
+        /// <summary>
+        /// Phase 1（舊版 AI 偵測，已停用）：讓 AI 判斷訊息是否需要搜尋。需要則回傳搜尋關鍵字，否則回傳 null。
         /// </summary>
         private async Task<string> DetectSearchQueryWithAiAsync(string userMessage)
         {
