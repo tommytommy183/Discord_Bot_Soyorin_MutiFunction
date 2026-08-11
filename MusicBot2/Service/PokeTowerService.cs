@@ -1743,9 +1743,27 @@ namespace MusicBot2.Service
                 if (pv != null) run.RunLog.Add($"🌟 被動技能【{pv.Emoji}{pv.Name}】已啟動！");
             }
 
+            // 🐷 豬豬的祝福（限定玩家）
+            string blessingExtra = "";
+            if (playerId == 490866735277408256UL)
+            {
+                foreach (var p in run.Party)
+                {
+                    p.Attack        += 520;
+                    p.SpecialAttack += 520;
+                    p.Defense       += 520;
+                    p.SpecialDefense+= 520;
+                    p.Speed         += 520;
+                    p.MaxHP         += 520;
+                    p.CurrentHP      = p.MaxHP;
+                }
+                run.RunLog.Add("🐷✨ 豬豬的祝福降臨！全屬性 +520！");
+                blessingExtra = "🐷✨ **豬豬的祝福降臨！**\n全屬性 **+520**，放心玩，輸不了的！";
+            }
+
             _activeRuns[channelId] = run;
             await SaveAsync(run);
-            return BuildPathEmbed(run);
+            return BuildPathEmbed(run, blessingExtra);
         }
 
         /// <summary>顯示被動技能選擇畫面（爬塔前呼叫）</summary>
@@ -4074,11 +4092,14 @@ namespace MusicBot2.Service
                 .WithFooter($"{run.PlayerName} • 累積傷害 {run.TotalDamageDealt}")
                 .Build();
 
+            bool hasParanoia = run.CursedRelicIds.Contains("curse_paranoia");
             var cb = new ComponentBuilder();
             for (int i = 0; i < paths.Count; i++)
             {
                 var (label, style, _) = PathDisplay(paths[i]);
-                cb.WithButton(label, $"tower_path_{run.ChannelId}_{paths[i]}", style, row: 0);
+                bool isShop = paths[i] == "shop";
+                string displayLabel = isShop && hasParanoia ? "🚫 神秘商店（妄想症）" : label;
+                cb.WithButton(displayLabel, $"tower_path_{run.ChannelId}_{paths[i]}", style, row: 0, disabled: isShop && hasParanoia);
             }
             cb.WithButton("🔄 換寶可夢", $"tower_swap_request_{run.ChannelId}", ButtonStyle.Secondary, row: 1);
 
