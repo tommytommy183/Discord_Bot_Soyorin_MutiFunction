@@ -55,7 +55,7 @@ public class Program
     private bool _isTtsEnabled = false; // TTS 開關
     public bool IsTtsEnabled => _isTtsEnabled;
     public void ToggleTts() => _isTtsEnabled = !_isTtsEnabled;
-    private List<ulong> passBotList = new List<ulong> 
+    private List<ulong> passBotList = new List<ulong>
     {   //1499768328586002473, //魚骨頭
         1286491383426711563, //soyo自己的，這樣才能讀到之前的訊息
     }; // 這裡放置要排除的 Bot ID
@@ -579,7 +579,7 @@ public class Program
             {
                 await component.DeferAsync();
                 var towerSvc = _services.GetService<PokeTowerService>();
-                var pokeSvc  = _services.GetService<PokeGameService>();
+                var pokeSvc = _services.GetService<PokeGameService>();
                 var id = component.Data.CustomId;
                 Embed tEmbed = null;
                 ComponentBuilder tCb = null;
@@ -1134,10 +1134,13 @@ public class Program
                     }
                 case "猜單字":
                     {
+                        var word = feature.Substring("猜單字:".Length).Trim();
+
                         var svc = _services.GetRequiredService<WordGuessingService>();
-                        var txt = await svc.Guess(channel, "", talker,"");
+                        var txt = await svc.Guess(channel, word, talker, "");
                         if (!string.IsNullOrWhiteSpace(txt))
                             await channel.SendMessageAsync(txt);
+
                         break;
                     }
                 case "一言":
@@ -2646,11 +2649,11 @@ public class Program
 
                     // 調用 OpenRouter 生成回應（TTS 模式：回覆簡短＋帶情緒標籤）
                     var result = await _openRouterService.GenerateTextAsync(
-                        text, 
-                        speaker, 
-                        true, 
-                        channelKey, 
-                        null, 
+                        text,
+                        speaker,
+                        true,
+                        channelKey,
+                        null,
                         null,
                         isTtsMode: true
                     );
