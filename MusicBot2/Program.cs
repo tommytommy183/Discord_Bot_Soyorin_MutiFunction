@@ -1242,62 +1242,47 @@ public class Program
 
             using (message.Channel.EnterTypingState())
             {
-                // 如果訊息有附帶圖片，先用 Google AI 描述圖片，再注入給 OpenRouter
-                string userContent = message.Content;
-                var imageAttachments = message.Attachments
-                    .Where(a => a.ContentType != null && a.ContentType.StartsWith("image/"))
-                    .ToList();
-                if (imageAttachments.Any())
+                // 收集所有圖片描述（當前訊息 + 被回覆訊息）
+                var allDescParts = new List<string>();
+
+                // 當前訊息的圖片
+                foreach (var att in message.Attachments.Where(a => a.ContentType?.StartsWith("image/") == true))
                 {
-                    var descParts = new List<string>();
-                    foreach (var att in imageAttachments)
+                    try
                     {
-                        try
-                        {
-                            var desc = await _openRouterService.DescribeImageAsync(att.Url, message.Content);
-                            if (!string.IsNullOrWhiteSpace(desc))
-                                descParts.Add(desc);
-                        }
-                        catch { /* 圖片描述失敗則忽略 */ }
+                        var desc = await _openRouterService.DescribeImageAsync(att.Url, message.Content);
+                        if (!string.IsNullOrWhiteSpace(desc)) allDescParts.Add(desc);
                     }
-                    if (descParts.Any())
-                        userContent = $"（爽世看著對方傳來的圖片，她看到：{string.Join("；", descParts)}）\n{message.Content}";
+                    catch { }
                 }
+
+                string visionContext = allDescParts.Any() ? string.Join("\n", allDescParts) : null;
 
                 if (message.Reference != null)
                 {
                     var repliedMessage = await message.Channel.GetMessageAsync(message.Reference.MessageId.Value);
                     if (repliedMessage != null)
                     {
-                        // 被回覆的訊息如果有圖片，也一併描述
-                        var repliedImageAttachments = repliedMessage.Attachments
-                            .Where(a => a.ContentType != null && a.ContentType.StartsWith("image/"))
-                            .ToList();
-                        if (repliedImageAttachments.Any())
+                        // 被回覆訊息的圖片
+                        foreach (var att in repliedMessage.Attachments.Where(a => a.ContentType?.StartsWith("image/") == true))
                         {
-                            var repliedDescParts = new List<string>();
-                            foreach (var att in repliedImageAttachments)
+                            try
                             {
-                                try
-                                {
-                                    var desc = await _openRouterService.DescribeImageAsync(att.Url, message.Content);
-                                    if (!string.IsNullOrWhiteSpace(desc))
-                                        repliedDescParts.Add(desc);
-                                }
-                                catch { /* 圖片描述失敗則忽略 */ }
+                                var desc = await _openRouterService.DescribeImageAsync(att.Url, message.Content);
+                                if (!string.IsNullOrWhiteSpace(desc)) allDescParts.Add(desc);
                             }
-                            if (repliedDescParts.Any())
-                                userContent = $"（爽世看著對方回覆的那則訊息裡的圖片，她看到：{string.Join("；", repliedDescParts)}）\n{userContent}";
+                            catch { }
                         }
+                        visionContext = allDescParts.Any() ? string.Join("\n", allDescParts) : null;
 
-                        result = await _openRouterService.GenerateTextAsync(userContent, talker, true, channelKey, repliedMessage, contextMessages);
+                        result = await _openRouterService.GenerateTextAsync(message.Content, talker, true, channelKey, repliedMessage, contextMessages, visionContext: visionContext);
                         await HandleSoyoResponseAsync(result, message, talker);
                         return;
                     }
                 }
                 else
                 {
-                    result = await _openRouterService.GenerateTextAsync(userContent, talker, true, channelKey, null, contextMessages);
+                    result = await _openRouterService.GenerateTextAsync(message.Content, talker, true, channelKey, null, contextMessages, visionContext: visionContext);
                     await HandleSoyoResponseAsync(result, message, talker);
                     return;
                 }

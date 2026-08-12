@@ -269,6 +269,14 @@ namespace MusicBot2.Service
 - 回覆要簡短（1~3句），因為是即時語音對話
 範例：[laughing]哈哈你在說什麼啦  /  [excited]真的嗎！太棒了吧";
 
+        private static string BuildSystemInstruction(bool isTtsMode, string visionContext)
+        {
+            string base_ = isTtsMode ? Persona + TtsEmotionAddon : Persona;
+            if (string.IsNullOrWhiteSpace(visionContext)) return base_;
+            // 把視覺描述嵌進 system instruction，讓模型認為是自身感知
+            return base_ + $"\n\n【你目前看到的畫面】\n你現在能看見對方傳來的圖片，畫面內容如下：\n{visionContext}\n請根據你真實看到的這張圖片內容來回應，不要說看不到或只是文字描述。";
+        }
+
         private static readonly string[] WikiTriggerKeywords =
         {
             "查詢", "找尋", "尋找", "上網查", "上網搜", "搜尋", "查一下", "找一下",
@@ -1031,7 +1039,7 @@ namespace MusicBot2.Service
         /// <summary>
         /// 簡化版本：直接傳入訊息
         /// </summary>
-        public async Task<string> GenerateTextAsync(string message, SocketGuildUser user, bool saveToMemory = true, string channelKey = null, IMessage? repliedMessage = null, IEnumerable<IMessage>? contextMessages = null, bool isTtsMode = false)
+        public async Task<string> GenerateTextAsync(string message, SocketGuildUser user, bool saveToMemory = true, string channelKey = null, IMessage? repliedMessage = null, IEnumerable<IMessage>? contextMessages = null, bool isTtsMode = false, string visionContext = null)
         {
             var request = new GeminiRequestVM
             {
@@ -1040,7 +1048,7 @@ namespace MusicBot2.Service
                 TopP = 0.9f,
                 TopK = 40,
                 MaxOutputTokens = isTtsMode ? 256 : 1024,
-                SystemInstruction = isTtsMode ? Persona + TtsEmotionAddon : null
+                SystemInstruction = BuildSystemInstruction(isTtsMode, visionContext)
             };
 
             return await GenerateTextAsync(request, user, saveToMemory, channelKey, repliedMessage, contextMessages);
@@ -1259,7 +1267,11 @@ namespace MusicBot2.Service
                     .GetString();
 
                 var trimmed = text?.Trim();
-                Console.WriteLine($"[GoogleAI Vision] 圖片描述：{trimmed}");
+                Console.WriteLine($"[GoogleAI Vision] 圖片描述（{trimmed?.Length} 字）：");
+                // 分段印，避免 Railway log 截斷長行
+                if (trimmed != null)
+                    for (int i = 0; i < trimmed.Length; i += 200)
+                        Console.WriteLine(trimmed.Substring(i, Math.Min(200, trimmed.Length - i)));
                 return trimmed;
             }
             catch (Exception ex)
