@@ -1207,9 +1207,11 @@ namespace MusicBot2.Service
                     _               => "image/jpeg"
                 };
 
-                string prompt = string.IsNullOrWhiteSpace(userHint)
-                    ? "請用繁體中文詳細描述這張圖片的內容，包括人物、物品、場景、文字、氣氛等所有你看到的細節。"
-                    : $"請用繁體中文描述這張圖片。使用者附帶的訊息是：「{userHint}」，請一併回應。";
+                string prompt =
+                    "請用繁體中文詳細描述這張圖片，直接描述內容，不要加標題或分項格式。" +
+                    "描述應包含：畫面中的主體（人物外貌、表情、服裝、動作）、背景場景、色調與光線、文字或標誌、整體氛圍。" +
+                    "如果是動漫/遊戲角色，請描述角色特徵。請盡量詳細，至少三句話。" +
+                    (string.IsNullOrWhiteSpace(userHint) ? "" : $" 使用者想問的是：「{userHint}」，請在描述中特別注意相關細節。");
 
                 var requestBody = new
                 {
