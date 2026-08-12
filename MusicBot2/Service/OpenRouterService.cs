@@ -1232,8 +1232,8 @@ namespace MusicBot2.Service
 
                 // 用第一個可用 key
                 var key = GetAvailableGoogleKeys().FirstOrDefault() ?? _googleApiKeys[0];
-                // 用最快的 flash 模型
-                var visionModel = "gemini-2.0-flash";
+                // 用最快的 flash 模型（2.5 版）
+                var visionModel = "gemini-2.5-flash";
                 var url = $"https://generativelanguage.googleapis.com/v1beta/models/{visionModel}:generateContent?key={key}";
 
                 var resp = await _googleHttpClient.PostAsync(url,
