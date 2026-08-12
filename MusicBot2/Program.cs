@@ -137,9 +137,8 @@ public class Program
                     string allGoogleKeys = string.Join(",",
                         new[] { googleAIStudioApiKey, googleAIStudioApiKey2, googleAIStudioApiKey3 }
                         .Where(k => !string.IsNullOrWhiteSpace(k)));
-                    string googleKey = aiProvider.Equals("google", StringComparison.OrdinalIgnoreCase)
-                        ? allGoogleKeys
-                        : null;
+                    // 不管主聊天用哪個 provider，Google keys 都傳入，供 DescribeImageAsync 讀圖使用
+                    string googleKey = allGoogleKeys;
                     return new OpenRouterService(openRouterApiKey, redisConn, tavilyApiKey, googleKey);
                 })
             .AddSingleton<TRPGService>(sp =>
