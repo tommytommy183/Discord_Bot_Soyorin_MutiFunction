@@ -275,7 +275,7 @@ namespace MusicBot2.Service
             "查查", "查看", "找找", "幫我查", "幫我找", "搜索", "幫查", "幫找"
         };
 
-        public OpenRouterService(string apiKey, string redisConnectionString = null, string tavilyApiKey = null, string googleApiKey = null)
+        public OpenRouterService(string apiKey, string redisConnectionString = null, string tavilyApiKey = null, string googleApiKey = null, string visionGoogleKeys = null)
         {
             _apiKey = apiKey;
             _wikiService = new MediaWikiService();
@@ -291,22 +291,23 @@ namespace MusicBot2.Service
             _httpClient.DefaultRequestHeaders.Add("HTTP-Referer", "https://github.com/tommytommy183/Soyorin_Tense");
             _httpClient.DefaultRequestHeaders.Add("X-Title", "Soyorin Discord Bot");
 
-            // Google AI Studio 後端初始化
-            _googleApiKeys = (googleApiKey ?? "")
-                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            // 主聊天 provider：只有明確傳入 googleApiKey 才用 Google AI
+            _useGoogleAI = !string.IsNullOrWhiteSpace(googleApiKey);
+
+            // Google keys（主聊天 + 視覺描述共用）：合併兩個來源
+            _googleApiKeys = new[] { googleApiKey ?? "", visionGoogleKeys ?? "" }
+                .SelectMany(s => s.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
                 .Where(k => !string.IsNullOrWhiteSpace(k))
                 .Distinct()
                 .ToArray();
-            _useGoogleAI = _googleApiKeys.Length > 0;
-            if (_useGoogleAI)
-            {
+
+            if (_googleApiKeys.Length > 0)
                 _googleHttpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
+
+            if (_useGoogleAI)
                 Console.WriteLine($"✅ [AI Service] Google AI Studio 模式，共 {_googleApiKeys.Length} 個 key");
-            }
             else
-            {
-                Console.WriteLine("✅ [AI Service] OpenRouter 模式");
-            }
+                Console.WriteLine($"✅ [AI Service] OpenRouter 模式（視覺用 Google AI，共 {_googleApiKeys.Length} 個 key）");
 
             if (!string.IsNullOrEmpty(redisConnectionString))
             {
