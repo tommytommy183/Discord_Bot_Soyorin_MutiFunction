@@ -269,14 +269,6 @@ namespace MusicBot2.Service
 - 回覆要簡短（1~3句），因為是即時語音對話
 範例：[laughing]哈哈你在說什麼啦  /  [excited]真的嗎！太棒了吧";
 
-        private static string BuildSystemInstruction(bool isTtsMode, string visionContext)
-        {
-            string base_ = isTtsMode ? Persona + TtsEmotionAddon : Persona;
-            if (string.IsNullOrWhiteSpace(visionContext)) return base_;
-            // 把視覺描述嵌進 system instruction，讓模型認為是自身感知
-            return base_ + $"\n\n【你目前看到的畫面】\n你現在能看見對方傳來的圖片，畫面內容如下：\n{visionContext}\n\n重要：你有視覺能力，請直接描述或評論你看到的畫面，絕對不要說「我看不到圖片」、「我沒辦法看見影像」或「這是文字描述」之類的話。就像你真的用眼睛看到一樣自然地回應。";
-        }
-
         private static readonly string[] WikiTriggerKeywords =
         {
             "查詢", "找尋", "尋找", "上網查", "上網搜", "搜尋", "查一下", "找一下",
@@ -1039,7 +1031,7 @@ namespace MusicBot2.Service
         /// <summary>
         /// 簡化版本：直接傳入訊息
         /// </summary>
-        public async Task<string> GenerateTextAsync(string message, SocketGuildUser user, bool saveToMemory = true, string channelKey = null, IMessage? repliedMessage = null, IEnumerable<IMessage>? contextMessages = null, bool isTtsMode = false, string visionContext = null)
+        public async Task<string> GenerateTextAsync(string message, SocketGuildUser user, bool saveToMemory = true, string channelKey = null, IMessage? repliedMessage = null, IEnumerable<IMessage>? contextMessages = null, bool isTtsMode = false)
         {
             var request = new GeminiRequestVM
             {
@@ -1048,7 +1040,7 @@ namespace MusicBot2.Service
                 TopP = 0.9f,
                 TopK = 40,
                 MaxOutputTokens = isTtsMode ? 256 : 1024,
-                SystemInstruction = BuildSystemInstruction(isTtsMode, visionContext)
+                SystemInstruction = isTtsMode ? Persona + TtsEmotionAddon : null
             };
 
             return await GenerateTextAsync(request, user, saveToMemory, channelKey, repliedMessage, contextMessages);
@@ -1215,11 +1207,11 @@ namespace MusicBot2.Service
                     _               => "image/jpeg"
                 };
 
+                // 純描述，不帶任何角色或問題語境，避免模型開始扮演角色
                 string prompt =
-                    "請用繁體中文詳細描述這張圖片，直接描述內容，不要加標題或分項格式。" +
-                    "描述應包含：畫面中的主體（人物外貌、表情、服裝、動作）、背景場景、色調與光線、文字或標誌、整體氛圍。" +
-                    "如果是動漫/遊戲角色，請描述角色特徵。請盡量詳細，至少三句話。" +
-                    (string.IsNullOrWhiteSpace(userHint) ? "" : $" 使用者想問的是：「{userHint}」，請在描述中特別注意相關細節。");
+                    "請用繁體中文詳細描述這張圖片的客觀內容，純文字段落，不加標題或列點。" +
+                    "需涵蓋：畫面主體（人物外貌、表情、服裝、動作）、背景環境、色調光線、畫面中的文字或標誌、整體氛圍。" +
+                    "若為動漫或遊戲角色，請一併描述角色明顯特徵。至少五句話，詳細一點。";
 
                 var requestBody = new
                 {

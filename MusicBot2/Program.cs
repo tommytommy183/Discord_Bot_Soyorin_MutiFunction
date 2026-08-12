@@ -990,6 +990,17 @@ public class Program
     private static readonly System.Text.RegularExpressions.Regex _launchTagRegex =
         new(@"\[LAUNCH:(.+?)\]", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
+    private static string BuildUserMessageWithVision(string userText, List<string> descParts)
+    {
+        if (descParts == null || descParts.Count == 0) return userText;
+        string imageDesc = string.Join("\n", descParts);
+        // 把圖片描述以清楚的格式告知 Soyo，讓她自然地以這些資訊回應
+        string prefix = $"使用者傳送的這張圖片的內容是：\n{imageDesc}";
+        return string.IsNullOrWhiteSpace(userText)
+            ? prefix
+            : $"{prefix}\n\n使用者說：{userText}";
+    }
+
     private async Task HandleSoyoResponseAsync(string result, SocketMessage message, SocketGuildUser talker)
     {
         if (string.IsNullOrWhiteSpace(result))
@@ -1250,13 +1261,11 @@ public class Program
                 {
                     try
                     {
-                        var desc = await _openRouterService.DescribeImageAsync(att.Url, message.Content);
+                        var desc = await _openRouterService.DescribeImageAsync(att.Url);
                         if (!string.IsNullOrWhiteSpace(desc)) allDescParts.Add(desc);
                     }
                     catch { }
                 }
-
-                string visionContext = allDescParts.Any() ? string.Join("\n", allDescParts) : null;
 
                 if (message.Reference != null)
                 {
@@ -1268,21 +1277,22 @@ public class Program
                         {
                             try
                             {
-                                var desc = await _openRouterService.DescribeImageAsync(att.Url, message.Content);
+                                var desc = await _openRouterService.DescribeImageAsync(att.Url);
                                 if (!string.IsNullOrWhiteSpace(desc)) allDescParts.Add(desc);
                             }
                             catch { }
                         }
-                        visionContext = allDescParts.Any() ? string.Join("\n", allDescParts) : null;
 
-                        result = await _openRouterService.GenerateTextAsync(message.Content, talker, true, channelKey, repliedMessage, contextMessages, visionContext: visionContext);
+                        string userMsg = BuildUserMessageWithVision(message.Content, allDescParts);
+                        result = await _openRouterService.GenerateTextAsync(userMsg, talker, true, channelKey, repliedMessage, contextMessages);
                         await HandleSoyoResponseAsync(result, message, talker);
                         return;
                     }
                 }
                 else
                 {
-                    result = await _openRouterService.GenerateTextAsync(message.Content, talker, true, channelKey, null, contextMessages, visionContext: visionContext);
+                    string userMsg = BuildUserMessageWithVision(message.Content, allDescParts);
+                    result = await _openRouterService.GenerateTextAsync(userMsg, talker, true, channelKey, null, contextMessages);
                     await HandleSoyoResponseAsync(result, message, talker);
                     return;
                 }
