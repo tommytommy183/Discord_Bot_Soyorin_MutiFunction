@@ -274,7 +274,7 @@ namespace MusicBot2.Service
             string base_ = isTtsMode ? Persona + TtsEmotionAddon : Persona;
             if (string.IsNullOrWhiteSpace(visionContext)) return base_;
             // 把視覺描述嵌進 system instruction，讓模型認為是自身感知
-            return base_ + $"\n\n【你目前看到的畫面】\n你現在能看見對方傳來的圖片，畫面內容如下：\n{visionContext}\n請根據你真實看到的這張圖片內容來回應，不要說看不到或只是文字描述。";
+            return base_ + $"\n\n【你目前看到的畫面】\n你現在能看見對方傳來的圖片，畫面內容如下：\n{visionContext}\n\n重要：你有視覺能力，請直接描述或評論你看到的畫面，絕對不要說「我看不到圖片」、「我沒辦法看見影像」或「這是文字描述」之類的話。就像你真的用眼睛看到一樣自然地回應。";
         }
 
         private static readonly string[] WikiTriggerKeywords =
@@ -1235,7 +1235,7 @@ namespace MusicBot2.Service
                             }
                         }
                     },
-                    generationConfig = new { temperature = 0.2, maxOutputTokens = 512 }
+                    generationConfig = new { temperature = 0.2, maxOutputTokens = 1024 }
                 };
 
                 var json = JsonSerializer.Serialize(requestBody,
