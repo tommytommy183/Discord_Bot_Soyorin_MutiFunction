@@ -238,7 +238,7 @@ namespace MusicBot2.Service
     - 想猜英雄/猜瓦特 → [LAUNCH:猜英雄]
     - 想看推薦動漫/隨機動漫 → [LAUNCH:推薦動漫]
     - 想看推薦漫畫/隨機漫畫 → [LAUNCH:推薦漫畫]
-    - 想玩猜單字/wordle → [LAUNCH:猜單字:單字]
+    - 想玩猜單字/wordle → [LAUNCH:猜單字:單字] （把「單字」替換成你想猜的單字）
     - 想聽一言/動漫名句/遊戲名句 → [LAUNCH:一言]
     - 想知道冷知識/無用事實/奇怪知識 → [LAUNCH:冷知識]
     - 想玩寶可夢/抓精靈/抓寶可夢 → [LAUNCH:抓寶可夢]
