@@ -1259,7 +1259,7 @@ public class Program
                         catch { /* 圖片描述失敗則忽略 */ }
                     }
                     if (descParts.Any())
-                        userContent = $"[圖片內容：{string.Join("；", descParts)}]\n{message.Content}";
+                        userContent = $"（爽世看著對方傳來的圖片，她看到：{string.Join("；", descParts)}）\n{message.Content}";
                 }
 
                 if (message.Reference != null)
@@ -1285,7 +1285,7 @@ public class Program
                                 catch { /* 圖片描述失敗則忽略 */ }
                             }
                             if (repliedDescParts.Any())
-                                userContent = $"[被回覆訊息的圖片內容：{string.Join("；", repliedDescParts)}]\n{userContent}";
+                                userContent = $"（爽世看著對方回覆的那則訊息裡的圖片，她看到：{string.Join("；", repliedDescParts)}）\n{userContent}";
                         }
 
                         result = await _openRouterService.GenerateTextAsync(userContent, talker, true, channelKey, repliedMessage, contextMessages);

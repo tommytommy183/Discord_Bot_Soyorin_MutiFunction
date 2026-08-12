@@ -1255,8 +1255,9 @@ namespace MusicBot2.Service
                     .GetProperty("text")
                     .GetString();
 
-                Console.WriteLine($"[GoogleAI Vision] 圖片描述完成，字數: {text?.Length}");
-                return text?.Trim();
+                var trimmed = text?.Trim();
+                Console.WriteLine($"[GoogleAI Vision] 圖片描述：{trimmed}");
+                return trimmed;
             }
             catch (Exception ex)
             {
