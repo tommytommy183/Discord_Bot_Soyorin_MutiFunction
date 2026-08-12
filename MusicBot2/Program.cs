@@ -1241,19 +1241,62 @@ public class Program
 
             using (message.Channel.EnterTypingState())
             {
+                // 如果訊息有附帶圖片，先用 Google AI 描述圖片，再注入給 OpenRouter
+                string userContent = message.Content;
+                var imageAttachments = message.Attachments
+                    .Where(a => a.ContentType != null && a.ContentType.StartsWith("image/"))
+                    .ToList();
+                if (imageAttachments.Any())
+                {
+                    var descParts = new List<string>();
+                    foreach (var att in imageAttachments)
+                    {
+                        try
+                        {
+                            var desc = await _openRouterService.DescribeImageAsync(att.Url, message.Content);
+                            if (!string.IsNullOrWhiteSpace(desc))
+                                descParts.Add(desc);
+                        }
+                        catch { /* 圖片描述失敗則忽略 */ }
+                    }
+                    if (descParts.Any())
+                        userContent = $"[圖片內容：{string.Join("；", descParts)}]\n{message.Content}";
+                }
+
                 if (message.Reference != null)
                 {
                     var repliedMessage = await message.Channel.GetMessageAsync(message.Reference.MessageId.Value);
                     if (repliedMessage != null)
                     {
-                        result = await _openRouterService.GenerateTextAsync(message.Content, talker, true, channelKey, repliedMessage, contextMessages);
+                        // 被回覆的訊息如果有圖片，也一併描述
+                        var repliedImageAttachments = repliedMessage.Attachments
+                            .Where(a => a.ContentType != null && a.ContentType.StartsWith("image/"))
+                            .ToList();
+                        if (repliedImageAttachments.Any())
+                        {
+                            var repliedDescParts = new List<string>();
+                            foreach (var att in repliedImageAttachments)
+                            {
+                                try
+                                {
+                                    var desc = await _openRouterService.DescribeImageAsync(att.Url, message.Content);
+                                    if (!string.IsNullOrWhiteSpace(desc))
+                                        repliedDescParts.Add(desc);
+                                }
+                                catch { /* 圖片描述失敗則忽略 */ }
+                            }
+                            if (repliedDescParts.Any())
+                                userContent = $"[被回覆訊息的圖片內容：{string.Join("；", repliedDescParts)}]\n{userContent}";
+                        }
+
+                        result = await _openRouterService.GenerateTextAsync(userContent, talker, true, channelKey, repliedMessage, contextMessages);
                         await HandleSoyoResponseAsync(result, message, talker);
                         return;
                     }
                 }
                 else
                 {
-                    result = await _openRouterService.GenerateTextAsync(message.Content, talker, true, channelKey, null, contextMessages);
+                    result = await _openRouterService.GenerateTextAsync(userContent, talker, true, channelKey, null, contextMessages);
                     await HandleSoyoResponseAsync(result, message, talker);
                     return;
                 }

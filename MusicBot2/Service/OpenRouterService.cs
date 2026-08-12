@@ -1177,6 +1177,95 @@ namespace MusicBot2.Service
         }
 
         /// <summary>
+        /// 用 Google Gemini 讀取圖片並回傳繁體中文描述。
+        /// 無論主聊天用的是哪個 provider，這個方法都使用 Google AI。
+        /// 若未設定 Google key 則回傳 null。
+        /// </summary>
+        public async Task<string> DescribeImageAsync(string imageUrl, string userHint = "")
+        {
+            if (_googleApiKeys.Length == 0)
+            {
+                Console.WriteLine("[GoogleAI] 無 key，無法讀取圖片");
+                return null;
+            }
+
+            try
+            {
+                // 下載圖片 → base64
+                var imageBytes = await _googleHttpClient.GetByteArrayAsync(imageUrl);
+                var base64 = Convert.ToBase64String(imageBytes);
+
+                // 判斷 MIME type（簡單依副檔名）
+                var ext = Path.GetExtension(new Uri(imageUrl).LocalPath).ToLower().TrimStart('.');
+                string mimeType = ext switch
+                {
+                    "jpg" or "jpeg" => "image/jpeg",
+                    "png"           => "image/png",
+                    "gif"           => "image/gif",
+                    "webp"          => "image/webp",
+                    _               => "image/jpeg"
+                };
+
+                string prompt = string.IsNullOrWhiteSpace(userHint)
+                    ? "請用繁體中文詳細描述這張圖片的內容，包括人物、物品、場景、文字、氣氛等所有你看到的細節。"
+                    : $"請用繁體中文描述這張圖片。使用者附帶的訊息是：「{userHint}」，請一併回應。";
+
+                var requestBody = new
+                {
+                    contents = new[]
+                    {
+                        new
+                        {
+                            role = "user",
+                            parts = new object[]
+                            {
+                                new { text = prompt },
+                                new { inlineData = new { mimeType, data = base64 } }
+                            }
+                        }
+                    },
+                    generationConfig = new { temperature = 0.2, maxOutputTokens = 512 }
+                };
+
+                var json = JsonSerializer.Serialize(requestBody,
+                    new JsonSerializerOptions { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull });
+
+                // 用第一個可用 key
+                var key = GetAvailableGoogleKeys().FirstOrDefault() ?? _googleApiKeys[0];
+                // 用最快的 flash 模型
+                var visionModel = "gemini-2.0-flash";
+                var url = $"https://generativelanguage.googleapis.com/v1beta/models/{visionModel}:generateContent?key={key}";
+
+                var resp = await _googleHttpClient.PostAsync(url,
+                    new StringContent(json, Encoding.UTF8, "application/json"));
+                var resultJson = await resp.Content.ReadAsStringAsync();
+
+                if (!resp.IsSuccessStatusCode)
+                {
+                    if ((int)resp.StatusCode == 429) CooldownGoogleKey(key, 60);
+                    Console.WriteLine($"[GoogleAI Vision] 失敗 {resp.StatusCode}: {resultJson[..Math.Min(200, resultJson.Length)]}");
+                    return null;
+                }
+
+                using var doc = JsonDocument.Parse(resultJson);
+                var text = doc.RootElement
+                    .GetProperty("candidates")[0]
+                    .GetProperty("content")
+                    .GetProperty("parts")[0]
+                    .GetProperty("text")
+                    .GetString();
+
+                Console.WriteLine($"[GoogleAI Vision] 圖片描述完成，字數: {text?.Length}");
+                return text?.Trim();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[GoogleAI Vision] DescribeImage 失敗: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
         /// 呼叫 Google AI Studio (Gemini) API，回傳與 CallOnceAsync 相同格式的結果。
         /// </summary>
         private async Task<ApiCallResult> CallGoogleAIOnceAsync(
