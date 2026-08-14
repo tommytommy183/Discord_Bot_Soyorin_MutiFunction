@@ -45,8 +45,9 @@ namespace MusicBot2.SlahCommands
         private readonly FishAudioService _fishAudioService;
         private readonly PokeTowerService _pokeTowerService;
         private readonly FgoGuessService _fgoGuessService;
+        private readonly HolyGrailWarService _holyGrailWarService;
 
-        public SlashCommandHandler(Program program, WordGuessingService wordService, MineGameService mineGameService, ElevenLabsService elevenLabsService, OldMaidService oldMaidService, RubiksCubeService rubiksCubeService, GoogleAIStudioService googleAIStudioService, OpenRouterService openRouterService, RVC_Service rVC_Service, SetTextService setTextService, Game2048Service game2048Service, Game1A2BService game1A2BService, Pick2Service pick2Service, JikanAnimeService animeService, PokeService pokeService, PokeGameService pokeGameService, ValorantService valorantService, TRPGService trpgService, LyrisService lyrisService, LyricsDisplayService lyricsDisplayService, UselessApiService uselessApiService, AIImageService aiImageService, GroqWhisperService groqWhisperService, FishAudioService fishAudioService, PokeTowerService pokeTowerService, FgoGuessService fgoGuessService)
+        public SlashCommandHandler(Program program, WordGuessingService wordService, MineGameService mineGameService, ElevenLabsService elevenLabsService, OldMaidService oldMaidService, RubiksCubeService rubiksCubeService, GoogleAIStudioService googleAIStudioService, OpenRouterService openRouterService, RVC_Service rVC_Service, SetTextService setTextService, Game2048Service game2048Service, Game1A2BService game1A2BService, Pick2Service pick2Service, JikanAnimeService animeService, PokeService pokeService, PokeGameService pokeGameService, ValorantService valorantService, TRPGService trpgService, LyrisService lyrisService, LyricsDisplayService lyricsDisplayService, UselessApiService uselessApiService, AIImageService aiImageService, GroqWhisperService groqWhisperService, FishAudioService fishAudioService, PokeTowerService pokeTowerService, FgoGuessService fgoGuessService, HolyGrailWarService holyGrailWarService)
         {
             _program = program;
             _wordService = wordService;
@@ -74,6 +75,7 @@ namespace MusicBot2.SlahCommands
             _fishAudioService = fishAudioService;
             _pokeTowerService = pokeTowerService;
             _fgoGuessService = fgoGuessService;
+            _holyGrailWarService = holyGrailWarService;
         }
         #region 音樂撥放相關
         [SlashCommand("播放音樂", "播放音樂")]
@@ -1401,6 +1403,74 @@ namespace MusicBot2.SlahCommands
         {
             await DeferAsync();
             var (component, embed) = await _fgoGuessService.StartAscensionGameAsync(Context.Channel.Id);
+            await FollowupAsync(embed: embed, components: component.Build());
+        }
+
+        #endregion
+
+        #region 聖杯戰爭 RPG
+        [SlashCommand("hgw註冊", "註冊成為聖杯戰爭的御主")]
+        public async Task HgwRegisterAsync()
+        {
+            await DeferAsync();
+            var (embed, component) = await _holyGrailWarService.RegisterPlayerAsync(Context.User.Id, Context.User.Username);
+            await FollowupAsync(embed: embed, components: component.Build());
+        }
+
+        [SlashCommand("hgw資訊", "查看你的御主資訊")]
+        public async Task HgwInfoAsync()
+        {
+            var (embed, component) = _holyGrailWarService.GetPlayerInfo(Context.User.Id);
+            await RespondAsync(embed: embed, components: component.Build());
+        }
+
+        [SlashCommand("hgw召喚", "召喚一位新的從者（消耗 30 魔力）")]
+        public async Task HgwSummonAsync()
+        {
+            await DeferAsync();
+            var (embed, component) = await _holyGrailWarService.SummonServantAsync(Context.User.Id, Context.User.Username);
+            await FollowupAsync(embed: embed, components: component.Build());
+        }
+
+        [SlashCommand("hgw從者", "查看你的從者列表")]
+        public async Task HgwServantsAsync()
+        {
+            var (embed, component) = _holyGrailWarService.ListServants(Context.User.Id);
+            await RespondAsync(embed: embed, components: component.Build());
+        }
+
+        [SlashCommand("hgw選擇", "選擇出戰從者")]
+        public async Task HgwSelectAsync([Summary("從者ID", "從者的 InstanceId")] int instanceId)
+        {
+            var (embed, component) = _holyGrailWarService.SelectServant(Context.User.Id, instanceId);
+            await RespondAsync(embed: embed, components: component.Build());
+        }
+
+        [SlashCommand("hgw治療", "治療從者（消耗 10 魔力）")]
+        public async Task HgwHealAsync([Summary("從者ID", "從者的 InstanceId")] int instanceId)
+        {
+            var (embed, component) = _holyGrailWarService.HealServant(Context.User.Id, instanceId);
+            await RespondAsync(embed: embed, components: component.Build());
+        }
+
+        [SlashCommand("hgw每日", "領取每日獎勵（50 魔力）")]
+        public async Task HgwDailyAsync()
+        {
+            await DeferAsync();
+            var (embed, component) = await _holyGrailWarService.ClaimDailyBonusAsync(Context.User.Id, Context.User.Username);
+            await FollowupAsync(embed: embed, components: component.Build());
+        }
+
+        [SlashCommand("hgw戰鬥", "與 NPC 或其他玩家戰鬥")]
+        public async Task HgwBattleAsync([Summary("對手", "留空則對戰 NPC")] SocketGuildUser opponent = null)
+        {
+            await DeferAsync();
+            var (embed, component) = await _holyGrailWarService.StartBattleAsync(
+                Context.Channel.Id,
+                Context.User.Id,
+                Context.User.Username,
+                opponent?.Id,
+                opponent?.Username);
             await FollowupAsync(embed: embed, components: component.Build());
         }
 

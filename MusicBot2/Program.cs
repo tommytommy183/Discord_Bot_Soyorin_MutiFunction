@@ -158,6 +158,7 @@ public class Program
                 new GroqWhisperService(groqApiKey))
             .AddSingleton<PokeTowerService>(sp =>
                 new PokeTowerService(redisConn, sp.GetService<OpenRouterService>(), sp.GetService<GetChampService>()))
+              .AddSingleton<HolyGrailWarService>()
               .BuildServiceProvider();
 
         _googleAIStudioService = _services.GetRequiredService<GoogleAIStudioService>();
@@ -427,6 +428,42 @@ public class Program
                         msg.Embed = resultEmbed;
                         msg.Components = resultComp?.Build();
                     });
+                }
+            }
+            // 處理聖杯戰爭戰鬥按鈕
+            else if (component.Data.CustomId.StartsWith("hgw_"))
+            {
+                await component.DeferAsync();
+                var parts = component.Data.CustomId.Split('_');
+                if (parts.Length >= 3)
+                {
+                    var action = parts[1];
+                    if (ulong.TryParse(parts[2], out ulong channelId))
+                    {
+                        var hgwSvc = _services.GetRequiredService<HolyGrailWarService>();
+                        var battleAction = action switch
+                        {
+                            "attack" => MusicBot2.Models.BattleAction.Attack,
+                            "np" => MusicBot2.Models.BattleAction.NoblePhantasm,
+                            "defend" => MusicBot2.Models.BattleAction.Defend,
+                            _ => MusicBot2.Models.BattleAction.Attack
+                        };
+
+                        if (action == "surrender")
+                        {
+                            await component.FollowupAsync("🏳️ 你選擇投降了！", ephemeral: true);
+                            return;
+                        }
+
+                        var (embed, comp) = await hgwSvc.ExecuteBattleActionAsync(
+                            channelId, component.User.Id, battleAction);
+
+                        await component.ModifyOriginalResponseAsync(msg =>
+                        {
+                            msg.Embed = embed;
+                            msg.Components = comp?.Build();
+                        });
+                    }
                 }
             }
 
