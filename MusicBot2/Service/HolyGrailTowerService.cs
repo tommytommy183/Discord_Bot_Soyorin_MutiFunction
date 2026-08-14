@@ -1,4 +1,4 @@
-ï»¿using Discord;
+using Discord;
 using MusicBot2.Helpers;
 using MusicBot2.Models;
 using StackExchange.Redis;
@@ -14,7 +14,7 @@ using System.Threading.Tasks;
 namespace MusicBot2.Service
 {
     /// <summary>
-    /// è–æ¯å¡” Roguelike ç³»çµ± (Redis æŒä¹…åŒ–ç‰ˆæœ¬)
+    /// ¸tªM¥dµPª¦¶ğ¨t²Î (FGO ®Ö¤ß¥dµP¾Ô°«»P Redis Àx¦sª©¥»)
     /// </summary>
     public class HolyGrailTowerService
     {
@@ -24,10 +24,9 @@ namespace MusicBot2.Service
         private readonly IDatabase _db;
 
         private List<FgoBasicServant> _servantPool = new();
-        private readonly Dictionary<int, (string npName, string faceUrl)> _servantCache = new();
+        private readonly Dictionary<int, TowerServant> _servantCache = new();
         private bool _initialized = false;
 
-        // ç•¶å‰ Run (å„²å­˜åœ¨è¨˜æ†¶é«”æˆ– Redis)
         private readonly Dictionary<ulong, HgwTowerRun> _runs = new();
 
         private const string RedisPlayerPrefix = "hgwt_player:";
@@ -37,16 +36,21 @@ namespace MusicBot2.Service
         public HolyGrailTowerService(string redisConnectionString)
         {
             _http = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
-
-            // åˆå§‹åŒ– Redis
-            var redis = ConnectionMultiplexer.Connect(redisConnectionString);
-            _db = redis.GetDatabase();
-            Console.WriteLine("[HolyGrailTower] Redis é€£ç·šæˆåŠŸ");
+            try
+            {
+                var redis = ConnectionMultiplexer.Connect(redisConnectionString);
+                _db = redis.GetDatabase();
+                Console.WriteLine("[HolyGrailTower] Redis ³s½u«Ø¥ß¦¨¥\");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[HolyGrailTower] Redis ³s½u²§±`: {ex.Message}");
+            }
         }
 
-        // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-        //  Redis å„²å­˜èˆ‡è®€å– (å¾¡ä¸»å­˜æª”)
-        // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+        // ùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùù
+        //  Redis Àx¦s»PÅª¨ú (±s¥D¥Ã¤[¦sÀÉ)
+        // ùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùù
 
         private HolyGrailTowerPlayer LoadPlayer(ulong userId, string defaultName = "")
         {
@@ -62,15 +66,15 @@ namespace MusicBot2.Service
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[HolyGrailTower] è¼‰å…¥ {userId} å­˜æª”å¤±æ•—: {ex.Message}");
+                Console.WriteLine($"[HolyGrailTower] ¸ü¤J {userId} ¦sÀÉ¥¢±Ñ: {ex.Message}");
             }
 
             return new HolyGrailTowerPlayer
             {
                 UserId = userId,
                 UserName = defaultName,
-                SummonTickets = 10,
-                SaintQuartz = 0
+                SummonTickets = 15, // ÃØ°e 15 ±i
+                SaintQuartz = 10
             };
         }
 
@@ -84,13 +88,13 @@ namespace MusicBot2.Service
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[HolyGrailTower] å„²å­˜ {player.UserId} å­˜æª”å¤±æ•—: {ex.Message}");
+                Console.WriteLine($"[HolyGrailTower] Àx¦s player {player.UserId} ¥¢±Ñ: {ex.Message}");
             }
         }
 
-        // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-        //  ä¸»æŒ‡ä»¤
-        // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+        // ùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùù
+        //  ¥D­n«ü¥O (µn¿ı, ¬d¸ß, ¨C¤é, ¥l³ê)
+        // ùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùù
 
         public async Task<(Embed embed, ComponentBuilder component)> RegisterPlayerAsync(ulong userId, string userName)
         {
@@ -99,252 +103,221 @@ namespace MusicBot2.Service
             var redisKey = RedisPlayerPrefix + userId;
             if (_db.KeyExists(redisKey))
             {
-                var existing = LoadPlayer(userId, userName);
+                var player = LoadPlayer(userId, userName);
+                var text = $"**{userName}** ¤w¬O¸tªM¶ğªº¸ê²`±s¥D¤F¡I\n²{¦b´N²Õ«Ø¶¤¥î¶}©l¬D¾Ô§a¡I";
                 var embed = new EmbedBuilder()
-                    .WithTitle("?? è–æ¯å¡” - å¾¡ä¸»è³‡è¨Š")
-                    .WithDescription($"**{userName}** å·²ç¶“æ˜¯è¨»å†Šçš„å¾¡ä¸»äº†ï¼")
-                    .AddField("?? å¬å–šåˆ¸", existing.SummonTickets, inline: true)
-                    .AddField("?? è–æ™¶çŸ³", existing.SaintQuartz, inline: true)
-                    .AddField("?? å¾è€…åœ–é‘‘", $"{existing.OwnedServants.Count} ä½", inline: true)
-                    .AddField("?? æœ€é«˜ç´€éŒ„", $"ç¬¬ {existing.HighestFloor} å±¤", inline: true)
-                    .WithColor(new Color(0xFFD700))
-                    .WithFooter("è¼¸å…¥ /fateå¬å–š é–‹å§‹æŠ½å¡ï¼")
+                    .WithTitle("?? ¸tªM¶ğ±s¥D¸ê°T")
+                    .WithDescription(text)
+                    .AddField("??? ¥l³ê¨é", player.SummonTickets, inline: true)
+                    .AddField("?? ¸t´¹¥Û", player.SaintQuartz, inline: true)
+                    .AddField("?? ©Û¶Ò­^ÆF", $"{player.OwnedServants.Count} ¦ì", inline: true)
+                    .AddField("?? ³Ì°ª¼h¼Æ", $"²Ä {player.HighestFloor} ¼h", inline: true)
+                    .WithColor(Color.Purple)
                     .WithCurrentTimestamp()
                     .Build();
 
                 return (embed, new ComponentBuilder());
             }
 
-            var player = new HolyGrailTowerPlayer
+            var newPlayer = new HolyGrailTowerPlayer
             {
                 UserId = userId,
                 UserName = userName,
-                SummonTickets = 10,
-                SaintQuartz = 5
+                SummonTickets = 15,
+                SaintQuartz = 10
             };
 
-            SavePlayer(player);
+            SavePlayer(newPlayer);
 
-            var welcomeEmbed = new EmbedBuilder()
-                .WithTitle("? æ­¡è¿ä¾†åˆ°è–æ¯å¡”ï¼")
-                .WithDescription($"**{userName}** æˆç‚ºäº†æ–°çš„å¾¡ä¸»ï¼\n\n" +
-                    "?? **éŠæˆ²ç›®æ¨™**ï¼š\n" +
-                    "çµ„å»ºä½ çš„3äººè‹±éˆå°éšŠï¼Œç™»ä¸Š 100 å±¤è–æ¯å¡”ï¼\n\n" +
-                    "?? **æ–°æ‰‹ç¦®åŒ…**ï¼š\n" +
-                    "?? 10 å¼µå¬å–šåˆ¸\n" +
-                    "?? 5 é¡†è–æ™¶çŸ³\n\n" +
-                    "?? **ä¸‹ä¸€æ­¥**ï¼š\n" +
-                    "1. ä½¿ç”¨ `/è–æ¯å¡”å¬å–š` æŠ½å–å¾è€…\n" +
-                    "2. ä½¿ç”¨ `/é–‹å§‹çˆ¬å¡”` é–‹å§‹æ¢ç´¢æ¯ä¸€å±¤é­é‡ï¼\n" +
-                    "3. ä½¿ç”¨ `/è–æ¯å¡”æ¯æ—¥` é ˜å–æ¯æ—¥å¬å–šè£œåŠ©")
+            var welcome = new EmbedBuilder()
+                .WithTitle("?? Åwªï¨Ó¨ì FGO ¸tªMª¦¶ğ«_ÀI¡I")
+                .WithDescription($"**{userName}** ¦¨¥\³ê¿ô¤F­{°Ç©³Å]¤O°j¸ô¡I\n\n" +
+                    "Àò±oªì©l¸ê·½¡G\n" +
+                    "??? 15 ±i¥l³ê¨é\n" +
+                    "?? 10 Áû¸t´¹¥Û\n\n" +
+                    "¨Ï¥Î `/fate¸tªM¶ğ¥l³ê` ¨Ó¥l³ê§A­º§å¨ÃªÓ§@¾Ôªº±qªÌ§a¡I")
                 .WithColor(Color.Gold)
                 .WithCurrentTimestamp()
                 .Build();
 
-            return (welcomeEmbed, new ComponentBuilder());
+            return (welcome, new ComponentBuilder());
         }
 
         public (Embed embed, ComponentBuilder component) GetPlayerInfo(ulong userId)
         {
-            var redisKey = RedisPlayerPrefix + userId;
-            if (!_db.KeyExists(redisKey))
-                return (CommonHelper.BuildErrorResponse("ä½ é‚„ä¸æ˜¯å¾¡ä¸»ï¼è«‹å…ˆä½¿ç”¨ `/è–æ¯å¡”è¨»å†Š` è¨»å†Š").Item2, new ComponentBuilder());
-
             var player = LoadPlayer(userId);
-            var topServants = player.OwnedServants
-                .OrderByDescending(s => s.Rarity)
-                .ThenByDescending(s => s.Level)
-                .Take(3)
-                .ToList();
-
-            var embedBuilder = new EmbedBuilder()
-                .WithTitle($"?? è–æ¯å¡” - {player.UserName}")
-                .AddField("?? è³‡æº", $"?? å¬å–šåˆ¸: {player.SummonTickets}\n?? è–æ™¶çŸ³: {player.SaintQuartz}", inline: true)
-                .AddField("?? è¨˜éŒ„", $"?? æœ€é«˜å±¤æ•¸: {player.HighestFloor}\n?? ç¸½æŒ‘æˆ°: {player.TotalRuns}\n?? ç¸½æ“Šæ®º: {player.TotalKills}", inline: true)
-                .AddField("?? åœ–é‘‘", $"{player.OwnedServants.Count} ä½å¾è€…", inline: true)
-                .WithColor(new Color(0x9B59B6))
-                .WithCurrentTimestamp();
-
-            if (topServants.Count > 0)
-            {
-                var servantList = string.Join("\n", topServants.Select(s =>
-                    $"{GetClassEmoji(s.ClassName)} **{s.Name}** Lv.{s.Level} ({string.Concat(Enumerable.Repeat("â˜…", s.Rarity))})"));
-                embedBuilder.AddField("? é ‚ç´šå¾è€…", servantList, inline: false);
-            }
-
-            return (embedBuilder.Build(), new ComponentBuilder());
-        }
-
-        public async Task<(Embed embed, ComponentBuilder component)> ClaimDailyRewardAsync(ulong userId, string userName)
-        {
-            var redisKey = RedisPlayerPrefix + userId;
-            if (!_db.KeyExists(redisKey))
-                return (CommonHelper.BuildErrorResponse("ä½ é‚„ä¸æ˜¯å¾¡ä¸»ï¼è«‹ä½¿ç”¨ `/è–æ¯å¡”è¨»å†Š`").Item2, new ComponentBuilder());
-
-            var player = LoadPlayer(userId, userName);
-            var now = DateTime.UtcNow;
-            if (player.LastDailyReward.HasValue && (now - player.LastDailyReward.Value).TotalHours < 24)
-            {
-                var nextTime = player.LastDailyReward.Value.AddHours(24);
-                var remaining = nextTime - now;
-                return (CommonHelper.BuildErrorResponse(
-                    $"ä»Šå¤©å·²é ˜å–éäº†ï¼ä¸‹æ¬¡é ˜å–æ™‚é–“ï¼š{remaining.Hours}å°æ™‚ {remaining.Minutes}åˆ†é˜å¾Œ").Item2,
-                    new ComponentBuilder());
-            }
-
-            player.SummonTickets += 3;
-            player.LastDailyReward = now;
-            SavePlayer(player);
-
             var embed = new EmbedBuilder()
-                .WithTitle("?? æ¯æ—¥ç¦åˆ©")
-                .WithDescription($"**{userName}** ç²å¾—äº†æ¯æ—¥å¬å–šè£œåŠ©ï¼\n\n" +
-                    "?? +3 å¬å–šåˆ¸\n" +
-                    $"ç›®å‰æ“æœ‰ï¼š{player.SummonTickets} å¼µï¼")
-                .WithColor(Color.Gold)
+                .WithTitle($"?? ±s¥D¸ê°T - {player.UserName}")
+                .AddField("??? ¥l³ê¨é", player.SummonTickets, inline: true)
+                .AddField("?? ¸t´¹¥Û", player.SaintQuartz, inline: true)
+                .AddField("?? ©Û¶Ò­^ÆF", $"{player.OwnedServants.Count} ¦ì", inline: true)
+                .AddField("?? ¥»¦¸«_ÀI³Ì°ª¬ö¿ı", $"²Ä {player.HighestFloor} ¼h", inline: true)
+                .AddField("?? ²Ö­pÁ`¬D¾Ô¦¸¼Æ", player.TotalRuns, inline: true)
+                .AddField("?? ²Ö­pÀ»±şÅ]ª«¼Æ", player.TotalKills, inline: true)
+                .WithColor(Color.Purple)
                 .WithCurrentTimestamp()
                 .Build();
 
             return (embed, new ComponentBuilder());
         }
 
-        // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-        //  å¬å–šç³»çµ±
-        // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+        public async Task<(Embed embed, ComponentBuilder component)> ClaimDailyRewardAsync(ulong userId, string userName)
+        {
+            var player = LoadPlayer(userId, userName);
+            var now = DateTime.UtcNow;
+
+            if (player.LastDailyReward.HasValue && (now - player.LastDailyReward.Value).TotalHours < 20)
+            {
+                var remaining = player.LastDailyReward.Value.AddHours(20) - now;
+                return (CommonHelper.BuildErrorResponse($"¤µ¤é¼úÀy¤w»â¨ú¡I\n¶ZÂ÷¤U¦¸¯à»â¨ú®É¶¡¡G{remaining.Hours}¤p®É {remaining.Minutes}¤ÀÄÁ«á").Item2, new ComponentBuilder());
+            }
+
+            player.SummonTickets += 5;
+            player.SaintQuartz += 3;
+            player.LastDailyReward = now;
+            SavePlayer(player);
+
+            var embed = new EmbedBuilder()
+                .WithTitle("?? ¨C¤éª«¸ê°tµ¹")
+                .WithDescription($"**{userName}** Àò±o¤F¤µ¤é­{°Ç©³ªº¤ä´©¡I\n\n??? +5 ¥l³ê¨é\n?? +3 ¸t´¹¥Û\n\nÀò±o­«¸m¥l³êªº¼Ú®ğ§a¡I")
+                .WithColor(Color.Green)
+                .WithCurrentTimestamp()
+                .Build();
+
+            return (embed, new ComponentBuilder());
+        }
 
         public async Task<(Embed embed, ComponentBuilder component)> SummonServantAsync(ulong userId, string userName)
         {
             await EnsureInitAsync();
 
-            var redisKey = RedisPlayerPrefix + userId;
-            if (!_db.KeyExists(redisKey))
-                return (CommonHelper.BuildErrorResponse("ä½ é‚„ä¸æ˜¯å¾¡ä¸»ï¼è«‹å…ˆä½¿ç”¨ `/è–æ¯å¡”è¨»å†Š`").Item2, new ComponentBuilder());
-
             var player = LoadPlayer(userId, userName);
-
             if (player.SummonTickets < 1)
-                return (CommonHelper.BuildErrorResponse($"å¬å–šåˆ¸ä¸è¶³ï¼éœ€è¦ 1 å¼µï¼ˆç•¶å‰ï¼š{player.SummonTickets}ï¼‰\nè«‹æ˜å¤©é ˜å– `/è–æ¯å¡”æ¯æ—¥` æˆ–æŒ‘æˆ°ç™»å¡”ï¼").Item2, new ComponentBuilder());
+            {
+                return (CommonHelper.BuildErrorResponse("¥l³ê¨é¤£¨¬¡I½Ğµ¥«İ¨C¤é»â¨ú¡C").Item2, new ComponentBuilder());
+            }
 
             player.SummonTickets--;
 
+            // FGO ¥dµP©â¥d¾÷²v¤j´T«×¤W½Õ¡]SSR 10%, SR 22%)
             var rarity = RollRarity();
             var candidates = _servantPool.Where(s => s.Rarity == rarity).ToList();
             if (candidates.Count == 0)
                 candidates = _servantPool.Where(s => s.Rarity == 3).ToList();
 
-            var basicServant = candidates[_rng.Next(candidates.Count)];
-            var (npName, faceUrl) = await FetchServantDetailsAsync(basicServant.CollectionNo);
+            var basic = candidates[_rng.Next(candidates.Count)];
 
-            var existing = player.OwnedServants.FirstOrDefault(s => s.CollectionNo == basicServant.CollectionNo);
+            // ¨ú¸Ô²ÓÄ_¨ã¡B5±i«ü¥O¥d»PÀY¹³
+            var detailed = await FetchAndCacheServantAsync(basic.Id);
+
+            var existing = player.OwnedServants.FirstOrDefault(s => s.CollectionNo == detailed.CollectionNo);
             bool isNew = existing == null;
             string resultText;
 
             if (isNew)
             {
-                var servant = new TowerServant
-                {
-                    CollectionNo = basicServant.CollectionNo,
-                    Name = basicServant.Name,
-                    ClassName = basicServant.ClassName,
-                    Rarity = basicServant.Rarity,
-                    Level = 1,
-                    NpLevel = 1,
-                    NpName = npName,
-                    FaceUrl = faceUrl ?? basicServant.Face
-                };
-                player.OwnedServants.Add(servant);
-                resultText = "? **NEW! æ–°è‹±éˆåŠ å…¥ï¼**";
+                player.OwnedServants.Add(detailed);
+                resultText = "? **NEW! ©R©wªºÁÛ°m¡I¥ş·s­^ÆF¥[¤J¡I**";
             }
             else
             {
                 existing.NpLevel = Math.Min(5, existing.NpLevel + 1);
-                existing.Level = Math.Min(100, existing.Level + 2); // é‡è¤‡æŠ½åˆ°ç­‰ç´šã€å±¬æ€§å¾®å¢å¹…
-                resultText = $"?? è‹±éˆé‡ç–Šï¼ç­‰ç´š +2 | å¯¶å…·éšæ®µæå‡è‡³ Lv.{existing.NpLevel}";
+                existing.Level = Math.Min(100, existing.Level + 5); // ­«½Æ©â¨ì¥i´£¤Éµ¥¯Å
+                resultText = $"?? **­«½Æ¥l³ê¡I** ­^ÆFµ¥¯Å¤W­­´£ª@¡AÄ_¨ãµ¥¯Å±j¤Æ¡G**Lv.{existing.NpLevel}**¡I";
+                detailed = existing;
             }
 
             SavePlayer(player);
 
-            string classEmoji = GetClassEmoji(basicServant.ClassName);
-            string rarityStars = string.Concat(Enumerable.Repeat("â˜…", basicServant.Rarity));
+            string classEmoji = GetClassEmoji(detailed.ClassName);
+            string rarityStars = string.Concat(Enumerable.Repeat("¡¹", detailed.Rarity));
+            string cardsShow = string.Join(" | ", detailed.Cards.Select(c => c.ToUpper() switch
+            {
+                "BUSTER" => "?? B",
+                "ARTS" => "?? A",
+                "QUICK" => "?? Q",
+                _ => c
+            }));
 
             var embed = new EmbedBuilder()
-                .WithTitle("?? è–æ¯å¤§å¬å–š")
-                .WithDescription($"**{userName}** æˆåŠŸå¬å–šï¼š\n\n" +
-                    $"{classEmoji} **{basicServant.Name}**\n" +
+                .WithTitle(resultText)
+                .WithDescription($"**±s¥D {userName}** ³z¹L¸tªM¥l³ê¤F¡G\n\n" +
+                    $"{classEmoji} **{detailed.Name}**\n" +
                     $"{rarityStars}\n" +
-                    $"*{resultText}*\n\n" +
-                    $"å‰©é¤˜å¬å–šåˆ¸ï¼š{player.SummonTickets} å¼µ")
-                .WithColor(GetRarityColor(basicServant.Rarity))
-                .WithThumbnailUrl(faceUrl ?? basicServant.Face)
-                .WithFooter($"è‹±éˆé™£å®¹ï¼šå·²è§£é– {player.OwnedServants.Count} å")
+                    $"Ä_¨ã¡G¡y{detailed.NpName}¡z¡]{detailed.NpRuby ?? ""}¡^\n" +
+                    $"«ü¥O¥d°t¸m¡G[{cardsShow}]\n" +
+                    $"HP: {detailed.GetMaxHp()} | ATK: {detailed.GetAttack()}")
+                .WithColor(GetRarityColor(detailed.Rarity))
+                .WithImageUrl(detailed.FullImageUrl ?? "")
+                .WithFooter($"³Ñ¾l¥l³ê¨é¡G{player.SummonTickets} ±i | ¹ÏÅ²Á`¼Æ¡G{player.OwnedServants.Count} ¦ì")
                 .WithCurrentTimestamp()
                 .Build();
 
             return (embed, new ComponentBuilder());
         }
 
+        private int RollRarity()
+        {
+            var roll = _rng.Next(100);
+            return roll switch
+            {
+                < 10 => 5,    // 10% SSR
+                < 32 => 4,    // 22% SR
+                < 67 => 3,    // 35% R
+                < 90 => 2,    // 23% UC
+                _ => 1        // 10% C
+            };
+        }
+
         public (Embed embed, ComponentBuilder component) ListServants(ulong userId)
         {
-            var redisKey = RedisPlayerPrefix + userId;
-            if (!_db.KeyExists(redisKey))
-                return (CommonHelper.BuildErrorResponse("ä½ é‚„ä¸æ˜¯å¾¡ä¸»ï¼").Item2, new ComponentBuilder());
-
             var player = LoadPlayer(userId);
             if (player.OwnedServants.Count == 0)
-                return (CommonHelper.BuildErrorResponse("ä½ é‚„æ²’æœ‰ä»»ä½•å¾è€…ï¼ä½¿ç”¨ `/è–æ¯å¡”å¬å–š` ä¾†æŠ½å¡è‹±éˆå§ï¼").Item2, new ComponentBuilder());
-
-            var sorted = player.OwnedServants.OrderByDescending(s => s.Rarity).ThenByDescending(s => s.Level).ToList();
-            var displayCount = Math.Min(15, sorted.Count);
+                return (CommonHelper.BuildErrorResponse("§A©|¥¼¥l³ê¥ô¦ó­^ÆF¡I½Ğ¥ı¨Ï¥Î `/fate¸tªM¶ğ¥l³ê`").Item2, new ComponentBuilder());
 
             var embedBuilder = new EmbedBuilder()
-                .WithTitle($"?? {player.UserName} çš„è‹±éˆå°éšŠåœ–é‘‘")
-                .WithColor(new Color(0x3498DB))
+                .WithTitle($"?? {player.UserName} ªº­^ÆF¹ÏÅ²")
+                .WithColor(Color.Blue)
                 .WithCurrentTimestamp();
 
-            for (int i = 0; i < displayCount; i++)
+            var sorted = player.OwnedServants.OrderByDescending(s => s.Rarity).ThenByDescending(s => s.Level).ToList();
+            var displayLimit = Math.Min(15, sorted.Count);
+
+            for (int i = 0; i < displayLimit; i++)
             {
                 var s = sorted[i];
                 string classEmoji = GetClassEmoji(s.ClassName);
-                string rarityStars = string.Concat(Enumerable.Repeat("â˜…", s.Rarity));
-
+                string stars = string.Concat(Enumerable.Repeat("¡¹", s.Rarity));
                 embedBuilder.AddField(
-                    $"{classEmoji} {s.Name} Lv.{s.Level}",
-                    $"{rarityStars}\nå¯¶å…· Lv.{s.NpLevel}\nç­‰éšç”Ÿå‘½å€¼: {s.GetMaxHp()} | æ”»æ“ŠåŠ›: {s.GetAttack()}",
+                    $"{classEmoji} {s.Name} Lv.{s.Level} (Ä_¨ã Lv.{s.NpLevel})",
+                    $"{stars}\nATK: {s.GetAttack()} | HP: {s.GetMaxHp()}\nNo. {s.CollectionNo}",
                     inline: true);
             }
 
-            if (sorted.Count > displayCount)
-                embedBuilder.WithFooter($"é¡¯ç¤ºå‰ {displayCount}/{sorted.Count} ä½è‹±éˆ");
+            if (sorted.Count > displayLimit)
+                embedBuilder.WithFooter($"¤wÅã¥Ü«e {displayLimit} /¦@ {sorted.Count} ¦ì­^ÆF");
 
             return (embedBuilder.Build(), new ComponentBuilder());
         }
 
-        // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-        //  çˆ¬å¡” Roguelike ç³»çµ±
-        // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+        // ùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùù
+        //  ª¦¶ğ¥D±±ÅŞ¿è (¶}§½, ¦^¦X¦æ¬°, µ²ºâ)
+        // ùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùù
 
-        public async Task<(Embed embed, ComponentBuilder component)> StartTowerRunAsync(
-            ulong channelId, ulong userId, string userName)
+        public async Task<(Embed embed, ComponentBuilder component)> StartTowerRunAsync(ulong channelId, ulong userId, string userName)
         {
             await EnsureInitAsync();
 
             if (_runs.ContainsKey(channelId))
             {
-                return (CommonHelper.BuildErrorResponse(
-                    "æ­¤é »é“å·²æœ‰é€²è¡Œä¸­çš„ç™»å¡”æˆ°å½¹ï¼\nå¯ä»¥ä½¿ç”¨ `/fateå–æ¶ˆçˆ¬å¡”` æ”¾æ£„å…ˆå‰æœªå®Œæˆçš„å†’éšªï¼Œé‡æ–°é–‹å§‹ã€‚").Item2, 
-                    new ComponentBuilder());
+                return (CommonHelper.BuildErrorResponse("ÀW¹D¤º¥¿¦³¤@³õ¸tªM®È³~¶i¦æ¤¤¡I\n½Ğ¨Ï¥Î `/fate¸tªM¶ğ¨ú®øª¦¶ğ` ©ñ±ó¡C").Item2, new ComponentBuilder());
             }
-
-            var redisKey = RedisPlayerPrefix + userId;
-            if (!_db.KeyExists(redisKey))
-                return (CommonHelper.BuildErrorResponse("ä½ é‚„ä¸æ˜¯å¾¡ä¸»ï¼è«‹å…ˆè¨»å†Šï¼š`/è–æ¯å¡”è¨»å†Š`").Item2, new ComponentBuilder());
 
             var player = LoadPlayer(userId, userName);
             if (player.OwnedServants.Count == 0)
-                return (CommonHelper.BuildErrorResponse("ä½ å¬å–šç©ºé–“æ²’æœ‰ä»»ä½•è‹±éˆï¼è«‹ä½¿ç”¨ `/è–æ¯å¡”å¬å–š` æŠ½å–å¾è€…åŠ å…¥å°éšŠï¼").Item2, new ComponentBuilder());
-
-            player.TotalRuns++;
-            SavePlayer(player);
+            {
+                return (CommonHelper.BuildErrorResponse("¥l³ê¦W¥U¤¤©|µLÀH¦æ­^ÆF¡C½Ğ¥ı©â¨ú­^ÆF¡I").Item2, new ComponentBuilder());
+            }
 
             var run = new HgwTowerRun
             {
@@ -352,85 +325,401 @@ namespace MusicBot2.Service
                 PlayerId = userId,
                 PlayerName = userName,
                 CurrentFloor = 1,
-                Gold = 100,
-                IsFinished = false
+                Gold = 100
             };
 
             _runs[channelId] = run;
 
-            var embed = new EmbedBuilder()
-                .WithTitle("?? è–æ¯å¡” - å¾¡çµ„éšŠå‡ºå¾")
-                .WithDescription($"**{userName}** å·²æŠµé”è–æ¯å¡”åº•éƒ¨åŸºåº§ï¼\n" +
-                    "è«‹å¾ä½ è§£é–çš„é«˜éšè‹±éˆä¸­**é»é¸åŠ å…¥éšŠä¼** (æœ€å¤šå¯å¸¶3å)ã€‚")
-                .WithColor(new Color(0xE74C3C))
-                .WithFooter($"ç›®å‰å±¤æ•¸ï¼šç¬¬ {run.CurrentFloor} å±¤")
-                .WithCurrentTimestamp()
-                .Build();
-
-            var component = BuildTeamSelectionButtons(userId, run);
-
-            return (embed, component);
-        }
-
-        private ComponentBuilder BuildTeamSelectionButtons(ulong userId, HgwTowerRun run)
-        {
-            var player = LoadPlayer(userId);
-            var cb = new ComponentBuilder();
-            var servants = player.OwnedServants.OrderByDescending(s => s.Rarity).ThenByDescending(s => s.Level).Take(9).ToList();
-
-            for (int i = 0; i < servants.Count && i < 9; i++)
-            {
-                var s = servants[i];
-                string label = $"{GetClassEmoji(s.ClassName)} {s.Name.Substring(0, Math.Min(10, s.Name.Length))} Lv.{s.Level}";
-                bool isSelected = run.Team.Any(x => x.CollectionNo == s.CollectionNo);
-
-                cb.WithButton(
-                    label: isSelected ? "? " + s.Name.Substring(0, Math.Min(8, s.Name.Length)) : label,
-                    customId: $"hgwt_select_{userId}_{s.CollectionNo}",
-                    style: isSelected ? ButtonStyle.Success : ButtonStyle.Primary,
-                    row: i / 3,
-                    disabled: run.IsFinished
-                );
-            }
-
-            cb.WithButton("?? é–‹å§‹çˆ¬å¡”ï¼å‡ºå¾ç¬¬ 1 å±¤", $"hgwt_start_run_{userId}", ButtonStyle.Danger, row: 3, disabled: run.Team.Count == 0);
-
-            return cb;
+            // «Ø¥ß¥X©º°}®e²Õ«Ø UI (¤@¦¸¦Ü¦h¿ï¾Ü3¦W±qªÌ)
+            return BuildTeamSelectionScreen(run, player);
         }
 
         public async Task<(Embed embed, ComponentBuilder component)> CancelTowerRunAsync(ulong channelId, ulong userId)
         {
             if (!_runs.TryGetValue(channelId, out var run))
             {
-                return (CommonHelper.BuildErrorResponse("æ­¤é »é“ç›®å‰æ²’æœ‰æ­£åœ¨é€²è¡Œçš„è–æ¯å¡”æŒ‘æˆ°å“¦ï¼").Item2, new ComponentBuilder());
+                return (CommonHelper.BuildErrorResponse("¦¹ÀW¹D¥Ø«e¨S¦³¶i¦æ¤¤ªº¸tªM¶ğ©º³~¡C").Item2, new ComponentBuilder());
             }
 
             if (run.PlayerId != userId)
-                return (CommonHelper.BuildErrorResponse("ä½ ä¸æ˜¯ç™¼èµ·é€™å›è–æ¯å¡”æŒ‘æˆ°çš„å¾¡ä¸»ï¼Œç„¡æ³•å¼·åˆ¶æ’¤éŠ·éšŠä¼ï¼").Item2, new ComponentBuilder());
+            {
+                return (CommonHelper.BuildErrorResponse("³o¤£¬O§Aªº¬D¾Ô¡I¥u¦³·í«e¬D¾ÔªÌ¥i©ñ±ó¡C").Item2, new ComponentBuilder());
+            }
 
             _runs.Remove(channelId);
 
             var embed = new EmbedBuilder()
-                .WithTitle("?? è–æ¯å¡” - æŒ‘æˆ°ä¸­é€”å¾¹å…µ")
-                .WithDescription($"å¾¡ä¸» **{run.PlayerName}** å®£å‘Šæˆ°ç•¥æ’¤é€€ï¼Œè§£æ•£è‹±éˆå°éšŠé›¢å¡”ï¼\næŒ‘æˆ°çµæŸåœ¨ç¬¬ **{run.CurrentFloor}** å±¤ã€‚")
-                .WithColor(Color.DarkOrange)
+                .WithTitle("??? ©ñ±ó¸tªM±´¯Á")
+                .WithDescription($"±s¥D **{run.PlayerName}** ©ñ±ó¤F¥»½ë®Èµ{¡A¦b **²Ä {run.CurrentFloor} ¼h** ¥ş­ûºM°h¡I")
+                .WithColor(Color.DarkRed)
                 .WithCurrentTimestamp()
                 .Build();
 
             return (embed, new ComponentBuilder());
         }
 
-        // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-        //  é­é‡èˆ‡å›åˆæ ¸å¿ƒ (äº‹ä»¶é©…å‹•)
-        // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+        private (Embed embed, ComponentBuilder component) BuildTeamSelectionScreen(HgwTowerRun run, HolyGrailTowerPlayer player)
+        {
+            var list = player.OwnedServants.OrderByDescending(s => s.Rarity).ToList();
+
+            var embedBuilder = new EmbedBuilder()
+                .WithTitle("?? ¸tªM±´¯Á¶¤¥î²Õ«Ø")
+                .WithDescription($"**±s¥D {player.UserName}**¡A½Ğ¬D¿ï¥X©º­^ÆF (³Ì¦h 3 ¦ì¡A¥Ø«e¤w¿ï¡G{run.Team.Count}/3)¡G\n" +
+                    "ÂIÀ»¤U¤è«ö¶s¥i¥[¤J©Î°h¥X°}®e")
+                .WithColor(Color.LightOrange);
+
+            if (run.Team.Count > 0)
+            {
+                string selectedNames = string.Join("\n", run.Team.Select((s, idx) => $"{idx + 1}. {GetClassEmoji(s.ClassName)} **{s.Name}**"));
+                embedBuilder.AddField("??? ¤w½T»{¥X©º­^ÆF", selectedNames);
+            }
+            else
+            {
+                embedBuilder.AddField("??? ¤w½T»{¥X©º­^ÆF", "¡]©|¥¼¬D¿ï¡A­^ÆF¾Ô¦º±Nµ²§ô°Æ¥»¡^");
+            }
+
+            var cb = new ComponentBuilder();
+            int buttonCount = 0;
+
+            foreach (var servant in list.Take(15))
+            {
+                string emoji = GetClassEmoji(servant.ClassName);
+                bool isChosen = run.Team.Any(x => x.CollectionNo == servant.CollectionNo);
+                ButtonStyle style = isChosen ? ButtonStyle.Success : ButtonStyle.Secondary;
+                string label = $"{emoji} {servant.Name} (Lv.{servant.Level})";
+
+                cb.WithButton(label, $"hgwt_select_{servant.CollectionNo}", style, disabled: run.Team.Count >= 3 && !isChosen, row: buttonCount / 4);
+                buttonCount++;
+            }
+
+            // ¥X©º½T»{¾Ô°««ö¶s
+            cb.WithButton("?? »}¬ù¥X©º¡I¶i¤J²Ä 1 ¼h", "hgwt_start", ButtonStyle.Danger, disabled: run.Team.Count == 0, row: 4);
+
+            return (embedBuilder.Build(), cb);
+        }
+
+        // ùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùù
+        //  ¾D¹J¨Æ¥ó¥Í¦¨ (¤À§Á¸ô½u¼Ò¦¡)
+        // ùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùù
+
+        private void GenerateEncounter(HgwTowerRun run)
+        {
+            int floor = run.CurrentFloor;
+            EncounterType type;
+
+            if (floor % 10 == 0) type = EncounterType.BossBattle;
+            else if (floor % 5 == 0) type = EncounterType.EliteBattle;
+            else
+            {
+                // ´¶³q¡BÄ_½c¡B°Ó©±ÀH¾÷
+                int roll = _rng.Next(100);
+                if (roll < 55) type = EncounterType.NormalBattle;
+                else if (roll < 75) type = EncounterType.Treasure;
+                else if (roll < 90) type = EncounterType.Shop;
+                else type = EncounterType.RestSite;
+            }
+
+            var encounter = new HgwTowerEncounter
+            {
+                Type = type,
+                TurnCount = 1,
+                CritStars = 0
+            };
+
+            if (type == EncounterType.NormalBattle || type == EncounterType.EliteBattle || type == EncounterType.BossBattle)
+            {
+                int count = type == EncounterType.BossBattle ? 1 : _rng.Next(1, 4);
+                encounter.Enemies = GenerateMonsterSquad(type, count, floor);
+                DrawCardsForTurn(run, encounter); // ªì©l¤âµP
+            }
+
+            run.CurrentEncounter = encounter;
+        }
+
+        private List<HgwTowerEnemy> GenerateMonsterSquad(EncounterType type, int count, int floor)
+        {
+            var list = new List<HgwTowerEnemy>();
+            string[] classes = { "saber", "archer", "lancer", "rider", "caster", "assassin", "berserker" };
+
+            if (type == EncounterType.BossBattle)
+            {
+                list.Add(new HgwTowerEnemy
+                {
+                    Name = $"?? ¸tªM¨g±J¡P»â¥DÅ]¯« (Floor {floor})",
+                    ClassName = "berserker",
+                    MaxHp = 8000 + floor * 1500,
+                    CurrentHp = 8000 + floor * 1500,
+                    Attack = 350 + floor * 45,
+                    Defense = 120 + floor * 20,
+                    IsBoss = true
+                });
+            }
+            else if (type == EncounterType.EliteBattle)
+            {
+                list.Add(new HgwTowerEnemy
+                {
+                    Name = $"?? Å@³®¥¨¼vªÌ (ºë­^)",
+                    ClassName = classes[_rng.Next(classes.Length)],
+                    MaxHp = 3000 + floor * 700,
+                    CurrentHp = 3000 + floor * 700,
+                    Attack = 220 + floor * 30,
+                    Defense = 80 + floor * 12,
+                    IsElite = true
+                });
+            }
+            else
+            {
+                for (int i = 1; i <= count; i++)
+                {
+                    string mName = _rng.Next(3) switch
+                    {
+                        0 => "¥j¥N¾uÅ\§L",
+                        1 => "Àe°©¤}½b¤â",
+                        _ => "©G³N¥Û¹³"
+                    };
+                    list.Add(new HgwTowerEnemy
+                    {
+                        Name = $"?? {mName} {i}¸¹",
+                        ClassName = classes[_rng.Next(classes.Length)],
+                        MaxHp = 1000 + floor * 250,
+                        CurrentHp = 1000 + floor * 250,
+                        Attack = 120 + floor * 18,
+                        Defense = 35 + floor * 6
+                    });
+                }
+            }
+
+            return list;
+        }
+
+        private void DrawCardsForTurn(HgwTowerRun run, HgwTowerEncounter encounter)
+        {
+            encounter.SelectedCards.Clear();
+
+            // ?¶°©Ò¦³¦s¬¡±qªÌªº¥d¤ùºc¦¨
+            var cardPool = new List<HgwCardPlay>();
+            var aliveTeam = run.Team.Where(s => s.IsAlive).ToList();
+
+            if (aliveTeam.Count == 0) return;
+
+            for (int sIdx = 0; sIdx < run.Team.Count; sIdx++)
+            {
+                var s = run.Team[sIdx];
+                if (!s.IsAlive) continue;
+
+                for (int cardIdx = 0; cardIdx < s.Cards.Count; cardIdx++)
+                {
+                    cardPool.Add(new HgwCardPlay
+                    {
+                        ServantIndex = sIdx,
+                        ServantName = s.Name,
+                        CardType = s.Cards[cardIdx].ToLower(),
+                        CardIndex = cardIdx
+                    });
+                }
+            }
+
+            // FGOÀH¾÷©â¥X5±iµP
+            var randomized = cardPool.OrderBy(_ => _rng.Next()).Take(5).ToList();
+
+            // ¼ÉÀ»¬P¤À°t (¨Cµo¼ÉÀ»¬P+10¾÷²v)
+            int stars = encounter.CritStars;
+            encounter.CritStars = 0; // ·í¦^¦X­«¸m
+
+            for (int i = 0; i < stars; i++)
+            {
+                if (randomized.Count == 0) break;
+                var luckyCard = randomized[_rng.Next(randomized.Count)];
+                luckyCard.CritChance = Math.Min(100, luckyCard.CritChance + 10);
+            }
+
+            encounter.HandCards = randomized;
+        }
+
+        // ùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùù
+        //  ¨Æ¥ó´è¬V
+        // ùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùù
+
+        private (Embed embed, ComponentBuilder component) RenderCurrentEncounter(HgwTowerRun run)
+        {
+            var enc = run.CurrentEncounter;
+
+            switch (enc.Type)
+            {
+                case EncounterType.NormalBattle:
+                case EncounterType.EliteBattle:
+                case EncounterType.BossBattle:
+                    return RenderBattleEncounter(run);
+
+                case EncounterType.Shop:
+                    return RenderShopEncounter(run);
+
+                case EncounterType.RestSite:
+                    return RenderRestEncounter(run);
+
+                case EncounterType.Treasure:
+                    return RenderTreasureEncounter(run);
+            }
+
+            return (CommonHelper.BuildErrorResponse("¾D¹JµL®ÄÄİ©Ê").Item2, new ComponentBuilder());
+        }
+
+        private (Embed embed, ComponentBuilder component) RenderBattleEncounter(HgwTowerRun run)
+        {
+            var enc = run.CurrentEncounter;
+            var embedBuilder = new EmbedBuilder()
+                .WithTitle($"?? ¸tªM¾D¹J¾Ô ¡X ²Ä {run.CurrentFloor} ¼h ({enc.TurnCount} ¦^¦X(Turn))")
+                .WithColor(enc.Type == EncounterType.BossBattle ? Color.Red : enc.Type == EncounterType.EliteBattle ? Color.Orange : Color.Blue)
+                .WithCurrentTimestamp();
+
+            // 1. ©Çª«°}®e
+            var enemyText = string.Join("\n", enc.Enemies.Select(e =>
+                $"{(e.IsAlive ? "??" : "??")} {e.Name} (¡i{e.ClassName.ToUpper()}¡jÂ¾¶¥) HP: **{e.CurrentHp}/{e.MaxHp}** (ATK {e.Attack})"));
+            embedBuilder.AddField("?? Å]ª«ªk°}Àç", enemyText);
+
+            // 2. §Ú¤è¶¤¥î HP / NP 
+            var squadText = string.Join("\n", run.Team.Select((s, i) =>
+                $"{(s.IsAlive ? "??" : "??")} {GetClassEmoji(s.ClassName)} **{s.Name}** HP: **{s.CurrentHp}/{s.MaxHp}** | NP Charge: **{s.NpCharge}%**"));
+            embedBuilder.AddField("??? §Ú¤è­{°Ç©³­^ÆF", squadText);
+
+            // 3. ¨Æ¥ó¤é»x / ¾Ô°«¾úµ{
+            if (enc.BattleLog.Count > 0)
+            {
+                string log = string.Join("\n", enc.BattleLog.TakeLast(6));
+                embedBuilder.AddField("?? ¾Ô¤õ¦^©ñ", log);
+            }
+
+            // 4. ¤â¥d°t¸m»P¿ï¤¤¶¶§Ç´y­z
+            string handCardsDesc = "???????? ¤âµP ????????\n";
+            for (int i = 0; i < enc.HandCards.Count; i++)
+            {
+                var card = enc.HandCards[i];
+                string colorIcon = card.CardType == "buster" ? "?? B" : card.CardType == "arts" ? "?? A" : "?? Q";
+                handCardsDesc += $"¡i¥d{i + 1}¡j `{colorIcon}` {card.ServantName} (? {card.CritChance}% ¼ÉÀ»²v)\n";
+            }
+
+            if (enc.SelectedCards.Count > 0)
+            {
+                string chosenChainStr = string.Join(" ? ", enc.SelectedCards.Select(c =>
+                {
+                    string col = c.CardType == "buster" ? "?? B" : c.CardType == "arts" ? "?? A" : c.CardType == "quick" ? "?? Q" : "?? Ä_¨ã";
+                    return $"`[{col}]` {c.ServantName}";
+                }));
+                embedBuilder.AddField("?? ·í«e¥X¤â¹w©w³sÀ»¥d", chosenChainStr);
+            }
+            else
+            {
+                embedBuilder.AddField("?? ·í«e¥X¤â¹w©w³sÀ»¥d", "*(©|¥¼¿ï¾Ü¥ô¦ó§ğÀ»¡A½Ğ¦b¤U¤è¬D¿ï)*");
+            }
+
+            embedBuilder.WithDescription(handCardsDesc + $"\n?? ¤W¦^¦X«O¯d¼ÉÀ»¬PÃB«×¡G**{enc.CritStars} Áû**\n*(¨C¦^¦X¥u¯àµo¥X¤@½ü«ü¥O, ¿ï¾Ü3±iÄÀ©ñ)*");
+
+            // 5. ³sÀ»¾Ş§@«ö¶s²Õ
+            var cb = new ComponentBuilder();
+
+            // Row 0: 5±i¤âµP«ö¶s
+            for (int i = 0; i < enc.HandCards.Count; i++)
+            {
+                var card = enc.HandCards[i];
+                bool alreadySelected = enc.SelectedCards.Any(c => c.CardIndex == i);
+                string colLabel = card.CardType == "buster" ? "?? B" : card.CardType == "arts" ? "?? A" : "?? Q";
+                string finalLabel = $"{colLabel} [{card.ServantName[0]}] {card.CritChance}%";
+                cb.WithButton(finalLabel, $"hgwt_card_{i}", ButtonStyle.Secondary, disabled: alreadySelected || enc.SelectedCards.Count >= 3, row: 0);
+            }
+
+            // Row 1: º¡¥RNPCÄ_¨ã«ö¶s 
+            int npButtonCount = 0;
+            for (int i = 0; i < run.Team.Count; i++)
+            {
+                var s = run.Team[i];
+                if (s.IsAlive && s.NpCharge >= 100)
+                {
+                    bool isNpSelected = enc.SelectedCards.Any(c => c.ServantIndex == i && c.CardType == "np");
+                    cb.WithButton($"??Ä_¨ã¡u{s.NpName}¡v({s.NpCard.ToUpper()})", $"hgwt_np_{i}", ButtonStyle.Danger, disabled: isNpSelected || enc.SelectedCards.Count >= 3, row: 1);
+                    npButtonCount++;
+                }
+            }
+
+            if (npButtonCount == 0)
+            {
+                cb.WithButton("(©|¥¼¥R¯àÄ_¨ã)", "hgwt_no_np", ButtonStyle.Secondary, disabled: true, row: 1);
+            }
+
+            // Row 2: ±±¨î²Õ
+            cb.WithButton("?? ¨ú®ø»P­«¸mÂIµP", "hgwt_undo", ButtonStyle.Primary, disabled: enc.SelectedCards.Count == 0, row: 2);
+            cb.WithButton("?? ½T»{³sÂê§ğÀ»¡I", "hgwt_confirm", ButtonStyle.Success, disabled: enc.SelectedCards.Count < 3, row: 2);
+            cb.WithButton("??? ºM°h±´¯Á", "hgwt_surrender", ButtonStyle.Danger, row: 2);
+
+            return (embedBuilder.Build(), cb);
+        }
+
+        private (Embed embed, ComponentBuilder component) RenderShopEncounter(HgwTowerRun run)
+        {
+            var embed = new EmbedBuilder()
+                .WithTitle($"?? ¯S¨½¦«¸tªM¥æ©ö©Ò ¡X ²Ä {run.CurrentFloor} ¼h")
+                .WithDescription($"**±s¥D {run.PlayerName}**¡A«_ÀI®È³~¤¤¹J¨ì¹C¾ú°Ó¤H¡C\n\n" +
+                    $"?? ª÷¹ô¾lÃB¡G**{run.Gold} Gold**\n½ĞÂIÀ»°Ó«~«ö¶sÁÊ¶R¡G")
+                .AddField("??? ­{°Ç©³«æ±Ï®M¥] (¶O¥Î¡G40 ª÷¹ô)", "«ì´_«_ÀI°}®e¤¤©Ò¦³¦s¬¡­^ÆF 40% ªº¥Í©R¤O¡C")
+                .AddField("??? °_¦º¦^¥Í¶Àª÷¥O©G (¶O¥Î¡G80 ª÷¹ô)", "´_¬¡¨ÃªvÀø«_ÀI­^ÆF¶¤¥î¤¤¤w¾Ô¦ºªº¥ş³¡¶¤­û(°òÂ¦25%HP)¡C")
+                .AddField("??? ¯S®íÆF°ò­­¬É¬ğ¯} (¶O¥Î¡G70 ª÷¹ô)", "¥»½ë®È³~¤º©Ò¦³¤H§ğÀ»¯à¤O¥Ã¤[ +15%¡I")
+                .WithColor(Color.Purple)
+                .WithCurrentTimestamp()
+                .Build();
+
+            var cb = new ComponentBuilder()
+                .WithButton("?? ¥ş­ûªvÀø (40ª÷)", "hgwt_shop_heal", ButtonStyle.Success, disabled: run.Gold < 40, row: 0)
+                .WithButton("?? ­^ÆF´_¬¡ (80ª÷)", "hgwt_shop_revive", ButtonStyle.Success, disabled: run.Gold < 80, row: 0)
+                .WithButton("??? ­­¬É¬ğ¯} (70ª÷)", "hgwt_shop_buff", ButtonStyle.Success, disabled: run.Gold < 70, row: 0)
+                .WithButton("?? Â÷¶}¥æ©ö©Ò", "hgwt_shop_leave", ButtonStyle.Secondary, row: 1);
+
+            return (embed, cb);
+        }
+
+        private (Embed embed, ComponentBuilder component) RenderRestEncounter(HgwTowerRun run)
+        {
+            var embed = new EmbedBuilder()
+                .WithTitle($"?? Àç¤õ¨¾½u°ò¦a ¡X ²Ä {run.CurrentFloor} ¼h")
+                .WithDescription("³o¬Oµu¼È¡B¦w¹çªº±JÀç¦a¡C´H­·©I¼S¡A¦ıÀç¤õ¯à«ì´_§A°®²Uªººë¤O¡C\n\n" +
+                    "½Ğ¦b¤U¤è°µ¥X¿ï¾Ü¡G\n" +
+                    "?? **Àç±b¾Í®§**¡G­{°Ç©³¥ş­û­×¾ã¡A©Ò¦³¶¤¤Í«ì´_ 50% HP¡C\n" +
+                    "?? **¥dµP°V½m**¡G¥»¦¸®È³~¤¤©Ò¦³¤H°_©l NP ºë¤Oª½±µÃB¥~ +30%¡I")
+                .WithColor(Color.Green)
+                .WithCurrentTimestamp()
+                .Build();
+
+            var cb = new ComponentBuilder()
+                .WithButton("?? ¾Í®§ªvÀø¥ş­û", "hgwt_rest_heal", ButtonStyle.Success, row: 0)
+                .WithButton("?? ¦æ«e­×¦æ¥ş­û¥R¯à", "hgwt_rest_np", ButtonStyle.Primary, row: 0);
+
+            return (embed, cb);
+        }
+
+        private (Embed embed, ComponentBuilder component) RenderTreasureEncounter(HgwTowerRun run)
+        {
+            var embed = new EmbedBuilder()
+                .WithTitle($"?? °g¤§¶Àª÷Ä_ÂÃ½c ¡X ²Ä {run.CurrentFloor} ¼h")
+                .WithDescription("¨«¹L¼o±ó°j´Y¡AÅå³ß¦aµo²{¤F¤@´L¨è¦LµÛ¥jÅ]³N®v®a±Ú·L³¹ªº¬Ã¶Q¸tªMÄ_½c¡I\n\nÂIÀ»¤U¤è¶}±Ò¡A¥i¯à¦³·N·Q¤£¨ìªº­«­n¸Éµ¹¡C")
+                .WithColor(Color.Gold)
+                .WithCurrentTimestamp()
+                .Build();
+
+            var cb = new ComponentBuilder()
+                .WithButton("?? ª`¤JÅ]¤O¶}±ÒÄ_½c", "hgwt_treasure_open", ButtonStyle.Success);
+
+            return (embed, cb);
+        }
+
+        // ùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùù
+        //  ¥æ¤¬«ö¶s¤À¬y HandleButtonInteractionAsync
+        // ùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùù
 
         public async Task<(Embed embed, ComponentBuilder component)> HandleButtonInteractionAsync(ulong userId, ulong channelId, string customId)
         {
             if (!_runs.TryGetValue(channelId, out var run))
-                return (CommonHelper.BuildErrorResponse("æ‰¾ä¸åˆ°é€²è¡Œä¸­çš„çˆ¬å¡”ï¼Œå¯èƒ½å·²ç¶“å› ä¸­é€”å¾¹é€€æˆ–æˆ°æ•—é—œé–‰ã€‚").Item2, new ComponentBuilder());
+                return (CommonHelper.BuildErrorResponse("§ä¤£¨ì¶i¦æ¤¤ªº¸tªM«_ÀI¡A¥i¯à¤w¸gµ²ºâ©Î¶W®ÉÃö³¬¡C").Item2, new ComponentBuilder());
 
             if (run.PlayerId != userId)
-                return (CommonHelper.BuildErrorResponse("é€™ä¸æ˜¯ä½ çš„çˆ¬å¡”ï¼å¿…é ˆç”±ç™¼èµ·å†’éšªçš„å¾¡ä¸»æŒ‰éˆ•æ“ä½œã€‚").Item2, new ComponentBuilder());
+                return (CommonHelper.BuildErrorResponse("´£¥Ü¡G§A¤£¬Oµo°_¦¹¸tªM¬D¾Ôªº±s¥D¡I").Item2, new ComponentBuilder());
 
             var parts = customId.Split('_');
             var action = parts[1];
@@ -439,451 +728,524 @@ namespace MusicBot2.Service
             {
                 switch (action)
                 {
+                    // 1. ²Õ«Ø°}®e¶¥¬q
                     case "select":
-                        int colNo = int.Parse(parts[3]);
-                        if (run.Team.Any(s => s.CollectionNo == colNo))
-                        {
-                            // å·²ç¶“åœ¨éšŠä¼ä¸­ï¼Œé»æ“Šå³æ˜¯å–æ¶ˆ
-                            run.Team.RemoveAll(x => x.CollectionNo == colNo);
-                        }
-                        else
-                        {
-                            if (run.Team.Count >= 3)
-                                return (CommonHelper.BuildErrorResponse("æ¥µé™è‹±éˆå°éšŠæœ€å¤šé…è¼‰ 3 ä½å“¦ï¼").Item2, BuildTeamSelectionButtons(userId, run));
+                        int colNo = int.Parse(parts[2]);
+                        var player = LoadPlayer(userId);
+                        var target = player.OwnedServants.FirstOrDefault(x => x.CollectionNo == colNo);
 
-                            var player = LoadPlayer(userId);
-                            var serv = player.OwnedServants.FirstOrDefault(x => x.CollectionNo == colNo);
-                            if (serv != null)
-                                run.Team.Add(HgwTowerServantInstance.FromServant(serv));
+                        if (target != null)
+                        {
+                            if (run.Team.Any(s => s.CollectionNo == colNo))
+                            {
+                                run.Team.RemoveAll(x => x.CollectionNo == colNo);
+                            }
+                            else if (run.Team.Count < 3)
+                            {
+                                run.Team.Add(HgwTowerServantInstance.FromServant(target));
+                            }
                         }
-                        return (new EmbedBuilder()
-                            .WithTitle("?? è‹±éˆé™£å‹èª¿æ•´ä¸­")
-                            .WithDescription($"ç›®å‰å·²é¸å…¥è‹±éˆæ•¸ï¼š{run.Team.Count}/3 åï¼\n\n**ç•¶å‰å°éšŠ**ï¼š\n" + 
-                                string.Join("\n", run.Team.Select(s => $"{GetClassEmoji(s.ClassName)} **{s.Name}** HP: {s.MaxHp}")))
-                            .WithColor(Color.Blue).Build(), BuildTeamSelectionButtons(userId, run));
+                        return BuildTeamSelectionScreen(run, player);
 
                     case "start":
                         if (run.Team.Count == 0)
-                            return (CommonHelper.BuildErrorResponse("è«‹å…ˆåŠ æŒ‡æ´¾è‡³å°‘ 1 ä½å¾è€…ï¼").Item2, BuildTeamSelectionButtons(userId, run));
-
-                        run.MaxHp = run.Team.Sum(s => s.MaxHp);
-                        run.CurrentHp = run.MaxHp;
-                        run.CurrentEncounter = GenerateEncounter(run.CurrentFloor);
-
-                        return (BuildFloorEmbed(run), BuildFloorButtons(channelId, run));
-
-                    case "attack":
-                    case "np":
-                    case "defend":
-                        int index = int.Parse(parts[3]);
-                        var battleResult = ExecuteCombatAction(run, index, action);
-
-                        if (battleResult.IsFinished)
                         {
-                            // æˆ°é¬¥å‹åˆ©
-                            var player = LoadPlayer(userId);
-                            player.TotalKills += run.CurrentEncounter.Enemies.Count;
-
-                            // æ›´æ–°æœ€é«˜å±¤æ•¸
-                            if (run.CurrentFloor > player.HighestFloor)
-                                player.HighestFloor = run.CurrentFloor;
-
-                            // é—œå¡é€²åº¦çå‹µ
-                            int goldReward = 20 + run.CurrentFloor * 2;
-                            run.Gold += goldReward;
-                            player.SummonTickets += (run.CurrentFloor % 5 == 0) ? 2 : 0;
-                            player.SaintQuartz += (run.CurrentFloor % 10 == 0) ? 1 : 0;
-                            SavePlayer(player);
-
-                            string rewardsText = $"?? +{goldReward} æœ¬æ¬¡é‡‘å¹£\n";
-                            if (run.CurrentFloor % 5 == 0) rewardsText += "?? +2 å¬å–šåˆ¸ï¼\n";
-                            if (run.CurrentFloor % 10 == 0) rewardsText += "?? +1 è–æ™¶çŸ³ï¼\n";
-
-                            var winEmbed = new EmbedBuilder()
-                                .WithTitle($"?? æˆ°é¬¥å‹åˆ©ï¼ç¬¬ {run.CurrentFloor} å±¤é€šéï¼")
-                                .WithDescription($"{battleResult.ActionDescription}\n\n" +
-                                    $"æ­å–œæ“Šé€€ç¬¬ {run.CurrentFloor} å±¤é­”ç‰©ï¼å°éšŠç²å¾—çå‹µï¼š\n\n{rewardsText}")
-                                .WithColor(Color.Gold)
-                                .Build();
-
-                            // å‰é€²åˆ°ä¸‹ä¸€å±¤ï¼
-                            run.CurrentFloor++;
-                            var nextCb = new ComponentBuilder()
-                                .WithButton($"?? æ¢ç´¢ç¬¬ {run.CurrentFloor} å±¤", $"hgwt_next_floor_{userId}", ButtonStyle.Danger);
-
-                            return (winEmbed, nextCb);
+                            return (CommonHelper.BuildErrorResponse("¥²¶·¦Ü¤Ö°t³Æ¤@¦ì±qªÌ¥Xµo¡I").Item2, new ComponentBuilder());
                         }
+                        // ªì©l²Ä¤@¼h¾D¹J
+                        GenerateEncounter(run);
+                        return RenderCurrentEncounter(run);
 
-                        // æª¢æŸ¥ç©å®¶æ˜¯å¦å…¨æ»…
-                        if (run.Team.All(s => !s.IsAlive))
+                    // 2. FGO ¾Ô°«¥dµP¿ïµP
+                    case "card":
+                        int handIdx = int.Parse(parts[2]);
+                        if (run.CurrentEncounter.SelectedCards.Count < 3)
                         {
-                            _runs.Remove(channelId);
-                            var defeatEmbed = new EmbedBuilder()
-                                .WithTitle($"?? éšŠä¼å…¨æ»… - æŒ‘æˆ°è½æ•—")
-                                .WithDescription($"{battleResult.ActionDescription}\n\nè–æ¯ç¢ç‰‡é­”èƒ½æ¶ˆæ•£ï¼å†’éšªçµ‚çµåœ¨ç¬¬ {run.CurrentFloor} å±¤ã€‚\n" +
-                                    $"ä½ å¯ä»¥å¬å–šæ›´å¤šè‹±éˆã€é›éŠæˆ–é€²è¡Œæ¯æ—¥å¥½é‹æŠ½å¡å¾Œå†æ¬¡æ•´éšŠï¼")
-                                .WithColor(Color.Red)
+                            var hCard = run.CurrentEncounter.HandCards[handIdx];
+                            // §PÂ_¬O§_¤w³Q¿ï
+                            if (!run.CurrentEncounter.SelectedCards.Any(x => x.CardIndex == handIdx))
+                            {
+                                run.CurrentEncounter.SelectedCards.Add(new HgwCardPlay
+                                {
+                                    ServantIndex = hCard.ServantIndex,
+                                    ServantName = hCard.ServantName,
+                                    CardType = hCard.CardType,
+                                    CardIndex = handIdx,
+                                    CritChance = hCard.CritChance
+                                });
+                            }
+                        }
+                        return RenderCurrentEncounter(run);
+
+                    case "np":
+                        int sIdx = int.Parse(parts[2]);
+                        if (run.CurrentEncounter.SelectedCards.Count < 3)
+                        {
+                            var servant = run.Team[sIdx];
+                            if (servant.IsAlive && servant.NpCharge >= 100)
+                            {
+                                if (!run.CurrentEncounter.SelectedCards.Any(x => x.ServantIndex == sIdx && x.CardType == "np"))
+                                {
+                                    run.CurrentEncounter.SelectedCards.Add(new HgwCardPlay
+                                    {
+                                        ServantIndex = sIdx,
+                                        ServantName = servant.Name,
+                                        CardType = "np",
+                                        CardIndex = -1,
+                                        CritChance = 0
+                                    });
+                                }
+                            }
+                        }
+                        return RenderCurrentEncounter(run);
+
+                    case "undo":
+                        run.CurrentEncounter.SelectedCards.Clear();
+                        return RenderCurrentEncounter(run);
+
+                    case "confirm":
+                        if (run.CurrentEncounter.SelectedCards.Count == 3)
+                        {
+                            await ProcessBattleTurnAsync(run);
+                            if (run.IsFinished)
+                            {
+                                _runs.Remove(channelId);
+                                return (BuildRunEndEmbed(run));
+                            }
+                            return RenderCurrentEncounter(run);
+                        }
+                        return RenderCurrentEncounter(run);
+
+                    case "surrender":
+                        _runs.Remove(channelId);
+                        var surrEmbed = new EmbedBuilder()
+                            .WithTitle("??? ±s¥D­Ü´qºMÂ÷")
+                            .WithDescription($"**±s¥D {run.PlayerName}** «ü´§ºM°h¡A±´¯Áµ²§ô¡I\n¥»¦¸¤î¨B©ó²Ä **{run.CurrentFloor}** ¼h¡C")
+                            .WithColor(Color.DarkBlue)
+                            .Build();
+                        return (surrEmbed, new ComponentBuilder());
+
+                    // 3. ¥æ©ö©Ò¾Ş§@
+                    case "shop":
+                        string shopChoice = parts[2];
+                        if (shopChoice == "heal" && run.Gold >= 40)
+                        {
+                            run.Gold -= 40;
+                            foreach (var s in run.Team)
+                            {
+                                if (s.IsAlive) s.CurrentHp = Math.Min(s.MaxHp, s.CurrentHp + (int)(s.MaxHp * 0.4));
+                            }
+                            run.EventLog.Add("?? ÁÊ¶R¥ş­ûªvÀø¡G¥ş¶¤¦s¬¡­^ÆFªvÂ¡ HP +40%¡I");
+                        }
+                        else if (shopChoice == "revive" && run.Gold >= 80)
+                        {
+                            run.Gold -= 80;
+                            foreach (var s in run.Team)
+                            {
+                                if (!s.IsAlive)
+                                {
+                                    s.CurrentHp = s.MaxHp / 4;
+                                }
+                            }
+                            run.EventLog.Add("?? ´_¬¡«ü¥O¡G¾Ô¦º­^ÆFÄâ 25% ªº¯à¶q¥úÀô­«ªğ¾Ô³õ¡I");
+                        }
+                        else if (shopChoice == "buff" && run.Gold >= 70)
+                        {
+                            run.Gold -= 70;
+                            foreach (var s in run.Team)
+                            {
+                                s.BonusAtk += (int)(s.Attack * 0.15);
+                            }
+                            run.EventLog.Add("?? Å]¤O¼É´é¡G¥ş­û­^ÆF°òÂ¦ ATK ¥Ã¤[´£ª@ 15%¡I");
+                        }
+                        else if (shopChoice == "leave")
+                        {
+                            // ¶i¤J¤U¤@¼h 
+                            run.CurrentFloor++;
+                            GenerateEncounter(run);
+                            return RenderCurrentEncounter(run);
+                        }
+                        return RenderShopEncounter(run);
+
+                    // 4. ¾Í®§¦a¾Ş§@
+                    case "rest":
+                        string restChoice = parts[2];
+                        if (restChoice == "heal")
+                        {
+                            foreach (var s in run.Team)
+                            {
+                                if (s.IsAlive) s.CurrentHp = Math.Min(s.MaxHp, s.CurrentHp + s.MaxHp / 2);
+                            }
+                            run.EventLog.Add("?? ¥şÅéªvÀø¡G¦bÀç¦a«×±J¦w«ï²M±á¡A¥ş­û«ì´_ 50% ªº¥Í©R¤O¡C");
+                        }
+                        else if (restChoice == "np")
+                        {
+                            foreach (var s in run.Team)
+                            {
+                                if (s.IsAlive) s.AddNpCharge(30);
+                            }
+                            run.EventLog.Add("?? ¦æ«e¤j¬ğ¯}¡G¥şÅé­^ÆFª½±µÄéª` +30% ªºÄ_¨ã¥R¯à¯à¶q¡I");
+                        }
+                        run.CurrentFloor++;
+                        GenerateEncounter(run);
+                        return RenderCurrentEncounter(run);
+
+                    // 5. Ä_ÂÃ
+                    case "treasure":
+                        string tChoice = parts[2];
+                        if (tChoice == "open")
+                        {
+                            int gGain = _rng.Next(40, 101);
+                            run.Gold += gGain;
+
+                            // 20% Ãz¥X¥l³ê¨é
+                            string bonus = "";
+                            if (_rng.Next(100) < 30)
+                            {
+                                var pl = LoadPlayer(userId);
+                                pl.SummonTickets++;
+                                SavePlayer(pl);
+                                bonus = "\n?? **©¯¹B¡I¶}¥dÄ_½cµo²{«´?¥l³ê¨é ¡Ñ1** (¤w¶×¤J±b¤á)¡I";
+                            }
+
+                            var embedBuilder = new EmbedBuilder()
+                                .WithTitle("?? Ä_½c¤w³Q¸ÑÂê")
+                                .WithDescription($"Ä_½cÃz®g¥XÄ£²´¥ú½¤¡I\n\nÀò±o¡G?? **+{gGain} ª÷¹ô**¡I{bonus}")
+                                .WithColor(Color.Gold)
                                 .WithCurrentTimestamp()
                                 .Build();
 
-                            return (defeatEmbed, new ComponentBuilder());
-                        }
+                            var cbNext = new ComponentBuilder()
+                                .WithButton("? ©ºªA«e¶i¤U¤@¼h", "hgwt_next", ButtonStyle.Success);
 
-                        return (BuildFloorEmbed(run), BuildFloorButtons(channelId, run));
-
-                    case "next":
-                        run.CurrentEncounter = GenerateEncounter(run.CurrentFloor);
-                        return (BuildFloorEmbed(run), BuildFloorButtons(channelId, run));
-
-                    case "treasure":
-                        int sqGift = (_rng.Next(100) < 15) ? 1 : 0;
-                        int ticksGift = (_rng.Next(100) < 30) ? 1 : 0;
-                        int gGift = 50 + run.CurrentFloor * 5;
-                        run.Gold += gGift;
-
-                        var pl = LoadPlayer(userId);
-                        pl.SummonTickets += ticksGift;
-                        pl.SaintQuartz += sqGift;
-                        SavePlayer(pl);
-
-                        string treasureDesc = $"ä½ åœ¨è¯éº—çš„è–æ¯å¯†ç®±ä¸­æœåˆ®å‡ºäº†ï¼š\n\n" +
-                            $"?? +{gGift} é‡‘å¹£\n";
-                        if (ticksGift > 0) treasureDesc += "?? +1 å¬å–šåˆ¸ï¼\n";
-                        if (sqGift > 0) treasureDesc += "?? +1 è–æ™¶çŸ³ï¼\n";
-
-                        var chestEmbed = new EmbedBuilder()
-                            .WithTitle($"? ç¬¬ {run.CurrentFloor} å±¤ - å¯¶è—")
-                            .WithDescription(treasureDesc)
-                            .WithColor(Color.Orange)
-                            .Build();
-
-                        run.CurrentFloor++;
-                        var nextChestCb = new ComponentBuilder()
-                            .WithButton($"?? æ¢ç´¢ç¬¬ {run.CurrentFloor} å±¤", $"hgwt_next_floor_{userId}", ButtonStyle.Danger);
-
-                        return (chestEmbed, nextChestCb);
-
-                    case "shop":
-                        if (parts[2] == "leave")
-                        {
-                            run.CurrentFloor++;
-                            var nextShopCb = new ComponentBuilder()
-                                .WithButton($"?? æ¢ç´¢ç¬¬ {run.CurrentFloor} å±¤", $"hgwt_next_floor_{userId}", ButtonStyle.Danger);
-                            return (new EmbedBuilder()
-                                .WithTitle("?? é›¢é–‹å•†åº—")
-                                .WithDescription("å‘æµæµªå•†äººè‡´æ„å¾Œï¼Œå°éšŠæ•´è£ç¹¼çºŒé€²ç™¼ã€‚")
-                                .WithColor(Color.DarkBlue).Build(), nextShopCb);
-                        }
-                        else if (parts[2] == "heal")
-                        {
-                            if (run.Gold < 30)
-                                return (CommonHelper.BuildErrorResponse("é‡‘å¹£ä¸è¶³ï¼ˆéœ€è¦30é‡‘é‡‘å¹£ï¼ï¼‰").Item2, BuildFloorButtons(channelId, run));
-
-                            run.Gold -= 30;
-                            foreach (var s in run.Team)
-                            {
-                                if (s.IsAlive)
-                                {
-                                    s.CurrentHp = Math.Min(s.MaxHp, s.CurrentHp + (int)(s.MaxHp * 0.4));
-                                }
-                            }
-
-                            return (new EmbedBuilder()
-                                .WithTitle("?? è³¼è²·é­”è—¥æ²»ç™‚æˆåŠŸ")
-                                .WithDescription($"å•†äººçš„éˆè‰ç§˜è—¥æ²»ç™’äº†éšŠä¼ï¼å­˜æ´»ä¸­çš„è‹±éˆ HP æ¢å¾© 40%ï¼\nå‰©é¤˜é‡‘å¹£ï¼š{run.Gold} é‡‘")
-                                .WithColor(Color.Green).Build(), BuildFloorButtons(channelId, run));
+                            return (embedBuilder, cbNext);
                         }
                         break;
 
-                    case "rest":
-                        foreach (var s in run.Team)
-                        {
-                            if (s.IsAlive)
-                                s.CurrentHp = Math.Min(s.MaxHp, s.CurrentHp + (int)(s.MaxHp * 0.5));
-                        }
+                    case "next":
                         run.CurrentFloor++;
-                        var nextRestCb = new ComponentBuilder()
-                            .WithButton($"?? æ¢ç´¢ç¬¬ {run.CurrentFloor} å±¤", $"hgwt_next_floor_{userId}", ButtonStyle.Danger);
-                        return (new EmbedBuilder()
-                            .WithTitle("?? èˆ’é©çš„é¤˜ç‡¼ç‡Ÿç«")
-                            .WithDescription("åœ¨æ¸…éœçš„é­”åŠ›æºæ³‰æ—ç´®ç‡Ÿé‡å®¿ï¼Œå…¨å“¡ HP å¤§å¹…æ¢å¾©äº† 50%ï¼")
-                            .WithColor(Color.Green).Build(), nextRestCb);
-
-                    case "train":
-                        foreach (var s in run.Team)
-                        {
-                            if (s.IsAlive)
-                            {
-                                s.BonusAtk += 10;
-                                s.Attack += 10;
-                            }
-                        }
-                        run.CurrentFloor++;
-                        var nextTrainCb = new ComponentBuilder()
-                            .WithButton($"?? æ¢ç´¢ç¬¬ {run.CurrentFloor} å±¤", $"hgwt_next_floor_{userId}", ButtonStyle.Danger);
-                        return (new EmbedBuilder()
-                            .WithTitle("?? è¨“ç·´è‹±éˆé«”æŠ€")
-                            .WithDescription("è‹±éˆéšŠä¼é€²è¡Œäº†çŸ­æš«çš„é­”èƒ½æ¼”ç·´ï¼Œå…¨å“¡æ”»æ“ŠåŠ›æ°¸ä¹…æç¥ +10 é¡å¤–å¢å¹…ï¼")
-                            .WithColor(Color.Blue).Build(), nextTrainCb);
+                        GenerateEncounter(run);
+                        return RenderCurrentEncounter(run);
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[HolyGrailTower] HandleButtonInteraction éŒ¯èª¤: {ex.Message}");
+                Console.WriteLine($"[HolyGrailTower] «ö¶s¤¬°Ê­«¤j¿ù»~: {ex.Message}");
                 Console.WriteLine(ex.StackTrace);
+                return (CommonHelper.BuildErrorResponse($"°õ¦æ¦æ°Ê¾D¹J¤º³¡µ{¦¡½X²§±`¡G{ex.Message}").Item2, new ComponentBuilder());
             }
 
-            return (null, null);
+            return RenderCurrentEncounter(run);
         }
 
-        private HgwBattleResult ExecuteCombatAction(HgwTowerRun run, int servantIndex, string actionType)
+        // ùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùù
+        //  FGO ¦^¦X®Ö¤ß¹Bºâ (ProcessBattleTurnAsync)
+        // ùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùù
+
+        private async Task ProcessBattleTurnAsync(HgwTowerRun run)
         {
-            var result = new HgwBattleResult();
-            var attacker = run.Team[servantIndex];
-            var enemies = run.CurrentEncounter.Enemies;
-            var targetEnemy = enemies.FirstOrDefault(e => e.IsAlive);
+            var enc = run.CurrentEncounter;
+            enc.BattleLog.Clear();
 
-            if (targetEnemy == null)
-            {
-                result.IsFinished = true;
-                return result;
-            }
+            // 1. ¦U¶µ¥dµP³sÀ»¥[¦¨
+            var sCards = enc.SelectedCards;
 
-            string actDesc = "";
+            // ? First Card Bonus §P©w
+            bool isFirstBuster = sCards[0].CardType == "buster" || (sCards[0].CardType == "np" && GetServantNpCard(run, sCards[0].ServantIndex) == "buster");
+            bool isFirstArts = sCards[0].CardType == "arts" || (sCards[0].CardType == "np" && GetServantNpCard(run, sCards[0].ServantIndex) == "arts");
+            bool isFirstQuick = sCards[0].CardType == "quick" || (sCards[0].CardType == "np" && GetServantNpCard(run, sCards[0].ServantIndex) == "quick");
 
-            // 1. ç©å®¶è‹±éˆçš„è¡Œå‹•
-            if (actionType == "attack")
-            {
-                double multiplier = ClassAdvantage.GetMultiplier(attacker.ClassName, targetEnemy.Type);
-                int baseDmg = attacker.Attack - (targetEnemy.Defense / 2);
-                int damage = Math.Max(15, (int)(baseDmg * multiplier));
-                targetEnemy.CurrentHp = Math.Max(0, targetEnemy.CurrentHp - damage);
-                attacker.AddNpCharge(25);
-                actDesc += $"?? **{attacker.Name}** ä½¿ç”¨æ™®é€šæ”»æ“Šå° **{targetEnemy.Name}** é€ æˆäº† **{damage}** å‚·å®³ï¼ï¼ˆNP +25ï¼‰\n";
-            }
-            else if (actionType == "np")
-            {
-                attacker.UseNp();
-                int damage = attacker.Attack * 3;
-                targetEnemy.CurrentHp = Math.Max(0, targetEnemy.CurrentHp - damage);
-                actDesc += $"?? **{attacker.Name}** é‡‹æ”¾å¿…æ®ºå¯¶å…·ã€**{attacker.NpName ?? "å¯¶å…·"}**ã€å° **{targetEnemy.Name}** è½Ÿç‚¸é€ æˆäº† **{damage}** å·¨é‡æ ¸å¿ƒå‚·å®³ï¼\n";
-            }
+            // ? Color chain §P©w 
+            string c1 = sCards[0].CardType == "np" ? GetServantNpCard(run, sCards[0].ServantIndex) : sCards[0].CardType;
+            string c2 = sCards[1].CardType == "np" ? GetServantNpCard(run, sCards[1].ServantIndex) : sCards[1].CardType;
+            string c3 = sCards[2].CardType == "np" ? GetServantNpCard(run, sCards[2].ServantIndex) : sCards[2].CardType;
 
-            // 2. åˆ¤æ–·æ€ªç‰©æ˜¯å¦æ­»äº¡
-            if (!targetEnemy.IsAlive)
-            {
-                actDesc += $"?? **{targetEnemy.Name}** å€’è§£é«”æ­»äº¡ï¼\n";
-                targetEnemy = enemies.FirstOrDefault(e => e.IsAlive);
-            }
+            bool isBusterChain = c1 == "buster" && c2 == "buster" && c3 == "buster";
+            bool isArtsChain = c1 == "arts" && c2 == "arts" && c3 == "arts";
+            bool isQuickChain = c1 == "quick" && c2 == "quick" && c3 == "quick";
 
-            // 3. æ‰€æœ‰æ•µäººéƒ½å€’ä¸‹
-            if (targetEnemy == null)
-            {
-                result.IsFinished = true;
-                result.ActionDescription = actDesc;
-                return result;
-            }
+            // ? Brave Chain (¦P¤@¦W±qªÌ¥X¤â3±i)
+            bool isBraveChain = sCards.All(x => x.ServantIndex == sCards[0].ServantIndex);
 
-            // 4. é¤˜å­˜æ€ªç‰©è‡ªå‹•ç¾¤é«”åæ“Š
-            actDesc += "\n?? **é­”ç‰©å’†å“®ï¼é€²å…¥é­”ç‰©åæ“Šéšæ®µï¼š**\n";
-            foreach (var enemy in enemies.Where(e => e.IsAlive))
+            if (isBusterChain) enc.BattleLog.Add("?? **BUSTER CHAIN ³sÄâ¡I¥şÅé§ğÀ»¤O¿E¼W¡I**");
+            if (isArtsChain)
             {
-                var targetServant = run.Team.Where(s => s.IsAlive).OrderBy(_ => _rng.Next()).FirstOrDefault();
-                if (targetServant != null)
+                enc.BattleLog.Add("?? **ARTS CHAIN ¥R¯à³sÄâ¡Iµo°ÊªÌ¥şÅéÀò±o +20% Ä_¨ã¥R¯à¡I**");
+                foreach (var s in run.Team)
                 {
-                    int dmg = Math.Max(10, enemy.Attack - (targetServant.Defense / 2));
-                    targetServant.CurrentHp = Math.Max(0, targetServant.CurrentHp - dmg);
-                    targetServant.AddNpCharge(15); // å—æ“Šå……èƒ½
-                    actDesc += $"  ?? **{enemy.Name}** å° **{targetServant.Name}** ç™¼å°„é­”å½ˆé€ æˆäº† **{dmg}** é»åæ“Šå‚·å®³ï¼(è‹±éˆ NP+15)\n";
+                    if (s.IsAlive) s.AddNpCharge(20);
+                }
+            }
+            if (isQuickChain)
+            {
+                enc.BattleLog.Add("? **QUICK CHAIN ¼É­·Ãz¬P¡Iª½±µ¥Í¦¨ +10 ÁûÄ_¨ã¼ÉÀ»¬P¡I**");
+                enc.CritStars += 10;
+            }
+
+            int turnStarsGenerated = 0;
+
+            // 2. ¥´¥X¥dµP§ğÀ»§Ç¦C
+            for (int step = 0; cardStep(step, run, enc); step++)
+            {
+                var card = sCards[step];
+                var s = run.Team[card.ServantIndex];
+                if (!s.IsAlive) continue;
+
+                var enemy = enc.GetCurrentEnemy();
+                if (enemy == null) break; // ©Çª«¥ş¦º
+
+                // ÃzÀ»¾÷²v§P©w
+                bool isCrit = _rng.Next(100) < card.CritChance;
+
+                // FGO ¸g¨å­pºâ
+                double cardBaseMultiplier = card.CardType switch
+                {
+                    "buster" => 1.5,
+                    "arts" => 1.0,
+                    "quick" => 0.8,
+                    _ => 1.0
+                };
+
+                double positionMultiplier = step switch
+                {
+                    0 => 1.0,
+                    1 => 1.2,
+                    2 => 1.4,
+                    _ => 1.0
+                };
+
+                if (isBusterChain && card.CardType == "buster") positionMultiplier += 0.2;
+
+                double firstCardHpBonus = isFirstBuster ? 0.5 : 0.0;
+                double classMultiplier = ClassAdvantage.GetMultiplier(s.ClassName, enemy.ClassName);
+                double critMultiplier = isCrit ? 2.0 : 1.0;
+
+                int damage = 0;
+
+                if (card.CardType == "np")
+                {
+                    // ÄÀ©ñÄ_¨ã (NP)
+                    double npCardColorMulti = s.NpCard switch
+                    {
+                        "buster" => 1.5,
+                        "arts" => 1.0,
+                        "quick" => 0.8,
+                        _ => 1.0
+                    };
+
+                    double npMultiplier = s.NpDmgMultiplier / 100.0;
+                    double rawNpBase = (s.Attack + s.BonusAtk) * npMultiplier * 0.23;
+                    damage = (int)(rawNpBase * npCardColorMulti * classMultiplier);
+                    damage = Math.Max(120, damage);
+
+                    // §P©w¥şÅé(AOE)§í©Î³æÅéªıÀ» 
+                    bool isAoe = s.NpTargetType.Contains("All", StringComparison.OrdinalIgnoreCase);
+
+                    s.UseNp();
+
+                    if (isAoe)
+                    {
+                        enc.BattleLog.Add($"??? **{s.Name}** §u°ÛÄ_¨ã¡G¡y**{s.NpName}**¡z (AOE) §ğÀ»¡I");
+                        foreach (var targetEnemy in enc.Enemies.Where(e => e.IsAlive).ToList())
+                        {
+                            targetEnemy.CurrentHp = Math.Max(0, targetEnemy.CurrentHp - damage);
+                            enc.BattleLog.Add($"  ? ¹ïÅ]ª« **{targetEnemy.Name}** ³y¦¨ **{damage}** ÂI¤j½d³ò³Ğ¶Ë¡I");
+                        }
+                    }
+                    else
+                    {
+                        enemy.CurrentHp = Math.Max(0, enemy.CurrentHp - damage);
+                        enc.BattleLog.Add($"??? **{s.Name}** §u°Û¸Ñ©ñÄ_¨ã¡G¡y**{s.NpName}**¡z¡I\n  ? ¹ïÅ]ª« **{enemy.Name}** ³y¦¨ **{damage}** ÂI·´·À¥´À»¡I");
+                    }
+                }
+                else
+                {
+                    // ¤@¯ë«ü¥O¥d´¶§ğ
+                    double rawBase = (s.Attack + s.BonusAtk) * 0.23;
+                    double damageRate = (cardBaseMultiplier * positionMultiplier) + firstCardHpBonus;
+                    damage = (int)(rawBase * damageRate * critMultiplier * classMultiplier);
+                    damage = Math.Max(10, damage);
+
+                    enemy.CurrentHp = Math.Max(0, enemy.CurrentHp - damage);
+
+                    string critStr = isCrit ? " ?? **ÃzÀ»(CRITICAL)¡I**" : "";
+                    string favor = classMultiplier > 1.0 ? " (Â¾¶¥¬Û«gÀu¶Õ)" : classMultiplier < 1.0 ? " (Â¾¶¥¤£§Q)" : "";
+
+                    string typeLabel = card.CardType.ToUpper() switch
+                    {
+                        "BUSTER" => "?? Buster ¬õ¥d",
+                        "ARTS" => "?? Arts ÂÅ¥d",
+                        "QUICK" => "?? Quick ºñ¥d",
+                        _ => card.CardType
+                    };
+
+                    enc.BattleLog.Add($"?? **{s.Name}** ªº {typeLabel} ÅFÀ» **{enemy.Name}**¡A³y¦¨ **{damage}** ÂI¶Ë®`¡I{critStr}{favor}");
+
+                    // ? ²£¥Í NP ¥R¯à
+                    int baseGain = card.CardType switch
+                    {
+                        "arts" => 16,
+                        "quick" => 8,
+                        _ => 0
+                    };
+                    if (isFirstArts) baseGain += 6;
+                    if (isArtsChain && card.CardType == "arts") baseGain = (int)(baseGain * 1.5);
+                    if (isCrit) baseGain *= 2;
+
+                    if (baseGain > 0)
+                    {
+                        s.AddNpCharge(baseGain);
+                        enc.BattleLog.Add($"  ? {s.Name} NP Charge **+{baseGain}%** ({s.NpCharge}/100%)");
+                    }
+
+                    // ? ²£¥Í¼ÉÀ»¬P
+                    int baseStars = card.CardType switch
+                    {
+                        "quick" => 4,
+                        "arts" => 1,
+                        _ => 0
+                    };
+                    if (isFirstQuick) baseStars += 2;
+                    if (isQuickChain) baseStars *= 2;
+
+                    if (baseStars > 0)
+                    {
+                        turnStarsGenerated += baseStars;
+                    }
                 }
             }
 
-            result.IsFinished = false;
-            result.ActionDescription = actDesc;
-            return result;
-        }
-
-        private HgwTowerEncounter GenerateEncounter(int floor)
-        {
-            if (floor % 10 == 0) return GenerateBossFight(floor);
-            if (floor % 5 == 0) return GenerateEliteFight(floor);
-
-            int roll = _rng.Next(100);
-            if (roll < 55) return GenerateNormalFight(floor);
-            if (roll < 75) return GenerateTreasure(floor);
-            if (roll < 90) return GenerateShop(floor);
-            return GenerateRestSite(floor);
-        }
-
-        private HgwTowerEncounter GenerateNormalFight(int floor)
-        {
-            int enemyCount = Math.Min(1 + floor / 15, 3);
-            var enemies = new List<HgwTowerEnemy>();
-            var enemyNames = new[] { "éª·é«é›œå…µç¾¤", "å¢®å¤©ä½¿é»‘é³¥", "è’é‡å·¨çŸ³å…µ", "æš—æ£®æ—ç‹‚ç‹¼", "éª¸éª¨å’’è¡“å¸«" };
-
-            for (int i = 0; i < enemyCount; i++)
+            // Brave Chain Extra Attack ¸g¨åµo§@
+            if (isBraveChain && run.Team.Any(s => s.IsAlive) && enc.GetCurrentEnemy() != null)
             {
-                enemies.Add(new HgwTowerEnemy
+                var braveServant = run.Team[sCards[0].ServantIndex];
+                var targetE = enc.GetCurrentEnemy();
+                if (braveServant.IsAlive && targetE != null)
                 {
-                    Name = enemyNames[_rng.Next(enemyNames.Length)],
-                    Type = "berserker",
-                    MaxHp = 80 + floor * 25,
-                    CurrentHp = 80 + floor * 25,
-                    Attack = 15 + floor * 4,
-                    Defense = 10 + floor * 2
-                });
+                    int extraDmg = (int)((braveServant.Attack + braveServant.BonusAtk) * 0.25);
+                    targetE.CurrentHp = Math.Max(0, targetE.CurrentHp - extraDmg);
+                    braveServant.AddNpCharge(10);
+                    turnStarsGenerated += 3;
+
+                    enc.BattleLog.Add($"?? **{braveServant.Name}** »¤µo **EXTRA ATTACK** °l¥[¶W¬q¥´À»¡I\n  ? ¹ïÅ]ª« {targetE.Name} °l¥[ **{extraDmg}** ÂI flat µhÀ»¡INP +10%");
+                }
             }
 
-            return new HgwTowerEncounter
+            if (turnStarsGenerated > 0)
             {
-                Type = EncounterType.NormalBattle,
-                Enemies = enemies
-            };
-        }
-
-        private HgwTowerEncounter GenerateEliteFight(int floor)
-        {
-            var enemy = new HgwTowerEnemy
-            {
-                Name = "ã€ç²¾è‹±é­”å°‡ã€‘ç†”å²©ç™¾é¦–é­”å·¨åƒ",
-                Type = "berserker",
-                MaxHp = 300 + floor * 60,
-                CurrentHp = 300 + floor * 60,
-                Attack = 35 + floor * 8,
-                Defense = 25 + floor * 4,
-                IsElite = true,
-                Skills = new() { "ç†”å²©è¸è¸", "è‡ªæ„ˆ" }
-            };
-
-            return new HgwTowerEncounter
-            {
-                Type = EncounterType.EliteBattle,
-                Enemies = new() { enemy }
-            };
-        }
-
-        private HgwTowerEncounter GenerateBossFight(int floor)
-        {
-            var bossNames = new[] { "ã€å¤©ç½å·¨ç¸ã€‘è™›ç©ºæœ«æ—¥é¾ç‹", "ã€è©›å’’èª“ç‹ã€‘æ­»éˆå¤§é¨å£«", "ã€æš´å›ä¸»å®°ã€‘é»‘æš—å¯©åˆ¤è€…" };
-            var enemy = new HgwTowerEnemy
-            {
-                Name = bossNames[_rng.Next(bossNames.Length)],
-                Type = "berserker",
-                MaxHp = 500 + floor * 120,
-                CurrentHp = 500 + floor * 120,
-                Attack = 55 + floor * 12,
-                Defense = 35 + floor * 6,
-                IsBoss = true,
-                Skills = new() { "ä¹é‡é›·æ“Š", "ç¾¤é«”é‡æ“Š", "èƒ½é‡ç«Šå–" }
-            };
-
-            return new HgwTowerEncounter
-            {
-                Type = EncounterType.BossBattle,
-                Enemies = new() { enemy }
-            };
-        }
-
-        private HgwTowerEncounter GenerateTreasure(int floor) => new() { Type = EncounterType.Treasure };
-        private HgwTowerEncounter GenerateShop(int floor) => new() { Type = EncounterType.Shop };
-        private HgwTowerEncounter GenerateRestSite(int floor) => new() { Type = EncounterType.RestSite };
-
-        private Embed BuildFloorEmbed(HgwTowerRun run)
-        {
-            var encounter = run.CurrentEncounter;
-            var embedBuilder = new EmbedBuilder()
-                .WithTitle($"?? è–æ¯å¡” - ç¬¬ {run.CurrentFloor} å±¤")
-                .WithColor(GetEncounterColor(encounter.Type))
-                .WithCurrentTimestamp();
-
-            switch (encounter.Type)
-            {
-                case EncounterType.NormalBattle:
-                case EncounterType.EliteBattle:
-                case EncounterType.BossBattle:
-                    string enemiesDesc = string.Join("\n", encounter.Enemies.Select(e =>
-                        $"{(e.IsBoss ? "??" : e.IsElite ? "?" : "??")} **{e.Name}**\n" +
-                        $"  ?? HP: {e.CurrentHp}/{e.MaxHp} | ?? ATK: {e.Attack}"));
-
-                    embedBuilder.WithDescription($"**?? é€²å…¥æˆ°é¬¥é­é‡ï¼**\n\n{enemiesDesc}");
-
-                    var teamDesc = string.Join("\n", run.Team.Select(s =>
-                        $"{(s.IsAlive ? "??" : "??")} {GetClassEmoji(s.ClassName)} **{s.Name}** - " + 
-                        $"HP: {s.CurrentHp}/{s.MaxHp} | NP: **{s.NpCharge}/100**"));
-                    embedBuilder.AddField("?? ä½ çš„è‹±éˆéšŠä¼", teamDesc, inline: false);
-                    embedBuilder.WithFooter($"é‡‘å¹£å„²è“„ï¼š{run.Gold}é‡‘ | åœ–é‘‘æ•¸ï¼š{run.Team.Count} ä½ç²¾è‹±");
-                    break;
-
-                case EncounterType.Treasure:
-                    embedBuilder.WithDescription("? **æ­¤å±¤é“è·¯ä¸Šå®‰ç½®äº†ä¸€å€‹å¤è€ç™¼å…‰çš„è–æ¯å¯¶ç®±ï¼**");
-                    break;
-
-                case EncounterType.Shop:
-                    embedBuilder.WithDescription($"?? **æµæµªå•†äººç‡Ÿåœ°**\n\næµæµªå•†äººå‘ä½ å±•ç¤ºè‰è—¥å’Œç§˜æŠ€ã€‚\nä½ æœ‰ **{run.Gold}** é‡‘é‡‘å¹£ã€‚");
-                    break;
-
-                case EncounterType.RestSite:
-                    embedBuilder.WithDescription("?? **é€™å±¤ç‡Ÿç«é¤˜æº«è£Šè£Šï¼Œæ˜¯çµ•ä½³çš„é­”æ³‰ä¼‘æ¯åœ°ã€‚**");
-                    break;
+                enc.CritStars = Math.Min(50, enc.CritStars + turnStarsGenerated);
+                enc.BattleLog.Add($"?? ¥»¦^¦X«ü¥O¥Í¦¨¤F **{turnStarsGenerated} Áû** ¼ÉÀ»¬P¡I");
             }
 
-            return embedBuilder.Build();
-        }
-
-        private ComponentBuilder BuildFloorButtons(ulong channelId, HgwTowerRun run)
-        {
-            var cb = new ComponentBuilder();
-            var encounter = run.CurrentEncounter;
-
-            switch (encounter.Type)
+            // 3. §PÂ_¾Ô°«¬O§_¥Ñª±®a§¹«Ê
+            if (enc.AllEnemiesDead())
             {
-                case EncounterType.NormalBattle:
-                case EncounterType.EliteBattle:
-                case EncounterType.BossBattle:
-                    for (int i = 0; i < run.Team.Count; i++)
-                    {
-                        var servant = run.Team[i];
-                        if (servant.IsAlive)
-                        {
-                            cb.WithButton(
-                                label: $"?? {servant.Name.Substring(0, Math.Min(5, servant.Name.Length))} æ”»æ“Š",
-                                customId: $"hgwt_attack_{channelId}_{i}",
-                                style: ButtonStyle.Danger,
-                                row: i
-                            );
+                enc.BattleLog.Add("\n?? **­{°Ç©³­^ÆF³sÄâ°}¦¨¥\ÂíÀ£Å]ª«ªk¦L¡I¸tªMÀò±o²b¤Æ¡I**");
 
-                            cb.WithButton(
-                                label: $"?? å¯¶å…· ({servant.NpCharge}%)",
-                                customId: $"hgwt_np_{channelId}_{i}",
-                                style: servant.CanUseNp ? ButtonStyle.Success : ButtonStyle.Secondary,
-                                disabled: !servant.CanUseNp,
-                                row: i
-                            );
-                        }
-                    }
-                    break;
+                // ¼úÀyµ²ºâ
+                int goldDrop = _rng.Next(25, 65) + run.CurrentFloor * 5;
+                run.Gold += goldDrop;
 
-                case EncounterType.Treasure:
-                    cb.WithButton("??? é–‹å•Ÿå¯¶è—", $"hgwt_treasure_{channelId}", ButtonStyle.Success);
-                    break;
+                // ÀH¦æ¥Ã¤[¼Æ¾Ú¼W¥[
+                foreach (var s in run.Team)
+                {
+                    s.AddNpCharge(20); // «O¯d¥R¯à
+                }
 
-                case EncounterType.Shop:
-                    cb.WithButton("?? è³¼è²·æ²»ç™‚é­”è—¥ (30é‡‘)", $"hgwt_shop_heal_{channelId}", ButtonStyle.Success, disabled: run.Gold < 30);
-                    cb.WithButton("?? å‘Šåˆ¥å•†äººï¼Œå‰é€²ä¸‹ä¸€å±¤", $"hgwt_shop_leave_{channelId}", ButtonStyle.Secondary);
-                    break;
+                enc.BattleLog.Add($"?? ª÷¹ôÃB¥~±¼¸¨¡G**+{goldDrop} Gold**");
 
-                case EncounterType.RestSite:
-                    cb.WithButton("?? ç´®ç‡Ÿæ¢å¾©ç”Ÿå‘½ (å…¨éšŠ HP+50%)", $"hgwt_rest_{channelId}", ButtonStyle.Success);
-                    cb.WithButton("?? å…¨éšŠç‰¹è¨“ç·´ç¿’ (å…¨éšŠ ATK+10)", $"hgwt_train_{channelId}", ButtonStyle.Primary);
-                    break;
+                var pl = LoadPlayer(run.PlayerId);
+                pl.TotalKills += enc.Enemies.Count;
+                if (run.CurrentFloor > pl.HighestFloor) pl.HighestFloor = run.CurrentFloor;
+                SavePlayer(pl);
+
+                // ¤É¤J¤U¤@¼h¿ï¾Ü³q¸ô 
+                run.CurrentEncounter = new HgwTowerEncounter
+                {
+                    Type = EncounterType.Event // Âà´«¬°¨Æ¥ó¡AÅã¥Ü«e¦æ«ö¶s
+                };
+                return;
             }
 
-            return cb;
+            // 4. Å]ª«ªk§ğÀ»ªi (¦^¦X¤ÏÀ») 
+            enc.BattleLog.Add("\n?????? Å]ª«¤ÏÀ»¶¥¬q ??????");
+            foreach (var enemy in enc.Enemies.Where(e => e.IsAlive))
+            {
+                var aliveParty = run.Team.Where(s => s.IsAlive).ToList();
+                if (aliveParty.Count == 0) break;
+
+                var target = aliveParty[_rng.Next(aliveParty.Count)];
+                int enemyBaseDamage = Math.Max(10, enemy.Attack - target.Defense / 2);
+                // ªi°Ê¯B°Ê½d³ò 
+                int finalEnemyDmg = _rng.Next((int)(enemyBaseDamage * 0.8), (int)(enemyBaseDamage * 1.2));
+                finalEnemyDmg = Math.Max(10, finalEnemyDmg);
+
+                target.CurrentHp = Math.Max(0, target.CurrentHp - finalEnemyDmg);
+                enc.BattleLog.Add($"??Å]ª« **{enemy.Name}** µo¥X¤Ï¾½¡A«r²ª­«³Ğ **{target.Name}**¡A³y¦¨ **{finalEnemyDmg}** ÂI¶Ë®`¡I");
+            }
+
+            // 5. ÀË¬dª±®a¬O§_¥ş­û°}¤` (¾Ô±ÑºG¼@)
+            if (run.Team.All(s => !s.IsAlive))
+            {
+                run.IsFinished = true;
+                return;
+            }
+
+            // 6. ²M²z¤âµP¨Ã¬£µo·s«ü¥O¤â¥d
+            enc.TurnCount++;
+            DrawCardsForTurn(run, enc);
         }
 
-        // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-        //  è¼”åŠ©åˆå§‹åŒ–
-        // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+        private static bool cardStep(int currentStep, HgwTowerRun run, HgwTowerEncounter enc)
+        {
+            return currentStep < enc.SelectedCards.Count && run.Team.Any(s => s.IsAlive) && enc.Enemies.Any(e => e.IsAlive);
+        }
+
+        private string GetServantNpCard(HgwTowerRun run, int sIdx)
+        {
+            if (sIdx >= 0 && sIdx < run.Team.Count)
+                return run.Team[sIdx].NpCard ?? "buster";
+            return "buster";
+        }
+
+        // ùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùù
+        //  ³qÃö/¾Ô±Ñµ²ºâ
+        // ùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùù
+
+        private (Embed embed, ComponentBuilder component) BuildRunEndEmbed(HgwTowerRun run)
+        {
+            var pl = LoadPlayer(run.PlayerId);
+            pl.TotalRuns++;
+            if (run.CurrentFloor > pl.HighestFloor) pl.HighestFloor = run.CurrentFloor;
+
+            // ¼úÀy¡G¨C¬ğ¯} 2 ¼h¥iÀò±o 1 ±i¥l³ê¨é¡B1 Áû¸t´¹¥Û
+            int ticketsAwarded = run.CurrentFloor / 2;
+            int quartzAwarded = run.CurrentFloor / 5;
+
+            pl.SummonTickets += ticketsAwarded;
+            pl.SaintQuartz += quartzAwarded;
+
+            SavePlayer(pl);
+
+            var embed = new EmbedBuilder()
+                .WithTitle("?? ±´¯Á¥ş¶¤ÂĞ·À ¡X ­{°Ç©³ÆF°ò§éÂ_")
+                .WithDescription($"**±s¥D {run.PlayerName}** ªº­^ÆFÀH¹²¦b²Ä **{run.CurrentFloor} ¼h** ¥ş­ûºG¾D°£·À¡I\n" +
+                    "ÆF¤l§ë¼v±j¦æÂ_¶}¡A§A³Q¼u¦^¤F±±¨î¤¤¼Ï¡C\n\n" +
+                    "?? **¥»½ë¦¬Ã¬®Öºâ¡G**\n" +
+                    $"??? ¥l³ê¨é¸Éµ¹¡G**+{ticketsAwarded} ±i**\n" +
+                    $"?? ¸t´¹¥Û¸ê§U¡G**+{quartzAwarded} ¶ô**\n" +
+                    $"?? ª÷¹ôÀx³Æ·l·´¡G-{run.Gold} Gold")
+                .WithColor(Color.Red)
+                .WithFooter($"³Ì°ª¼h¬ğ¯}¡G²Ä {pl.HighestFloor} ¼h | ­{°Ç©³¬°§A·P¨ìÅº¶Æ¡I")
+                .WithCurrentTimestamp()
+                .Build();
+
+            return (embed, new ComponentBuilder());
+        }
+
+        // ùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùù
+        //  API ¤U¸ü»P§Ö¨ú FGO ®Ö¤ß¸ê®Æ lazy Cache
+        // ùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùùù
 
         private async Task EnsureInitAsync()
         {
@@ -913,15 +1275,15 @@ namespace MusicBot2.Service
                     .OrderBy(s => s.CollectionNo)
                     .ToList() ?? new();
 
-                Console.WriteLine($"[HolyGrailTower] åˆå§‹è‹±éˆåº« {_servantPool.Count} æˆåŠŸï¼");
+                Console.WriteLine($"[HolyGrailTower] ¤w±q Atlas Academy API ¦¨¥\§Ö¨ú {_servantPool.Count} ´L°òÂ¦­^ÆF¦W¥U");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[HolyGrailTower] LoadPool å¤±æ•—: {ex.Message}");
+                Console.WriteLine($"[HolyGrailTower] »·ºİ¤U¸ü­^ÆF¦W¥U¥¢®Ä: {ex.Message}");
             }
         }
 
-        private async Task<(string npName, string faceUrl)> FetchServantDetailsAsync(int collectionNo)
+        private async Task<TowerServant> FetchAndCacheServantAsync(int collectionNo)
         {
             if (_servantCache.TryGetValue(collectionNo, out var cached))
                 return cached;
@@ -938,52 +1300,109 @@ namespace MusicBot2.Service
                     .Select(kv => kv.Value)
                     .FirstOrDefault();
 
-                string npName = data?.NoblePhantasms?
-                    .Where(np => !string.IsNullOrWhiteSpace(np.Name))
-                    .OrderByDescending(np => np.Num)
-                    .Select(np => np.Name)
-                    .FirstOrDefault();
+                string fullImageUrl = data?.ExtraAssets?.CharaGraph?.Ascension?
+                    .OrderBy(kv => kv.Key)
+                    .Select(kv => kv.Value)
+                    .LastOrDefault();
 
-                var result = (npName, faceUrl);
-                _servantCache[collectionNo] = result;
-                return result;
-            }
-            catch
-            {
-                return (null, null);
-            }
-        }
+                string npName = "¥¼ª¾Ä_¨ã";
+                string npRuby = "";
+                string npCard = "buster";
+                string npTargetType = "enemy";
+                int npDmgMultiplier = 600;
+                string npEffect = "³y¦¨¶Ë®`";
 
-        private int RollRarity()
-        {
-            var roll = _rng.Next(100);
-            return roll switch
+                if (data?.NoblePhantasms != null && data.NoblePhantasms.Count > 0)
+                {
+                    var np = data.NoblePhantasms
+                        .Where(x => !string.IsNullOrWhiteSpace(x.Name))
+                        .OrderByDescending(x => x.Num)
+                        .FirstOrDefault();
+
+                    if (np != null)
+                    {
+                        npName = np.Name;
+                        npRuby = np.Ruby;
+                        npCard = string.IsNullOrWhiteSpace(np.Card) ? "buster" : np.Card.ToLower();
+
+                        if (np.Functions != null && np.Functions.Count > 0)
+                        {
+                            var f = np.Functions[0];
+                            npTargetType = string.IsNullOrWhiteSpace(f.TargetType) ? "enemy" : f.TargetType;
+                            npEffect = f.FuncType;
+                        }
+                    }
+                }
+
+                // «ü¥O¥d°t¸m
+                var cardsList = data?.Cards != null && data.Cards.Count == 5 
+                    ? data.Cards.Select(c => c.ToLower()).ToList() 
+                    : new List<string> { "buster", "buster", "arts", "quick", "quick" };
+
+                var basic = _servantPool.FirstOrDefault(x => x.CollectionNo == collectionNo);
+
+                var servant = new TowerServant
+                {
+                    CollectionNo = collectionNo,
+                    Name = data?.Name ?? basic?.Name ?? "¥¼ª¾­^ÆF",
+                    ClassName = basic?.ClassName ?? "saber",
+                    Rarity = basic?.Rarity ?? 3,
+                    Level = 1,
+                    NpLevel = 1,
+                    NpName = npName,
+                    NpRuby = npRuby,
+                    NpCard = npCard,
+                    NpTargetType = npTargetType,
+                    NpDmgMultiplier = npDmgMultiplier,
+                    NpEffect = npEffect,
+                    Cards = cardsList,
+                    FaceUrl = faceUrl ?? basic?.Face,
+                    FullImageUrl = fullImageUrl ?? ""
+                };
+
+                _servantCache[collectionNo] = servant;
+                return servant;
+            }
+            catch (Exception ex)
             {
-                < 1 => 5,    // 1% SSR
-                < 4 => 4,    // 3% SR
-                < 16 => 3,   // 12% R
-                < 40 => 2,   // 24% UC
-                _ => 1       // 60% C
-            };
+                Console.WriteLine($"[HolyGrailTower] ¥[¸ü­^ÆF No.{collectionNo} ²Ó¸`²§±`: {ex.Message}");
+                // °h¤õ¦^°h¾÷¨î
+                var basic = _servantPool.FirstOrDefault(x => x.CollectionNo == collectionNo);
+                return new TowerServant
+                {
+                    CollectionNo = collectionNo,
+                    Name = basic?.Name ?? "¥¼ª¾­^ÆF",
+                    ClassName = basic?.ClassName ?? "saber",
+                    Rarity = basic?.Rarity ?? 3,
+                    Level = 1,
+                    NpLevel = 1,
+                    NpName = "¥¼ª¾Ä_¨ã",
+                    NpCard = "buster",
+                    NpTargetType = "enemy",
+                    NpDmgMultiplier = 600,
+                    Cards = new List<string> { "buster", "buster", "arts", "quick", "quick" },
+                    FaceUrl = basic?.Face ?? ""
+                };
+            }
         }
 
         private static string GetClassEmoji(string className) => className?.ToLower() switch
         {
-            "saber" => "âš”ï¸",
-            "archer" => "ğŸ¹",
-            "lancer" => "ğŸ”±",
-            "rider" => "ğŸ´",
-            "caster" => "ğŸ”®",
-            "assassin" => "ğŸ—¡ï¸",
-            "berserker" => "ğŸ’¢",
-            "ruler" => "âš–ï¸",
-            "avenger" => "ğŸ”¥",
-            "mooncancer" => "ğŸŒ™",
-            "alterego" => "ğŸŒ€",
-            "foreigner" => "ğŸŒŒ",
-            "pretender" => "ğŸ­",
-            "shielder" => "ğŸ›¡ï¸",
-            _ => "âœ¨"
+            "saber" => "??",
+            "archer" => "??",
+            "lancer" => "??",
+            "rider" => "??",
+            "caster" => "??",
+            "assassin" => "???",
+            "berserker" => "??",
+            "ruler" => "??",
+            "avenger" => "??",
+            "mooncancer" => "??",
+            "alterego" => "??",
+            "foreigner" => "??",
+            "pretender" => "??",
+            "shielder" => "???",
+            _ => "?"
         };
 
         private static Color GetRarityColor(int rarity) => rarity switch
@@ -991,17 +1410,6 @@ namespace MusicBot2.Service
             5 => new Color(255, 215, 0),
             4 => new Color(192, 192, 192),
             3 => new Color(205, 127, 50),
-            _ => new Color(128, 128, 128)
-        };
-
-        private static Color GetEncounterColor(EncounterType type) => type switch
-        {
-            EncounterType.BossBattle => new Color(139, 0, 0),
-            EncounterType.EliteBattle => new Color(255, 140, 0),
-            EncounterType.NormalBattle => new Color(220, 20, 60),
-            EncounterType.Shop => new Color(0, 191, 255),
-            EncounterType.Treasure => new Color(255, 215, 0),
-            EncounterType.RestSite => new Color(34, 139, 34),
             _ => new Color(128, 128, 128)
         };
     }

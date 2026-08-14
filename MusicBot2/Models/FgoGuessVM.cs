@@ -33,6 +33,9 @@ namespace MusicBot2.Models
         [JsonPropertyName("name")]
         public string Name { get; set; }
 
+        [JsonPropertyName("cards")]
+        public List<string> Cards { get; set; } = new();
+
         [JsonPropertyName("extraAssets")]
         public FgoExtraAssets ExtraAssets { get; set; }
 
@@ -72,6 +75,18 @@ namespace MusicBot2.Models
 
         [JsonPropertyName("card")]
         public string Card { get; set; }
+
+        [JsonPropertyName("functions")]
+        public List<FgoNpFunction> Functions { get; set; } = new();
+    }
+
+    public class FgoNpFunction
+    {
+        [JsonPropertyName("funcType")]
+        public string FuncType { get; set; }
+
+        [JsonPropertyName("targetType")]
+        public string TargetType { get; set; }
     }
 
     // ── 遊戲狀態 ───────────────────────────────────────────────────────────
