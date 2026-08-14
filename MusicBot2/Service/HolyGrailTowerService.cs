@@ -33,6 +33,8 @@ namespace MusicBot2.Service
         private const string RedisPlayerPrefix = "hgwt_player:";
         private const string BasicServantUrl = "https://api.atlasacademy.io/export/TW/basic_servant.json";
         private const string NiceServantUrl = "https://api.atlasacademy.io/nice/TW/servant/{0}?lore=false";
+        private const int MaxOwnedServants = 20;
+        private const int MaxBattleSkillButtons = 6;
 
         public HolyGrailTowerService(string redisConnectionString)
         {
@@ -221,6 +223,11 @@ namespace MusicBot2.Service
             await EnsureInitAsync();
 
             var player = LoadPlayer(userId, userName);
+            if (player.OwnedServants.Count >= MaxOwnedServants)
+            {
+                return (CommonHelper.BuildErrorResponse($"你的英靈圖鑑已滿！最多只能持有 {MaxOwnedServants} 位從者。\n請先使用 /fate聖杯塔丟棄從者 釋放不要的從者。").Item2, new ComponentBuilder());
+            }
+
             if (player.SummonTickets < 1)
             {
                 return (CommonHelper.BuildErrorResponse("召喚券不足！請等待每日領取。").Item2, new ComponentBuilder());
@@ -325,8 +332,30 @@ namespace MusicBot2.Service
 
             if (sorted.Count > displayLimit)
                 embedBuilder.WithFooter($"已顯示前 {displayLimit} /共 {sorted.Count} 位英靈");
+            else
+                embedBuilder.WithFooter($"目前持有 {sorted.Count}/{MaxOwnedServants} 位英靈");
 
             return (embedBuilder.Build(), new ComponentBuilder());
+        }
+
+        public (Embed embed, ComponentBuilder component) ReleaseServant(ulong userId, int collectionNo)
+        {
+            var player = LoadPlayer(userId);
+            var servant = player.OwnedServants.FirstOrDefault(x => x.CollectionNo == collectionNo);
+            if (servant == null)
+                return (CommonHelper.BuildErrorResponse($"找不到 No.{collectionNo} 的英靈。請先用 /fate聖杯塔圖鑑 確認編號。").Item2, new ComponentBuilder());
+
+            player.OwnedServants.Remove(servant);
+            SavePlayer(player);
+
+            var embed = new EmbedBuilder()
+                .WithTitle("🗑️ 英靈已釋放")
+                .WithDescription($"你已將 **{servant.Name}** (No.{servant.CollectionNo}) 從圖鑑中移除。\n目前持有：**{player.OwnedServants.Count}/{MaxOwnedServants}**")
+                .WithColor(Color.DarkOrange)
+                .WithCurrentTimestamp()
+                .Build();
+
+            return (embed, new ComponentBuilder());
         }
 
         // ═══════════════════════════════════════════════════════════
@@ -394,7 +423,7 @@ namespace MusicBot2.Service
             var embedBuilder = new EmbedBuilder()
                 .WithTitle("🗼 聖杯探索隊伍組建")
                 .WithDescription($"**御主 {player.UserName}**，請挑選出征英靈 (最多 3 位，目前已選：{run.Team.Count}/3)：\n" +
-                    "點擊下方按鈕可加入或退出陣容")
+                    $"點擊下方按鈕可加入或退出陣容\n目前圖鑑持有：**{player.OwnedServants.Count}/{MaxOwnedServants}**")
                 .WithColor(Color.LightOrange);
 
             if (run.Team.Count > 0)
@@ -410,14 +439,14 @@ namespace MusicBot2.Service
             var cb = new ComponentBuilder();
             int buttonCount = 0;
 
-            foreach (var servant in list.Take(15))
+            foreach (var servant in list.Take(MaxOwnedServants))
             {
                 string emoji = GetClassEmoji(servant.ClassName);
                 bool isChosen = run.Team.Any(x => x.CollectionNo == servant.CollectionNo);
                 ButtonStyle style = isChosen ? ButtonStyle.Success : ButtonStyle.Secondary;
                 string label = $"{emoji} {servant.Name} (Lv.{servant.Level})";
 
-                cb.WithButton(label, $"hgwt_select_{servant.CollectionNo}", style, disabled: run.Team.Count >= 3 && !isChosen, row: buttonCount / 4);
+                cb.WithButton(label, $"hgwt_select_{servant.CollectionNo}", style, disabled: run.Team.Count >= 3 && !isChosen, row: buttonCount / 5);
                 buttonCount++;
             }
 
@@ -466,6 +495,7 @@ namespace MusicBot2.Service
 
                 int count = type == EncounterType.BossBattle ? 1 : _rng.Next(1, 4);
                 encounter.Enemies = GenerateMonsterSquad(type, count, floor);
+                PrepareBattleSkills(run, encounter);
                 DrawCardsForTurn(run, encounter); // 初始手牌
             }
 
@@ -573,6 +603,37 @@ namespace MusicBot2.Service
             Console.WriteLine($"[HolyGrailTower] DrawCards floor={run.CurrentFloor}, hand={string.Join(",", randomized.Select(x => x.CardType))}");
         }
 
+        private void PrepareBattleSkills(HgwTowerRun run, HgwTowerEncounter encounter)
+        {
+            var allSkills = new List<HgwBattleSkillOption>();
+
+            for (int servantIndex = 0; servantIndex < run.Team.Count; servantIndex++)
+            {
+                var servant = run.Team[servantIndex];
+                if (!servant.IsAlive || servant.Skills == null)
+                    continue;
+
+                for (int skillIndex = 0; skillIndex < servant.Skills.Count; skillIndex++)
+                {
+                    var skill = servant.Skills[skillIndex];
+                    allSkills.Add(new HgwBattleSkillOption
+                    {
+                        ServantIndex = servantIndex,
+                        SkillIndex = skillIndex,
+                        ServantName = servant.Name,
+                        SkillName = skill.Name
+                    });
+                }
+            }
+
+            encounter.AvailableSkills = allSkills
+                .OrderBy(_ => _rng.Next())
+                .Take(MaxBattleSkillButtons)
+                .ToList();
+
+            Console.WriteLine($"[HolyGrailTower] BattleSkills floor={run.CurrentFloor}, skills={string.Join(",", encounter.AvailableSkills.Select(x => $"{x.ServantName}:{x.SkillName}"))}");
+        }
+
         // ═══════════════════════════════════════════════════════════
         //  事件渲染
         // ═══════════════════════════════════════════════════════════
@@ -644,17 +705,11 @@ namespace MusicBot2.Service
                 $"{(s.IsAlive ? "👤" : "💀")} {GetClassEmoji(s.ClassName)} **{s.Name}** HP: **{s.CurrentHp}/{s.MaxHp}** | NP Charge: **{s.NpCharge}%**"));
             embedBuilder.AddField("🛡️ 我方迦勒底英靈", squadText);
 
-            var skillText = string.Join("\n", run.Team.Select((s, i) =>
-            {
-                if (s.Skills == null || s.Skills.Count == 0)
-                    return $"{GetClassEmoji(s.ClassName)} **{s.Name}**：無資料";
-
-                var desc = string.Join(" | ", s.Skills.Select((skill, idx) =>
-                    $"{idx + 1}.{skill.Name}{(s.UsedSkillIndexes.Contains(idx) ? "✅" : string.Empty)}"));
-
-                return $"{GetClassEmoji(s.ClassName)} **{s.Name}**：{desc}";
-            }));
-            embedBuilder.AddField("🧠 主動技能", skillText);
+            var skillText = enc.AvailableSkills.Count > 0
+                ? string.Join("\n", enc.AvailableSkills.Select((skill, idx) =>
+                    $"{idx + 1}. **{skill.ServantName}** - {skill.SkillName}"))
+                : "本場戰鬥沒有可用技能。";
+            embedBuilder.AddField("🧠 本場隨機技能池（6選用完即失效）", skillText);
 
             // 3. 事件日誌 / 戰鬥歷程
             if (enc.BattleLog.Count > 0)
@@ -725,29 +780,25 @@ namespace MusicBot2.Service
             cb.WithButton("🏳️ 撤退探索", "hgwt_surrender", ButtonStyle.Danger, row: 2);
 
             int skillButtonCount = 0;
-            for (int servantIndex = 0; servantIndex < run.Team.Count; servantIndex++)
+            foreach (var skillOption in enc.AvailableSkills)
             {
-                var servant = run.Team[servantIndex];
+                var servant = run.Team[skillOption.ServantIndex];
                 if (!servant.IsAlive || servant.Skills == null)
                     continue;
 
-                for (int skillIndex = 0; skillIndex < servant.Skills.Count && skillIndex < 3; skillIndex++)
-                {
-                    var skill = servant.Skills[skillIndex];
-                    int row = 3 + (skillButtonCount / 5);
-                    if (row > 4)
-                        break;
+                int row = 3 + (skillButtonCount / 5);
+                if (row > 4)
+                    break;
 
-                    var label = $"{servant.Name[0]}-{TrimButtonLabel(skill.Name, 12)}";
-                    cb.WithButton(
-                        label,
-                        $"hgwt_skill_{servantIndex}_{skillIndex}",
-                        ButtonStyle.Primary,
-                        disabled: servant.UsedSkillIndexes.Contains(skillIndex),
-                        row: row);
+                var label = $"{servant.Name[0]}-{TrimButtonLabel(skillOption.SkillName, 12)}";
+                cb.WithButton(
+                    label,
+                    $"hgwt_skill_{skillOption.ServantIndex}_{skillOption.SkillIndex}",
+                    ButtonStyle.Primary,
+                    disabled: servant.UsedSkillIndexes.Contains(skillOption.SkillIndex),
+                    row: row);
 
-                    skillButtonCount++;
-                }
+                skillButtonCount++;
             }
 
             return (embedBuilder.Build(), cb);
@@ -1069,6 +1120,7 @@ namespace MusicBot2.Service
 
             var effects = new List<string>();
             var encounter = run.CurrentEncounter;
+            encounter.AvailableSkills.RemoveAll(x => x.ServantIndex == servantIndex && x.SkillIndex == skillIndex);
 
             if (skill.FunctionTypes.Any(x => x.Contains("gainNp", StringComparison.OrdinalIgnoreCase) || x.Contains("hastenNpturn", StringComparison.OrdinalIgnoreCase)))
             {
@@ -1350,7 +1402,8 @@ namespace MusicBot2.Service
                 // 升入下一層選擇通路 
                 run.CurrentEncounter = new HgwTowerEncounter
                 {
-                    Type = EncounterType.Event // 轉換為事件，顯示前行按鈕
+                    Type = EncounterType.Event,
+                    BattleLog = enc.BattleLog.ToList()
                 };
                 return;
             }

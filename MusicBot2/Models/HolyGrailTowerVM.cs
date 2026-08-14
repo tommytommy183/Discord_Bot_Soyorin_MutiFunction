@@ -226,6 +226,7 @@ namespace MusicBot2.Models
 
         public List<HgwCardPlay> HandCards { get; set; } = new(); // 當前抽牌手牌 (5張)
         public List<HgwCardPlay> SelectedCards { get; set; } = new(); // 玩家已選中欲出手的牌
+        public List<HgwBattleSkillOption> AvailableSkills { get; set; } = new();
 
         public List<string> BattleLog { get; set; } = new();
 
@@ -280,6 +281,14 @@ namespace MusicBot2.Models
                 BuffTypes = BuffTypes?.ToList() ?? new List<string>()
             };
         }
+    }
+
+    public class HgwBattleSkillOption
+    {
+        public int ServantIndex { get; set; }
+        public int SkillIndex { get; set; }
+        public string ServantName { get; set; }
+        public string SkillName { get; set; }
     }
 
     public class HgwPendingVisual

@@ -1439,6 +1439,13 @@ namespace MusicBot2.SlahCommands
             await RespondAsync(embed: embed, components: component.Build());
         }
 
+        [SlashCommand("fate聖杯塔丟棄從者", "從圖鑑中移除一位從者")]
+        public async Task TowerReleaseServantAsync([Summary("從者編號", "請輸入圖鑑中的 collectionNo / No.")] int collectionNo)
+        {
+            var (embed, component) = _holyGrailTowerService.ReleaseServant(Context.User.Id, collectionNo);
+            await RespondAsync(embed: embed, components: component.Build());
+        }
+
         [SlashCommand("fate聖杯塔每日", "領取每日獎勵（3 張召喚券）")]
         public async Task TowerDailyAsync()
         {
