@@ -159,6 +159,7 @@ public class Program
             .AddSingleton<PokeTowerService>(sp =>
                 new PokeTowerService(redisConn, sp.GetService<OpenRouterService>(), sp.GetService<GetChampService>()))
               .AddSingleton<HolyGrailWarService>()
+              .AddSingleton<HolyGrailTowerService>(sp => new HolyGrailTowerService(redisConn))
               .BuildServiceProvider();
 
         _googleAIStudioService = _services.GetRequiredService<GoogleAIStudioService>();
@@ -430,6 +431,21 @@ public class Program
                     });
                 }
             }
+            // 處理聖杯塔 Roguelike 按鈕 
+            else if (component.Data.CustomId.StartsWith("hgwt_"))
+            {
+                await component.DeferAsync();
+                var hgwtSvc = _services.GetRequiredService<HolyGrailTowerService>();
+                var (embed, comp) = await hgwtSvc.HandleButtonInteractionAsync(component.User.Id, component.Channel.Id, component.Data.CustomId);
+                if (embed != null)
+                {
+                    await component.ModifyOriginalResponseAsync(msg =>
+                    {
+                        msg.Embed = embed;
+                        msg.Components = comp?.Build();
+                    });
+                }
+            }
             // 處理聖杯戰爭戰鬥按鈕
             else if (component.Data.CustomId.StartsWith("hgw_"))
             {
@@ -451,7 +467,12 @@ public class Program
 
                         if (action == "surrender")
                         {
-                            await component.FollowupAsync("🏳️ 你選擇投降了！", ephemeral: true);
+                            var (surrenderEmbed, surrenderComp) = await hgwSvc.SurrenderBattleAsync(channelId, component.User.Id);
+                            await component.ModifyOriginalResponseAsync(msg =>
+                            {
+                                msg.Embed = surrenderEmbed;
+                                msg.Components = surrenderComp?.Build();
+                            });
                             return;
                         }
 

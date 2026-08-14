@@ -2,7 +2,7 @@ using System.Text.Json.Serialization;
 
 namespace MusicBot2.Models
 {
-    /// <summary>聖杯戰爭 - 玩家資料</summary>
+    /// <summary>聖杯塔 - 玩家資料</summary>
     public class HgwPlayer
     {
         [JsonPropertyName("userId")]

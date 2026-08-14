@@ -84,7 +84,7 @@ namespace MusicBot2.Service
                     "你獲得了：\n" +
                     "💎 100 魔力\n" +
                     "🔮 3 令咒\n\n" +
-                    "使用 `/hgw summon` 來召喚你的第一位從者吧！")
+                    "使用 `/fate召喚` 來召喚你的第一位從者吧！")
                 .WithColor(Color.Gold)
                 .WithCurrentTimestamp()
                 .Build();
@@ -95,7 +95,7 @@ namespace MusicBot2.Service
         public (Embed embed, ComponentBuilder component) GetPlayerInfo(ulong userId)
         {
             if (!_players.TryGetValue(userId, out var player))
-                return (CommonHelper.BuildErrorResponse("你還不是御主！請先使用 `/hgw register` 註冊").Item2, new ComponentBuilder());
+                return (CommonHelper.BuildErrorResponse("你還不是御主！請先使用 `/fate註冊` 註冊").Item2, new ComponentBuilder());
 
             var activeServant = player.ActiveServantId.HasValue
                 ? player.Servants.FirstOrDefault(s => s.InstanceId == player.ActiveServantId.Value)
@@ -124,7 +124,7 @@ namespace MusicBot2.Service
             }
             else if (player.Servants.Count > 0)
             {
-                embedBuilder.AddField("⚠️ 提示", "請使用 `/hgw select` 選擇出戰從者", inline: false);
+                embedBuilder.AddField("⚠️ 提示", "請使用 `/fate選擇` 選擇出戰從者", inline: false);
             }
 
             return (embedBuilder.Build(), new ComponentBuilder());
@@ -133,7 +133,7 @@ namespace MusicBot2.Service
         public async Task<(Embed embed, ComponentBuilder component)> ClaimDailyBonusAsync(ulong userId, string userName)
         {
             if (!_players.TryGetValue(userId, out var player))
-                return (CommonHelper.BuildErrorResponse("你還不是御主！請先使用 `/hgw register` 註冊").Item2, new ComponentBuilder());
+                return (CommonHelper.BuildErrorResponse("你還不是御主！請先使用 `/fate註冊` 註冊").Item2, new ComponentBuilder());
 
             var now = DateTime.UtcNow;
             if (player.LastDailyBonus.HasValue && (now - player.LastDailyBonus.Value).TotalHours < 24)
@@ -170,7 +170,7 @@ namespace MusicBot2.Service
             await EnsureInitAsync();
 
             if (!_players.TryGetValue(userId, out var player))
-                return (CommonHelper.BuildErrorResponse("你還不是御主！請先使用 `/hgw register` 註冊").Item2, new ComponentBuilder());
+                return (CommonHelper.BuildErrorResponse("你還不是御主！請先使用 `/fate註冊` 註冊").Item2, new ComponentBuilder());
 
             const int summonCost = 30;
             if (player.Mana < summonCost)
@@ -245,7 +245,7 @@ namespace MusicBot2.Service
                 return (CommonHelper.BuildErrorResponse("你還不是御主！").Item2, new ComponentBuilder());
 
             if (player.Servants.Count == 0)
-                return (CommonHelper.BuildErrorResponse("你還沒有任何從者！使用 `/hgw summon` 來召喚吧！").Item2, new ComponentBuilder());
+                return (CommonHelper.BuildErrorResponse("你還沒有任何從者！使用 `/fate召喚` 來召喚吧！").Item2, new ComponentBuilder());
 
             var embedBuilder = new EmbedBuilder()
                 .WithTitle($"🎴 {player.UserName} 的從者列表")
@@ -310,132 +310,267 @@ namespace MusicBot2.Service
         public async Task<(Embed embed, ComponentBuilder component)> StartBattleAsync(
             ulong channelId, ulong player1Id, string player1Name, ulong? player2Id = null, string player2Name = null)
         {
-            await EnsureInitAsync();
-
-            if (_battles.ContainsKey(channelId))
-                return (CommonHelper.BuildErrorResponse("此頻道已有戰鬥進行中！").Item2, new ComponentBuilder());
-
-            if (!_players.TryGetValue(player1Id, out var p1))
-                return (CommonHelper.BuildErrorResponse($"{player1Name} 還不是御主！").Item2, new ComponentBuilder());
-
-            if (!p1.ActiveServantId.HasValue)
-                return (CommonHelper.BuildErrorResponse("請先選擇出戰從者！").Item2, new ComponentBuilder());
-
-            var servant1 = p1.Servants.First(s => s.InstanceId == p1.ActiveServantId.Value);
-            if (!servant1.IsAlive)
-                return (CommonHelper.BuildErrorResponse("你的從者已陣亡！請先治療").Item2, new ComponentBuilder());
-
-            HgwServant servant2;
-            bool isVsNpc = player2Id == null;
-
-            if (isVsNpc)
+            try
             {
-                player2Id = 0;
-                player2Name = "NPC 御主";
-                servant2 = await GenerateNpcServantAsync();
+                Console.WriteLine($"[HGW] 玩家 {player1Name} ({player1Id}) 嘗試對戰 {player2Name ?? "NPC"}");
+                await EnsureInitAsync();
+
+                if (_battles.ContainsKey(channelId))
+                {
+                    Console.WriteLine($"[HGW] 頻道 {channelId} 已經有進行中的戰鬥。");
+                    return (CommonHelper.BuildErrorResponse("此頻道已有戰鬥進行中！\n可使用 `/fate取消戰鬥` 來清除並結束卡住的戰鬥。").Item2, new ComponentBuilder());
+                }
+
+                if (!_players.TryGetValue(player1Id, out var p1))
+                {
+                    Console.WriteLine($"[HGW] 玩家1 ({player1Id}) 未註冊。");
+                    return (CommonHelper.BuildErrorResponse($"{player1Name} 還不是御主！請先使用 `/fate註冊` 註冊。").Item2, new ComponentBuilder());
+                }
+
+                if (!p1.ActiveServantId.HasValue)
+                    return (CommonHelper.BuildErrorResponse("請先選擇出戰從者！").Item2, new ComponentBuilder());
+
+                var servant1 = p1.Servants.First(s => s.InstanceId == p1.ActiveServantId.Value);
+                if (!servant1.IsAlive)
+                    return (CommonHelper.BuildErrorResponse("你的從者已陣亡！請先治療").Item2, new ComponentBuilder());
+
+                HgwServant servant2;
+                bool isVsNpc = player2Id == null;
+
+                if (isVsNpc)
+                {
+                    player2Id = 0;
+                    player2Name = "NPC 御主";
+                    servant2 = await GenerateNpcServantAsync();
+                }
+                else
+                {
+                    if (!_players.TryGetValue(player2Id.Value, out var p2))
+                        return (CommonHelper.BuildErrorResponse($"{player2Name} 還不是御主！").Item2, new ComponentBuilder());
+
+                    if (!p2.ActiveServantId.HasValue)
+                        return (CommonHelper.BuildErrorResponse($"{player2Name} 還沒選擇出戰從者！").Item2, new ComponentBuilder());
+
+                    servant2 = p2.Servants.First(s => s.InstanceId == p2.ActiveServantId.Value);
+                    if (!servant2.IsAlive)
+                        return (CommonHelper.BuildErrorResponse($"{player2Name} 的從者已陣亡！").Item2, new ComponentBuilder());
+                }
+
+                var battle = new HgwBattle
+                {
+                    ChannelId = channelId,
+                    Player1Id = player1Id,
+                    Player2Id = player2Id.Value,
+                    Player1Name = player1Name,
+                    Player2Name = player2Name,
+                    Player1Servant = CloneServant(servant1),
+                    Player2Servant = CloneServant(servant2),
+                    IsVsNpc = isVsNpc
+                };
+
+                _battles[channelId] = battle;
+                Console.WriteLine($"[HGW] 頻道 {channelId} 戰鬥開始！從者1: {servant1.Name}, 從者2: {servant2.Name}");
+
+                var embed = new EmbedBuilder()
+                    .WithTitle("⚔️ 聖杯戰爭開始！")
+                    .WithDescription($"**{player1Name}** VS **{player2Name}**\n\n" +
+                        $"{GetClassEmoji(servant1.ClassName)} {servant1.Name} Lv.{servant1.Level}\n" +
+                        $"HP: {servant1.CurrentHp}/{servant1.MaxHp} | ATK: {servant1.Attack}\n\n" +
+                        $"VS\n\n" +
+                        $"{GetClassEmoji(servant2.ClassName)} {servant2.Name} Lv.{servant2.Level}\n" +
+                        $"HP: {servant2.CurrentHp}/{servant2.MaxHp} | ATK: {servant2.Attack}\n\n" +
+                        $"輪到 **{player1Name}** 行動！")
+                    .WithColor(new Color(0xE74C3C))
+                    .WithCurrentTimestamp()
+                    .Build();
+
+                var component = BuildBattleButtons(channelId, servant1);
+
+                return (embed, component);
             }
-            else
+            catch (Exception ex)
             {
-                if (!_players.TryGetValue(player2Id.Value, out var p2))
-                    return (CommonHelper.BuildErrorResponse($"{player2Name} 還不是御主！").Item2, new ComponentBuilder());
-
-                if (!p2.ActiveServantId.HasValue)
-                    return (CommonHelper.BuildErrorResponse($"{player2Name} 還沒選擇出戰從者！").Item2, new ComponentBuilder());
-
-                servant2 = p2.Servants.First(s => s.InstanceId == p2.ActiveServantId.Value);
-                if (!servant2.IsAlive)
-                    return (CommonHelper.BuildErrorResponse($"{player2Name} 的從者已陣亡！").Item2, new ComponentBuilder());
+                Console.WriteLine($"[HGW] StartBattleAsync 嚴重錯誤: {ex.Message}");
+                Console.WriteLine(ex.StackTrace);
+                return (CommonHelper.BuildErrorResponse($"無法開始戰鬥：{ex.Message}").Item2, new ComponentBuilder());
             }
+        }
 
-            var battle = new HgwBattle
+        public (Embed embed, ComponentBuilder component) CancelBattle(ulong channelId, ulong userId)
+        {
+            try
             {
-                ChannelId = channelId,
-                Player1Id = player1Id,
-                Player2Id = player2Id.Value,
-                Player1Name = player1Name,
-                Player2Name = player2Name,
-                Player1Servant = CloneServant(servant1),
-                Player2Servant = CloneServant(servant2),
-                IsVsNpc = isVsNpc
-            };
+                if (!_battles.TryGetValue(channelId, out var battle))
+                {
+                    return (CommonHelper.BuildErrorResponse("此頻道目前沒有進行中的戰鬥！").Item2, new ComponentBuilder());
+                }
 
-            _battles[channelId] = battle;
+                _battles.Remove(channelId);
+                Console.WriteLine($"[HGW] 玩家 {userId} 取消了頻道 {channelId} 的戰鬥");
 
-            var embed = new EmbedBuilder()
-                .WithTitle("⚔️ 聖杯戰爭開始！")
-                .WithDescription($"**{player1Name}** VS **{player2Name}**\n\n" +
-                    $"{GetClassEmoji(servant1.ClassName)} {servant1.Name} Lv.{servant1.Level}\n" +
-                    $"HP: {servant1.CurrentHp}/{servant1.MaxHp} | ATK: {servant1.Attack}\n\n" +
-                    $"VS\n\n" +
-                    $"{GetClassEmoji(servant2.ClassName)} {servant2.Name} Lv.{servant2.Level}\n" +
-                    $"HP: {servant2.CurrentHp}/{servant2.MaxHp} | ATK: {servant2.Attack}\n\n" +
-                    $"輪到 **{player1Name}** 行動！")
-                .WithColor(new Color(0xE74C3C))
-                .WithCurrentTimestamp()
-                .Build();
+                var embed = new EmbedBuilder()
+                    .WithTitle("🏳️ 聖杯戰爭 - 戰鬥已取消")
+                    .WithDescription($"此頻道的戰鬥已由御主取消。\n\n對戰雙方: **{battle.Player1Name}** VS **{battle.Player2Name}**")
+                    .WithColor(Color.DarkOrange)
+                    .WithCurrentTimestamp()
+                    .Build();
 
-            var component = BuildBattleButtons(channelId, servant1);
+                return (embed, new ComponentBuilder());
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[HGW] CancelBattle 錯誤: {ex.Message}");
+                return (CommonHelper.BuildErrorResponse($"取消戰鬥失敗：{ex.Message}").Item2, new ComponentBuilder());
+            }
+        }
 
-            return (embed, component);
+        public async Task<(Embed embed, ComponentBuilder component)> SurrenderBattleAsync(ulong channelId, ulong userId)
+        {
+            try
+            {
+                if (!_battles.TryGetValue(channelId, out var battle))
+                    return (CommonHelper.BuildErrorResponse("此頻道沒有進行中的戰鬥。").Item2, new ComponentBuilder());
+
+                if (battle.Player1Id != userId && battle.Player2Id != userId)
+                    return (CommonHelper.BuildErrorResponse("你不是此場戰鬥的參與者。").Item2, new ComponentBuilder());
+
+                ulong loserId = userId;
+                ulong winnerId = (loserId == battle.Player1Id) ? battle.Player2Id : battle.Player1Id;
+                string winnerName = (loserId == battle.Player1Id) ? battle.Player2Name : battle.Player1Name;
+                string loserName = (loserId == battle.Player1Id) ? battle.Player1Name : battle.Player2Name;
+
+                var result = new HgwBattleResult
+                {
+                    IsFinished = true,
+                    WinnerId = winnerId,
+                    WinnerName = winnerName,
+                    ActionDescription = $"**{loserName}** 選擇了投降！"
+                };
+
+                await FinishBattleAsync(battle, winnerId);
+
+                var embed = new EmbedBuilder()
+                    .WithTitle("🏆 戰鬥結束 - 投降認輸")
+                    .WithDescription($"**{loserName}** 投降認輸！\n\n**{winnerName}** 獲得了勝利！\n\n獲得：💎 +20 魔力")
+                    .WithColor(Color.Gold)
+                    .WithCurrentTimestamp()
+                    .Build();
+
+                return (embed, new ComponentBuilder());
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[HGW] SurrenderBattleAsync 錯誤: {ex.Message}");
+                return (CommonHelper.BuildErrorResponse($"投降失敗：{ex.Message}").Item2, new ComponentBuilder());
+            }
         }
 
         public async Task<(Embed embed, ComponentBuilder component)> ExecuteBattleActionAsync(
             ulong channelId, ulong userId, BattleAction action)
         {
-            if (!_battles.TryGetValue(channelId, out var battle))
-                return (CommonHelper.BuildErrorResponse("此頻道沒有戰鬥進行中").Item2, new ComponentBuilder());
-
-            if (battle.GetCurrentPlayerId() != userId)
-                return (CommonHelper.BuildErrorResponse("還沒輪到你！").Item2, new ComponentBuilder());
-
-            var attacker = battle.GetCurrentAttacker();
-            var defender = battle.GetCurrentDefender();
-            var result = new HgwBattleResult();
-
-            switch (action)
+            try
             {
-                case BattleAction.Attack:
-                    result = ExecuteAttack(attacker, defender, battle);
-                    break;
-                case BattleAction.NoblePhantasm:
-                    if (!attacker.CanUseNp)
-                        return (CommonHelper.BuildErrorResponse("寶具未充能！").Item2, new ComponentBuilder());
-                    result = ExecuteNoblePhantasm(attacker, defender, battle);
-                    break;
-                case BattleAction.Defend:
-                    result = ExecuteDefend(attacker, battle);
-                    break;
+                if (!_battles.TryGetValue(channelId, out var battle))
+                {
+                    Console.WriteLine($"[HGW] 頻道 {channelId} 嘗試執行行動，但找不到進行中的戰鬥。");
+                    return (CommonHelper.BuildErrorResponse("此頻道沒有戰鬥進行中。").Item2, new ComponentBuilder());
+                }
+
+                if (battle.GetCurrentPlayerId() != userId)
+                    return (CommonHelper.BuildErrorResponse("還沒輪到你！").Item2, new ComponentBuilder());
+
+                var attacker = battle.GetCurrentAttacker();
+                var defender = battle.GetCurrentDefender();
+                var result = new HgwBattleResult();
+
+                Console.WriteLine($"[HGW] 頻道 {channelId} 戰鬥回合 {battle.TurnCount}：御主 {userId} 控制 {attacker.Name} 行動: {action}");
+
+                switch (action)
+                {
+                    case BattleAction.Attack:
+                        result = ExecuteAttack(attacker, defender, battle);
+                        break;
+                    case BattleAction.NoblePhantasm:
+                        if (!attacker.CanUseNp)
+                            return (CommonHelper.BuildErrorResponse("寶具未充能！").Item2, new ComponentBuilder());
+                        result = ExecuteNoblePhantasm(attacker, defender, battle);
+                        break;
+                    case BattleAction.Defend:
+                        result = ExecuteDefend(attacker, battle);
+                        break;
+                }
+
+                battle.BattleLog.Add(result.ActionDescription);
+
+                if (!defender.IsAlive)
+                {
+                    result.IsFinished = true;
+                    result.WinnerId = battle.GetCurrentPlayerId();
+                    result.WinnerName = battle.GetCurrentPlayerName();
+                    Console.WriteLine($"[HGW] 戰鬥結束：{defender.Name} 陣亡，贏家: {result.WinnerName}");
+                    await FinishBattleAsync(battle, result.WinnerId.Value);
+                }
+                else
+                {
+                    if (battle.IsVsNpc)
+                    {
+                        // Switch turn to NPC so attacker/defender swap correctly
+                        battle.NextTurn();
+
+                        await Task.Delay(500);
+                        var npcAttacker = defender; // NPC is the new attacker
+                        var npcDefender = attacker; // Player is the new defender
+
+                        HgwBattleResult npcResult;
+                        if (npcAttacker.CanUseNp)
+                        {
+                            npcResult = ExecuteNoblePhantasm(npcAttacker, npcDefender, battle);
+                        }
+                        else
+                        {
+                            var npcAction = _rng.Next(100) < 70 ? BattleAction.Attack : BattleAction.Defend;
+                            npcResult = npcAction == BattleAction.Attack
+                                ? ExecuteAttack(npcAttacker, npcDefender, battle)
+                                : ExecuteDefend(npcAttacker, battle);
+                        }
+
+                        battle.BattleLog.Add(npcResult.ActionDescription);
+
+                        // Combine action descriptions
+                        result.ActionDescription = result.ActionDescription + "\n\n" + npcResult.ActionDescription;
+
+                        if (!npcDefender.IsAlive)
+                        {
+                            result.IsFinished = true;
+                            result.WinnerId = battle.Player2Id; // NPC wins!
+                            result.WinnerName = battle.Player2Name;
+                            Console.WriteLine($"[HGW] 戰鬥結束：{npcDefender.Name} (玩家) 陣亡，NPC 獲勝！");
+                            await FinishBattleAsync(battle, battle.Player2Id);
+                        }
+                        else
+                        {
+                            // Shift turn back to Player 1
+                            battle.NextTurn();
+                        }
+                    }
+                    else
+                    {
+                        // PvP turn switch
+                        battle.NextTurn();
+                    }
+                }
+
+                var embed = BuildBattleEmbed(battle, result);
+                var component = result.IsFinished ? new ComponentBuilder() : BuildBattleButtons(channelId, battle.GetCurrentAttacker());
+
+                return (embed, component);
             }
-
-            battle.BattleLog.Add(result.ActionDescription);
-
-            if (defender.IsAlive && battle.IsVsNpc && !battle.IsPlayer1Turn)
+            catch (Exception ex)
             {
-                await Task.Delay(500);
-                var npcAction = _rng.Next(100) < 70 ? BattleAction.Attack : BattleAction.Defend;
-                var npcResult = npcAction == BattleAction.Attack
-                    ? ExecuteAttack(defender, attacker, battle)
-                    : ExecuteDefend(defender, battle);
-                battle.BattleLog.Add(npcResult.ActionDescription);
-                result = npcResult;
+                Console.WriteLine($"[HGW] ExecuteBattleActionAsync 嚴重錯誤: {ex.Message}");
+                Console.WriteLine(ex.StackTrace);
+                return (CommonHelper.BuildErrorResponse($"執行戰鬥行動失敗：{ex.Message}").Item2, new ComponentBuilder());
             }
-
-            if (!defender.IsAlive)
-            {
-                result.IsFinished = true;
-                result.WinnerId = battle.GetCurrentPlayerId();
-                result.WinnerName = battle.GetCurrentPlayerName();
-                await FinishBattleAsync(battle, result.WinnerId.Value);
-            }
-            else
-            {
-                battle.NextTurn();
-            }
-
-            var embed = BuildBattleEmbed(battle, result);
-            var component = result.IsFinished ? new ComponentBuilder() : BuildBattleButtons(channelId, battle.GetCurrentAttacker());
-
-            return (embed, component);
         }
 
         private HgwBattleResult ExecuteAttack(HgwServant attacker, HgwServant defender, HgwBattle battle)

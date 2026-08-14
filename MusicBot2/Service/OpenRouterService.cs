@@ -561,7 +561,7 @@ namespace MusicBot2.Service
                 {
                     // 清理摘要格式
                     newSummary = CleanSummary(newSummary);
-                    _channelSummaries[channelKey] = Truncate(newSummary, 400);  // 縮短摘要長度限制
+                    _channelSummaries[channelKey] = newSummary;  // 縮短摘要長度限制
                     _channelHistories[channelKey] = history.Skip(SummarizeChunkSize).ToList();
 
                     _ = SaveMemoryAsync();
