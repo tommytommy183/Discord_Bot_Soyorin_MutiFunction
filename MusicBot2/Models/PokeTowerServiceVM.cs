@@ -19,7 +19,7 @@ namespace MusicBot2.Models
         Victory,
         Defeated
     }
-
+    
     public class TowerMove
     {
         public string Name { get; set; }
