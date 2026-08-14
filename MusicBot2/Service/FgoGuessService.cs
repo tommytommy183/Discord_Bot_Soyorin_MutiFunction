@@ -1,4 +1,4 @@
-using Discord;
+﻿using Discord;
 using MusicBot2.Helpers;
 using MusicBot2.Models;
 using SkiaSharp;
@@ -145,7 +145,7 @@ namespace MusicBot2.Service
                 };
 
                 string classEmoji = ClassEmoji(answer.ClassName);
-                string rarityStars = new string('★', answer.Rarity);
+                string rarityStars = string.Concat(Enumerable.Repeat("★", answer.Rarity));
 
                 var embed = new EmbedBuilder()
                     .WithTitle("⚔️ FGO 猜謎 — 這是第幾階段？")
@@ -234,7 +234,7 @@ namespace MusicBot2.Service
 
                 // 類別 emoji
                 string classEmoji = ClassEmoji(answer.ClassName);
-                string rarityStars = new string('★', answer.Rarity);
+                string rarityStars = string.Concat(Enumerable.Repeat("★", answer.Rarity));
 
                 var embed = new EmbedBuilder()
                     .WithTitle($"⚔️ FGO 猜謎 — {answer.Name}的寶具名稱是？")

@@ -1,4 +1,4 @@
-using Discord;
+ן»¿using Discord;
 using MusicBot2.Helpers;
 using MusicBot2.Models;
 using System;
@@ -13,8 +13,8 @@ using System.Threading.Tasks;
 namespace MusicBot2.Service
 {
     /// <summary>
-    /// ¸t×M¾װ×§ RPG ¨t²־
-    /// ×±®a¥i¥l³ך±q×ּ¡B¶i¦ז¾װ°«¡B°צ¾i¨₪¦ג
+    /// ט–ז¯זˆ°חˆ­ RPG ח³»חµ±
+    /// ח©ו®¶ו¯ו¬ו–ו¾ט€…ד€י€²ט¡זˆ°י¬¥ד€ו¹י₪ט§’ט‰²
     /// </summary>
     public class HolyGrailWarService
     {
@@ -42,9 +42,9 @@ namespace MusicBot2.Service
             LoadAllPlayers();
         }
 
-        // שששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששש
-        //  ×±®a¨t²־
-        // שששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששש
+        // ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•
+        //  ח©ו®¶ח³»חµ±
+        // ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•
 
         public async Task<(Embed embed, ComponentBuilder component)> RegisterPlayerAsync(ulong userId, string userName)
         {
@@ -54,12 +54,12 @@ namespace MusicBot2.Service
             {
                 var existing = _players[userId];
                 var embed = new EmbedBuilder()
-                    .WithTitle("?? ±s¥D¸ך°T")
-                    .WithDescription($"**{userName}** ₪w¸g¬Oµש¥U×÷±s¥D₪F¡I")
-                    .AddField("?? ֵ]₪O", existing.Mana, inline: true)
-                    .AddField("?? ¥O©G", existing.CommandSeals, inline: true)
-                    .AddField("?? ±q×ּ¼ֶ¶q", existing.Servants.Count, inline: true)
-                    .AddField("?? ¾װֱZ", $"{existing.Wins}³׃ {existing.Losses}±ׁ", inline: true)
+                    .WithTitle("נ“ ו¾¡ה¸»ט³‡ט¨")
+                    .WithDescription($"**{userName}** ו·²ח¶“ז˜¯ט¨»ו†ח„ו¾¡ה¸»ה÷†ן¼")
+                    .AddField("נ’ י­”ו›", existing.Mana, inline: true)
+                    .AddField("נ”® ה»₪ו’’", existing.CommandSeals, inline: true)
+                    .AddField("נ´ ו¾ט€…ז•¸י‡", existing.Servants.Count, inline: true)
+                    .AddField("נ† זˆ°ח¸¾", $"{existing.Wins}ו‹ {existing.Losses}ז•—", inline: true)
                     .WithColor(new Color(0x9B59B6))
                     .WithCurrentTimestamp()
                     .Build();
@@ -79,12 +79,12 @@ namespace MusicBot2.Service
             SavePlayer(player);
 
             var welcomeEmbed = new EmbedBuilder()
-                .WithTitle("? ֵw×ן¨׃¨ל¸t×M¾װ×§¡I")
-                .WithDescription($"**{userName}** ¦¨¬°₪F·s×÷±s¥D¡I\n\n" +
-                    "§Aְע±o₪F¡G\n" +
-                    "?? 100 ֵ]₪O\n" +
-                    "?? 3 ¥O©G\n\n" +
-                    "¨ֿ¥־ `/hgw summon` ¨׃¥l³ך§A×÷²ִ₪@¦ל±q×ּ§a¡I")
+                .WithTitle("ג¨ ז­¡ט¿ה¾†וˆ°ט–ז¯זˆ°חˆ­ן¼")
+                .WithDescription($"**{userName}** זˆח‚÷ה÷†ז–°ח„ו¾¡ה¸»ן¼\n\n" +
+                    "ה½ ח²ו¾—ה÷†ן¼\n" +
+                    "נ’ 100 י­”ו›\n" +
+                    "נ”® 3 ה»₪ו’’\n\n" +
+                    "ה½¿ח”¨ `/hgw summon` ה¾†ו¬ו–ה½ ח„ח¬¬ה¸€ה½ו¾ט€…ו§ן¼")
                 .WithColor(Color.Gold)
                 .WithCurrentTimestamp()
                 .Build();
@@ -95,26 +95,26 @@ namespace MusicBot2.Service
         public (Embed embed, ComponentBuilder component) GetPlayerInfo(ulong userId)
         {
             if (!_players.TryGetValue(userId, out var player))
-                return (CommonHelper.BuildErrorResponse("§AֱÙ₪£¬O±s¥D¡I½׀¥‎¨ֿ¥־ `/hgw register` µש¥U").Item2, new ComponentBuilder());
+                return (CommonHelper.BuildErrorResponse("ה½ י‚„ה¸ז˜¯ו¾¡ה¸»ן¼ט«‹ו…ˆה½¿ח”¨ `/hgw register` ט¨»ו†").Item2, new ComponentBuilder());
 
             var activeServant = player.ActiveServantId.HasValue
                 ? player.Servants.FirstOrDefault(s => s.InstanceId == player.ActiveServantId.Value)
                 : null;
 
             var embedBuilder = new EmbedBuilder()
-                .WithTitle($"?? ±s¥D¸ך°T - {player.UserName}")
-                .AddField("?? ֵ]₪O", player.Mana, inline: true)
-                .AddField("?? ¥O©G", player.CommandSeals, inline: true)
-                .AddField("?? ±q×ּ¼ֶ¶q", player.Servants.Count, inline: true)
-                .AddField("?? ¾װֱZ", $"{player.Wins}³׃ {player.Losses}±ׁ", inline: true)
-                .AddField("?? ¥l³ך¦¸¼ֶ", player.SummonCount, inline: true)
+                .WithTitle($"נ“ ו¾¡ה¸»ט³‡ט¨ - {player.UserName}")
+                .AddField("נ’ י­”ו›", player.Mana, inline: true)
+                .AddField("נ”® ה»₪ו’’", player.CommandSeals, inline: true)
+                .AddField("נ´ ו¾ט€…ז•¸י‡", player.Servants.Count, inline: true)
+                .AddField("נ† זˆ°ח¸¾", $"{player.Wins}ו‹ {player.Losses}ז•—", inline: true)
+                .AddField("נ“ ו¬ו–ז¬¡ז•¸", player.SummonCount, inline: true)
                 .WithColor(new Color(0x9B59B6))
                 .WithCurrentTimestamp();
 
             if (activeServant != null)
             {
                 string classEmoji = GetClassEmoji(activeServant.ClassName);
-                embedBuilder.AddField("?? ·ם«e±q×ּ",
+                embedBuilder.AddField("ג”ן¸ ח•¶ו‰ו¾ט€…",
                     $"{classEmoji} **{activeServant.Name}** Lv.{activeServant.Level}\n" +
                     $"HP: {activeServant.CurrentHp}/{activeServant.MaxHp} | ATK: {activeServant.Attack}",
                     inline: false);
@@ -124,7 +124,7 @@ namespace MusicBot2.Service
             }
             else if (player.Servants.Count > 0)
             {
-                embedBuilder.AddField("?? ´£¥Ü", "½׀¨ֿ¥־ `/hgw select` ¿ן¾Ü¥X¾װ±q×ּ", inline: false);
+                embedBuilder.AddField("ג ן¸ זח₪÷", "ט«‹ה½¿ח”¨ `/hgw select` י¸ז“‡ו‡÷זˆ°ו¾ט€…", inline: false);
             }
 
             return (embedBuilder.Build(), new ComponentBuilder());
@@ -133,7 +133,7 @@ namespace MusicBot2.Service
         public async Task<(Embed embed, ComponentBuilder component)> ClaimDailyBonusAsync(ulong userId, string userName)
         {
             if (!_players.TryGetValue(userId, out var player))
-                return (CommonHelper.BuildErrorResponse("§AֱÙ₪£¬O±s¥D¡I½׀¥‎¨ֿ¥־ `/hgw register` µש¥U").Item2, new ComponentBuilder());
+                return (CommonHelper.BuildErrorResponse("ה½ י‚„ה¸ז˜¯ו¾¡ה¸»ן¼ט«‹ו…ˆה½¿ח”¨ `/hgw register` ט¨»ו†").Item2, new ComponentBuilder());
 
             var now = DateTime.UtcNow;
             if (player.LastDailyBonus.HasValue && (now - player.LastDailyBonus.Value).TotalHours < 24)
@@ -141,7 +141,7 @@ namespace MusicBot2.Service
                 var nextTime = player.LastDailyBonus.Value.AddHours(24);
                 var remaining = nextTime - now;
                 return (CommonHelper.BuildErrorResponse(
-                    $"₪µ₪ׁ₪w¸g»ג¨ת¹L₪F¡I\n₪U¦¸»ג¨ת®ֹ¶¡¡G{remaining.Hours}₪p®ֹ {remaining.Minutes}₪ְֱִ«ב").Item2, 
+                    $"ה»ו₪©ו·²ח¶“י ˜ו–יה÷†ן¼\nה¸‹ז¬¡י ˜ו–ז™‚י–“ן¼{remaining.Hours}ו°ז™‚ {remaining.Minutes}וˆ†י˜ו¾").Item2, 
                     new ComponentBuilder());
             }
 
@@ -150,10 +150,10 @@ namespace MusicBot2.Service
             SavePlayer(player);
 
             var embed = new EmbedBuilder()
-                .WithTitle("?? ¨C₪י¼תְy")
-                .WithDescription($"**{userName}** ְע±o₪F¨C₪י¼תְy¡I\n\n" +
-                    "?? +50 ֵ]₪O\n" +
-                    $"¥״«eֵ]₪O¡G{player.Mana}")
+                .WithTitle("נ ז¯ז—¥חו‹µ")
+                .WithDescription($"**{userName}** ח²ו¾—ה÷†ז¯ז—¥חו‹µן¼\n\n" +
+                    "נ’ +50 י­”ו›\n" +
+                    $"ח›®ו‰י­”ו›ן¼{player.Mana}")
                 .WithColor(Color.Gold)
                 .WithCurrentTimestamp()
                 .Build();
@@ -161,20 +161,20 @@ namespace MusicBot2.Service
             return (embed, new ComponentBuilder());
         }
 
-        // שששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששש
-        //  ¥l³ך¨t²־
-        // שששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששש
+        // ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•
+        //  ו¬ו–ח³»חµ±
+        // ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•
 
         public async Task<(Embed embed, ComponentBuilder component)> SummonServantAsync(ulong userId, string userName)
         {
             await EnsureInitAsync();
 
             if (!_players.TryGetValue(userId, out var player))
-                return (CommonHelper.BuildErrorResponse("§AֱÙ₪£¬O±s¥D¡I½׀¥‎¨ֿ¥־ `/hgw register` µש¥U").Item2, new ComponentBuilder());
+                return (CommonHelper.BuildErrorResponse("ה½ י‚„ה¸ז˜¯ו¾¡ה¸»ן¼ט«‹ו…ˆה½¿ח”¨ `/hgw register` ט¨»ו†").Item2, new ComponentBuilder());
 
             const int summonCost = 30;
             if (player.Mana < summonCost)
-                return (CommonHelper.BuildErrorResponse($"ֵ]₪O₪£¨¬¡I»Ý­n {summonCost} ֵ]₪O¡]·ם«e¡G{player.Mana}¡^").Item2, new ComponentBuilder());
+                return (CommonHelper.BuildErrorResponse($"י­”ו›ה¸ט¶³ן¼י€ט¦ {summonCost} י­”ו›ן¼ˆח•¶ו‰ן¼{player.Mana}ן¼‰").Item2, new ComponentBuilder());
 
             player.Mana -= summonCost;
             player.SummonCount++;
@@ -208,18 +208,18 @@ namespace MusicBot2.Service
             SavePlayer(player);
 
             string classEmoji = GetClassEmoji(servant.ClassName);
-            string rarityStars = new string('¡¹', servant.Rarity);
-
+            string rarityStars = string.Concat(Enumerable.Repeat("ג˜…", servant.Rarity));
+            
             var embed = new EmbedBuilder()
-                .WithTitle("? ¥l³ך¦¨¥\¡I")
-                .WithDescription($"**{userName}** ¥l³ך₪F·s×÷±q×ּ¡I\n\n" +
+                .WithTitle("ג¨ ו¬ו–זˆון¼")
+                .WithDescription($"**{userName}** ו¬ו–ה÷†ז–°ח„ו¾ט€…ן¼\n\n" +
                     $"{classEmoji} **{servant.Name}**\n" +
                     $"{rarityStars}\n" +
-                    $"ִ_¨ד¡G{npName ?? "µL"}\n\n" +
+                    $"ו¯¶ו…·ן¼{npName ?? "ח„¡"}\n\n" +
                     $"HP: {servant.MaxHp} | ATK: {servant.Attack} | DEF: {servant.Defense}")
                 .WithColor(GetRarityColor(servant.Rarity))
                 .WithImageUrl(fullImage)
-                .WithFooter($"³ׁ¾lֵ]₪O¡G{player.Mana} | ±q×ֱּ`¼ֶ¡G{player.Servants.Count}")
+                .WithFooter($"ו‰©י₪˜י­”ו›ן¼{player.Mana} | ו¾ט€…ח¸½ז•¸ן¼{player.Servants.Count}")
                 .WithCurrentTimestamp()
                 .Build();
 
@@ -242,13 +242,13 @@ namespace MusicBot2.Service
         public (Embed embed, ComponentBuilder component) ListServants(ulong userId)
         {
             if (!_players.TryGetValue(userId, out var player))
-                return (CommonHelper.BuildErrorResponse("§AֱÙ₪£¬O±s¥D¡I").Item2, new ComponentBuilder());
+                return (CommonHelper.BuildErrorResponse("ה½ י‚„ה¸ז˜¯ו¾¡ה¸»ן¼").Item2, new ComponentBuilder());
 
             if (player.Servants.Count == 0)
-                return (CommonHelper.BuildErrorResponse("§AֱÙ¨S¦³¥פ¦ף±q×ּ¡I¨ֿ¥־ `/hgw summon` ¨׃¥l³ך§a¡I").Item2, new ComponentBuilder());
+                return (CommonHelper.BuildErrorResponse("ה½ י‚„ז²’ז‰ה»»ה½•ו¾ט€…ן¼ה½¿ח”¨ `/hgw summon` ה¾†ו¬ו–ו§ן¼").Item2, new ComponentBuilder());
 
             var embedBuilder = new EmbedBuilder()
-                .WithTitle($"?? {player.UserName} ×÷±q×ּ¦C×ם")
+                .WithTitle($"נ´ {player.UserName} ח„ו¾ט€…וˆ—ט¡¨")
                 .WithColor(new Color(0x3498DB))
                 .WithCurrentTimestamp();
 
@@ -259,8 +259,8 @@ namespace MusicBot2.Service
             {
                 var s = sorted[i];
                 string classEmoji = GetClassEmoji(s.ClassName);
-                string activeMarker = s.InstanceId == player.ActiveServantId ? "?? " : "";
-                string rarityStars = new string('¡¹', s.Rarity);
+                string activeMarker = s.InstanceId == player.ActiveServantId ? "ג”ן¸ " : "";
+                string rarityStars = string.Concat(Enumerable.Repeat("ג˜…", s.Rarity));
 
                 embedBuilder.AddField(
                     $"{activeMarker}{classEmoji} {s.Name} Lv.{s.Level}",
@@ -271,7 +271,7 @@ namespace MusicBot2.Service
             }
 
             if (sorted.Count > displayCount)
-                embedBuilder.WithFooter($"ֵד¥Ü {displayCount}/{sorted.Count} ¦ל±q×ּ");
+                embedBuilder.WithFooter($"י¡¯ח₪÷ {displayCount}/{sorted.Count} ה½ו¾ט€…");
 
             return (embedBuilder.Build(), new ComponentBuilder());
         }
@@ -279,20 +279,20 @@ namespace MusicBot2.Service
         public (Embed embed, ComponentBuilder component) SelectServant(ulong userId, int instanceId)
         {
             if (!_players.TryGetValue(userId, out var player))
-                return (CommonHelper.BuildErrorResponse("§AֱÙ₪£¬O±s¥D¡I").Item2, new ComponentBuilder());
+                return (CommonHelper.BuildErrorResponse("ה½ י‚„ה¸ז˜¯ו¾¡ה¸»ן¼").Item2, new ComponentBuilder());
 
             var servant = player.Servants.FirstOrDefault(s => s.InstanceId == instanceId);
             if (servant == null)
-                return (CommonHelper.BuildErrorResponse($"§ה₪£¨ל ID ¬° {instanceId} ×÷±q×ּ").Item2, new ComponentBuilder());
+                return (CommonHelper.BuildErrorResponse($"ז‰¾ה¸וˆ° ID ח‚÷ {instanceId} ח„ו¾ט€…").Item2, new ComponentBuilder());
 
             player.ActiveServantId = instanceId;
             SavePlayer(player);
 
             string classEmoji = GetClassEmoji(servant.ClassName);
             var embed = new EmbedBuilder()
-                .WithTitle("?? ±q×ּ₪w¿ן¾Ü")
+                .WithTitle("ג”ן¸ ו¾ט€…ו·²י¸ז“‡")
                 .WithDescription($"{classEmoji} **{servant.Name}** Lv.{servant.Level}\n" +
-                    $"₪w³]¬°¥X¾װ±q×ּ¡I\n\n" +
+                    $"ו·²ט¨­ח‚÷ו‡÷זˆ°ו¾ט€…ן¼\n\n" +
                     $"HP: {servant.CurrentHp}/{servant.MaxHp}\n" +
                     $"ATK: {servant.Attack} | DEF: {servant.Defense}")
                 .WithColor(Color.Green)
@@ -303,9 +303,9 @@ namespace MusicBot2.Service
             return (embed, new ComponentBuilder());
         }
 
-        // שששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששש
-        //  ¾װ°«¨t²־
-        // שששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששש
+        // ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•
+        //  זˆ°י¬¥ח³»חµ±
+        // ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•
 
         public async Task<(Embed embed, ComponentBuilder component)> StartBattleAsync(
             ulong channelId, ulong player1Id, string player1Name, ulong? player2Id = null, string player2Name = null)
@@ -313,17 +313,17 @@ namespace MusicBot2.Service
             await EnsureInitAsync();
 
             if (_battles.ContainsKey(channelId))
-                return (CommonHelper.BuildErrorResponse("¦¹ְW¹D₪w¦³¾װ°«¶i¦ז₪₪¡I").Item2, new ComponentBuilder());
+                return (CommonHelper.BuildErrorResponse("ז­₪י »י“ו·²ז‰זˆ°י¬¥י€²ט¡ה¸­ן¼").Item2, new ComponentBuilder());
 
             if (!_players.TryGetValue(player1Id, out var p1))
-                return (CommonHelper.BuildErrorResponse($"{player1Name} ֱÙ₪£¬O±s¥D¡I").Item2, new ComponentBuilder());
+                return (CommonHelper.BuildErrorResponse($"{player1Name} י‚„ה¸ז˜¯ו¾¡ה¸»ן¼").Item2, new ComponentBuilder());
 
             if (!p1.ActiveServantId.HasValue)
-                return (CommonHelper.BuildErrorResponse("½׀¥‎¿ן¾Ü¥X¾װ±q×ּ¡I").Item2, new ComponentBuilder());
+                return (CommonHelper.BuildErrorResponse("ט«‹ו…ˆי¸ז“‡ו‡÷זˆ°ו¾ט€…ן¼").Item2, new ComponentBuilder());
 
             var servant1 = p1.Servants.First(s => s.InstanceId == p1.ActiveServantId.Value);
             if (!servant1.IsAlive)
-                return (CommonHelper.BuildErrorResponse("§A×÷±q×ּ₪w°}₪`¡I½׀¥‎×vְר").Item2, new ComponentBuilder());
+                return (CommonHelper.BuildErrorResponse("ה½ ח„ו¾ט€…ו·²י™£ה÷¡ן¼ט«‹ו…ˆז²»ח™‚").Item2, new ComponentBuilder());
 
             HgwServant servant2;
             bool isVsNpc = player2Id == null;
@@ -331,20 +331,20 @@ namespace MusicBot2.Service
             if (isVsNpc)
             {
                 player2Id = 0;
-                player2Name = "NPC ±s¥D";
+                player2Name = "NPC ו¾¡ה¸»";
                 servant2 = await GenerateNpcServantAsync();
             }
             else
             {
                 if (!_players.TryGetValue(player2Id.Value, out var p2))
-                    return (CommonHelper.BuildErrorResponse($"{player2Name} ֱÙ₪£¬O±s¥D¡I").Item2, new ComponentBuilder());
+                    return (CommonHelper.BuildErrorResponse($"{player2Name} י‚„ה¸ז˜¯ו¾¡ה¸»ן¼").Item2, new ComponentBuilder());
 
                 if (!p2.ActiveServantId.HasValue)
-                    return (CommonHelper.BuildErrorResponse($"{player2Name} ֱÙ¨S¿ן¾Ü¥X¾װ±q×ּ¡I").Item2, new ComponentBuilder());
+                    return (CommonHelper.BuildErrorResponse($"{player2Name} י‚„ז²’י¸ז“‡ו‡÷זˆ°ו¾ט€…ן¼").Item2, new ComponentBuilder());
 
                 servant2 = p2.Servants.First(s => s.InstanceId == p2.ActiveServantId.Value);
                 if (!servant2.IsAlive)
-                    return (CommonHelper.BuildErrorResponse($"{player2Name} ×÷±q×ּ₪w°}₪`¡I").Item2, new ComponentBuilder());
+                    return (CommonHelper.BuildErrorResponse($"{player2Name} ח„ו¾ט€…ו·²י™£ה÷¡ן¼").Item2, new ComponentBuilder());
             }
 
             var battle = new HgwBattle
@@ -362,14 +362,14 @@ namespace MusicBot2.Service
             _battles[channelId] = battle;
 
             var embed = new EmbedBuilder()
-                .WithTitle("?? ¸t×M¾װ×§¶}©l¡I")
+                .WithTitle("ג”ן¸ ט–ז¯זˆ°חˆ­י–‹ו§‹ן¼")
                 .WithDescription($"**{player1Name}** VS **{player2Name}**\n\n" +
                     $"{GetClassEmoji(servant1.ClassName)} {servant1.Name} Lv.{servant1.Level}\n" +
                     $"HP: {servant1.CurrentHp}/{servant1.MaxHp} | ATK: {servant1.Attack}\n\n" +
                     $"VS\n\n" +
                     $"{GetClassEmoji(servant2.ClassName)} {servant2.Name} Lv.{servant2.Level}\n" +
                     $"HP: {servant2.CurrentHp}/{servant2.MaxHp} | ATK: {servant2.Attack}\n\n" +
-                    $"½ü¨ל **{player1Name}** ¦ז°Ê¡I")
+                    $"ט¼×וˆ° **{player1Name}** ט¡ו‹•ן¼")
                 .WithColor(new Color(0xE74C3C))
                 .WithCurrentTimestamp()
                 .Build();
@@ -383,10 +383,10 @@ namespace MusicBot2.Service
             ulong channelId, ulong userId, BattleAction action)
         {
             if (!_battles.TryGetValue(channelId, out var battle))
-                return (CommonHelper.BuildErrorResponse("¦¹ְW¹D¨S¦³¾װ°«¶i¦ז₪₪").Item2, new ComponentBuilder());
+                return (CommonHelper.BuildErrorResponse("ז­₪י »י“ז²’ז‰זˆ°י¬¥י€²ט¡ה¸­").Item2, new ComponentBuilder());
 
             if (battle.GetCurrentPlayerId() != userId)
-                return (CommonHelper.BuildErrorResponse("ֱÙ¨S½ü¨ל§A¡I").Item2, new ComponentBuilder());
+                return (CommonHelper.BuildErrorResponse("י‚„ז²’ט¼×וˆ°ה½ ן¼").Item2, new ComponentBuilder());
 
             var attacker = battle.GetCurrentAttacker();
             var defender = battle.GetCurrentDefender();
@@ -399,7 +399,7 @@ namespace MusicBot2.Service
                     break;
                 case BattleAction.NoblePhantasm:
                     if (!attacker.CanUseNp)
-                        return (CommonHelper.BuildErrorResponse("ִ_¨ד¥¼¥R¯א¡I").Item2, new ComponentBuilder());
+                        return (CommonHelper.BuildErrorResponse("ו¯¶ו…·ז×ו……טƒ½ן¼").Item2, new ComponentBuilder());
                     result = ExecuteNoblePhantasm(attacker, defender, battle);
                     break;
                 case BattleAction.Defend:
@@ -451,14 +451,14 @@ namespace MusicBot2.Service
             defender.TakeDamage(damage);
             attacker.AddNpCharge(20);
 
-            string classMsg = classMultiplier > 1 ? " (ֲ¾¶¥¬Û«g¡I)" : classMultiplier < 1 ? " (ֲ¾¶¥₪£§Q)" : "";
-            string critMsg = isCrit ? " **ֳzְ»¡I**" : "";
+            string classMsg = classMultiplier > 1 ? " (ט·יח›¸ו‰‹ן¼)" : classMultiplier < 1 ? " (ט·יה¸וˆ©)" : "";
+            string critMsg = isCrit ? " **חˆ†ז“ן¼**" : "";
 
             return new HgwBattleResult
             {
                 Damage = damage,
                 IsCritical = isCrit,
-                ActionDescription = $"**{attacker.Name}** §נְ» **{defender.Name}**¡A³y¦¨ **{damage}** ¶ֻ®`{classMsg}{critMsg}\n" +
+                ActionDescription = $"**{attacker.Name}** ז”»ז“ **{defender.Name}**ן¼י€ זˆ **{damage}** ו‚·ו®³{classMsg}{critMsg}\n" +
                     $"NP +20 ({attacker.NpCharge}/100)"
             };
         }
@@ -472,14 +472,14 @@ namespace MusicBot2.Service
             defender.TakeDamage(damage);
             attacker.UseNp();
 
-            string npName = attacker.NpName ?? "ִ_¨ד";
+            string npName = attacker.NpName ?? "ו¯¶ו…·";
 
             return new HgwBattleResult
             {
                 Damage = damage,
                 UsedNoblePhantasm = true,
-                ActionDescription = $"**{attacker.Name}** ¨ֿ¥־ִ_¨ד **¡y{npName}¡z**¡I\n" +
-                    $"¹ן **{defender.Name}** ³y¦¨ **{damage}** ¶ֻ®`¡I"
+                ActionDescription = $"**{attacker.Name}** ה½¿ח”¨ו¯¶ו…· **ד€{npName}ד€**ן¼\n" +
+                    $"ו° **{defender.Name}** י€ זˆ **{damage}** ו‚·ו®³ן¼"
             };
         }
 
@@ -491,7 +491,7 @@ namespace MusicBot2.Service
 
             return new HgwBattleResult
             {
-                ActionDescription = $"**{attacker.Name}** ¨¾¿m¡A«ל´_ **{healAmount}** HP¡ANP +10"
+                ActionDescription = $"**{attacker.Name}** י˜²ח¦¦ן¼ז¢ו¾© **{healAmount}** HPן¼NP +10"
             };
         }
 
@@ -542,12 +542,12 @@ namespace MusicBot2.Service
             var s2 = battle.Player2Servant;
 
             var embedBuilder = new EmbedBuilder()
-                .WithTitle($"?? ¦^¦X {battle.TurnCount}")
+                .WithTitle($"ג”ן¸ ו›וˆ {battle.TurnCount}")
                 .WithDescription(result.ActionDescription)
                 .AddField($"{GetClassEmoji(s1.ClassName)} {s1.Name}",
                     $"HP: {s1.CurrentHp}/{s1.MaxHp}\nNP: {s1.NpCharge}/100",
                     inline: true)
-                .AddField("VS", "??", inline: true)
+                .AddField("VS", "ג”ן¸", inline: true)
                 .AddField($"{GetClassEmoji(s2.ClassName)} {s2.Name}",
                     $"HP: {s2.CurrentHp}/{s2.MaxHp}\nNP: {s2.NpCharge}/100",
                     inline: true)
@@ -556,14 +556,14 @@ namespace MusicBot2.Service
 
             if (result.IsFinished)
             {
-                embedBuilder.WithTitle("?? ¾װ°«µ²§פ¡I")
-                    .WithDescription($"**{result.WinnerName}** ְע³׃¡I\n\n{result.ActionDescription}\n\n" +
-                        $"ְע±o¡G?? +20 ֵ]₪O")
+                embedBuilder.WithTitle("נ† זˆ°י¬¥חµזן¼")
+                    .WithDescription($"**{result.WinnerName}** ח²ו‹ן¼\n\n{result.ActionDescription}\n\n" +
+                        $"ח²ו¾—ן¼נ’ +20 י­”ו›")
                     .WithColor(Color.Gold);
             }
             else
             {
-                embedBuilder.WithFooter($"½ü¨ל {battle.GetCurrentPlayerName()} ¦ז°Ê");
+                embedBuilder.WithFooter($"ט¼×וˆ° {battle.GetCurrentPlayerName()} ט¡ו‹•");
             }
 
             return embedBuilder.Build();
@@ -572,24 +572,24 @@ namespace MusicBot2.Service
         private ComponentBuilder BuildBattleButtons(ulong channelId, HgwServant attacker)
         {
             var cb = new ComponentBuilder()
-                .WithButton("?? §נְ»", $"hgw_attack_{channelId}", ButtonStyle.Danger)
-                .WithButton("??? ¨¾¿m", $"hgw_defend_{channelId}", ButtonStyle.Primary);
+                .WithButton("ג”ן¸ ז”»ז“", $"hgw_attack_{channelId}", ButtonStyle.Danger)
+                .WithButton("נ›¡ן¸ י˜²ח¦¦", $"hgw_defend_{channelId}", ButtonStyle.Primary);
 
             if (attacker.CanUseNp)
             {
-                cb.WithButton($"?? ִ_¨ד ({attacker.NpCharge}/100)", 
+                cb.WithButton($"נ’¥ ו¯¶ו…· ({attacker.NpCharge}/100)", 
                     $"hgw_np_{channelId}", 
                     ButtonStyle.Success);
             }
             else
             {
-                cb.WithButton($"?? ִ_¨ד ({attacker.NpCharge}/100)", 
+                cb.WithButton($"נ’¥ ו¯¶ו…· ({attacker.NpCharge}/100)", 
                     $"hgw_np_{channelId}", 
                     ButtonStyle.Secondary, 
                     disabled: true);
             }
 
-            cb.WithButton("??? §כ­°", $"hgw_surrender_{channelId}", ButtonStyle.Secondary, row: 1);
+            cb.WithButton("נ³ן¸ ז•י™", $"hgw_surrender_{channelId}", ButtonStyle.Secondary, row: 1);
 
             return cb;
         }
@@ -597,28 +597,28 @@ namespace MusicBot2.Service
         public (Embed embed, ComponentBuilder component) HealServant(ulong userId, int instanceId)
         {
             if (!_players.TryGetValue(userId, out var player))
-                return (CommonHelper.BuildErrorResponse("§AֱÙ₪£¬O±s¥D¡I").Item2, new ComponentBuilder());
+                return (CommonHelper.BuildErrorResponse("ה½ י‚„ה¸ז˜¯ו¾¡ה¸»ן¼").Item2, new ComponentBuilder());
 
             var servant = player.Servants.FirstOrDefault(s => s.InstanceId == instanceId);
             if (servant == null)
-                return (CommonHelper.BuildErrorResponse($"§ה₪£¨ל ID ¬° {instanceId} ×÷±q×ּ").Item2, new ComponentBuilder());
+                return (CommonHelper.BuildErrorResponse($"ז‰¾ה¸וˆ° ID ח‚÷ {instanceId} ח„ו¾ט€…").Item2, new ComponentBuilder());
 
             const int healCost = 10;
             if (player.Mana < healCost)
-                return (CommonHelper.BuildErrorResponse($"ֵ]₪O₪£¨¬¡I»Ý­n {healCost} ֵ]₪O").Item2, new ComponentBuilder());
+                return (CommonHelper.BuildErrorResponse($"י­”ו›ה¸ט¶³ן¼י€ט¦ {healCost} י­”ו›").Item2, new ComponentBuilder());
 
             if (servant.CurrentHp == servant.MaxHp)
-                return (CommonHelper.BuildErrorResponse("±q×ּ₪w¬O÷¡¦ו×¬÷A¡I").Item2, new ComponentBuilder());
+                return (CommonHelper.BuildErrorResponse("ו¾ט€…ו·²ז˜¯ז»¿ט¡€ח‹€ז…‹ן¼").Item2, new ComponentBuilder());
 
             player.Mana -= healCost;
             servant.Heal(servant.MaxHp);
             SavePlayer(player);
 
             var embed = new EmbedBuilder()
-                .WithTitle("?? ×vְר¦¨¥\")
-                .WithDescription($"{GetClassEmoji(servant.ClassName)} **{servant.Name}** ₪w§¹¥‏«ל´_¡I\n" +
+                .WithTitle("נ’ ז²»ח™‚זˆו")
+                .WithDescription($"{GetClassEmoji(servant.ClassName)} **{servant.Name}** ו·²ו®ו…¨ז¢ו¾©ן¼\n" +
                     $"HP: {servant.MaxHp}/{servant.MaxHp}\n\n" +
-                    $"³ׁ¾lֵ]₪O¡G{player.Mana}")
+                    $"ו‰©י₪˜י­”ו›ן¼{player.Mana}")
                 .WithColor(Color.Green)
                 .WithCurrentTimestamp()
                 .Build();
@@ -626,9 +626,9 @@ namespace MusicBot2.Service
             return (embed, new ComponentBuilder());
         }
 
-        // שששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששש
-        //  »²§U₪ט×k
-        // שששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששששש
+        // ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•
+        //  ט¼”ו©ז–¹ז³•
+        // ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•ג•
 
         private async Task EnsureInitAsync()
         {
@@ -658,11 +658,11 @@ namespace MusicBot2.Service
                     .OrderBy(s => s.CollectionNo)
                     .ToList() ?? new();
 
-                Console.WriteLine($"[HGW] ¸ü₪J {_servantPool.Count} ¦ל±q×ּ");
+                Console.WriteLine($"[HGW] ט¼‰ו…¥ {_servantPool.Count} ה½ו¾ט€…");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[HGW] LoadPool ¥¢±ׁ: {ex.Message}");
+                Console.WriteLine($"[HGW] LoadPool ו₪±ז•—: {ex.Message}");
             }
         }
 
@@ -761,11 +761,11 @@ namespace MusicBot2.Service
                         }
                     }
                 }
-                Console.WriteLine($"[HGW] ¸ü₪J {_players.Count} ¦ל×±®a");
+                Console.WriteLine($"[HGW] ט¼‰ו…¥ {_players.Count} ה½ח©ו®¶");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[HGW] ¸ü₪J×±®a¸ך®ֶ¥¢±ׁ: {ex.Message}");
+                Console.WriteLine($"[HGW] ט¼‰ו…¥ח©ו®¶ט³‡ז–™ו₪±ז•—: {ex.Message}");
             }
         }
 
@@ -778,27 +778,27 @@ namespace MusicBot2.Service
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[HGW] ְx¦s×±®a¥¢±ׁ: {ex.Message}");
+                Console.WriteLine($"[HGW] ו„²ו­˜ח©ו®¶ו₪±ז•—: {ex.Message}");
             }
         }
 
         private static string GetClassEmoji(string className) => className?.ToLower() switch
         {
-            "saber" => "??",
-            "archer" => "??",
-            "lancer" => "??",
-            "rider" => "??",
-            "caster" => "??",
-            "assassin" => "???",
-            "berserker" => "??",
-            "ruler" => "??",
-            "avenger" => "??",
-            "mooncancer" => "??",
-            "alterego" => "??",
-            "foreigner" => "??",
-            "pretender" => "??",
-            "shielder" => "???",
-            _ => "?"
+            "saber" => "ג”ן¸",
+            "archer" => "נ¹",
+            "lancer" => "נ”±",
+            "rider" => "נ´",
+            "caster" => "נ”®",
+            "assassin" => "נ—¡ן¸",
+            "berserker" => "נ’¢",
+            "ruler" => "ג–ן¸",
+            "avenger" => "נ”¥",
+            "mooncancer" => "נ™",
+            "alterego" => "נ€",
+            "foreigner" => "נ",
+            "pretender" => "נ­",
+            "shielder" => "נ›¡ן¸",
+            _ => "ג¨"
         };
 
         private static Color GetRarityColor(int rarity) => rarity switch
