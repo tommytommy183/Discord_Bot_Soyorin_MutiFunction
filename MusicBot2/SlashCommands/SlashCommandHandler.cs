@@ -1409,7 +1409,7 @@ namespace MusicBot2.SlahCommands
         #endregion
 
         #region 聖杯戰爭 RPG
-        [SlashCommand("hgw註冊", "註冊成為聖杯戰爭的御主")]
+        [SlashCommand("fate註冊", "註冊成為聖杯戰爭的御主")]
         public async Task HgwRegisterAsync()
         {
             await DeferAsync();
@@ -1417,14 +1417,14 @@ namespace MusicBot2.SlahCommands
             await FollowupAsync(embed: embed, components: component.Build());
         }
 
-        [SlashCommand("hgw資訊", "查看你的御主資訊")]
+        [SlashCommand("fate資訊", "查看你的御主資訊")]
         public async Task HgwInfoAsync()
         {
             var (embed, component) = _holyGrailWarService.GetPlayerInfo(Context.User.Id);
             await RespondAsync(embed: embed, components: component.Build());
         }
 
-        [SlashCommand("hgw召喚", "召喚一位新的從者（消耗 30 魔力）")]
+        [SlashCommand("fate召喚", "召喚一位新的從者（消耗 30 魔力）")]
         public async Task HgwSummonAsync()
         {
             await DeferAsync();
@@ -1432,28 +1432,28 @@ namespace MusicBot2.SlahCommands
             await FollowupAsync(embed: embed, components: component.Build());
         }
 
-        [SlashCommand("hgw從者", "查看你的從者列表")]
+        [SlashCommand("fate從者", "查看你的從者列表")]
         public async Task HgwServantsAsync()
         {
             var (embed, component) = _holyGrailWarService.ListServants(Context.User.Id);
             await RespondAsync(embed: embed, components: component.Build());
         }
 
-        [SlashCommand("hgw選擇", "選擇出戰從者")]
+        [SlashCommand("fate選擇", "選擇出戰從者")]
         public async Task HgwSelectAsync([Summary("從者ID", "從者的 InstanceId")] int instanceId)
         {
             var (embed, component) = _holyGrailWarService.SelectServant(Context.User.Id, instanceId);
             await RespondAsync(embed: embed, components: component.Build());
         }
 
-        [SlashCommand("hgw治療", "治療從者（消耗 10 魔力）")]
+        [SlashCommand("fate治療", "治療從者（消耗 10 魔力）")]
         public async Task HgwHealAsync([Summary("從者ID", "從者的 InstanceId")] int instanceId)
         {
             var (embed, component) = _holyGrailWarService.HealServant(Context.User.Id, instanceId);
             await RespondAsync(embed: embed, components: component.Build());
         }
 
-        [SlashCommand("hgw每日", "領取每日獎勵（50 魔力）")]
+        [SlashCommand("fate每日", "領取每日獎勵（50 魔力）")]
         public async Task HgwDailyAsync()
         {
             await DeferAsync();
@@ -1461,7 +1461,7 @@ namespace MusicBot2.SlahCommands
             await FollowupAsync(embed: embed, components: component.Build());
         }
 
-        [SlashCommand("hgw戰鬥", "與 NPC 或其他玩家戰鬥")]
+        [SlashCommand("fate戰鬥", "與 NPC 或其他玩家戰鬥")]
         public async Task HgwBattleAsync([Summary("對手", "留空則對戰 NPC")] SocketGuildUser opponent = null)
         {
             await DeferAsync();
