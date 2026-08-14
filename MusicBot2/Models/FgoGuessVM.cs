@@ -27,11 +27,23 @@ namespace MusicBot2.Models
     // ── 從 nice/TW/servant/{id} 擷取所需欄位 ─────────────────────────────
     public class FgoNiceServant
     {
+        [JsonPropertyName("id")]
+        public int Id { get; set; }
+
         [JsonPropertyName("collectionNo")]
         public int CollectionNo { get; set; }
 
         [JsonPropertyName("name")]
         public string Name { get; set; }
+
+        [JsonPropertyName("className")]
+        public string ClassName { get; set; }
+
+        [JsonPropertyName("atkBase")]
+        public int AtkBase { get; set; }
+
+        [JsonPropertyName("hpBase")]
+        public int HpBase { get; set; }
 
         [JsonPropertyName("cards")]
         public List<string> Cards { get; set; } = new();
@@ -41,6 +53,9 @@ namespace MusicBot2.Models
 
         [JsonPropertyName("noblePhantasms")]
         public List<FgoNoblePhantasm> NoblePhantasms { get; set; } = new();
+
+        [JsonPropertyName("skills")]
+        public List<FgoSkill> Skills { get; set; } = new();
     }
 
     public class FgoExtraAssets
@@ -76,6 +91,12 @@ namespace MusicBot2.Models
         [JsonPropertyName("card")]
         public string Card { get; set; }
 
+        [JsonPropertyName("icon")]
+        public string Icon { get; set; }
+
+        [JsonPropertyName("detail")]
+        public string Detail { get; set; }
+
         [JsonPropertyName("functions")]
         public List<FgoNpFunction> Functions { get; set; } = new();
     }
@@ -87,6 +108,66 @@ namespace MusicBot2.Models
 
         [JsonPropertyName("targetType")]
         public string TargetType { get; set; }
+
+        [JsonPropertyName("funcPopupText")]
+        public string FuncPopupText { get; set; }
+
+        [JsonPropertyName("svals")]
+        public List<FgoFuncValue> Svals { get; set; } = new();
+
+        [JsonPropertyName("buffs")]
+        public List<FgoBuff> Buffs { get; set; } = new();
+    }
+
+    public class FgoSkill
+    {
+        [JsonPropertyName("id")]
+        public int Id { get; set; }
+
+        [JsonPropertyName("num")]
+        public int Num { get; set; }
+
+        [JsonPropertyName("name")]
+        public string Name { get; set; }
+
+        [JsonPropertyName("detail")]
+        public string Detail { get; set; }
+
+        [JsonPropertyName("icon")]
+        public string Icon { get; set; }
+
+        [JsonPropertyName("coolDown")]
+        public List<int> CoolDown { get; set; } = new();
+
+        [JsonPropertyName("functions")]
+        public List<FgoNpFunction> Functions { get; set; } = new();
+    }
+
+    public class FgoFuncValue
+    {
+        [JsonPropertyName("Value")]
+        public int Value { get; set; }
+
+        [JsonPropertyName("Value2")]
+        public int Value2 { get; set; }
+
+        [JsonPropertyName("Turn")]
+        public int Turn { get; set; }
+
+        [JsonPropertyName("Count")]
+        public int Count { get; set; }
+
+        [JsonPropertyName("Rate")]
+        public int Rate { get; set; }
+    }
+
+    public class FgoBuff
+    {
+        [JsonPropertyName("type")]
+        public string Type { get; set; }
+
+        [JsonPropertyName("name")]
+        public string Name { get; set; }
     }
 
     // ── 遊戲狀態 ───────────────────────────────────────────────────────────

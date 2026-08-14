@@ -443,6 +443,31 @@ public class Program
                         msg.Embed = embed;
                         msg.Components = comp?.Build();
                     });
+
+                    var visuals = hgwtSvc.ConsumePendingVisuals(component.Channel.Id);
+                    foreach (var visual in visuals)
+                    {
+                        _ = Task.Run(async () =>
+                        {
+                            try
+                            {
+                                var visualEmbed = new EmbedBuilder()
+                                    .WithTitle(visual.Title)
+                                    .WithDescription(visual.Description)
+                                    .WithImageUrl(visual.ImageUrl)
+                                    .WithColor(Color.DarkMagenta)
+                                    .Build();
+
+                                var tempMessage = await component.Channel.SendMessageAsync(embed: visualEmbed);
+                                await Task.Delay(TimeSpan.FromSeconds(5));
+                                await tempMessage.DeleteAsync();
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine($"[HolyGrailTower] 臨時圖片訊息發送/刪除失敗: {ex.Message}");
+                            }
+                        });
+                    }
                 }
             }
 

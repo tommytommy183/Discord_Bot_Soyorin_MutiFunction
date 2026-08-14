@@ -89,8 +89,14 @@ namespace MusicBot2.Models
         [JsonPropertyName("npEffect")]
         public string NpEffect { get; set; }
 
+        [JsonPropertyName("npIconUrl")]
+        public string NpIconUrl { get; set; }
+
         [JsonPropertyName("cards")]
         public List<string> Cards { get; set; } = new(); // 5張指令卡, 譬如 ["buster", "buster", "arts", "quick", "quick"]
+
+        [JsonPropertyName("skills")]
+        public List<HgwSkillData> Skills { get; set; } = new();
 
         [JsonPropertyName("faceUrl")]
         public string FaceUrl { get; set; }
@@ -148,9 +154,13 @@ namespace MusicBot2.Models
         public string NpTargetType { get; set; }
         public int NpDmgMultiplier { get; set; } = 600;
         public string NpEffect { get; set; }
+        public string NpIconUrl { get; set; }
 
         public List<string> Cards { get; set; } = new(); // 5張指令卡
         public string FaceUrl { get; set; }
+        public string FullImageUrl { get; set; }
+        public List<HgwSkillData> Skills { get; set; } = new();
+        public HashSet<int> UsedSkillIndexes { get; set; } = new();
 
         // 本次冒險增益 (Buffs)
         public int BonusAtk { get; set; } = 0;
@@ -179,8 +189,11 @@ namespace MusicBot2.Models
                 NpTargetType = string.IsNullOrWhiteSpace(servant.NpTargetType) ? "enemy" : servant.NpTargetType,
                 NpDmgMultiplier = servant.NpDmgMultiplier <= 0 ? 600 : servant.NpDmgMultiplier,
                 NpEffect = servant.NpEffect,
+                NpIconUrl = servant.NpIconUrl,
                 Cards = servant.Cards != null && servant.Cards.Count == 5 ? servant.Cards : new List<string> { "buster", "buster", "arts", "quick", "quick" },
-                FaceUrl = servant.FaceUrl
+                FaceUrl = servant.FaceUrl,
+                FullImageUrl = servant.FullImageUrl,
+                Skills = servant.Skills?.Select(skill => skill.Clone()).ToList() ?? new List<HgwSkillData>()
             };
         }
 
@@ -244,6 +257,36 @@ namespace MusicBot2.Models
         public string CardType { get; set; } // "buster", "arts", "quick", "np"
         public int CardIndex { get; set; } // 在手牌 (0~4) 中的 index，如果是寶具卡則為 -1
         public int CritChance { get; set; } = 0; // 暴擊機率 (0 - 100)
+    }
+
+    public class HgwSkillData
+    {
+        public int Num { get; set; }
+        public string Name { get; set; }
+        public string Detail { get; set; }
+        public string IconUrl { get; set; }
+        public List<string> FunctionTypes { get; set; } = new();
+        public List<string> BuffTypes { get; set; } = new();
+
+        public HgwSkillData Clone()
+        {
+            return new HgwSkillData
+            {
+                Num = Num,
+                Name = Name,
+                Detail = Detail,
+                IconUrl = IconUrl,
+                FunctionTypes = FunctionTypes?.ToList() ?? new List<string>(),
+                BuffTypes = BuffTypes?.ToList() ?? new List<string>()
+            };
+        }
+    }
+
+    public class HgwPendingVisual
+    {
+        public string Title { get; set; }
+        public string Description { get; set; }
+        public string ImageUrl { get; set; }
     }
 
     /// <summary>遺物（永久增益）</summary>

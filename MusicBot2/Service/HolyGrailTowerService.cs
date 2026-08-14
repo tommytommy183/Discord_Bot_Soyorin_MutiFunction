@@ -25,6 +25,7 @@ namespace MusicBot2.Service
 
         private List<FgoBasicServant> _servantPool = new();
         private readonly Dictionary<int, TowerServant> _servantCache = new();
+        private readonly Dictionary<ulong, List<HgwPendingVisual>> _pendingVisuals = new();
         private bool _initialized = false;
 
         private readonly Dictionary<ulong, HgwTowerRun> _runs = new();
@@ -46,6 +47,34 @@ namespace MusicBot2.Service
             {
                 Console.WriteLine($"[HolyGrailTower] Redis 連線異常: {ex.Message}");
             }
+        }
+
+        public List<HgwPendingVisual> ConsumePendingVisuals(ulong channelId)
+        {
+            if (!_pendingVisuals.TryGetValue(channelId, out var visuals))
+                return new List<HgwPendingVisual>();
+
+            _pendingVisuals.Remove(channelId);
+            return visuals;
+        }
+
+        private void QueueVisual(ulong channelId, string title, string description, string imageUrl)
+        {
+            if (string.IsNullOrWhiteSpace(imageUrl))
+                return;
+
+            if (!_pendingVisuals.TryGetValue(channelId, out var visuals))
+            {
+                visuals = new List<HgwPendingVisual>();
+                _pendingVisuals[channelId] = visuals;
+            }
+
+            visuals.Add(new HgwPendingVisual
+            {
+                Title = title,
+                Description = description,
+                ImageUrl = imageUrl
+            });
         }
 
         // ═══════════════════════════════════════════════════════════
@@ -208,7 +237,7 @@ namespace MusicBot2.Service
             var basic = candidates[_rng.Next(candidates.Count)];
 
             // 取詳細寶具、5張指令卡與頭像
-            var detailed = await FetchAndCacheServantAsync(basic.Id);
+            var detailed = await FetchAndCacheServantAsync(basic.CollectionNo);
 
             var existing = player.OwnedServants.FirstOrDefault(s => s.CollectionNo == detailed.CollectionNo);
             bool isNew = existing == null;
@@ -426,8 +455,15 @@ namespace MusicBot2.Service
                 CritStars = 0
             };
 
+            Console.WriteLine($"[HolyGrailTower] 產生遭遇：channel={run.ChannelId}, floor={floor}, type={type}");
+
             if (type == EncounterType.NormalBattle || type == EncounterType.EliteBattle || type == EncounterType.BossBattle)
             {
+                foreach (var servant in run.Team)
+                {
+                    servant.UsedSkillIndexes.Clear();
+                }
+
                 int count = type == EncounterType.BossBattle ? 1 : _rng.Next(1, 4);
                 encounter.Enemies = GenerateMonsterSquad(type, count, floor);
                 DrawCardsForTurn(run, encounter); // 初始手牌
@@ -534,6 +570,7 @@ namespace MusicBot2.Service
             }
 
             encounter.HandCards = randomized;
+            Console.WriteLine($"[HolyGrailTower] DrawCards floor={run.CurrentFloor}, hand={string.Join(",", randomized.Select(x => x.CardType))}");
         }
 
         // ═══════════════════════════════════════════════════════════
@@ -551,6 +588,9 @@ namespace MusicBot2.Service
                 case EncounterType.BossBattle:
                     return RenderBattleEncounter(run);
 
+                case EncounterType.Event:
+                    return RenderAdvanceEncounter(run);
+
                 case EncounterType.Shop:
                     return RenderShopEncounter(run);
 
@@ -562,6 +602,28 @@ namespace MusicBot2.Service
             }
 
             return (CommonHelper.BuildErrorResponse("遭遇無效屬性").Item2, new ComponentBuilder());
+        }
+
+        private (Embed embed, ComponentBuilder component) RenderAdvanceEncounter(HgwTowerRun run)
+        {
+            var enc = run.CurrentEncounter;
+            var embedBuilder = new EmbedBuilder()
+                .WithTitle($"🏆 第 {run.CurrentFloor} 層已淨化")
+                .WithDescription("這一層的魔力殘渣已被清除。整備好隊伍後，繼續往更深處邁進。")
+                .WithColor(Color.Gold)
+                .WithCurrentTimestamp();
+
+            if (enc.BattleLog.Count > 0)
+            {
+                embedBuilder.AddField("📜 戰鬥結算", string.Join("\n", enc.BattleLog.TakeLast(10)));
+            }
+
+            embedBuilder.AddField("🎒 當前資源", $"金幣：**{run.Gold}**\n存活英靈：**{run.Team.Count(x => x.IsAlive)}/{run.Team.Count}**", inline: true);
+
+            var cb = new ComponentBuilder()
+                .WithButton("⏩ 前往下一層", "hgwt_next", ButtonStyle.Success);
+
+            return (embedBuilder.Build(), cb);
         }
 
         private (Embed embed, ComponentBuilder component) RenderBattleEncounter(HgwTowerRun run)
@@ -581,6 +643,18 @@ namespace MusicBot2.Service
             var squadText = string.Join("\n", run.Team.Select((s, i) =>
                 $"{(s.IsAlive ? "👤" : "💀")} {GetClassEmoji(s.ClassName)} **{s.Name}** HP: **{s.CurrentHp}/{s.MaxHp}** | NP Charge: **{s.NpCharge}%**"));
             embedBuilder.AddField("🛡️ 我方迦勒底英靈", squadText);
+
+            var skillText = string.Join("\n", run.Team.Select((s, i) =>
+            {
+                if (s.Skills == null || s.Skills.Count == 0)
+                    return $"{GetClassEmoji(s.ClassName)} **{s.Name}**：無資料";
+
+                var desc = string.Join(" | ", s.Skills.Select((skill, idx) =>
+                    $"{idx + 1}.{skill.Name}{(s.UsedSkillIndexes.Contains(idx) ? "✅" : string.Empty)}"));
+
+                return $"{GetClassEmoji(s.ClassName)} **{s.Name}**：{desc}";
+            }));
+            embedBuilder.AddField("🧠 主動技能", skillText);
 
             // 3. 事件日誌 / 戰鬥歷程
             if (enc.BattleLog.Count > 0)
@@ -627,7 +701,7 @@ namespace MusicBot2.Service
                 cb.WithButton(finalLabel, $"hgwt_card_{i}", ButtonStyle.Secondary, disabled: alreadySelected || enc.SelectedCards.Count >= 3, row: 0);
             }
 
-            // Row 1: 滿充NPC寶具按鈕 
+            // Row 1: 滿充寶具按鈕 
             int npButtonCount = 0;
             for (int i = 0; i < run.Team.Count; i++)
             {
@@ -649,6 +723,32 @@ namespace MusicBot2.Service
             cb.WithButton("🔄 取消與重置點牌", "hgwt_undo", ButtonStyle.Primary, disabled: enc.SelectedCards.Count == 0, row: 2);
             cb.WithButton("🔥 確認連鎖攻擊！", "hgwt_confirm", ButtonStyle.Success, disabled: enc.SelectedCards.Count < 3, row: 2);
             cb.WithButton("🏳️ 撤退探索", "hgwt_surrender", ButtonStyle.Danger, row: 2);
+
+            int skillButtonCount = 0;
+            for (int servantIndex = 0; servantIndex < run.Team.Count; servantIndex++)
+            {
+                var servant = run.Team[servantIndex];
+                if (!servant.IsAlive || servant.Skills == null)
+                    continue;
+
+                for (int skillIndex = 0; skillIndex < servant.Skills.Count && skillIndex < 3; skillIndex++)
+                {
+                    var skill = servant.Skills[skillIndex];
+                    int row = 3 + (skillButtonCount / 5);
+                    if (row > 4)
+                        break;
+
+                    var label = $"{servant.Name[0]}-{TrimButtonLabel(skill.Name, 12)}";
+                    cb.WithButton(
+                        label,
+                        $"hgwt_skill_{servantIndex}_{skillIndex}",
+                        ButtonStyle.Primary,
+                        disabled: servant.UsedSkillIndexes.Contains(skillIndex),
+                        row: row);
+
+                    skillButtonCount++;
+                }
+            }
 
             return (embedBuilder.Build(), cb);
         }
@@ -723,6 +823,7 @@ namespace MusicBot2.Service
 
             var parts = customId.Split('_');
             var action = parts[1];
+            Console.WriteLine($"[HolyGrailTower] HandleButton channel={channelId}, user={userId}, action={customId}, floor={run.CurrentFloor}");
 
             try
             {
@@ -799,8 +900,17 @@ namespace MusicBot2.Service
                         }
                         return RenderCurrentEncounter(run);
 
+                    case "skill":
+                        int skillServantIndex = int.Parse(parts[2]);
+                        int skillIndexToUse = int.Parse(parts[3]);
+                        UseServantSkill(run, skillServantIndex, skillIndexToUse);
+                        return RenderCurrentEncounter(run);
+
                     case "undo":
                         run.CurrentEncounter.SelectedCards.Clear();
+                        return RenderCurrentEncounter(run);
+
+                    case "no":
                         return RenderCurrentEncounter(run);
 
                     case "confirm":
@@ -939,13 +1049,89 @@ namespace MusicBot2.Service
         }
 
         // ═══════════════════════════════════════════════════════════
+        //  技能與戰鬥前處理
+        // ═══════════════════════════════════════════════════════════
+
+        private void UseServantSkill(HgwTowerRun run, int servantIndex, int skillIndex)
+        {
+            if (servantIndex < 0 || servantIndex >= run.Team.Count)
+                return;
+
+            var servant = run.Team[servantIndex];
+            if (!servant.IsAlive || servant.Skills == null || skillIndex < 0 || skillIndex >= servant.Skills.Count)
+                return;
+
+            if (servant.UsedSkillIndexes.Contains(skillIndex))
+                return;
+
+            var skill = servant.Skills[skillIndex];
+            servant.UsedSkillIndexes.Add(skillIndex);
+
+            var effects = new List<string>();
+            var encounter = run.CurrentEncounter;
+
+            if (skill.FunctionTypes.Any(x => x.Contains("gainNp", StringComparison.OrdinalIgnoreCase) || x.Contains("hastenNpturn", StringComparison.OrdinalIgnoreCase)))
+            {
+                servant.AddNpCharge(20);
+                effects.Add("NP +20%");
+            }
+
+            if (skill.FunctionTypes.Any(x => x.Contains("heal", StringComparison.OrdinalIgnoreCase)) || skill.Detail?.Contains("回復") == true)
+            {
+                int healAmount = Math.Max(100, servant.MaxHp / 4);
+                servant.CurrentHp = Math.Min(servant.MaxHp, servant.CurrentHp + healAmount);
+                effects.Add($"HP +{healAmount}");
+            }
+
+            if (skill.FunctionTypes.Any(x => x.Contains("gainStar", StringComparison.OrdinalIgnoreCase)) || skill.Detail?.Contains("暴擊星") == true)
+            {
+                encounter.CritStars += 10;
+                effects.Add("暴擊星 +10");
+            }
+
+            if (skill.FunctionTypes.Any(x => x.Contains("addState", StringComparison.OrdinalIgnoreCase)) || skill.Detail?.Contains("提升") == true)
+            {
+                if (skill.Detail?.Contains("攻擊") == true || skill.BuffTypes.Any(x => x.Contains("atk", StringComparison.OrdinalIgnoreCase)))
+                {
+                    int atkUp = Math.Max(20, servant.Attack / 5);
+                    servant.BonusAtk += atkUp;
+                    effects.Add($"ATK +{atkUp}");
+                }
+
+                if (skill.Detail?.Contains("防禦") == true || skill.BuffTypes.Any(x => x.Contains("def", StringComparison.OrdinalIgnoreCase)))
+                {
+                    int defUp = Math.Max(10, servant.Defense / 5);
+                    servant.BonusDef += defUp;
+                    effects.Add($"DEF +{defUp}");
+                }
+            }
+
+            if (effects.Count == 0)
+            {
+                servant.AddNpCharge(10);
+                effects.Add("NP +10%");
+            }
+
+            encounter.BattleLog.Add($"🧠 **{servant.Name}** 發動技能 **{skill.Name}**！ ({string.Join(" / ", effects)})");
+            if (!string.IsNullOrWhiteSpace(skill.Detail))
+            {
+                encounter.BattleLog.Add($"　└ {skill.Detail}");
+            }
+
+            QueueVisual(run.ChannelId, $"{servant.Name} - {skill.Name}", skill.Detail ?? string.Join(" / ", effects), skill.IconUrl ?? servant.FullImageUrl ?? servant.FaceUrl);
+        }
+
+        // ═══════════════════════════════════════════════════════════
         //  FGO 回合核心運算 (ProcessBattleTurnAsync)
         // ═══════════════════════════════════════════════════════════
 
         private async Task ProcessBattleTurnAsync(HgwTowerRun run)
         {
             var enc = run.CurrentEncounter;
+            var previousLogs = enc.BattleLog.TakeLast(4).ToList();
             enc.BattleLog.Clear();
+            enc.BattleLog.AddRange(previousLogs);
+            Console.WriteLine($"[HolyGrailTower] ProcessBattleTurn floor={run.CurrentFloor}, selected={string.Join(",", enc.SelectedCards.Select(x => x.CardType))}");
 
             // 1. 各項卡牌連擊加成
             var sCards = enc.SelectedCards;
@@ -1042,6 +1228,8 @@ namespace MusicBot2.Service
                     bool isAoe = s.NpTargetType.Contains("All", StringComparison.OrdinalIgnoreCase);
 
                     s.UseNp();
+                    QueueVisual(run.ChannelId, $"{s.Name} 寶具解放", $"『{s.NpName}』", s.FullImageUrl ?? s.FaceUrl);
+                    QueueVisual(run.ChannelId, s.NpName, s.NpEffect ?? "寶具發動", s.NpIconUrl ?? s.FullImageUrl ?? s.FaceUrl);
 
                     if (isAoe)
                     {
@@ -1175,7 +1363,7 @@ namespace MusicBot2.Service
                 if (aliveParty.Count == 0) break;
 
                 var target = aliveParty[_rng.Next(aliveParty.Count)];
-                int enemyBaseDamage = Math.Max(10, enemy.Attack - target.Defense / 2);
+                int enemyBaseDamage = Math.Max(10, enemy.Attack - (target.Defense + target.BonusDef) / 2);
                 // 波動浮動範圍 
                 int finalEnemyDmg = _rng.Next((int)(enemyBaseDamage * 0.8), (int)(enemyBaseDamage * 1.2));
                 finalEnemyDmg = Math.Max(10, finalEnemyDmg);
@@ -1311,6 +1499,8 @@ namespace MusicBot2.Service
                 string npTargetType = "enemy";
                 int npDmgMultiplier = 600;
                 string npEffect = "造成傷害";
+                string npIconUrl = "";
+                var skillList = new List<HgwSkillData>();
 
                 if (data?.NoblePhantasms != null && data.NoblePhantasms.Count > 0)
                 {
@@ -1323,29 +1513,65 @@ namespace MusicBot2.Service
                     {
                         npName = np.Name;
                         npRuby = np.Ruby;
-                        npCard = string.IsNullOrWhiteSpace(np.Card) ? "buster" : np.Card.ToLower();
+                        npCard = NormalizeCardType(np.Card);
+                        npIconUrl = np.Icon;
+                        npEffect = string.IsNullOrWhiteSpace(np.Detail) ? npEffect : np.Detail;
 
                         if (np.Functions != null && np.Functions.Count > 0)
                         {
                             var f = np.Functions[0];
                             npTargetType = string.IsNullOrWhiteSpace(f.TargetType) ? "enemy" : f.TargetType;
-                            npEffect = f.FuncType;
+                            if (!string.IsNullOrWhiteSpace(f.FuncType))
+                                npEffect = string.IsNullOrWhiteSpace(np.Detail) ? f.FuncType : np.Detail;
+
+                            var npValue = f.Svals?.FirstOrDefault(x => x.Value > 0)?.Value ?? 0;
+                            if (npValue > 0)
+                                npDmgMultiplier = Math.Max(100, npValue / 10);
                         }
                     }
                 }
 
+                if (data?.Skills != null && data.Skills.Count > 0)
+                {
+                    skillList = data.Skills
+                        .Where(x => !string.IsNullOrWhiteSpace(x.Name))
+                        .GroupBy(x => x.Num)
+                        .Select(g => g.OrderByDescending(x => x.Id).First())
+                        .OrderBy(x => x.Num)
+                        .Take(3)
+                        .Select(skill => new HgwSkillData
+                        {
+                            Num = skill.Num,
+                            Name = skill.Name,
+                            Detail = skill.Detail,
+                            IconUrl = skill.Icon,
+                            FunctionTypes = skill.Functions?
+                                .Where(f => !string.IsNullOrWhiteSpace(f.FuncType))
+                                .Select(f => f.FuncType)
+                                .Distinct()
+                                .ToList() ?? new List<string>(),
+                            BuffTypes = skill.Functions?
+                                .SelectMany(f => f.Buffs ?? new List<FgoBuff>())
+                                .Where(b => !string.IsNullOrWhiteSpace(b.Type))
+                                .Select(b => b.Type)
+                                .Distinct()
+                                .ToList() ?? new List<string>()
+                        })
+                        .ToList();
+                }
+
                 // 指令卡配置
                 var cardsList = data?.Cards != null && data.Cards.Count == 5 
-                    ? data.Cards.Select(c => c.ToLower()).ToList() 
+                    ? data.Cards.Select(NormalizeCardType).ToList() 
                     : new List<string> { "buster", "buster", "arts", "quick", "quick" };
 
                 var basic = _servantPool.FirstOrDefault(x => x.CollectionNo == collectionNo);
 
                 var servant = new TowerServant
                 {
-                    CollectionNo = collectionNo,
+                    CollectionNo = data?.CollectionNo > 0 ? data.CollectionNo : collectionNo,
                     Name = data?.Name ?? basic?.Name ?? "未知英靈",
-                    ClassName = basic?.ClassName ?? "saber",
+                    ClassName = data?.ClassName ?? basic?.ClassName ?? "saber",
                     Rarity = basic?.Rarity ?? 3,
                     Level = 1,
                     NpLevel = 1,
@@ -1355,7 +1581,9 @@ namespace MusicBot2.Service
                     NpTargetType = npTargetType,
                     NpDmgMultiplier = npDmgMultiplier,
                     NpEffect = npEffect,
+                    NpIconUrl = npIconUrl,
                     Cards = cardsList,
+                    Skills = skillList,
                     FaceUrl = faceUrl ?? basic?.Face,
                     FullImageUrl = fullImageUrl ?? ""
                 };
@@ -1381,9 +1609,32 @@ namespace MusicBot2.Service
                     NpTargetType = "enemy",
                     NpDmgMultiplier = 600,
                     Cards = new List<string> { "buster", "buster", "arts", "quick", "quick" },
+                    Skills = new List<HgwSkillData>(),
                     FaceUrl = basic?.Face ?? ""
                 };
             }
+        }
+
+        private static string NormalizeCardType(string rawCardType)
+        {
+            return rawCardType?.ToLower() switch
+            {
+                "1" => "buster",
+                "2" => "quick",
+                "3" => "arts",
+                "buster" => "buster",
+                "quick" => "quick",
+                "arts" => "arts",
+                _ => "quick"
+            };
+        }
+
+        private static string TrimButtonLabel(string text, int maxLength)
+        {
+            if (string.IsNullOrWhiteSpace(text) || text.Length <= maxLength)
+                return text;
+
+            return text[..maxLength];
         }
 
         private static string GetClassEmoji(string className) => className?.ToLower() switch
