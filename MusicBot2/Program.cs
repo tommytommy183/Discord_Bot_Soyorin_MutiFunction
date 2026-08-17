@@ -119,6 +119,8 @@ public class Program
             .AddSingleton<FgoGuessService>()
             .AddSingleton<UselessApiService>()
             .AddSingleton<NekoBotService>()
+            .AddSingleton<WaifuImService>()
+            .AddSingleton<WaifuPicsService>()
             .AddSingleton<RVC_Service>()
             .AddSingleton<SetTextService>(setTextService)
             .AddSingleton<ElevenLabsService>(sp =>

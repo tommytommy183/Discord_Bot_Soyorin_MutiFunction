@@ -17,10 +17,24 @@ namespace MusicBot2.Service
 
         public NekoBotService()
         {
-            _httpClient = new HttpClient();
+            var handler = new HttpClientHandler
+            {
+                UseCookies = true,
+                AutomaticDecompression = System.Net.DecompressionMethods.GZip | System.Net.DecompressionMethods.Deflate
+            };
+
+            _httpClient = new HttpClient(handler);
             _httpClient.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
-            _httpClient.DefaultRequestHeaders.Add("Accept", "application/json");
+            _httpClient.DefaultRequestHeaders.Add("Accept", "application/json, text/plain, */*");
             _httpClient.DefaultRequestHeaders.Add("Accept-Language", "en-US,en;q=0.9");
+            _httpClient.DefaultRequestHeaders.Add("Accept-Encoding", "gzip, deflate, br");
+            _httpClient.DefaultRequestHeaders.Add("Cache-Control", "no-cache");
+            _httpClient.DefaultRequestHeaders.Add("Pragma", "no-cache");
+            _httpClient.DefaultRequestHeaders.Add("Sec-Fetch-Dest", "empty");
+            _httpClient.DefaultRequestHeaders.Add("Sec-Fetch-Mode", "cors");
+            _httpClient.DefaultRequestHeaders.Add("Sec-Fetch-Site", "same-origin");
+            _httpClient.DefaultRequestHeaders.Add("DNT", "1");
+            _httpClient.Timeout = TimeSpan.FromSeconds(30);
         }
 
         // Image Generation - Ship
@@ -31,7 +45,10 @@ namespace MusicBot2.Service
                 var url = $"https://nekobot.xyz/api/imagegen?type=ship&user1={Uri.EscapeDataString(user1Url)}&user2={Uri.EscapeDataString(user2Url)}";
                 Console.WriteLine($"[NekoBot Ship] Request URL: {url}");
 
-                var response = await _httpClient.GetAsync(url);
+                using var request = new HttpRequestMessage(HttpMethod.Get, url);
+                request.Headers.Add("Referer", "https://nekobot.xyz/");
+
+                var response = await _httpClient.SendAsync(request);
                 Console.WriteLine($"[NekoBot Ship] Status Code: {response.StatusCode}");
 
                 var responseContent = await response.Content.ReadAsStringAsync();
@@ -69,7 +86,10 @@ namespace MusicBot2.Service
                 var url = $"https://nekobot.xyz/api/imagegen?type=whowouldwin&user1={Uri.EscapeDataString(user1Url)}&user2={Uri.EscapeDataString(user2Url)}";
                 Console.WriteLine($"[NekoBot WhoWouldWin] Request URL: {url}");
 
-                var response = await _httpClient.GetAsync(url);
+                using var request = new HttpRequestMessage(HttpMethod.Get, url);
+                request.Headers.Add("Referer", "https://nekobot.xyz/");
+
+                var response = await _httpClient.SendAsync(request);
                 Console.WriteLine($"[NekoBot WhoWouldWin] Status Code: {response.StatusCode}");
 
                 var responseContent = await response.Content.ReadAsStringAsync();
@@ -108,7 +128,10 @@ namespace MusicBot2.Service
                 Console.WriteLine($"[NekoBot Image] Request URL: {url}");
                 Console.WriteLine($"[NekoBot Image] Type: {type}");
 
-                var response = await _httpClient.GetAsync(url);
+                using var request = new HttpRequestMessage(HttpMethod.Get, url);
+                request.Headers.Add("Referer", "https://nekobot.xyz/");
+
+                var response = await _httpClient.SendAsync(request);
                 Console.WriteLine($"[NekoBot Image] Status Code: {response.StatusCode}");
 
                 var responseContent = await response.Content.ReadAsStringAsync();

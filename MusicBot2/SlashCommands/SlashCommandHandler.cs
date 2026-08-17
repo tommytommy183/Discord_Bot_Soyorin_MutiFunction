@@ -41,6 +41,8 @@ namespace MusicBot2.SlahCommands
         private readonly LyricsDisplayService _lyricsDisplayService;
         private readonly UselessApiService _uselessApiService;
         private readonly NekoBotService _nekoBotService;
+        private readonly WaifuImService _waifuImService;
+        private readonly WaifuPicsService _waifuPicsService;
         private readonly AIImageService _aiImageService;
         private readonly GroqWhisperService _groqWhisperService;
         private readonly FishAudioService _fishAudioService;
@@ -48,7 +50,7 @@ namespace MusicBot2.SlahCommands
         private readonly FgoGuessService _fgoGuessService;
         private readonly HolyGrailTowerService _holyGrailTowerService;
 
-        public SlashCommandHandler(Program program, WordGuessingService wordService, MineGameService mineGameService, ElevenLabsService elevenLabsService, OldMaidService oldMaidService, RubiksCubeService rubiksCubeService, GoogleAIStudioService googleAIStudioService, OpenRouterService openRouterService, RVC_Service rVC_Service, SetTextService setTextService, Game2048Service game2048Service, Game1A2BService game1A2BService, Pick2Service pick2Service, JikanAnimeService animeService, PokeService pokeService, PokeGameService pokeGameService, ValorantService valorantService, TRPGService trpgService, LyrisService lyrisService, LyricsDisplayService lyricsDisplayService, UselessApiService uselessApiService, NekoBotService nekoBotService, AIImageService aiImageService, GroqWhisperService groqWhisperService, FishAudioService fishAudioService, PokeTowerService pokeTowerService, FgoGuessService fgoGuessService, HolyGrailTowerService holyGrailTowerService)
+        public SlashCommandHandler(Program program, WordGuessingService wordService, MineGameService mineGameService, ElevenLabsService elevenLabsService, OldMaidService oldMaidService, RubiksCubeService rubiksCubeService, GoogleAIStudioService googleAIStudioService, OpenRouterService openRouterService, RVC_Service rVC_Service, SetTextService setTextService, Game2048Service game2048Service, Game1A2BService game1A2BService, Pick2Service pick2Service, JikanAnimeService animeService, PokeService pokeService, PokeGameService pokeGameService, ValorantService valorantService, TRPGService trpgService, LyrisService lyrisService, LyricsDisplayService lyricsDisplayService, UselessApiService uselessApiService, NekoBotService nekoBotService, WaifuImService waifuImService, WaifuPicsService waifuPicsService, AIImageService aiImageService, GroqWhisperService groqWhisperService, FishAudioService fishAudioService, PokeTowerService pokeTowerService, FgoGuessService fgoGuessService, HolyGrailTowerService holyGrailTowerService)
         {
             _program = program;
             _wordService = wordService;
@@ -72,6 +74,8 @@ namespace MusicBot2.SlahCommands
             _lyricsDisplayService = lyricsDisplayService;
             _uselessApiService = uselessApiService;
             _nekoBotService = nekoBotService;
+            _waifuImService = waifuImService;
+            _waifuPicsService = waifuPicsService;
             _aiImageService = aiImageService;
             _groqWhisperService = groqWhisperService;
             _fishAudioService = fishAudioService;
@@ -1354,6 +1358,139 @@ namespace MusicBot2.SlahCommands
         {
             await DeferAsync();
             var embed = await _nekoBotService.GetImageAsync(type);
+            await FollowupAsync(embed: embed);
+        }
+        #endregion
+
+        #region Waifu.im 功能
+        [SlashCommand("waifu", "取得隨機 Waifu 圖片")]
+        public async Task WaifuImageAsync(
+            [Summary("標籤", "圖片標籤（可選）")]
+            [Choice("Waifu", "waifu")]
+            [Choice("Maid", "maid")]
+            [Choice("Marin Kitagawa", "marin-kitagawa")]
+            [Choice("Mori Calliope", "mori-calliope")]
+            [Choice("Raiden Shogun", "raiden-shogun")]
+            [Choice("Oppai", "oppai")]
+            [Choice("Selfies", "selfies")]
+            [Choice("Uniform", "uniform")]
+            string tag = "waifu")
+        {
+            await DeferAsync();
+            var embed = await _waifuImService.GetImageByTagAsync(tag, isNsfw: false);
+            await FollowupAsync(embed: embed);
+        }
+
+        [SlashCommand("waifu-nsfw", "取得隨機 NSFW Waifu 圖片 (18+)")]
+        [RequireNsfw]
+        public async Task WaifuNsfwImageAsync(
+            [Summary("標籤", "NSFW 圖片標籤")]
+            [Choice("Ero", "ero")]
+            [Choice("Hentai", "hentai")]
+            [Choice("Ass", "ass")]
+            [Choice("Ecchi", "ecchi")]
+            [Choice("Oral", "oral")]
+            [Choice("Paizuri", "paizuri")]
+            [Choice("Milf", "milf")]
+            string tag = "ero")
+        {
+            await DeferAsync();
+            var embed = await _waifuImService.GetImageByTagAsync(tag, isNsfw: true);
+            await FollowupAsync(embed: embed);
+        }
+
+        [SlashCommand("waifu-角色", "取得特定角色的 Waifu 圖片")]
+        public async Task WaifuCharacterAsync(
+            [Summary("角色", "選擇角色")]
+            [Choice("Maid (女僕)", "maid")]
+            [Choice("Uniform (制服)", "uniform")]
+            [Choice("Marin Kitagawa", "marin-kitagawa")]
+            [Choice("Mori Calliope", "mori-calliope")]
+            [Choice("Raiden Shogun (雷電將軍)", "raiden-shogun")]
+            [Choice("Oppai", "oppai")]
+            [Choice("Selfies", "selfies")]
+            string character = "maid")
+        {
+            await DeferAsync();
+            var embed = await _waifuImService.GetImageByTagAsync(character, isNsfw: false);
+            await FollowupAsync(embed: embed);
+        }
+        #endregion
+
+        #region Waifu.pics 功能
+        [SlashCommand("anime", "取得隨機動漫圖片")]
+        public async Task AnimePicsAsync(
+            [Summary("類型", "圖片類型")]
+            [Choice("Waifu (老婆)", "waifu")]
+            [Choice("Neko (貓娘)", "neko")]
+            [Choice("Shinobu", "shinobu")]
+            [Choice("Megumin (惠惠)", "megumin")]
+            string category = "waifu")
+        {
+            await DeferAsync();
+            var embed = await _waifuPicsService.GetSfwImageAsync(category);
+            await FollowupAsync(embed: embed);
+        }
+
+        [SlashCommand("anime-互動", "取得動漫互動圖片")]
+        public async Task AnimeActionAsync(
+            [Summary("動作", "互動動作")]
+            [Choice("Hug (抱抱)", "hug")]
+            [Choice("Kiss (親親)", "kiss")]
+            [Choice("Pat (摸頭)", "pat")]
+            [Choice("Cuddle (擁抱)", "cuddle")]
+            [Choice("Slap (巴掌)", "slap")]
+            [Choice("Bonk (敲頭)", "bonk")]
+            [Choice("Kick (踢)", "kick")]
+            [Choice("Bite (咬)", "bite")]
+            [Choice("Lick (舔)", "lick")]
+            [Choice("Poke (戳)", "poke")]
+            [Choice("Bully (霸凌)", "bully")]
+            [Choice("Yeet (丟飛)", "yeet")]
+            [Choice("Glomp (撲抱)", "glomp")]
+            [Choice("Kill (殺)", "kill")]
+            [Choice("Handhold (牽手)", "handhold")]
+            [Choice("Highfive (擊掌)", "highfive")]
+            string action = "hug")
+        {
+            await DeferAsync();
+            var embed = await _waifuPicsService.GetSfwImageAsync(action);
+            await FollowupAsync(embed: embed);
+        }
+
+        [SlashCommand("anime-表情", "取得動漫表情圖片")]
+        public async Task AnimeEmoteAsync(
+            [Summary("表情", "表情類型")]
+            [Choice("Smile (微笑)", "smile")]
+            [Choice("Blush (臉紅)", "blush")]
+            [Choice("Happy (開心)", "happy")]
+            [Choice("Cry (哭泣)", "cry")]
+            [Choice("Smug (得意)", "smug")]
+            [Choice("Wink (眨眼)", "wink")]
+            [Choice("Wave (揮手)", "wave")]
+            [Choice("Cringe (尷尬)", "cringe")]
+            [Choice("Dance (跳舞)", "dance")]
+            [Choice("Nom (吃東西)", "nom")]
+            [Choice("Awoo (狼嚎)", "awoo")]
+            string emote = "smile")
+        {
+            await DeferAsync();
+            var embed = await _waifuPicsService.GetSfwImageAsync(emote);
+            await FollowupAsync(embed: embed);
+        }
+
+        [SlashCommand("anime-nsfw", "取得隨機 NSFW 動漫圖片 (18+)")]
+        [RequireNsfw]
+        public async Task AnimeNsfwAsync(
+            [Summary("類型", "NSFW 類型")]
+            [Choice("Waifu", "waifu")]
+            [Choice("Neko", "neko")]
+            [Choice("Trap", "trap")]
+            [Choice("Blowjob", "blowjob")]
+            string category = "waifu")
+        {
+            await DeferAsync();
+            var embed = await _waifuPicsService.GetNsfwImageAsync(category);
             await FollowupAsync(embed: embed);
         }
         #endregion
