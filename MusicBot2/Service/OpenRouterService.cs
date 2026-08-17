@@ -245,6 +245,7 @@ namespace MusicBot2.Service
     - 想玩寶可夢/抓精靈/抓寶可夢 → [LAUNCH:抓寶可夢]
     - 想查歌詞/找歌詞（必須知道歌名）→ [LAUNCH:歌詞:歌名] 或 [LAUNCH:歌詞:歌名|歌手名]（有提到歌手就用 | 附上）
     - 想產生/畫一張圖片 → [LAUNCH:產生圖片:圖片描述]（用英文描述效果最好，把「圖片描述」替換成實際描述）
+    - 想進行寶可夢對戰 → [LAUNCH:寶可夢對戰:寶可夢]（把「寶可夢」替換成使用者想派的寶可夢名稱）
     只有使用者明確表達想玩才加，日常聊天不要亂加。
 
 【輸入格式說明】
@@ -1215,20 +1216,18 @@ namespace MusicBot2.Service
 
             try
             {
-                // 下載圖片 → base64
-                var imageBytes = await _googleHttpClient.GetByteArrayAsync(imageUrl);
+                var imageResponse = await _googleHttpClient.GetAsync(imageUrl);
+                imageResponse.EnsureSuccessStatusCode();
+
+                var imageBytes = await imageResponse.Content.ReadAsByteArrayAsync();
                 var base64 = Convert.ToBase64String(imageBytes);
 
-                // 判斷 MIME type（簡單依副檔名）
-                var ext = Path.GetExtension(new Uri(imageUrl).LocalPath).ToLower().TrimStart('.');
-                string mimeType = ext switch
-                {
-                    "jpg" or "jpeg" => "image/jpeg",
-                    "png"           => "image/png",
-                    "gif"           => "image/gif",
-                    "webp"          => "image/webp",
-                    _               => "image/jpeg"
-                };
+                // 直接使用圖片伺服器回傳的 Content-Type
+                var mimeType = imageResponse.Content.Headers.ContentType?.MediaType
+                               ?? "image/jpeg";
+
+                Console.WriteLine(
+                    $"[GoogleAI Vision] Image MIME: {mimeType}, Size: {imageBytes.Length} bytes");
 
                 // 純描述，不帶任何角色或問題語境，避免模型開始扮演角色
                 string prompt =
@@ -1273,38 +1272,149 @@ namespace MusicBot2.Service
                 var json = JsonSerializer.Serialize(requestBody,
                     new JsonSerializerOptions { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull });
 
-                // 用第一個可用 key
-                var key = GetAvailableGoogleKeys().FirstOrDefault() ?? _googleApiKeys[0];
-                // 用最快的 flash 模型（2.5 版）
-                var visionModel = "gemini-2.5-flash";
-                var url = $"https://generativelanguage.googleapis.com/v1beta/models/{visionModel}:generateContent?key={key}";
+                // ============================================================
+                // Google Vision：多 Key + 多 Model Fallback
+                // ============================================================
 
-                var resp = await _googleHttpClient.PostAsync(url,
-                    new StringContent(json, Encoding.UTF8, "application/json"));
-                var resultJson = await resp.Content.ReadAsStringAsync();
-
-                if (!resp.IsSuccessStatusCode)
+                var models = new[]
                 {
-                    if ((int)resp.StatusCode == 429) CooldownGoogleKey(key, 60);
-                    Console.WriteLine($"[GoogleAI Vision] 失敗 {resp.StatusCode}: {resultJson[..Math.Min(200, resultJson.Length)]}");
-                    return null;
+                    "gemini-2.5-flash",
+                    "gemini-2.5-flash-lite"
+                };
+
+                // 取得目前沒有冷卻的 Key
+                var availableKeys = GetAvailableGoogleKeys().ToList();
+
+                // 如果全部都在冷卻，還是拿全部 Key 再試一次
+                // 避免因為冷卻判斷導致完全無法使用
+                if (availableKeys.Count == 0)
+                {
+                    availableKeys = _googleApiKeys.ToList();
                 }
 
-                using var doc = JsonDocument.Parse(resultJson);
-                var text = doc.RootElement
-                    .GetProperty("candidates")[0]
-                    .GetProperty("content")
-                    .GetProperty("parts")[0]
-                    .GetProperty("text")
-                    .GetString();
+                foreach (var visionModel in models)
+                {
+                    Console.WriteLine($"[GoogleAI Vision] 開始嘗試 Model: {visionModel}");
 
-                var trimmed = text?.Trim();
-                Console.WriteLine($"[GoogleAI Vision] 圖片描述（{trimmed?.Length} 字）：");
-                // 分段印，避免 Railway log 截斷長行
-                if (trimmed != null)
-                    for (int i = 0; i < trimmed.Length; i += 200)
-                        Console.WriteLine(trimmed.Substring(i, Math.Min(200, trimmed.Length - i)));
-                return trimmed;
+                    foreach (var key in availableKeys)
+                    {
+                        try
+                        {
+                            var url =
+                                $"https://generativelanguage.googleapis.com/v1beta/models/{visionModel}:generateContent?key={key}";
+
+                            Console.WriteLine(
+                                $"[GoogleAI Vision] 嘗試 {visionModel} / Key ...{key[^6..]}");
+
+                            var resp = await _googleHttpClient.PostAsync(
+                                url,
+                                new StringContent(
+                                    json,
+                                    Encoding.UTF8,
+                                    "application/json"));
+
+                            var resultJson = await resp.Content.ReadAsStringAsync();
+
+                            // ====================================================
+                            // API 成功
+                            // ====================================================
+                            if (resp.IsSuccessStatusCode)
+                            {
+                                using var doc = JsonDocument.Parse(resultJson);
+
+                                var candidate = doc.RootElement
+                                    .GetProperty("candidates")[0];
+
+                                // 檢查模型為什麼結束
+                                var finishReason =
+                                    candidate.TryGetProperty("finishReason", out var finishElement)
+                                        ? finishElement.GetString()
+                                        : null;
+
+                                Console.WriteLine(
+                                    $"[GoogleAI Vision] {visionModel} FinishReason: {finishReason}");
+
+                                var text = candidate
+                                    .GetProperty("content")
+                                    .GetProperty("parts")[0]
+                                    .GetProperty("text")
+                                    .GetString();
+
+                                var trimmed = text?.Trim();
+
+                                if (!string.IsNullOrWhiteSpace(trimmed))
+                                {
+                                    // 如果是 MAX_TOKENS，代表真的撞到輸出上限
+                                    if (finishReason == "MAX_TOKENS")
+                                    {
+                                        Console.WriteLine(
+                                            $"[GoogleAI Vision] ⚠️ {visionModel} 輸出達到 Token 上限");
+                                    }
+
+                                    Console.WriteLine(
+                                        $"[GoogleAI Vision] ✅ 成功 " +
+                                        $"Model={visionModel}，圖片描述 {trimmed.Length} 字");
+
+                                    // 分段印，避免 Railway log 截斷長行
+                                    for (int i = 0; i < trimmed.Length; i += 200)
+                                    {
+                                        Console.WriteLine(
+                                            trimmed.Substring(
+                                                i,
+                                                Math.Min(200, trimmed.Length - i)));
+                                    }
+
+                                    return trimmed;
+                                }
+
+                                Console.WriteLine(
+                                    $"[GoogleAI Vision] ⚠️ {visionModel} 回傳空內容，換下一個 Key");
+
+                                continue;
+                            }
+
+                            // ====================================================
+                            // API 失敗
+                            // ====================================================
+
+                            Console.WriteLine(
+                                $"[GoogleAI Vision] ❌ {visionModel} 失敗 " +
+                                $"{resp.StatusCode}: " +
+                                $"{resultJson[..Math.Min(300, resultJson.Length)]}");
+
+                            // 429 = 這把 Key 暫時冷卻
+                            if ((int)resp.StatusCode == 429)
+                            {
+                                CooldownGoogleKey(key, 60);
+
+                                Console.WriteLine(
+                                    $"[GoogleAI Vision] Key ...{key[^6..]} 冷卻 60 秒");
+                            }
+
+                            // 不 return
+                            // 繼續換下一把 Key
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine(
+                                $"[GoogleAI Vision] ❌ {visionModel} / Key ...{key[^6..]} " +
+                                $"例外: {ex.Message}");
+
+                            // 繼續下一把 Key
+                        }
+                    }
+
+                    Console.WriteLine(
+                        $"[GoogleAI Vision] {visionModel} 所有 Key 都失敗，切換下一個 Model");
+                }
+
+                // ============================================================
+                // 所有 Model + 所有 Key 都失敗
+                // ============================================================
+
+                Console.WriteLine("[GoogleAI Vision] ❌ 所有 Model + Key 都失敗");
+
+                return null;
             }
             catch (Exception ex)
             {

@@ -2318,7 +2318,7 @@ HP為0就是真的死亡，不會再有後續動作
         public Task<PokeGamePlayer> GetPlayerAsync(ulong userId, string userName)
             => GetPlayerDataAsync(userId, userName);
 
-        private async Task<PokeGamePlayer> GetPlayerDataAsync(ulong userId, string userName)
+        public async Task<PokeGamePlayer> GetPlayerDataAsync(ulong userId, string userName)
         {
             if (_useRedis)
             {

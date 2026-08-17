@@ -1141,6 +1141,23 @@ public class Program
                 return;
             }
 
+            if (feature.StartsWith("寶可夢對戰:"))
+            {
+                var param = feature.Substring("寶可夢對戰:".Length).Trim();
+                var svc = _services.GetRequiredService<PokeGameService>();
+                
+                var playerPokemonList = await svc.GetPlayerDataAsync(userId, talker?.DisplayName ?? talker?.Username ?? "訓練師");
+                int pokemonIndex = 0;
+                if(playerPokemonList.CaughtPokemon.Any(t => t.Name == param || t.CustomName == param))
+                {
+                    pokemonIndex = playerPokemonList.CaughtPokemon.FindIndex(t => t.Name == param || t.CustomName == param);
+                }
+
+                var (embed, comp) = await svc.StartBattleSearchAsync(userId, talker?.DisplayName ?? talker?.Username ?? "訓練師", pokemonIndex,channel);
+                await channel.SendMessageAsync(embed: embed, components: comp.Build());
+                return;
+            }
+
             switch (feature)
             {
                 case "1a2b":
