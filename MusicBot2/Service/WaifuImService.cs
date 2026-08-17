@@ -30,7 +30,7 @@ namespace MusicBot2.Service
         }
 
         // Get random image with optional filters
-        public async Task<Embed> GetRandomImageAsync(
+        public async Task<string> GetRandomImageAsync(
             string includedTags = null,
             string excludedTags = null,
             bool? isNsfw = null,
@@ -44,13 +44,13 @@ namespace MusicBot2.Service
                 var queryParams = new List<string>();
 
                 if (!string.IsNullOrEmpty(includedTags))
-                    queryParams.Add($"includedTags={Uri.EscapeDataString(includedTags)}");
+                    queryParams.Add($"included_tags={Uri.EscapeDataString(includedTags)}");
 
                 if (!string.IsNullOrEmpty(excludedTags))
-                    queryParams.Add($"excludedTags={Uri.EscapeDataString(excludedTags)}");
+                    queryParams.Add($"excluded_tags={Uri.EscapeDataString(excludedTags)}");
 
                 if (isNsfw.HasValue)
-                    queryParams.Add($"IsNsfw={isNsfw.Value.ToString().ToLower()}");
+                    queryParams.Add($"is_nsfw={isNsfw.Value.ToString().ToLower()}");
 
                 if (!string.IsNullOrEmpty(orientation))
                     queryParams.Add($"orientation={orientation}");
@@ -58,10 +58,9 @@ namespace MusicBot2.Service
                 if (!string.IsNullOrEmpty(orderBy))
                     queryParams.Add($"order_by={orderBy}");
 
+                queryParams.Add($"is_animated={isAnimated.ToString().ToLower()}");
 
-                queryParams.Add($"IsAnimated={isAnimated.ToString().ToLower()}");
-
-                var url = $"{BaseUrl}/images?" + string.Join("&", queryParams);
+                var url = $"{BaseUrl}/search?" + string.Join("&", queryParams);
                 Console.WriteLine($"[WaifuIm] Request URL: {url}");
 
                 var response = await _httpClient.GetAsync(url);
@@ -73,7 +72,7 @@ namespace MusicBot2.Service
                 if (!response.IsSuccessStatusCode)
                 {
                     Console.WriteLine($"[WaifuIm] Error Response: {responseContent}");
-                    return CreateErrorEmbed($"無法取得圖片 (HTTP {response.StatusCode})");
+                    return null;
                 }
 
                 var result = JsonConvert.DeserializeObject<WaifuImResponse>(responseContent);
@@ -85,45 +84,96 @@ namespace MusicBot2.Service
                     Console.WriteLine($"[WaifuIm] Image URL: {image.url}");
                     Console.WriteLine($"[WaifuIm] Is NSFW: {image.isNsfw}");
 
-                    var embedBuilder = new EmbedBuilder()
-                        .WithColor(ParseColor(image.dominantColor));
-
-                    // Add tags to title
-                    var tagNames = image.tags?.Select(t => t.name).ToList() ?? new List<string>();
-                    var title = tagNames.Count > 0 ? string.Join(", ", tagNames.Take(3)) : "Waifu Image";
-                    embedBuilder.WithTitle($"🖼️ {title}");
-
-                    embedBuilder.WithImageUrl(image.url);
-
-                    // Add footer with source
-                    if (!string.IsNullOrEmpty(image.source))
-                    {
-                        embedBuilder.WithFooter($"來源: {image.source}");
-                    }
-
-                    return embedBuilder.Build();
+                    return image.url;
                 }
 
-                return CreateErrorEmbed("沒有找到符合條件的圖片");
+                return null;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[WaifuIm] Exception: {ex}");
+                return null;
+            }
+        }
+
+        // Get image by specific tag
+        public async Task<string> GetImageByTagAsync(string tag, bool isNsfw = false, bool isAnimated = false)
+        {
+            return await GetRandomImageAsync(includedTags: tag, isNsfw: isNsfw, isAnimated: isAnimated);
+        }
+
+        // Get multiple tags
+        public async Task<string> GetImageByMultipleTagsAsync(string[] tags, bool isNsfw = false, bool isAnimated = false)
+        {
+            var tagsString = string.Join(",", tags);
+            return await GetRandomImageAsync(includedTags: tagsString, isNsfw: isNsfw, isAnimated: isAnimated);
+        }
+
+        // Get all available tags
+        public async Task<Embed> GetAllTagsAsync()
+        {
+            try
+            {
+                var url = $"{BaseUrl}/tags";
+                Console.WriteLine($"[WaifuIm] Getting tags from: {url}");
+
+                var response = await _httpClient.GetAsync(url);
+                Console.WriteLine($"[WaifuIm] Status Code: {response.StatusCode}");
+
+                var responseContent = await response.Content.ReadAsStringAsync();
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    Console.WriteLine($"[WaifuIm] Error Response: {responseContent}");
+                    return CreateErrorEmbed($"無法取得標籤列表 (HTTP {response.StatusCode})");
+                }
+
+                var result = JsonConvert.DeserializeObject<WaifuImTagsResponse>(responseContent);
+
+                if (result?.versatile == null)
+                {
+                    return CreateErrorEmbed("無法解析標籤資料");
+                }
+
+                var embedBuilder = new EmbedBuilder()
+                    .WithTitle("🏷️ Waifu.im 可用標籤")
+                    .WithColor(Color.Purple)
+                    .WithDescription("使用 `/waifu-自訂` 指令時可以輸入以下標籤名稱：");
+
+                // 分類顯示標籤
+                foreach (var category in result.versatile)
+                {
+                    var sfwTags = category.Value.Where(t => !t.is_nsfw).Select(t => t.name).ToList();
+                    var nsfwTags = category.Value.Where(t => t.is_nsfw).Select(t => t.name).ToList();
+
+                    if (sfwTags.Count > 0)
+                    {
+                        var tagList = string.Join(", ", sfwTags.Take(20));
+                        if (sfwTags.Count > 20)
+                            tagList += $" ... (+{sfwTags.Count - 20} more)";
+
+                        embedBuilder.AddField($"✅ {category.Key} (SFW)", tagList, false);
+                    }
+
+                    if (nsfwTags.Count > 0)
+                    {
+                        var tagList = string.Join(", ", nsfwTags.Take(20));
+                        if (nsfwTags.Count > 20)
+                            tagList += $" ... (+{nsfwTags.Count - 20} more)";
+
+                        embedBuilder.AddField($"🔞 {category.Key} (NSFW)", tagList, false);
+                    }
+                }
+
+                embedBuilder.WithFooter($"共 {result.versatile.Values.SelectMany(v => v).Count()} 個標籤");
+
+                return embedBuilder.Build();
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"[WaifuIm] Exception: {ex}");
                 return CreateErrorEmbed($"發生錯誤: {ex.Message}");
             }
-        }
-
-        // Get image by specific tag
-        public async Task<Embed> GetImageByTagAsync(string tag, bool isNsfw = false, bool isAnimated = false)
-        {
-            return await GetRandomImageAsync(includedTags: tag, isNsfw: isNsfw, isAnimated: isAnimated);
-        }
-
-        // Get multiple tags
-        public async Task<Embed> GetImageByMultipleTagsAsync(string[] tags, bool isNsfw = false, bool isAnimated = false)
-        {
-            var tagsString = string.Join(",", tags);
-            return await GetRandomImageAsync(includedTags: tagsString, isNsfw: isNsfw, isAnimated: isAnimated);
         }
 
         private Color ParseColor(string hexColor)

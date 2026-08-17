@@ -1364,7 +1364,42 @@ namespace MusicBot2.SlahCommands
         #endregion
 
         #region Waifu.im 功能
-        [SlashCommand("waifu", "取得隨機 Waifu 圖片")]
+        [SlashCommand("waifu-標籤列表", "顯示所有可用的 Waifu.im 標籤")]
+        public async Task WaifuTagsAsync()
+        {
+            await DeferAsync();
+            var embed = await _waifuImService.GetAllTagsAsync();
+            await FollowupAsync(embed: embed);
+        }
+
+        [SlashCommand("waifu-自訂", "使用自訂標籤取得 Waifu 圖片")]
+        public async Task WaifuCustomAsync(
+            [Summary("標籤", "標籤名稱（可用逗號分隔多個標籤，例如：waifu,maid）")] string tags,
+            [Summary("動畫", "是否只要 GIF 動畫")] bool isAnimated = false)
+        {
+            await DeferAsync();
+            var imageUrl = await _waifuImService.GetImageByTagAsync(tags, isNsfw: false, isAnimated);
+            if (string.IsNullOrEmpty(imageUrl))
+                await FollowupAsync("❌ 無法取得圖片，請確認標籤名稱是否正確（使用 `/waifu-標籤列表` 查看可用標籤）");
+            else
+                await FollowupAsync(imageUrl);
+        }
+
+        [SlashCommand("waifu-自訂-nsfw", "使用自訂標籤取得 NSFW Waifu 圖片 (18+)")]
+        [RequireNsfw]
+        public async Task WaifuCustomNsfwAsync(
+            [Summary("標籤", "NSFW 標籤名稱（可用逗號分隔多個標籤）")] string tags,
+            [Summary("動畫", "是否只要 GIF 動畫")] bool isAnimated = false)
+        {
+            await DeferAsync();
+            var imageUrl = await _waifuImService.GetImageByTagAsync(tags, isNsfw: true, isAnimated);
+            if (string.IsNullOrEmpty(imageUrl))
+                await FollowupAsync("❌ 無法取得圖片，請確認標籤名稱是否正確（使用 `/waifu-標籤列表` 查看可用標籤）");
+            else
+                await FollowupAsync(imageUrl);
+        }
+
+        [SlashCommand("waifu", "取得隨機 Waifu 圖片（快速選項）")]
         public async Task WaifuImageAsync(
             [Summary("標籤", "圖片標籤（可選）")]
             [Choice("Waifu", "waifu")]
@@ -1379,8 +1414,11 @@ namespace MusicBot2.SlahCommands
             bool isAnimated = false)
         {
             await DeferAsync();
-            var embed = await _waifuImService.GetImageByTagAsync(tag, isNsfw: false, isAnimated);
-            await FollowupAsync(embed: embed);
+            var imageUrl = await _waifuImService.GetImageByTagAsync(tag, isNsfw: false, isAnimated);
+            if (string.IsNullOrEmpty(imageUrl))
+                await FollowupAsync("❌ 無法取得圖片，請稍後再試");
+            else
+                await FollowupAsync(imageUrl);
         }
 
         [SlashCommand("waifu-nsfw", "取得隨機 NSFW Waifu 圖片 (18+)")]
@@ -1398,26 +1436,11 @@ namespace MusicBot2.SlahCommands
             bool isAnimated = false)
         {
             await DeferAsync();
-            var embed = await _waifuImService.GetImageByTagAsync(tag, isNsfw: true, isAnimated);
-            await FollowupAsync(embed: embed);
-        }
-
-        [SlashCommand("waifu-角色", "取得特定角色的 Waifu 圖片")]
-        public async Task WaifuCharacterAsync(
-            [Summary("角色", "選擇角色")]
-            [Choice("Maid (女僕)", "maid")]
-            [Choice("Uniform (制服)", "uniform")]
-            [Choice("Marin Kitagawa", "marin-kitagawa")]
-            [Choice("Mori Calliope", "mori-calliope")]
-            [Choice("Raiden Shogun (雷電將軍)", "raiden-shogun")]
-            [Choice("Oppai", "oppai")]
-            [Choice("Selfies", "selfies")]
-            string character = "maid",
-            bool isAnimated = false)
-        {
-            await DeferAsync();
-            var embed = await _waifuImService.GetImageByTagAsync(character, isNsfw: false, isAnimated);
-            await FollowupAsync(embed: embed);
+            var imageUrl = await _waifuImService.GetImageByTagAsync(tag, isNsfw: true, isAnimated);
+            if (string.IsNullOrEmpty(imageUrl))
+                await FollowupAsync("❌ 無法取得圖片，請稍後再試");
+            else
+                await FollowupAsync(imageUrl);
         }
         #endregion
 
