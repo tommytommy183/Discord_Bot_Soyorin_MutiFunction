@@ -26,13 +26,19 @@ namespace MusicBot2.Service
             try
             {
                 var url = $"https://nekobot.xyz/api/imagegen?type=ship&user1={Uri.EscapeDataString(user1Url)}&user2={Uri.EscapeDataString(user2Url)}";
-                var response = await _httpClient.GetAsync(url);
+                Console.WriteLine($"[NekoBot Ship] Request URL: {url}");
 
-                if (!response.IsSuccessStatusCode)
-                    return CreateErrorEmbed("無法取得 Ship 圖片");
+                var response = await _httpClient.GetAsync(url);
+                Console.WriteLine($"[NekoBot Ship] Status Code: {response.StatusCode}");
 
                 var responseContent = await response.Content.ReadAsStringAsync();
+                Console.WriteLine($"[NekoBot Ship] Response: {responseContent}");
+
+                if (!response.IsSuccessStatusCode)
+                    return CreateErrorEmbed($"無法取得 Ship 圖片 (HTTP {response.StatusCode})\nResponse: {responseContent}");
+
                 var result = JsonConvert.DeserializeObject<NekoBotImageGenResponse>(responseContent);
+                Console.WriteLine($"[NekoBot Ship] Deserialized - Success: {result?.success}, Message: {result?.message}");
 
                 if (result?.success == true && !string.IsNullOrWhiteSpace(result.message))
                 {
@@ -43,11 +49,12 @@ namespace MusicBot2.Service
                         .Build();
                 }
 
-                return CreateErrorEmbed("無法取得 Ship 圖片");
+                return CreateErrorEmbed($"無法取得 Ship 圖片\nAPI Response: {responseContent}");
             }
             catch (Exception ex)
             {
-                return CreateErrorEmbed($"發生錯誤: {ex.Message}");
+                Console.WriteLine($"[NekoBot Ship] Exception: {ex}");
+                return CreateErrorEmbed($"發生錯誤: {ex.Message}\n{ex.StackTrace}");
             }
         }
         
@@ -57,13 +64,19 @@ namespace MusicBot2.Service
             try
             {
                 var url = $"https://nekobot.xyz/api/imagegen?type=whowouldwin&user1={Uri.EscapeDataString(user1Url)}&user2={Uri.EscapeDataString(user2Url)}";
-                var response = await _httpClient.GetAsync(url);
+                Console.WriteLine($"[NekoBot WhoWouldWin] Request URL: {url}");
 
-                if (!response.IsSuccessStatusCode)
-                    return CreateErrorEmbed("無法取得 Who Would Win 圖片");
+                var response = await _httpClient.GetAsync(url);
+                Console.WriteLine($"[NekoBot WhoWouldWin] Status Code: {response.StatusCode}");
 
                 var responseContent = await response.Content.ReadAsStringAsync();
+                Console.WriteLine($"[NekoBot WhoWouldWin] Response: {responseContent}");
+
+                if (!response.IsSuccessStatusCode)
+                    return CreateErrorEmbed($"無法取得 Who Would Win 圖片 (HTTP {response.StatusCode})\nResponse: {responseContent}");
+
                 var result = JsonConvert.DeserializeObject<NekoBotImageGenResponse>(responseContent);
+                Console.WriteLine($"[NekoBot WhoWouldWin] Deserialized - Success: {result?.success}, Message: {result?.message}");
 
                 if (result?.success == true && !string.IsNullOrWhiteSpace(result.message))
                 {
@@ -74,11 +87,12 @@ namespace MusicBot2.Service
                         .Build();
                 }
 
-                return CreateErrorEmbed("無法取得 Who Would Win 圖片");
+                return CreateErrorEmbed($"無法取得 Who Would Win 圖片\nAPI Response: {responseContent}");
             }
             catch (Exception ex)
             {
-                return CreateErrorEmbed($"發生錯誤: {ex.Message}");
+                Console.WriteLine($"[NekoBot WhoWouldWin] Exception: {ex}");
+                return CreateErrorEmbed($"發生錯誤: {ex.Message}\n{ex.StackTrace}");
             }
         }
 
@@ -88,13 +102,20 @@ namespace MusicBot2.Service
             try
             {
                 var url = $"https://nekobot.xyz/api/image?type={type}";
-                var response = await _httpClient.GetAsync(url);
+                Console.WriteLine($"[NekoBot Image] Request URL: {url}");
+                Console.WriteLine($"[NekoBot Image] Type: {type}");
 
-                if (!response.IsSuccessStatusCode)
-                    return CreateErrorEmbed($"無法取得 {type} 圖片");
+                var response = await _httpClient.GetAsync(url);
+                Console.WriteLine($"[NekoBot Image] Status Code: {response.StatusCode}");
 
                 var responseContent = await response.Content.ReadAsStringAsync();
+                Console.WriteLine($"[NekoBot Image] Response: {responseContent}");
+
+                if (!response.IsSuccessStatusCode)
+                    return CreateErrorEmbed($"無法取得 {type} 圖片 (HTTP {response.StatusCode})\nResponse: {responseContent}");
+
                 var result = JsonConvert.DeserializeObject<NekoBotImageResponse>(responseContent);
+                Console.WriteLine($"[NekoBot Image] Deserialized - Success: {result?.success}, Message: {result?.message}, Color: {result?.color}");
 
                 if (result?.success == true && !string.IsNullOrWhiteSpace(result.message))
                 {
@@ -117,11 +138,12 @@ namespace MusicBot2.Service
                     return embedBuilder.Build();
                 }
 
-                return CreateErrorEmbed($"無法取得 {type} 圖片");
+                return CreateErrorEmbed($"無法取得 {type} 圖片\nAPI Response: {responseContent}");
             }
             catch (Exception ex)
             {
-                return CreateErrorEmbed($"發生錯誤: {ex.Message}");
+                Console.WriteLine($"[NekoBot Image] Exception: {ex}");
+                return CreateErrorEmbed($"發生錯誤: {ex.Message}\n{ex.StackTrace}");
             }
         }
 
