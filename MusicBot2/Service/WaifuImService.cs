@@ -56,7 +56,7 @@ namespace MusicBot2.Service
                 if (!string.IsNullOrEmpty(orderBy))
                     queryParams.Add($"order_by={orderBy}");
 
-                var url = $"{BaseUrl}/search?" + string.Join("&", queryParams);
+                var url = $"{BaseUrl}/images?" + string.Join("&", queryParams);
                 Console.WriteLine($"[WaifuIm] Request URL: {url}");
 
                 var response = await _httpClient.GetAsync(url);
