@@ -17,6 +17,7 @@ using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Xml.Linq;
 using static System.Net.Mime.MediaTypeNames;
 
 namespace MusicBot2.Service
@@ -271,8 +272,9 @@ namespace MusicBot2.Service
 
         private static readonly string[] WikiTriggerKeywords =
         {
-            "查詢", "找尋", "尋找", "上網查", "上網搜", "搜尋", "查一下", "找一下",
-            "查查", "查看", "找找", "幫我查", "幫我找", "搜索", "幫查", "幫找"
+            "上網查", "上網搜", "幫我查", "幫我找", "幫查", "幫找",
+            "查一下", "找一下", "搜一下", "搜尋一下",
+            "查詢", "搜尋", "搜索", "找尋", "尋找"
         };
 
         public OpenRouterService(string apiKey, string redisConnectionString = null, string tavilyApiKey = null, string googleApiKey = null, string visionGoogleKeys = null)
@@ -880,29 +882,50 @@ namespace MusicBot2.Service
             if (string.IsNullOrWhiteSpace(userMessage)) return null;
 
             string matched = null;
+            int matchIndex = -1;
+
+            // 找到最早出現的觸發詞
             foreach (var kw in WikiTriggerKeywords)
             {
-                if (userMessage.Contains(kw, StringComparison.OrdinalIgnoreCase))
+                int idx = userMessage.IndexOf(kw, StringComparison.OrdinalIgnoreCase);
+                if (idx >= 0 && (matchIndex < 0 || idx < matchIndex))
                 {
                     matched = kw;
-                    break;
+                    matchIndex = idx;
                 }
             }
+
             if (matched == null) return null;
 
-            // 去掉觸發詞、去掉對爽世的稱呼、去掉常見填充詞，剩下的就是搜尋內容
-            var query = userMessage;
-            foreach (var kw in WikiTriggerKeywords)
-                query = query.Replace(kw, "", StringComparison.OrdinalIgnoreCase);
+            // 提取觸發詞「後面」的內容作為搜尋關鍵字
+            var afterTrigger = userMessage.Substring(matchIndex + matched.Length).Trim();
 
-            // 移除對 bot 的稱呼
+            // 移除常見的句尾助詞和標點
+            afterTrigger = Regex.Replace(afterTrigger, @"^(一下|看看|啦|吧|嗎|ㄟ|诶|欸|呢|哦|喔)\s*", "", RegexOptions.IgnoreCase);
+            afterTrigger = afterTrigger.Trim(' ', '，', ',', '、', '～', '~', '！', '!', '？', '?', '。', '.', '：', ':');
+
+            // 如果觸發詞後面跟著「然後」「接著」等連接詞，只取第一個子句
+            var connectorMatch = Regex.Match(afterTrigger, @"^([^，。,\.;；]+?)(然後|接著|並且|同時|還有|以及)", RegexOptions.IgnoreCase);
+            if (connectorMatch.Success)
+            {
+                afterTrigger = connectorMatch.Groups[1].Value.Trim();
+            }
+
+            // 移除對 bot 的稱呼（放在最後處理，避免誤刪關鍵字中的相同文字）
             foreach (var name in new[] { "爽世", "soyo", "Soyo", "soyorin" })
-                query = query.Replace(name, "", StringComparison.OrdinalIgnoreCase);
+                afterTrigger = afterTrigger.Replace(name, "", StringComparison.OrdinalIgnoreCase);
 
-            query = query.Trim(' ', '，', ',', '、', '～', '~', '！', '!', '？', '?', '。', '.');
+            afterTrigger = afterTrigger.Trim();
 
-            Console.WriteLine($"[OpenRouter] 關鍵字偵測搜尋，觸發詞: 「{matched}」→ 搜尋: 「{query}」");
-            return query.Length >= 2 ? query : userMessage.Trim();
+            // 如果提取出的關鍵字太短或為空，回傳 null（不觸發搜尋）
+            if (afterTrigger.Length < 2)
+            {
+                Console.WriteLine($"[OpenRouter] 觸發詞「{matched}」後無有效關鍵字，不搜尋");
+                return null;
+            }
+
+            Console.WriteLine($"[OpenRouter] 關鍵字偵測搜尋，觸發詞: 「{matched}」→ 搜尋: 「{afterTrigger}」");
+            return afterTrigger;
         }
 
         /// <summary>

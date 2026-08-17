@@ -8,7 +8,7 @@ namespace MusicBot2.Models
 {
     public class WaifuImResponse
     {
-        public List<WaifuImImage> images { get; set; }
+        public List<WaifuImImage> items { get; set; }
     }
 
     public class WaifuImImage

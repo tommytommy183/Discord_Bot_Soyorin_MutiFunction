@@ -72,11 +72,11 @@ namespace MusicBot2.Service
                 }
 
                 var result = JsonConvert.DeserializeObject<WaifuImResponse>(responseContent);
-                Console.WriteLine($"[WaifuIm] Images Count: {result?.images?.Count ?? 0}");
+                Console.WriteLine($"[WaifuIm] Images Count: {result?.items?.Count ?? 0}");
 
-                if (result?.images != null && result.images.Count > 0)
+                if (result?.items != null && result.items.Count > 0)
                 {
-                    var image = result.images[0];
+                    var image = result.items[0];
                     Console.WriteLine($"[WaifuIm] Image URL: {image.url}");
                     Console.WriteLine($"[WaifuIm] Is NSFW: {image.is_nsfw}");
                     Console.WriteLine($"[WaifuIm] Tags: {string.Join(", ", image.tags?.Select(t => t.name) ?? new List<string>())}");
