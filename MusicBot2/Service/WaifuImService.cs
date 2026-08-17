@@ -150,18 +150,13 @@ namespace MusicBot2.Service
                     .WithDescription("使用 `/waifu-自訂` 指令時可以輸入以下標籤名稱：");
 
                 // 分類顯示標籤
-                foreach (var category in result.items)
+                foreach (var item in result.items)
                 {
-                    var tags = category.Value.Select(t => t.name).ToList();
-
-                    if (tags.Count > 0)
-                    {
-                        var tagList = string.Join(", ", tags);
-                        embedBuilder.AddField($"✅ {category.Key}", tagList, false);
-                    }
+                    var tagList = string.Join(", ", item);
+                    embedBuilder.AddField($"✅ 標籤列表", tagList, false);
                 }
 
-                embedBuilder.WithFooter($"共 {result.items.Values.SelectMany(v => v).Count()} 個標籤");
+                embedBuilder.WithFooter($"共 {result.items.Count()} 個標籤");
 
                 return embedBuilder.Build();
             }
