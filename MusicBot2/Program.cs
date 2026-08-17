@@ -1150,7 +1150,7 @@ public class Program
                 int pokemonIndex = 0;
                 if(playerPokemonList.CaughtPokemon.Any(t => t.Name == param || t.CustomName == param))
                 {
-                    pokemonIndex = playerPokemonList.CaughtPokemon.FindIndex(t => t.Name == param || t.CustomName == param);
+                    pokemonIndex = playerPokemonList.CaughtPokemon.FindIndex(t => t.Name == param || t.CustomName == param) + 1;
                 }
 
                 var (embed, comp) = await svc.StartBattleSearchAsync(userId, talker?.DisplayName ?? talker?.Username ?? "訓練師", pokemonIndex,channel);
