@@ -44,13 +44,13 @@ namespace MusicBot2.Service
                 var queryParams = new List<string>();
 
                 if (!string.IsNullOrEmpty(includedTags))
-                    queryParams.Add($"included_tags={Uri.EscapeDataString(includedTags)}");
+                    queryParams.Add($"includedTags={Uri.EscapeDataString(includedTags)}");
 
                 if (!string.IsNullOrEmpty(excludedTags))
-                    queryParams.Add($"excluded_tags={Uri.EscapeDataString(excludedTags)}");
+                    queryParams.Add($"excludedTags={Uri.EscapeDataString(excludedTags)}");
 
                 if (isNsfw.HasValue)
-                    queryParams.Add($"is_nsfw={isNsfw.Value.ToString().ToLower()}");
+                    queryParams.Add($"IsNsfw={isNsfw.Value.ToString().ToLower()}");
 
                 if (!string.IsNullOrEmpty(orientation))
                     queryParams.Add($"orientation={orientation}");
