@@ -18,6 +18,9 @@ namespace MusicBot2.Service
         public NekoBotService()
         {
             _httpClient = new HttpClient();
+            _httpClient.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+            _httpClient.DefaultRequestHeaders.Add("Accept", "application/json");
+            _httpClient.DefaultRequestHeaders.Add("Accept-Language", "en-US,en;q=0.9");
         }
 
         // Image Generation - Ship
@@ -220,6 +223,12 @@ namespace MusicBot2.Service
 
         private Embed CreateErrorEmbed(string message)
         {
+            // Limit message to 4000 characters to avoid Discord's 4096 limit
+            if (message.Length > 4000)
+            {
+                message = message.Substring(0, 3997) + "...";
+            }
+
             return new EmbedBuilder()
                 .WithTitle("❌ 錯誤")
                 .WithDescription(message)
