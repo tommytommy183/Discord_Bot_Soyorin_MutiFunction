@@ -35,7 +35,9 @@ namespace MusicBot2.Service
             string excludedTags = null,
             bool? isNsfw = null,
             string orientation = null,
-            string orderBy = null)
+            string orderBy = null,
+            bool isAnimated = false
+            )
         {
             try
             {
@@ -55,6 +57,9 @@ namespace MusicBot2.Service
 
                 if (!string.IsNullOrEmpty(orderBy))
                     queryParams.Add($"order_by={orderBy}");
+
+
+                queryParams.Add($"IsAnimated={isAnimated.ToString().ToLower()}");
 
                 var url = $"{BaseUrl}/images?" + string.Join("&", queryParams);
                 Console.WriteLine($"[WaifuIm] Request URL: {url}");
@@ -117,16 +122,16 @@ namespace MusicBot2.Service
         }
 
         // Get image by specific tag
-        public async Task<Embed> GetImageByTagAsync(string tag, bool isNsfw = false)
+        public async Task<Embed> GetImageByTagAsync(string tag, bool isNsfw = false, bool isAnimated = false)
         {
-            return await GetRandomImageAsync(includedTags: tag, isNsfw: isNsfw);
+            return await GetRandomImageAsync(includedTags: tag, isNsfw: isNsfw, isAnimated: isAnimated);
         }
 
         // Get multiple tags
-        public async Task<Embed> GetImageByMultipleTagsAsync(string[] tags, bool isNsfw = false)
+        public async Task<Embed> GetImageByMultipleTagsAsync(string[] tags, bool isNsfw = false, bool isAnimated = false)
         {
             var tagsString = string.Join(",", tags);
-            return await GetRandomImageAsync(includedTags: tagsString, isNsfw: isNsfw);
+            return await GetRandomImageAsync(includedTags: tagsString, isNsfw: isNsfw, isAnimated: isAnimated);
         }
 
         private Color ParseColor(string hexColor)

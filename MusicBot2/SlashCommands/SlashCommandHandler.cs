@@ -14,6 +14,7 @@ using System.IO;
 using System.Net.Http;
 using System.Xml.Linq;
 using static System.Net.Mime.MediaTypeNames;
+using static System.Net.WebRequestMethods;
 
 namespace MusicBot2.SlahCommands
 {
@@ -1374,10 +1375,11 @@ namespace MusicBot2.SlahCommands
             [Choice("Oppai", "oppai")]
             [Choice("Selfies", "selfies")]
             [Choice("Uniform", "uniform")]
-            string tag = "waifu")
+            string tag = "waifu",
+            bool isAnimated = false)
         {
             await DeferAsync();
-            var embed = await _waifuImService.GetImageByTagAsync(tag, isNsfw: false);
+            var embed = await _waifuImService.GetImageByTagAsync(tag, isNsfw: false, isAnimated);
             await FollowupAsync(embed: embed);
         }
 
@@ -1392,10 +1394,11 @@ namespace MusicBot2.SlahCommands
             [Choice("Oral", "oral")]
             [Choice("Paizuri", "paizuri")]
             [Choice("Milf", "milf")]
-            string tag = "ero")
+            string tag = "ero",
+            bool isAnimated = false)
         {
             await DeferAsync();
-            var embed = await _waifuImService.GetImageByTagAsync(tag, isNsfw: true);
+            var embed = await _waifuImService.GetImageByTagAsync(tag, isNsfw: true, isAnimated);
             await FollowupAsync(embed: embed);
         }
 
@@ -1409,10 +1412,11 @@ namespace MusicBot2.SlahCommands
             [Choice("Raiden Shogun (雷電將軍)", "raiden-shogun")]
             [Choice("Oppai", "oppai")]
             [Choice("Selfies", "selfies")]
-            string character = "maid")
+            string character = "maid",
+            bool isAnimated = false)
         {
             await DeferAsync();
-            var embed = await _waifuImService.GetImageByTagAsync(character, isNsfw: false);
+            var embed = await _waifuImService.GetImageByTagAsync(character, isNsfw: false, isAnimated);
             await FollowupAsync(embed: embed);
         }
         #endregion
