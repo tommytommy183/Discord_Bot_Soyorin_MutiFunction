@@ -43,24 +43,33 @@ namespace MusicBot2.Service
             {
                 var queryParams = new List<string>();
 
-                if (!string.IsNullOrEmpty(includedTags))
-                    queryParams.Add($"included_tags={Uri.EscapeDataString(includedTags)}");
-
+                if (!string.IsNullOrWhiteSpace(includedTags))
+                {
+                    foreach (var tag in includedTags.Split(','))
+                    {
+                        if (!string.IsNullOrWhiteSpace(tag))
+                        {
+                            queryParams.Add(
+                                $"IncludedTags={Uri.EscapeDataString(tag.Trim())}"
+                            );
+                        }
+                    }
+                }
                 if (!string.IsNullOrEmpty(excludedTags))
-                    queryParams.Add($"excluded_tags={Uri.EscapeDataString(excludedTags)}");
+                    queryParams.Add($"excludedTags={Uri.EscapeDataString(excludedTags)}");
 
                 if (isNsfw.HasValue)
-                    queryParams.Add($"is_nsfw={isNsfw.Value.ToString().ToLower()}");
+                    queryParams.Add($"isNsfw={isNsfw.Value.ToString().ToLower()}");
 
                 if (!string.IsNullOrEmpty(orientation))
                     queryParams.Add($"orientation={orientation}");
 
                 if (!string.IsNullOrEmpty(orderBy))
-                    queryParams.Add($"order_by={orderBy}");
+                    queryParams.Add($"orderBy={orderBy}");
 
-                queryParams.Add($"is_animated={isAnimated.ToString().ToLower()}");
+                queryParams.Add($"isAnimated={isAnimated.ToString().ToLower()}");
 
-                var url = $"{BaseUrl}/search?" + string.Join("&", queryParams);
+                var url = $"{BaseUrl}/images?" + string.Join("&", queryParams);
                 Console.WriteLine($"[WaifuIm] Request URL: {url}");
 
                 var response = await _httpClient.GetAsync(url);
