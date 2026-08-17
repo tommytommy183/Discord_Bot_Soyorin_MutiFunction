@@ -93,15 +93,7 @@ namespace MusicBot2.Service
                     var title = tagNames.Count > 0 ? string.Join(", ", tagNames.Take(3)) : "Waifu Image";
                     embedBuilder.WithTitle($"🖼️ {title}");
 
-                    // Handle NSFW content
-                    if (image.isNsfw)
-                    {
-                        embedBuilder.WithDescription($"⚠️ **NSFW 內容**\\n點擊查看: ||{image.url}||");
-                    }
-                    else
-                    {
-                        embedBuilder.WithImageUrl(image.url);
-                    }
+                    embedBuilder.WithImageUrl(image.url);
 
                     // Add footer with source
                     if (!string.IsNullOrEmpty(image.source))
