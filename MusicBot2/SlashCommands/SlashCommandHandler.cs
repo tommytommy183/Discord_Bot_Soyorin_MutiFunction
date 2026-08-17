@@ -40,6 +40,7 @@ namespace MusicBot2.SlahCommands
         private readonly LyrisService _lyrisService;
         private readonly LyricsDisplayService _lyricsDisplayService;
         private readonly UselessApiService _uselessApiService;
+        private readonly NekoBotService _nekoBotService;
         private readonly AIImageService _aiImageService;
         private readonly GroqWhisperService _groqWhisperService;
         private readonly FishAudioService _fishAudioService;
@@ -47,7 +48,7 @@ namespace MusicBot2.SlahCommands
         private readonly FgoGuessService _fgoGuessService;
         private readonly HolyGrailTowerService _holyGrailTowerService;
 
-        public SlashCommandHandler(Program program, WordGuessingService wordService, MineGameService mineGameService, ElevenLabsService elevenLabsService, OldMaidService oldMaidService, RubiksCubeService rubiksCubeService, GoogleAIStudioService googleAIStudioService, OpenRouterService openRouterService, RVC_Service rVC_Service, SetTextService setTextService, Game2048Service game2048Service, Game1A2BService game1A2BService, Pick2Service pick2Service, JikanAnimeService animeService, PokeService pokeService, PokeGameService pokeGameService, ValorantService valorantService, TRPGService trpgService, LyrisService lyrisService, LyricsDisplayService lyricsDisplayService, UselessApiService uselessApiService, AIImageService aiImageService, GroqWhisperService groqWhisperService, FishAudioService fishAudioService, PokeTowerService pokeTowerService, FgoGuessService fgoGuessService, HolyGrailTowerService holyGrailTowerService)
+        public SlashCommandHandler(Program program, WordGuessingService wordService, MineGameService mineGameService, ElevenLabsService elevenLabsService, OldMaidService oldMaidService, RubiksCubeService rubiksCubeService, GoogleAIStudioService googleAIStudioService, OpenRouterService openRouterService, RVC_Service rVC_Service, SetTextService setTextService, Game2048Service game2048Service, Game1A2BService game1A2BService, Pick2Service pick2Service, JikanAnimeService animeService, PokeService pokeService, PokeGameService pokeGameService, ValorantService valorantService, TRPGService trpgService, LyrisService lyrisService, LyricsDisplayService lyricsDisplayService, UselessApiService uselessApiService, NekoBotService nekoBotService, AIImageService aiImageService, GroqWhisperService groqWhisperService, FishAudioService fishAudioService, PokeTowerService pokeTowerService, FgoGuessService fgoGuessService, HolyGrailTowerService holyGrailTowerService)
         {
             _program = program;
             _wordService = wordService;
@@ -70,6 +71,7 @@ namespace MusicBot2.SlahCommands
             _lyrisService = lyrisService;
             _lyricsDisplayService = lyricsDisplayService;
             _uselessApiService = uselessApiService;
+            _nekoBotService = nekoBotService;
             _aiImageService = aiImageService;
             _groqWhisperService = groqWhisperService;
             _fishAudioService = fishAudioService;
@@ -1267,6 +1269,92 @@ namespace MusicBot2.SlahCommands
             var user = Context.User as SocketGuildUser;
             string res = await _uselessApiService.GetRandomFoodApIAsync(user, type);
             await FollowupAsync(res);
+        }
+        #endregion
+
+        #region NekoBot 功能
+        [SlashCommand("nekobot-ship", "產生兩個使用者的 Ship 配對圖片")]
+        public async Task NekoBotShipAsync(
+            [Summary("使用者1", "第一個使用者")] IUser user1,
+            [Summary("使用者2", "第二個使用者")] IUser user2)
+        {
+            await DeferAsync();
+
+            string? user1Url = user1.GetAvatarUrl() ?? user1.GetDefaultAvatarUrl();
+            string? user2Url = user2.GetAvatarUrl() ?? user2.GetDefaultAvatarUrl();
+
+            var embed = await _nekoBotService.GetShipImageAsync(user1Url, user2Url);
+            await FollowupAsync(embed: embed);
+        }
+
+        [SlashCommand("nekobot-whowouldwin", "產生兩個使用者的對決圖片")]
+        public async Task NekoBotWhoWouldWinAsync(
+            [Summary("使用者1", "第一個使用者")] IUser user1,
+            [Summary("使用者2", "第二個使用者")] IUser user2)
+        {
+            await DeferAsync();
+
+            string? user1Url = user1.GetAvatarUrl() ?? user1.GetDefaultAvatarUrl();
+            string? user2Url = user2.GetAvatarUrl() ?? user2.GetDefaultAvatarUrl();
+
+            var embed = await _nekoBotService.GetWhoWouldWinImageAsync(
+                user1Url,
+                user2Url
+            );
+
+            await FollowupAsync(embed: embed);
+        }
+
+        [SlashCommand("nekobot-圖片", "取得 NekoBot 的各種圖片")]
+        public async Task NekoBotImageAsync(
+            [Summary("類型", "圖片類型")]
+            [Choice("Neko (貓娘)", "neko")]
+            [Choice("Kitsune (狐娘)", "kitsune")]
+            [Choice("Waifu (老婆)", "waifu")]
+            [Choice("Husbando (老公)", "husbando")]
+            [Choice("遊戲角色", "gecg")]
+            [Choice("頭像", "avatar")]
+            [Choice("桌布", "wallpaper")]
+            [Choice("狐娘 2", "foxgirl")]
+            [Choice("蜥蜴", "lizard")]
+            [Choice("鵝", "goose")]
+            [Choice("咖啡", "coffee")]
+            [Choice("食物", "food")]
+            string type)
+        {
+            await DeferAsync();
+            var embed = await _nekoBotService.GetImageAsync(type);
+            await FollowupAsync(embed: embed);
+        }
+
+        [SlashCommand("nekobot-nsfw", "取得 NekoBot 的 NSFW 圖片 (18+)")]
+        [RequireNsfw]
+        public async Task NekoBotNsfwImageAsync(
+            [Summary("類型", "NSFW 圖片類型")]
+            [Choice("NSFW - Ass", "hass")]
+            [Choice("NSFW - Midriff", "hmidriff")]
+            [Choice("NSFW - GIF", "pgif")]
+            [Choice("NSFW - 4K", "4k")]
+            [Choice("NSFW - Hentai", "hentai")]
+            [Choice("NSFW - Holo", "holo")]
+            [Choice("NSFW - Kitsune", "hkitsune")]
+            [Choice("NSFW - Kemonomimi", "kemonomimi")]
+            [Choice("NSFW - Anal", "hanal")]
+            [Choice("NSFW - Gonewild", "gonewild")]
+            [Choice("NSFW - Kanna", "kanna")]
+            [Choice("NSFW - Ass 2", "ass")]
+            [Choice("NSFW - Pussy", "pussy")]
+            [Choice("NSFW - Thigh", "thigh")]
+            [Choice("NSFW - Thigh 2", "hthigh")]
+            [Choice("NSFW - Paizuri", "paizuri")]
+            [Choice("NSFW - Tentacle", "tentacle")]
+            [Choice("NSFW - Boobs", "boobs")]
+            [Choice("NSFW - Boobs 2", "hboobs")]
+            string type)
+        {
+            await DeferAsync();
+            var embed = await _nekoBotService.GetImageAsync(type);
+            await FollowupAsync(embed: embed);
         }
         #endregion
 

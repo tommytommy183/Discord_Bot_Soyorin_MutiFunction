@@ -118,6 +118,7 @@ public class Program
             .AddSingleton<AIImageService>()
             .AddSingleton<FgoGuessService>()
             .AddSingleton<UselessApiService>()
+            .AddSingleton<NekoBotService>()
             .AddSingleton<RVC_Service>()
             .AddSingleton<SetTextService>(setTextService)
             .AddSingleton<ElevenLabsService>(sp =>
