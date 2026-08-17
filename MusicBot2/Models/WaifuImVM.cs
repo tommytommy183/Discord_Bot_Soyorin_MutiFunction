@@ -30,7 +30,7 @@ namespace MusicBot2.Models
 
     public class WaifuImTagsResponse
     {
-        public Dictionary<string, List<WaifuImTagDetail>> items { get; set; }
+        public List<WaifuImTagDetail> items { get; set; }
     }
 
     public class WaifuImTagDetail
