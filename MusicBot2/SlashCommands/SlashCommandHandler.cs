@@ -1276,90 +1276,90 @@ namespace MusicBot2.SlahCommands
         }
         #endregion
 
-        #region NekoBot 功能
-        [SlashCommand("nekobot-ship", "產生兩個使用者的 Ship 配對圖片")]
-        public async Task NekoBotShipAsync(
-            [Summary("使用者1", "第一個使用者")] IUser user1,
-            [Summary("使用者2", "第二個使用者")] IUser user2)
-        {
-            await DeferAsync();
+        #region NekoBot 功能 被雲端封鎖
+        //[SlashCommand("nekobot-ship", "產生兩個使用者的 Ship 配對圖片")]
+        //public async Task NekoBotShipAsync(
+        //    [Summary("使用者1", "第一個使用者")] IUser user1,
+        //    [Summary("使用者2", "第二個使用者")] IUser user2)
+        //{
+        //    await DeferAsync();
 
-            string? user1Url = user1.GetAvatarUrl() ?? user1.GetDefaultAvatarUrl();
-            string? user2Url = user2.GetAvatarUrl() ?? user2.GetDefaultAvatarUrl();
+        //    string? user1Url = user1.GetAvatarUrl() ?? user1.GetDefaultAvatarUrl();
+        //    string? user2Url = user2.GetAvatarUrl() ?? user2.GetDefaultAvatarUrl();
 
-            var embed = await _nekoBotService.GetShipImageAsync(user1Url, user2Url);
-            await FollowupAsync(embed: embed);
-        }
+        //    var embed = await _nekoBotService.GetShipImageAsync(user1Url, user2Url);
+        //    await FollowupAsync(embed: embed);
+        //}
 
-        [SlashCommand("nekobot-whowouldwin", "產生兩個使用者的對決圖片")]
-        public async Task NekoBotWhoWouldWinAsync(
-            [Summary("使用者1", "第一個使用者")] IUser user1,
-            [Summary("使用者2", "第二個使用者")] IUser user2)
-        {
-            await DeferAsync();
+        //[SlashCommand("nekobot-whowouldwin", "產生兩個使用者的對決圖片")]
+        //public async Task NekoBotWhoWouldWinAsync(
+        //    [Summary("使用者1", "第一個使用者")] IUser user1,
+        //    [Summary("使用者2", "第二個使用者")] IUser user2)
+        //{
+        //    await DeferAsync();
 
-            string? user1Url = user1.GetAvatarUrl() ?? user1.GetDefaultAvatarUrl();
-            string? user2Url = user2.GetAvatarUrl() ?? user2.GetDefaultAvatarUrl();
+        //    string? user1Url = user1.GetAvatarUrl() ?? user1.GetDefaultAvatarUrl();
+        //    string? user2Url = user2.GetAvatarUrl() ?? user2.GetDefaultAvatarUrl();
 
-            var embed = await _nekoBotService.GetWhoWouldWinImageAsync(
-                user1Url,
-                user2Url
-            );
+        //    var embed = await _nekoBotService.GetWhoWouldWinImageAsync(
+        //        user1Url,
+        //        user2Url
+        //    );
 
-            await FollowupAsync(embed: embed);
-        }
+        //    await FollowupAsync(embed: embed);
+        //}
 
-        [SlashCommand("nekobot-圖片", "取得 NekoBot 的各種圖片")]
-        public async Task NekoBotImageAsync(
-            [Summary("類型", "圖片類型")]
-            [Choice("Neko (貓娘)", "neko")]
-            [Choice("Kitsune (狐娘)", "kitsune")]
-            [Choice("Waifu (老婆)", "waifu")]
-            [Choice("Husbando (老公)", "husbando")]
-            [Choice("遊戲角色", "gecg")]
-            [Choice("頭像", "avatar")]
-            [Choice("桌布", "wallpaper")]
-            [Choice("狐娘 2", "foxgirl")]
-            [Choice("蜥蜴", "lizard")]
-            [Choice("鵝", "goose")]
-            [Choice("咖啡", "coffee")]
-            [Choice("食物", "food")]
-            string type)
-        {
-            await DeferAsync();
-            var embed = await _nekoBotService.GetImageAsync(type);
-            await FollowupAsync(embed: embed);
-        }
+        //[SlashCommand("nekobot-圖片", "取得 NekoBot 的各種圖片")]
+        //public async Task NekoBotImageAsync(
+        //    [Summary("類型", "圖片類型")]
+        //    [Choice("Neko (貓娘)", "neko")]
+        //    [Choice("Kitsune (狐娘)", "kitsune")]
+        //    [Choice("Waifu (老婆)", "waifu")]
+        //    [Choice("Husbando (老公)", "husbando")]
+        //    [Choice("遊戲角色", "gecg")]
+        //    [Choice("頭像", "avatar")]
+        //    [Choice("桌布", "wallpaper")]
+        //    [Choice("狐娘 2", "foxgirl")]
+        //    [Choice("蜥蜴", "lizard")]
+        //    [Choice("鵝", "goose")]
+        //    [Choice("咖啡", "coffee")]
+        //    [Choice("食物", "food")]
+        //    string type)
+        //{
+        //    await DeferAsync();
+        //    var embed = await _nekoBotService.GetImageAsync(type);
+        //    await FollowupAsync(embed: embed);
+        //}
 
-        [SlashCommand("nekobot-nsfw", "取得 NekoBot 的 NSFW 圖片 (18+)")]
-        [RequireNsfw]
-        public async Task NekoBotNsfwImageAsync(
-            [Summary("類型", "NSFW 圖片類型")]
-            [Choice("NSFW - Ass", "hass")]
-            [Choice("NSFW - Midriff", "hmidriff")]
-            [Choice("NSFW - GIF", "pgif")]
-            [Choice("NSFW - 4K", "4k")]
-            [Choice("NSFW - Hentai", "hentai")]
-            [Choice("NSFW - Holo", "holo")]
-            [Choice("NSFW - Kitsune", "hkitsune")]
-            [Choice("NSFW - Kemonomimi", "kemonomimi")]
-            [Choice("NSFW - Anal", "hanal")]
-            [Choice("NSFW - Gonewild", "gonewild")]
-            [Choice("NSFW - Kanna", "kanna")]
-            [Choice("NSFW - Ass 2", "ass")]
-            [Choice("NSFW - Pussy", "pussy")]
-            [Choice("NSFW - Thigh", "thigh")]
-            [Choice("NSFW - Thigh 2", "hthigh")]
-            [Choice("NSFW - Paizuri", "paizuri")]
-            [Choice("NSFW - Tentacle", "tentacle")]
-            [Choice("NSFW - Boobs", "boobs")]
-            [Choice("NSFW - Boobs 2", "hboobs")]
-            string type)
-        {
-            await DeferAsync();
-            var embed = await _nekoBotService.GetImageAsync(type);
-            await FollowupAsync(embed: embed);
-        }
+        //[SlashCommand("nekobot-nsfw", "取得 NekoBot 的 NSFW 圖片 (18+)")]
+        //[RequireNsfw]
+        //public async Task NekoBotNsfwImageAsync(
+        //    [Summary("類型", "NSFW 圖片類型")]
+        //    [Choice("NSFW - Ass", "hass")]
+        //    [Choice("NSFW - Midriff", "hmidriff")]
+        //    [Choice("NSFW - GIF", "pgif")]
+        //    [Choice("NSFW - 4K", "4k")]
+        //    [Choice("NSFW - Hentai", "hentai")]
+        //    [Choice("NSFW - Holo", "holo")]
+        //    [Choice("NSFW - Kitsune", "hkitsune")]
+        //    [Choice("NSFW - Kemonomimi", "kemonomimi")]
+        //    [Choice("NSFW - Anal", "hanal")]
+        //    [Choice("NSFW - Gonewild", "gonewild")]
+        //    [Choice("NSFW - Kanna", "kanna")]
+        //    [Choice("NSFW - Ass 2", "ass")]
+        //    [Choice("NSFW - Pussy", "pussy")]
+        //    [Choice("NSFW - Thigh", "thigh")]
+        //    [Choice("NSFW - Thigh 2", "hthigh")]
+        //    [Choice("NSFW - Paizuri", "paizuri")]
+        //    [Choice("NSFW - Tentacle", "tentacle")]
+        //    [Choice("NSFW - Boobs", "boobs")]
+        //    [Choice("NSFW - Boobs 2", "hboobs")]
+        //    string type)
+        //{
+        //    await DeferAsync();
+        //    var embed = await _nekoBotService.GetImageAsync(type);
+        //    await FollowupAsync(embed: embed);
+        //}
         #endregion
 
         #region Waifu.im 功能
@@ -1417,82 +1417,82 @@ namespace MusicBot2.SlahCommands
         }
         #endregion
 
-        #region Waifu.pics 功能
-        [SlashCommand("anime", "取得隨機動漫圖片")]
-        public async Task AnimePicsAsync(
-            [Summary("類型", "圖片類型")]
-            [Choice("Waifu (老婆)", "waifu")]
-            [Choice("Neko (貓娘)", "neko")]
-            [Choice("Shinobu", "shinobu")]
-            [Choice("Megumin (惠惠)", "megumin")]
-            string category = "waifu")
-        {
-            await DeferAsync();
-            var embed = await _waifuPicsService.GetSfwImageAsync(category);
-            await FollowupAsync(embed: embed);
-        }
+        #region Waifu.pics 功能 暫時無法使用
+        //[SlashCommand("anime", "取得隨機動漫圖片")]
+        //public async Task AnimePicsAsync(
+        //    [Summary("類型", "圖片類型")]
+        //    [Choice("Waifu (老婆)", "waifu")]
+        //    [Choice("Neko (貓娘)", "neko")]
+        //    [Choice("Shinobu", "shinobu")]
+        //    [Choice("Megumin (惠惠)", "megumin")]
+        //    string category = "waifu")
+        //{
+        //    await DeferAsync();
+        //    var embed = await _waifuPicsService.GetSfwImageAsync(category);
+        //    await FollowupAsync(embed: embed);
+        //}
 
-        [SlashCommand("anime-互動", "取得動漫互動圖片")]
-        public async Task AnimeActionAsync(
-            [Summary("動作", "互動動作")]
-            [Choice("Hug (抱抱)", "hug")]
-            [Choice("Kiss (親親)", "kiss")]
-            [Choice("Pat (摸頭)", "pat")]
-            [Choice("Cuddle (擁抱)", "cuddle")]
-            [Choice("Slap (巴掌)", "slap")]
-            [Choice("Bonk (敲頭)", "bonk")]
-            [Choice("Kick (踢)", "kick")]
-            [Choice("Bite (咬)", "bite")]
-            [Choice("Lick (舔)", "lick")]
-            [Choice("Poke (戳)", "poke")]
-            [Choice("Bully (霸凌)", "bully")]
-            [Choice("Yeet (丟飛)", "yeet")]
-            [Choice("Glomp (撲抱)", "glomp")]
-            [Choice("Kill (殺)", "kill")]
-            [Choice("Handhold (牽手)", "handhold")]
-            [Choice("Highfive (擊掌)", "highfive")]
-            string action = "hug")
-        {
-            await DeferAsync();
-            var embed = await _waifuPicsService.GetSfwImageAsync(action);
-            await FollowupAsync(embed: embed);
-        }
+        //[SlashCommand("anime-互動", "取得動漫互動圖片")]
+        //public async Task AnimeActionAsync(
+        //    [Summary("動作", "互動動作")]
+        //    [Choice("Hug (抱抱)", "hug")]
+        //    [Choice("Kiss (親親)", "kiss")]
+        //    [Choice("Pat (摸頭)", "pat")]
+        //    [Choice("Cuddle (擁抱)", "cuddle")]
+        //    [Choice("Slap (巴掌)", "slap")]
+        //    [Choice("Bonk (敲頭)", "bonk")]
+        //    [Choice("Kick (踢)", "kick")]
+        //    [Choice("Bite (咬)", "bite")]
+        //    [Choice("Lick (舔)", "lick")]
+        //    [Choice("Poke (戳)", "poke")]
+        //    [Choice("Bully (霸凌)", "bully")]
+        //    [Choice("Yeet (丟飛)", "yeet")]
+        //    [Choice("Glomp (撲抱)", "glomp")]
+        //    [Choice("Kill (殺)", "kill")]
+        //    [Choice("Handhold (牽手)", "handhold")]
+        //    [Choice("Highfive (擊掌)", "highfive")]
+        //    string action = "hug")
+        //{
+        //    await DeferAsync();
+        //    var embed = await _waifuPicsService.GetSfwImageAsync(action);
+        //    await FollowupAsync(embed: embed);
+        //}
 
-        [SlashCommand("anime-表情", "取得動漫表情圖片")]
-        public async Task AnimeEmoteAsync(
-            [Summary("表情", "表情類型")]
-            [Choice("Smile (微笑)", "smile")]
-            [Choice("Blush (臉紅)", "blush")]
-            [Choice("Happy (開心)", "happy")]
-            [Choice("Cry (哭泣)", "cry")]
-            [Choice("Smug (得意)", "smug")]
-            [Choice("Wink (眨眼)", "wink")]
-            [Choice("Wave (揮手)", "wave")]
-            [Choice("Cringe (尷尬)", "cringe")]
-            [Choice("Dance (跳舞)", "dance")]
-            [Choice("Nom (吃東西)", "nom")]
-            [Choice("Awoo (狼嚎)", "awoo")]
-            string emote = "smile")
-        {
-            await DeferAsync();
-            var embed = await _waifuPicsService.GetSfwImageAsync(emote);
-            await FollowupAsync(embed: embed);
-        }
+        //[SlashCommand("anime-表情", "取得動漫表情圖片")]
+        //public async Task AnimeEmoteAsync(
+        //    [Summary("表情", "表情類型")]
+        //    [Choice("Smile (微笑)", "smile")]
+        //    [Choice("Blush (臉紅)", "blush")]
+        //    [Choice("Happy (開心)", "happy")]
+        //    [Choice("Cry (哭泣)", "cry")]
+        //    [Choice("Smug (得意)", "smug")]
+        //    [Choice("Wink (眨眼)", "wink")]
+        //    [Choice("Wave (揮手)", "wave")]
+        //    [Choice("Cringe (尷尬)", "cringe")]
+        //    [Choice("Dance (跳舞)", "dance")]
+        //    [Choice("Nom (吃東西)", "nom")]
+        //    [Choice("Awoo (狼嚎)", "awoo")]
+        //    string emote = "smile")
+        //{
+        //    await DeferAsync();
+        //    var embed = await _waifuPicsService.GetSfwImageAsync(emote);
+        //    await FollowupAsync(embed: embed);
+        //}
 
-        [SlashCommand("anime-nsfw", "取得隨機 NSFW 動漫圖片 (18+)")]
-        [RequireNsfw]
-        public async Task AnimeNsfwAsync(
-            [Summary("類型", "NSFW 類型")]
-            [Choice("Waifu", "waifu")]
-            [Choice("Neko", "neko")]
-            [Choice("Trap", "trap")]
-            [Choice("Blowjob", "blowjob")]
-            string category = "waifu")
-        {
-            await DeferAsync();
-            var embed = await _waifuPicsService.GetNsfwImageAsync(category);
-            await FollowupAsync(embed: embed);
-        }
+        //[SlashCommand("anime-nsfw", "取得隨機 NSFW 動漫圖片 (18+)")]
+        //[RequireNsfw]
+        //public async Task AnimeNsfwAsync(
+        //    [Summary("類型", "NSFW 類型")]
+        //    [Choice("Waifu", "waifu")]
+        //    [Choice("Neko", "neko")]
+        //    [Choice("Trap", "trap")]
+        //    [Choice("Blowjob", "blowjob")]
+        //    string category = "waifu")
+        //{
+        //    await DeferAsync();
+        //    var embed = await _waifuPicsService.GetNsfwImageAsync(category);
+        //    await FollowupAsync(embed: embed);
+        //}
         #endregion
 
         #region 產出圖片相關

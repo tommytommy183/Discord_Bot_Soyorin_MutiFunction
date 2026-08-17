@@ -78,11 +78,10 @@ namespace MusicBot2.Service
                 {
                     var image = result.items[0];
                     Console.WriteLine($"[WaifuIm] Image URL: {image.url}");
-                    Console.WriteLine($"[WaifuIm] Is NSFW: {image.is_nsfw}");
-                    Console.WriteLine($"[WaifuIm] Tags: {string.Join(", ", image.tags?.Select(t => t.name) ?? new List<string>())}");
+                    Console.WriteLine($"[WaifuIm] Is NSFW: {image.isNsfw}");
 
                     var embedBuilder = new EmbedBuilder()
-                        .WithColor(ParseColor(image.dominant_color));
+                        .WithColor(ParseColor(image.dominantColor));
 
                     // Add tags to title
                     var tagNames = image.tags?.Select(t => t.name).ToList() ?? new List<string>();
@@ -90,7 +89,7 @@ namespace MusicBot2.Service
                     embedBuilder.WithTitle($"🖼️ {title}");
 
                     // Handle NSFW content
-                    if (image.is_nsfw)
+                    if (image.isNsfw)
                     {
                         embedBuilder.WithDescription($"⚠️ **NSFW 內容**\\n點擊查看: ||{image.url}||");
                     }
