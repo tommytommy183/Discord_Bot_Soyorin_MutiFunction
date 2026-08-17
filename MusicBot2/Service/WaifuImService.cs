@@ -139,7 +139,7 @@ namespace MusicBot2.Service
 
                 var result = JsonConvert.DeserializeObject<WaifuImTagsResponse>(responseContent);
 
-                if (result?.versatile == null)
+                if (result?.items == null)
                 {
                     return CreateErrorEmbed("無法解析標籤資料");
                 }
@@ -150,31 +150,18 @@ namespace MusicBot2.Service
                     .WithDescription("使用 `/waifu-自訂` 指令時可以輸入以下標籤名稱：");
 
                 // 分類顯示標籤
-                foreach (var category in result.versatile)
+                foreach (var category in result.items)
                 {
-                    var sfwTags = category.Value.Where(t => !t.is_nsfw).Select(t => t.name).ToList();
-                    var nsfwTags = category.Value.Where(t => t.is_nsfw).Select(t => t.name).ToList();
+                    var tags = category.Value.Select(t => t.name).ToList();
 
-                    if (sfwTags.Count > 0)
+                    if (tags.Count > 0)
                     {
-                        var tagList = string.Join(", ", sfwTags.Take(20));
-                        if (sfwTags.Count > 20)
-                            tagList += $" ... (+{sfwTags.Count - 20} more)";
-
-                        embedBuilder.AddField($"✅ {category.Key} (SFW)", tagList, false);
-                    }
-
-                    if (nsfwTags.Count > 0)
-                    {
-                        var tagList = string.Join(", ", nsfwTags.Take(20));
-                        if (nsfwTags.Count > 20)
-                            tagList += $" ... (+{nsfwTags.Count - 20} more)";
-
-                        embedBuilder.AddField($"🔞 {category.Key} (NSFW)", tagList, false);
+                        var tagList = string.Join(", ", tags);
+                        embedBuilder.AddField($"✅ {category.Key}", tagList, false);
                     }
                 }
 
-                embedBuilder.WithFooter($"共 {result.versatile.Values.SelectMany(v => v).Count()} 個標籤");
+                embedBuilder.WithFooter($"共 {result.items.Values.SelectMany(v => v).Count()} 個標籤");
 
                 return embedBuilder.Build();
             }

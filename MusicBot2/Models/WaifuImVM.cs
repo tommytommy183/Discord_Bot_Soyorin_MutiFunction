@@ -30,14 +30,13 @@ namespace MusicBot2.Models
 
     public class WaifuImTagsResponse
     {
-        public Dictionary<string, List<WaifuImTagDetail>> versatile { get; set; }
+        public Dictionary<string, List<WaifuImTagDetail>> items { get; set; }
     }
 
     public class WaifuImTagDetail
     {
-        public int tag_id { get; set; }
+        public int id { get; set; }
         public string name { get; set; }
         public string description { get; set; }
-        public bool is_nsfw { get; set; }
     }
 }
