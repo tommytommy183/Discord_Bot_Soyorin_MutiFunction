@@ -1480,7 +1480,7 @@ namespace MusicBot2.Service
             text = Regex.Replace(text, @"<thinking>[\s\S]*?</thinking>", "", RegexOptions.IgnoreCase);
 
             text = Regex.Replace(text, @"^\s*[\[\(【]?\s*(爽世|soyo|Soyo|SOYO|長崎爽世)\s*[\]\)】]?\s*[:：]\s*", "");
-            text = Regex.Replace(text, @"\*[^*\n]{1,40}\*", "");
+            //text = Regex.Replace(text, @"\*[^*\n]{1,40}\*", "");
             text = Regex.Replace(text, @"使用者名稱\s*[:：].*", "", RegexOptions.Multiline);
             text = Regex.Replace(text, @"^\s*訊息\s*[:：]\s*", "", RegexOptions.Multiline);
             text = Regex.Replace(text, @"\n{3,}", "\n\n");
