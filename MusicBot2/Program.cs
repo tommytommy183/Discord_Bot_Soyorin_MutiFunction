@@ -1158,6 +1158,17 @@ public class Program
                 return;
             }
 
+            if (feature.StartsWith("猜單字:"))
+            {
+                var word = feature.Substring("猜單字:".Length).Trim();
+
+                var svc = _services.GetRequiredService<WordGuessingService>();
+                var txt = await svc.Guess(channel, word, talker, "");
+                if (!string.IsNullOrWhiteSpace(txt))
+                    await channel.SendMessageAsync(txt);
+                return;
+            }
+
             switch (feature)
             {
                 case "1a2b":
@@ -1203,17 +1214,6 @@ public class Program
                         var svc = _services.GetRequiredService<JikanAnimeService>();
                         var ((comp, embed), _) = await svc.GetSomeRandomManga("manga", "");
                         await channel.SendMessageAsync(embed: embed, components: comp.Build());
-                        break;
-                    }
-                case "猜單字":
-                    {
-                        var word = feature.Substring("猜單字:".Length).Trim();
-
-                        var svc = _services.GetRequiredService<WordGuessingService>();
-                        var txt = await svc.Guess(channel, word, talker, "");
-                        if (!string.IsNullOrWhiteSpace(txt))
-                            await channel.SendMessageAsync(txt);
-
                         break;
                     }
                 case "一言":
