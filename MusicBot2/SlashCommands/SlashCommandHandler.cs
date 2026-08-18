@@ -86,91 +86,91 @@ namespace MusicBot2.SlahCommands
             _holyGrailTowerService = holyGrailTowerService;
             _ygoService = ygoService;
         }
-        #region 音樂撥放相關
-        [SlashCommand("播放音樂", "播放音樂")]
-        public async Task PlayCommand([Summary("查詢", "YouTube URL 或搜尋關鍵字")] string query)
-        {
-            await DeferAsync();
-            var user = Context.User as SocketGuildUser;
-            await _program.PlayMusicAsync(Context.Channel, user, query);
-            await FollowupAsync("-", ephemeral: true);
-        }
+        #region 音樂撥放相關 > 先拿掉，要撥放音樂用$$就好
+        //[SlashCommand("播放音樂", "播放音樂")]
+        //public async Task PlayCommand([Summary("查詢", "YouTube URL 或搜尋關鍵字")] string query)
+        //{
+        //    await DeferAsync();
+        //    var user = Context.User as SocketGuildUser;
+        //    await _program.PlayMusicAsync(Context.Channel, user, query);
+        //    await FollowupAsync("-", ephemeral: true);
+        //}
 
-        [SlashCommand("撥放bilibili", "播放 Bilibili 音樂")]
-        public async Task BilibiliCommand([Summary("網址", "Bilibili 影片網址")] string url)
-        {
-            await DeferAsync();
-            var user = Context.User as SocketGuildUser;
-            await _program.PlayBiblibiliMusicAsync(Context.Channel, user, url);
-            await FollowupAsync("-", ephemeral: true);
-        }
+        //[SlashCommand("撥放bilibili", "播放 Bilibili 音樂")]
+        //public async Task BilibiliCommand([Summary("網址", "Bilibili 影片網址")] string url)
+        //{
+        //    await DeferAsync();
+        //    var user = Context.User as SocketGuildUser;
+        //    await _program.PlayBiblibiliMusicAsync(Context.Channel, user, url);
+        //    await FollowupAsync("-", ephemeral: true);
+        //}
 
-        [SlashCommand("跳過目前歌曲", "跳過目前歌曲")]
-        public async Task SkipCommand()
-        {
-            await DeferAsync();
-            var user = Context.User as SocketGuildUser;
-            await _program.SkipMusic(Context.Channel, user);
-            await FollowupAsync("-", ephemeral: true);
-        }
+        //[SlashCommand("跳過目前歌曲", "跳過目前歌曲")]
+        //public async Task SkipCommand()
+        //{
+        //    await DeferAsync();
+        //    var user = Context.User as SocketGuildUser;
+        //    await _program.SkipMusic(Context.Channel, user);
+        //    await FollowupAsync("-", ephemeral: true);
+        //}
 
-        [SlashCommand("循環播放目前歌曲", "循環播放目前歌曲")]
-        public async Task LoopCommand()
-        {
-            await DeferAsync();
-            var user = Context.User as SocketGuildUser;
-            await _program.LoopMusic(Context.Channel, user);
-            await FollowupAsync("-", ephemeral: true);
-        }
+        //[SlashCommand("循環播放目前歌曲", "循環播放目前歌曲")]
+        //public async Task LoopCommand()
+        //{
+        //    await DeferAsync();
+        //    var user = Context.User as SocketGuildUser;
+        //    await _program.LoopMusic(Context.Channel, user);
+        //    await FollowupAsync("-", ephemeral: true);
+        //}
 
-        [SlashCommand("取消循環撥放", "取消循環播放")]
-        public async Task UnloopCommand()
-        {
-            await DeferAsync();
-            var user = Context.User as SocketGuildUser;
-            await _program.UnLoopMusic(Context.Channel, user);
-            await FollowupAsync("-", ephemeral: true);
-        }
+        //[SlashCommand("取消循環撥放", "取消循環播放")]
+        //public async Task UnloopCommand()
+        //{
+        //    await DeferAsync();
+        //    var user = Context.User as SocketGuildUser;
+        //    await _program.UnLoopMusic(Context.Channel, user);
+        //    await FollowupAsync("-", ephemeral: true);
+        //}
 
-        [SlashCommand("開關推薦音樂", "開啟/關閉推薦音樂")]
-        public async Task RelatedCommand()
-        {
-            await DeferAsync();
-            var user = Context.User as SocketGuildUser;
-            await _program.HandleRelatedMusicAsync(Context.Channel, user);
-            await FollowupAsync("-", ephemeral: true);
-        }
+        //[SlashCommand("開關推薦音樂", "開啟/關閉推薦音樂")]
+        //public async Task RelatedCommand()
+        //{
+        //    await DeferAsync();
+        //    var user = Context.User as SocketGuildUser;
+        //    await _program.HandleRelatedMusicAsync(Context.Channel, user);
+        //    await FollowupAsync("-", ephemeral: true);
+        //}
 
-        [SlashCommand("搜尋並播放音樂", "搜尋並播放音樂")]
-        public async Task FindCommand([Summary("關鍵字", "搜尋關鍵字")] string query)
-        {
-            await DeferAsync();
-            var user = Context.User as SocketGuildUser;
-            string url = await _program.GetYoutubeUrlByNameAsync(Context.Channel, query);
-            if (!string.IsNullOrEmpty(url))
-            {
-                await _program.PlayMusicAsync(Context.Channel, user, url);
-            }
-            await FollowupAsync("-", ephemeral: true);
-        }
+        //[SlashCommand("搜尋並播放音樂", "搜尋並播放音樂")]
+        //public async Task FindCommand([Summary("關鍵字", "搜尋關鍵字")] string query)
+        //{
+        //    await DeferAsync();
+        //    var user = Context.User as SocketGuildUser;
+        //    string url = await _program.GetYoutubeUrlByNameAsync(Context.Channel, query);
+        //    if (!string.IsNullOrEmpty(url))
+        //    {
+        //        await _program.PlayMusicAsync(Context.Channel, user, url);
+        //    }
+        //    await FollowupAsync("-", ephemeral: true);
+        //}
 
-        [SlashCommand("顯示目前播放清單", "顯示目前播放清單")]
-        public async Task ListCommand()
-        {
-            await DeferAsync();
-            var user = Context.User as SocketGuildUser;
-            await _program.CalledPlayListAsync(Context.Channel, user);
-            await FollowupAsync("-", ephemeral: true);
-        }
+        //[SlashCommand("顯示目前播放清單", "顯示目前播放清單")]
+        //public async Task ListCommand()
+        //{
+        //    await DeferAsync();
+        //    var user = Context.User as SocketGuildUser;
+        //    await _program.CalledPlayListAsync(Context.Channel, user);
+        //    await FollowupAsync("-", ephemeral: true);
+        //}
 
-        [SlashCommand("開關earrape", "開啟/關閉 Ear Rape 模式")]
-        public async Task EarRapeCommand()
-        {
-            await DeferAsync();
-            var user = Context.User as SocketGuildUser;
-            await _program.EarRapeAsync(Context.Channel, user);
-            await FollowupAsync("-", ephemeral: true);
-        }
+        //[SlashCommand("開關earrape", "開啟/關閉 Ear Rape 模式")]
+        //public async Task EarRapeCommand()
+        //{
+        //    await DeferAsync();
+        //    var user = Context.User as SocketGuildUser;
+        //    await _program.EarRapeAsync(Context.Channel, user);
+        //    await FollowupAsync("-", ephemeral: true);
+        //}
         #endregion
 
         #region Riot相關
@@ -616,65 +616,65 @@ namespace MusicBot2.SlahCommands
         }
         #endregion
 
-        #region 動漫相關
-        [SlashCommand("猜動漫角色", "猜動漫角色")]
-        public async Task GuessAnimeCharaAsync(
-    [Summary("模式", "模式")][Choice("角色猜角色", "ctc"), Choice("角色猜動畫", "cta")] string mode,
-    [Summary("是否查詢熱門", "是否查詢熱門")] bool isTop
-)
-        {
-            await DeferAsync();
+        #region 動漫相關 > 等待jikan能被打再開啟
+//        [SlashCommand("猜動漫角色", "猜動漫角色")]
+//        public async Task GuessAnimeCharaAsync(
+//    [Summary("模式", "模式")][Choice("角色猜角色", "ctc"), Choice("角色猜動畫", "cta")] string mode,
+//    [Summary("是否查詢熱門", "是否查詢熱門")] bool isTop
+//)
+//        {
+//            await DeferAsync();
 
-            var result = await _animeService.StartGameAsync(mode, isTop);
+//            var result = await _animeService.StartGameAsync(mode, isTop);
 
-            await FollowupAsync(embed: result.embed, components: result.component?.Build());
-        }
+//            await FollowupAsync(embed: result.embed, components: result.component?.Build());
+//        }
 
-        [SlashCommand("隨機抽取一部幸運動畫", "隨機抽取一部幸運動畫")]
-        public async Task GetSomeRandomAnime(
-            [Summary("種類", "種類")][Choice("TV", "TV"), Choice("OVA", "OVA"), Choice("Movie", "Movie"), Choice("Special", "Special"), Choice("ONA", "ONA"), Choice("Music", "Music"), Choice("CM", "CM"), Choice("PV", "PV"), Choice("TV Special", "TV Special")] string type = "",
-            [Summary("分級", "分級")][Choice("G", "G"), Choice("pg", "pg"), Choice("pg13", "pg13"), Choice("r17", "r17"), Choice("r", "r"), Choice("rx", "rx")] string ratings = ""
-        )
-        {
-            await DeferAsync();
+//        [SlashCommand("隨機抽取一部幸運動畫", "隨機抽取一部幸運動畫")]
+//        public async Task GetSomeRandomAnime(
+//            [Summary("種類", "種類")][Choice("TV", "TV"), Choice("OVA", "OVA"), Choice("Movie", "Movie"), Choice("Special", "Special"), Choice("ONA", "ONA"), Choice("Music", "Music"), Choice("CM", "CM"), Choice("PV", "PV"), Choice("TV Special", "TV Special")] string type = "",
+//            [Summary("分級", "分級")][Choice("G", "G"), Choice("pg", "pg"), Choice("pg13", "pg13"), Choice("r17", "r17"), Choice("r", "r"), Choice("rx", "rx")] string ratings = ""
+//        )
+//        {
+//            await DeferAsync();
 
-            var result = await _animeService.GetSomeRandomAnime(type, ratings);
+//            var result = await _animeService.GetSomeRandomAnime(type, ratings);
 
-            await FollowupAsync(embed: result.Item1.embed, components: result.Item1.component?.Build());
+//            await FollowupAsync(embed: result.Item1.embed, components: result.Item1.component?.Build());
 
-            if (!string.IsNullOrEmpty(result.imageUrl))
-            {
-                using var http = new HttpClient();
-                var imageBytes = await http.GetByteArrayAsync(result.imageUrl);
-                var stream = new MemoryStream(imageBytes);
-                var attachment = new FileAttachment(stream, "SPOILER_anime.jpg");
+//            if (!string.IsNullOrEmpty(result.imageUrl))
+//            {
+//                using var http = new HttpClient();
+//                var imageBytes = await http.GetByteArrayAsync(result.imageUrl);
+//                var stream = new MemoryStream(imageBytes);
+//                var attachment = new FileAttachment(stream, "SPOILER_anime.jpg");
 
-                await Context.Channel.SendFileAsync(attachment);
-            }
-        }
+//                await Context.Channel.SendFileAsync(attachment);
+//            }
+//        }
 
-        [SlashCommand("隨機抽取一部幸運書籍", "隨機抽取一部幸運書籍")]
-        public async Task GetSomeRandomManga(
-            [Summary("種類", "種類")][Choice("manga", "manga"), Choice("novel", "novel"), Choice("lightnovel", "lightnovel"), Choice("oneshot", "oneshot"), Choice("doujin", "doujin"), Choice("manhwa", "manhwa"), Choice("manhua", "manhua")] string type = "",
-            [Summary("標籤", "標籤")][Choice("Hentai", "12"), Choice("Horror", "14"), Choice("Ecchi", "9"), Choice("Adventure", "2"), Choice("Boys Love", "28"), Choice("Comedy", "4")] string genres = ""
-        )
-        {
-            await DeferAsync();
+//        [SlashCommand("隨機抽取一部幸運書籍", "隨機抽取一部幸運書籍")]
+//        public async Task GetSomeRandomManga(
+//            [Summary("種類", "種類")][Choice("manga", "manga"), Choice("novel", "novel"), Choice("lightnovel", "lightnovel"), Choice("oneshot", "oneshot"), Choice("doujin", "doujin"), Choice("manhwa", "manhwa"), Choice("manhua", "manhua")] string type = "",
+//            [Summary("標籤", "標籤")][Choice("Hentai", "12"), Choice("Horror", "14"), Choice("Ecchi", "9"), Choice("Adventure", "2"), Choice("Boys Love", "28"), Choice("Comedy", "4")] string genres = ""
+//        )
+//        {
+//            await DeferAsync();
 
-            var result = await _animeService.GetSomeRandomManga(type, genres);
+//            var result = await _animeService.GetSomeRandomManga(type, genres);
 
-            await FollowupAsync(embed: result.Item1.embed, components: result.Item1.component?.Build());
+//            await FollowupAsync(embed: result.Item1.embed, components: result.Item1.component?.Build());
 
-            if (!string.IsNullOrEmpty(result.imageUrl))
-            {
-                using var http = new HttpClient();
-                var imageBytes = await http.GetByteArrayAsync(result.imageUrl);
-                var stream = new MemoryStream(imageBytes);
-                var attachment = new FileAttachment(stream, "SPOILER_manga.jpg");
+//            if (!string.IsNullOrEmpty(result.imageUrl))
+//            {
+//                using var http = new HttpClient();
+//                var imageBytes = await http.GetByteArrayAsync(result.imageUrl);
+//                var stream = new MemoryStream(imageBytes);
+//                var attachment = new FileAttachment(stream, "SPOILER_manga.jpg");
 
-                await Context.Channel.SendFileAsync(attachment);
-            }
-        }
+//                await Context.Channel.SendFileAsync(attachment);
+//            }
+//        }
         #endregion
 
         #region pokemon相關
@@ -1198,42 +1198,42 @@ namespace MusicBot2.SlahCommands
             }
         }
 
-        [SlashCommand("測試播放同步歌詞", "播放同步歌詞(手動控制模式，使用按鈕切換前後句)")]
-        public async Task TestPlaySyncedLyricsAsync(
-            [Summary("歌名", "歌曲名稱")] string trackName,
-            [Summary("歌手", "歌手名稱")] string artistName = "")
-        {
-            await DeferAsync();
+        //[SlashCommand("測試播放同步歌詞", "播放同步歌詞(手動控制模式，使用按鈕切換前後句)")]
+        //public async Task TestPlaySyncedLyricsAsync(
+        //    [Summary("歌名", "歌曲名稱")] string trackName,
+        //    [Summary("歌手", "歌手名稱")] string artistName = "")
+        //{
+        //    await DeferAsync();
 
-            try
-            {
-                var success = await _lyricsDisplayService.StartLyricsDisplayAsync(
-                    Context.Channel.Id,
-                    trackName,
-                    artistName,
-                    Context.Channel);
+        //    try
+        //    {
+        //        var success = await _lyricsDisplayService.StartLyricsDisplayAsync(
+        //            Context.Channel.Id,
+        //            trackName,
+        //            artistName,
+        //            Context.Channel);
 
-                if (success)
-                {
-                    await FollowupAsync($"✅ 已開始播放 **{trackName}** 的同步歌詞（使用按鈕控制前後句）", ephemeral: true);
-                }
-                else
-                {
-                    await FollowupAsync($"❌ 無法開始播放歌詞", ephemeral: true);
-                }
-            }
-            catch (Exception ex)
-            {
-                await FollowupAsync($"❌ 發生錯誤: {ex.Message}", ephemeral: true);
-            }
-        }
+        //        if (success)
+        //        {
+        //            await FollowupAsync($"✅ 已開始播放 **{trackName}** 的同步歌詞（使用按鈕控制前後句）", ephemeral: true);
+        //        }
+        //        else
+        //        {
+        //            await FollowupAsync($"❌ 無法開始播放歌詞", ephemeral: true);
+        //        }
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        await FollowupAsync($"❌ 發生錯誤: {ex.Message}", ephemeral: true);
+        //    }
+        //}
 
-        [SlashCommand("停止歌詞顯示", "停止當前頻道的歌詞顯示")]
-        public async Task StopLyricsDisplayAsync()
-        {
-            _lyricsDisplayService.StopLyricsDisplay(Context.Channel.Id);
-            await RespondAsync("✅ 已停止歌詞顯示", ephemeral: true);
-        }
+        //[SlashCommand("停止歌詞顯示", "停止當前頻道的歌詞顯示")]
+        //public async Task StopLyricsDisplayAsync()
+        //{
+        //    _lyricsDisplayService.StopLyricsDisplay(Context.Channel.Id);
+        //    await RespondAsync("✅ 已停止歌詞顯示", ephemeral: true);
+        //}
         #endregion
 
         #region 無用api
@@ -1366,26 +1366,26 @@ namespace MusicBot2.SlahCommands
         #endregion
 
         #region Waifu.im 功能
-        [SlashCommand("waifu-標籤列表", "顯示所有可用的 Waifu.im 標籤")]
-        public async Task WaifuTagsAsync()
-        {
-            await DeferAsync();
-            var embed = await _waifuImService.GetAllTagsAsync();
-            await FollowupAsync(embed: embed);
-        }
+        //[SlashCommand("waifu-標籤列表", "顯示所有可用的 Waifu.im 標籤")]
+        //public async Task WaifuTagsAsync()
+        //{
+        //    await DeferAsync();
+        //    var embed = await _waifuImService.GetAllTagsAsync();
+        //    await FollowupAsync(embed: embed);
+        //}
 
-        [SlashCommand("waifu-自訂", "使用自訂標籤取得 Waifu 圖片")]
-        public async Task WaifuCustomAsync(
-            [Summary("標籤", "標籤名稱（可用逗號分隔多個標籤，例如：waifu,maid）")] string tags,
-            [Summary("動畫", "是否只要 GIF 動畫")] bool isAnimated = false)
-        {
-            await DeferAsync();
-            var imageUrl = await _waifuImService.GetImageByTagAsync(tags, isNsfw: false, isAnimated);
-            if (string.IsNullOrEmpty(imageUrl))
-                await FollowupAsync("❌ 無法取得圖片，請確認標籤名稱是否正確（使用 `/waifu-標籤列表` 查看可用標籤）");
-            else
-                await FollowupAsync(imageUrl);
-        }
+        //[SlashCommand("waifu-自訂", "使用自訂標籤取得 Waifu 圖片")]
+        //public async Task WaifuCustomAsync(
+        //    [Summary("標籤", "標籤名稱（可用逗號分隔多個標籤，例如：waifu,maid）")] string tags,
+        //    [Summary("動畫", "是否只要 GIF 動畫")] bool isAnimated = false)
+        //{
+        //    await DeferAsync();
+        //    var imageUrl = await _waifuImService.GetImageByTagAsync(tags, isNsfw: false, isAnimated);
+        //    if (string.IsNullOrEmpty(imageUrl))
+        //        await FollowupAsync("❌ 無法取得圖片，請確認標籤名稱是否正確（使用 `/waifu-標籤列表` 查看可用標籤）");
+        //    else
+        //        await FollowupAsync(imageUrl);
+        //}
 
         [SlashCommand("waifu-自訂-nsfw", "使用自訂標籤取得 NSFW Waifu 圖片 (18+)")]
         [RequireNsfw]
@@ -1401,27 +1401,27 @@ namespace MusicBot2.SlahCommands
                 await FollowupAsync(imageUrl);
         }
 
-        [SlashCommand("waifu", "取得隨機 Waifu 圖片（快速選項）")]
-        public async Task WaifuImageAsync(
-            [Summary("標籤", "圖片標籤（可選）")]
-            [Choice("Waifu", "waifu")]
-            [Choice("Maid", "maid")]
-            [Choice("Marin Kitagawa", "marin-kitagawa")]
-            [Choice("Mori Calliope", "mori-calliope")]
-            [Choice("Raiden Shogun", "raiden-shogun")]
-            [Choice("Oppai", "oppai")]
-            [Choice("Selfies", "selfies")]
-            [Choice("Uniform", "uniform")]
-            string tag = "waifu",
-            bool isAnimated = false)
-        {
-            await DeferAsync();
-            var imageUrl = await _waifuImService.GetImageByTagAsync(tag, isNsfw: false, isAnimated);
-            if (string.IsNullOrEmpty(imageUrl))
-                await FollowupAsync("❌ 無法取得圖片，請稍後再試");
-            else
-                await FollowupAsync(imageUrl);
-        }
+        //[SlashCommand("waifu", "取得隨機 Waifu 圖片（快速選項）")]
+        //public async Task WaifuImageAsync(
+        //    [Summary("標籤", "圖片標籤（可選）")]
+        //    [Choice("Waifu", "waifu")]
+        //    [Choice("Maid", "maid")]
+        //    [Choice("Marin Kitagawa", "marin-kitagawa")]
+        //    [Choice("Mori Calliope", "mori-calliope")]
+        //    [Choice("Raiden Shogun", "raiden-shogun")]
+        //    [Choice("Oppai", "oppai")]
+        //    [Choice("Selfies", "selfies")]
+        //    [Choice("Uniform", "uniform")]
+        //    string tag = "waifu",
+        //    bool isAnimated = false)
+        //{
+        //    await DeferAsync();
+        //    var imageUrl = await _waifuImService.GetImageByTagAsync(tag, isNsfw: false, isAnimated);
+        //    if (string.IsNullOrEmpty(imageUrl))
+        //        await FollowupAsync("❌ 無法取得圖片，請稍後再試");
+        //    else
+        //        await FollowupAsync(imageUrl);
+        //}
 
         [SlashCommand("waifu-nsfw", "取得隨機 NSFW Waifu 圖片 (18+)")]
         [RequireNsfw]
@@ -1729,14 +1729,14 @@ namespace MusicBot2.SlahCommands
 
         private static readonly string[] YgoDeckChoices = new[] { "yugi", "kaiba", "joey", "jaden", "yusei", "yuya" };
 
-        [SlashCommand("決鬥牌組列表", "查看所有可用的動漫牌組")]
+        [SlashCommand("決鬥牌組列表", "查看所有可用的牌組")]
         public async Task YgoDecksAsync()
         {
             var (embed, component) = _ygoService.ListDecks();
             await RespondAsync(embed: embed, components: component.Build());
         }
 
-        [SlashCommand("決鬥ai", "用動漫牌組挑戰 AI 決鬥")]
+        [SlashCommand("決鬥ai", "用動漫牌組挑戰AI決鬥")]
         public async Task YgoDuelAiAsync(
             [Summary("我的牌組", "你使用的牌組（yugi/kaiba/joey/jaden/yusei/yuya）")] string myDeck = "yugi",
             [Summary("ai牌組", "AI 使用的牌組（yugi/kaiba/joey/jaden/yusei/yuya）")] string aiDeck = "kaiba")
@@ -1756,7 +1756,7 @@ namespace MusicBot2.SlahCommands
             await FollowupAsync(embed: embed, components: component.Build());
         }
 
-        [SlashCommand("決鬥手牌", "查看自己的手牌（只有你看得到）")]
+        [SlashCommand("決鬥手牌", "查看自己的手牌")]
         public async Task YgoHandAsync()
         {
             await DeferAsync();
