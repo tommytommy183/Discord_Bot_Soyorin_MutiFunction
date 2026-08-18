@@ -1,4 +1,4 @@
-using System.Net.Http;
+﻿using System.Net.Http;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -464,9 +464,18 @@ namespace MusicBot2.Service
                       : null;
             if (field == null) return Error("你不是這場決鬥的參與者！");
 
+            bool isMyTurn = duel.CurrentTurnPlayerId == userId;
+            // 對方回合才能觸發的連鎖陷阱（不在自己回合顯示）
+            var responseOnlyTraps = new HashSet<string>
+            {
+                "Negate Attack", "Magic Cylinder", "Mirror Force",
+                "Trap Hole", "Hero Signal", "D - Shield", "Magic Jammer"
+            };
             var faceDown = field.SpellTrapZones
                 .Select((c, i) => (c, i))
-                .Where(x => x.c != null && x.c.FaceDown)
+                .Where(x => x.c != null && x.c.FaceDown &&
+                            !(isMyTurn && x.c.IsTrap && responseOnlyTraps.Contains(x.c.Name)) &&
+                            CanActivateSpell(x.c, duel))
                 .ToList();
 
             if (!faceDown.Any()) return Error("你的場上沒有可發動的伏地牌！");
@@ -502,6 +511,16 @@ namespace MusicBot2.Service
                 return Error("無效的格子。");
             var card = field.SpellTrapZones[stZone]!;
             if (!card.FaceDown) return Error("這張牌已經是表側了。");
+
+            // 只能在對方回合觸發的反應陷阱
+            bool activatorIsCurrentPlayer = duel.CurrentTurnPlayerId == userId;
+            var responseOnlyTraps = new HashSet<string>
+            {
+                "Negate Attack", "Magic Cylinder", "Mirror Force",
+                "Trap Hole", "Hero Signal", "D - Shield", "Magic Jammer"
+            };
+            if (card.IsTrap && responseOnlyTraps.Contains(card.Name) && activatorIsCurrentPlayer)
+                return Error($"**{card.Name}** 必須在對方回合觸發！");
 
             field.SpellTrapZones[stZone] = null;
             field.Graveyard.Add(card);
@@ -544,7 +563,10 @@ namespace MusicBot2.Service
             if (duel.CurrentField.NormalSummonedThisTurn) return Error("本回合已通常召喚過了。");
 
             var hand = duel.CurrentField.Hand;
-            var monsters = hand.Select((c, i) => (c, i)).Where(x => x.c.IsMonster).ToList();
+            int fieldCount = duel.CurrentField.GetMonstersOnField().Count;
+            var monsters = hand.Select((c, i) => (c, i))
+                .Where(x => x.c.IsMonster && x.c.TributeRequired <= fieldCount)
+                .ToList();
             if (!monsters.Any()) return Error("手牌中沒有怪獸牌！");
 
             var eb = new EmbedBuilder()
@@ -553,7 +575,7 @@ namespace MusicBot2.Service
             foreach (var (c, i) in monsters)
                 eb.AddField($"{i+1}. {c.Name}",
                     $"ATK {c.Atk} / DEF {c.Def}  Lv{c.Level}" +
-                    (c.TributeRequired > 0 ? $"  ⚠️需{c.TributeRequired}貢獻" : "  ✅可直接召喚"),
+                    (c.TributeRequired > 0 ? $"  🔥貢獻{c.TributeRequired}隻" : "  ✅直接召喚"),
                     inline: true);
 
             var cb  = new ComponentBuilder();
@@ -614,8 +636,10 @@ namespace MusicBot2.Service
             if (duel.CurrentTurnPlayerId != userId) return Error("還沒輪到你！");
 
             var hand = duel.CurrentField.Hand;
-            var spells = hand.Select((c, i) => (c, i)).Where(x => x.c.IsSpell).ToList();
-            if (!spells.Any()) return Error("手牌中沒有魔法牌可以發動！");
+            var spells = hand.Select((c, i) => (c, i))
+                .Where(x => x.c.IsSpell && CanActivateSpell(x.c, duel))
+                .ToList();
+            if (!spells.Any()) return Error("手牌中沒有現在可以發動的魔法牌！（條件不符或無效果）");
 
             var eb = new EmbedBuilder()
                 .WithTitle("✨ 選擇要發動的魔法")
@@ -644,16 +668,36 @@ namespace MusicBot2.Service
             if (duel == null) return Error("沒有進行中的決鬥。");
             if (duel.CurrentTurnPlayerId != userId) return Error("還沒輪到你！");
             if (duel.CurrentPhase != DuelPhase.BattlePhase) return Error("只能在戰鬥階段攻擊。");
-            if (duel.CurrentField.CannotDeclareAttackThisTurn) return Error("本回合無法宣告攻擊！（Threatening Roar）");
 
             var field = duel.CurrentField;
+
+            // 早期攔截全局封印
+            if (field.SwordsCounter > 0)
+                return Error($"光之護封劍！你的怪獸無法攻擊（剩餘 {field.SwordsCounter} 回合）");
+            if (field.CannotDeclareAttackThisTurn)
+                return Error("本回合無法宣告攻擊！（Threatening Roar）");
+
             var atkers = field.MonsterZones
                 .Select((c, i) => (c, i))
                 .Where(x => x.c != null && !x.c.SummonedThisTurn &&
                             !x.c.AttackedThisTurn && !x.c.IsDefensePosition && !x.c.CannotAttack)
                 .ToList();
 
-            if (!atkers.Any()) return Error("沒有可以攻擊的怪獸！（召喚病、已攻擊、或守備表示）");
+            if (!atkers.Any())
+            {
+                // 列出每隻怪獸被卡住的原因
+                var all = field.GetMonstersOnField();
+                if (!all.Any()) return Error("你的場上沒有怪獸！");
+                var reasons = new List<string>();
+                foreach (var m in all)
+                {
+                    if (m.SummonedThisTurn)       reasons.Add($"{m.ShortName}（召喚病）");
+                    else if (m.AttackedThisTurn)   reasons.Add($"{m.ShortName}（已攻擊）");
+                    else if (m.IsDefensePosition)  reasons.Add($"{m.ShortName}（守備）");
+                    else if (m.CannotAttack)       reasons.Add($"{m.ShortName}（被封印）");
+                }
+                return Error("沒有可攻擊的怪獸：" + string.Join("、", reasons));
+            }
 
             var eb = new EmbedBuilder()
                 .WithTitle("⚔️ 選擇要發動攻擊的怪獸")
@@ -724,10 +768,6 @@ namespace MusicBot2.Service
             if (attacker.SummonedThisTurn) return Error($"{attacker.ShortName} 本回合剛召喚，不能攻擊（召喚病）。");
             if (attacker.AttackedThisTurn) return Error($"{attacker.ShortName} 本回合已攻擊過了。");
             if (attacker.IsDefensePosition) return Error("守備表示的怪獸不能攻擊。");
-
-            if (duel.Field1.UserId == userId && duel.Field1.SwordsCounter > 0 ||
-                duel.Field2.UserId == userId && duel.Field2.SwordsCounter > 0)
-                return Error("你的怪獸被光之護封劍封印，無法攻擊！");
 
             duel.PendingAttackerZone = attackerZone;
             await SaveDuelAsync(channelId, duel);
@@ -1238,6 +1278,79 @@ namespace MusicBot2.Service
             if (duel.Field2.LifePoints <= 0)
                 return (true, duel.Field1.UserName);
             return (false, null);
+        }
+
+        /// <summary>判斷手牌/伏地魔法能否在當前場況發動</summary>
+        private static bool CanActivateSpell(YgoCard card, YgoDuelState duel)
+        {
+            var me  = duel.CurrentField;
+            var opp = duel.OpponentField;
+            return card.Name switch
+            {
+                // 墓地需有怪獸
+                "Monster Reborn" or "Premature Burial" or "Shallow Grave" =>
+                    me.Graveyard.Any(c => c.IsMonster) || opp.Graveyard.Any(c => c.IsMonster),
+                "O - Oversoul" =>
+                    me.Graveyard.Any(c => c.IsMonster && c.Name.Contains("Elemental HERO")),
+                "Hysteric Party" =>
+                    me.Graveyard.Any(c => c.IsMonster && c.Name.Contains("Harpie")) && me.Hand.Count > 0,
+                // 牌組搜尋
+                "A Hero Lives" =>
+                    me.Deck.Any(c => c.IsMonster && c.Name.Contains("Elemental HERO")),
+                "Cyber Repair Plant" =>
+                    me.Deck.Any(c => c.IsMonster && c.Name.Contains("Cyber Dragon")),
+                "Reinforcement of the Army" =>
+                    me.Deck.Any(c => c.IsMonster && c.Level <= 4),
+                "Toon Table of Contents" =>
+                    me.Deck.Any(c => c.Name.Contains("Toon")),
+                // 需要特定場上狀態
+                "Level Up!" =>
+                    me.GetMonstersOnField().Any(m => m.Name.Contains("Armed Dragon")),
+                "Dark Magic Attack" =>
+                    me.GetMonstersOnField().Any(m => m.Name.Contains("Dark Magician")),
+                "The Flute of Summoning Dragon" =>
+                    me.Hand.Any(c => c.IsMonster && (c.Race == "Dragon" || c.Name.Contains("Dragon"))),
+                "Elegant Egotist" =>
+                    me.GetMonstersOnField().Any(m => m.Name.Contains("Harpie")) &&
+                    me.Deck.Any(c => c.IsMonster && c.Name.Contains("Harpie")),
+                "Power Bond" =>
+                    me.ExtraDeck.Any(c => c.IsFusion && c.Name.Contains("Cyber")),
+                "Polymerization" or "Miracle Fusion" =>
+                    me.ExtraDeck.Any(c => c.IsFusion),
+                "Machine Duplication" =>
+                    me.Deck.Any(c => c.IsMonster && c.Name.Contains("Cyber Dragon")),
+                // 需要貢獻怪獸
+                "Mystik Wok" or "Ectoplasmer" or "Soul Exchange" or "Evolution Burst" or "My Body as a Shield" =>
+                    me.GetMonstersOnField().Count > 0,
+                // 需要棄牌
+                "Graceful Charity" or "Card Destruction" or "Cost Down" or "Magic Jammer" or "Allure of Darkness" =>
+                    me.Hand.Count > 1,   // 至少還要有這張以外的牌
+                // 需要對方有怪獸
+                "Fissure" or "Raigeki" or "Shrink" or "Enemy Controller" or
+                "Windstorm of Etaqua" or "Stop Defense" or "Crush Card Virus" or
+                "Ring of Destruction" or "Nightmare Wheel" or "Change of Heart" or
+                "Brain Control" or "Snatch Steal" or "Comic Hand" or "Coffin Seller" =>
+                    opp.GetMonstersOnField().Count > 0,
+                // 需要對方有魔陷
+                "Harpie's Feather Duster" or "Giant Trunade" or "Mystical Space Typhoon" or "Stamping Destruction" =>
+                    opp.SpellTrapZones.Any(c => c != null),
+                // 對方墓地有魔法
+                "Graverobber" =>
+                    opp.Graveyard.Any(c => c.IsSpell),
+                // 需要場上有空格
+                "Scapegoat" =>
+                    me.FirstEmptyMonsterZone() >= 0,
+                // 儀式召喚
+                "Machine Angel Ritual" or "Hymn of Light" =>
+                    (me.Hand.Any(c => c.IsMonster && c.Name.Contains("Cyber Angel")) ||
+                     me.Deck.Any(c => c.IsMonster && c.Name.Contains("Cyber Angel"))) &&
+                    (me.GetMonstersOnField().Any() ||
+                     me.Hand.Any(c => c.IsMonster && !c.Name.Contains("Cyber Angel"))),
+                "Black Illusion Ritual" =>
+                    me.Hand.Any(c => c.IsMonster && c.Name.Contains("Relinquished")) ||
+                    me.Deck.Any(c => c.IsMonster && c.Name.Contains("Relinquished")),
+                _ => true
+            };
         }
 
         private string ApplySpellEffect(YgoCard spell, YgoDuelState duel)
