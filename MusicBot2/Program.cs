@@ -465,6 +465,20 @@ public class Program
                     int idx = int.Parse(parts[^1]);
                     result = await ygoSvc.GetHandEmbedAsync(cid, uid, idx);
                 }
+                else if (component.Data.CustomId.StartsWith("ygo_stmenu_"))
+                {
+                    var menuResult = await ygoSvc.ShowSetSTMenuAsync(cid, uid);
+                    if (menuResult.component.Build().Components.Count == 0)
+                        await component.FollowupAsync(embed: menuResult.embed);
+                    else
+                        result = menuResult;
+                }
+                else if (component.Data.CustomId.StartsWith("ygo_stact_"))
+                {
+                    // ygo_stact_{duelId}_{stZone}
+                    int zone = int.Parse(parts[^1]);
+                    result = await ygoSvc.ActivateSetSTAsync(cid, uid, zone);
+                }
                 else if (component.Data.CustomId.StartsWith("ygo_surrender_") && !component.Data.CustomId.Contains("confirm"))
                     result = await ygoSvc.SurrenderAsync(cid, uid);
                 else if (component.Data.CustomId.StartsWith("ygo_atkselect_"))

@@ -52,6 +52,8 @@ namespace MusicBot2.Models
         public bool AttackedThisTurn { get; set; }
         public bool SummonedThisTurn { get; set; }
         public int? TempAtk { get; set; }
+        public bool CannotAttack { get; set; }          // Spellbinding Circle / Nightmare Wheel
+        public bool CannotChangePosition { get; set; }  // Spellbinding Circle
 
         public bool IsMonster  => Type == "Monster";
         public bool IsSpell    => Type == "Spell";
@@ -86,6 +88,8 @@ namespace MusicBot2.Models
             c.AttackedThisTurn = false;
             c.SummonedThisTurn = false;
             c.TempAtk = null;
+            c.CannotAttack = false;
+            c.CannotChangePosition = false;
             return c;
         }
     }
@@ -113,6 +117,9 @@ namespace MusicBot2.Models
         public bool NormalSummonedThisTurn { get; set; }
         public bool DrewThisTurn { get; set; }
         public int SwordsCounter { get; set; } = 0; // 光之護封劍剩餘回合
+        public bool WabokuActive { get; set; }                // Waboku — 本回合戰鬥傷害無效
+        public bool CannotDeclareAttackThisTurn { get; set; } // Threatening Roar
+        public int PendingEndTurnDamage { get; set; }         // Power Bond — 下回合結算傷害
 
         public int DeckCount => Deck.Count;
         public int HandCount => Hand.Count;

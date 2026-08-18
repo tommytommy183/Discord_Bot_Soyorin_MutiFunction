@@ -1755,11 +1755,9 @@ namespace MusicBot2.SlahCommands
             [Choice("👁️ 佩加瑟斯 (DM)", "pegasus")]
             [Choice("💀 獏良了 (DM)", "bakura")]
             [Choice("⚡ 遊城十代 (GX)", "jaden")]
-            [Choice("✨ 不動遊星 (5D's)", "yusei")]
-            [Choice("👑 傑克·亞特拉斯 (5D's)", "jack")]
-            [Choice("🐦 克羅·霍根 (5D's)", "crow")]
-            [Choice("🎭 榊遊矢 (ARC-V)", "yuya")]
-            [Choice("⭐ 九十九遊馬 (ZEXAL)", "yuma")]
+            [Choice("🏆 万丈目準 (GX)", "chazz")]
+            [Choice("🌸 天上院明日香 (GX)", "alexis")]
+            [Choice("⚙️ 丸藤亮 (GX)", "zane")]
             string myDeck = "yugi",
             [Summary("ai牌組", "AI 使用的牌組")]
             [Choice("🔮 武藤遊戲 (DM)", "yugi")]
@@ -1770,11 +1768,9 @@ namespace MusicBot2.SlahCommands
             [Choice("👁️ 佩加瑟斯 (DM)", "pegasus")]
             [Choice("💀 獏良了 (DM)", "bakura")]
             [Choice("⚡ 遊城十代 (GX)", "jaden")]
-            [Choice("✨ 不動遊星 (5D's)", "yusei")]
-            [Choice("👑 傑克·亞特拉斯 (5D's)", "jack")]
-            [Choice("🐦 克羅·霍根 (5D's)", "crow")]
-            [Choice("🎭 榊遊矢 (ARC-V)", "yuya")]
-            [Choice("⭐ 九十九遊馬 (ZEXAL)", "yuma")]
+            [Choice("🏆 万丈目準 (GX)", "chazz")]
+            [Choice("🌸 天上院明日香 (GX)", "alexis")]
+            [Choice("⚙️ 丸藤亮 (GX)", "zane")]
             string aiDeck = "kaiba")
         {
             await DeferAsync();

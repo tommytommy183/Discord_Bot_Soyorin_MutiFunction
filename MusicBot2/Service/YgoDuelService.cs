@@ -218,7 +218,7 @@ namespace MusicBot2.Service
                 duel.WinnerName = duel.OpponentField.UserName;
                 duel.CurrentPhase = DuelPhase.GameOver;
                 duel.AddLog($"💀 {field.UserName} 牌組耗盡！{duel.WinnerName} 獲勝！");
-                await SaveDuelAsync(channelId, duel);
+                await DeleteDuelAsync(channelId);
                 return (BuildBoardEmbed(duel), BuildBoardButtons(duel));
             }
 
@@ -445,6 +445,73 @@ namespace MusicBot2.Service
                 : await SetSpellTrapAsync(channelId, userId, handIndex);
         }
 
+        /// <summary>顯示場上伏地的魔陷牌，供選擇發動</summary>
+        public async Task<(Embed embed, ComponentBuilder component)> ShowSetSTMenuAsync(
+            ulong channelId, ulong userId)
+        {
+            var duel = await LoadDuelAsync(channelId);
+            if (duel == null) return Error("沒有進行中的決鬥。");
+            if (duel.CurrentTurnPlayerId != userId) return Error("還沒輪到你！");
+
+            var field = duel.CurrentField;
+            var faceDown = field.SpellTrapZones
+                .Select((c, i) => (c, i))
+                .Where(x => x.c != null && x.c.FaceDown)
+                .ToList();
+
+            if (!faceDown.Any()) return Error("場上沒有可發動的伏地牌！");
+
+            var eb = new EmbedBuilder()
+                .WithTitle("⚡ 選擇要發動的伏地牌")
+                .WithColor(Color.Orange);
+            foreach (var (c, i) in faceDown)
+                eb.AddField($"ST格 {i+1}：{c!.Name}", c.IsSpell ? "魔法" : "陷阱", inline: true);
+
+            var cb  = new ComponentBuilder();
+            var row = new ActionRowBuilder();
+            foreach (var (c, i) in faceDown)
+                row.WithButton($"ST[{i+1}] {c!.ShortName}", $"ygo_stact_{duel.DuelId}_{i}", ButtonStyle.Primary);
+            cb.AddRow(row);
+            return (eb.Build(), cb);
+        }
+
+        /// <summary>發動場上指定格子的伏地魔陷</summary>
+        public async Task<(Embed embed, ComponentBuilder component)> ActivateSetSTAsync(
+            ulong channelId, ulong userId, int stZone)
+        {
+            var duel = await LoadDuelAsync(channelId);
+            if (duel == null) return Error("沒有進行中的決鬥。");
+            if (duel.CurrentTurnPlayerId != userId) return Error("還沒輪到你！");
+
+            var field = duel.CurrentField;
+            if (stZone < 0 || stZone >= field.SpellTrapZones.Count || field.SpellTrapZones[stZone] == null)
+                return Error("無效的格子。");
+            var card = field.SpellTrapZones[stZone]!;
+            if (!card.FaceDown) return Error("這張牌已經是表側了。");
+
+            field.SpellTrapZones[stZone] = null;
+            var msg = ApplySpellEffect(card, duel);
+            field.Graveyard.Add(card);
+            duel.LastPlayedCardImageUrl = card.RareImageUrl;
+            duel.AddLog($"⚡ {field.UserName} 發動伏地牌 **{card.Name}**");
+            if (!string.IsNullOrWhiteSpace(msg)) duel.AddLog($"　→ {msg}");
+
+            var (ended, winner) = CheckGameOver(duel);
+            if (ended)
+            {
+                duel.IsActive = false;
+                duel.WinnerName = winner;
+                duel.CurrentPhase = DuelPhase.GameOver;
+                duel.AddLog($"🏆 **{winner} 獲勝！**");
+            }
+
+            if (!duel.IsActive)
+                await DeleteDuelAsync(channelId);
+            else
+                await SaveDuelAsync(channelId, duel);
+            return (BuildBoardEmbed(duel), BuildBoardButtons(duel));
+        }
+
         /// <summary>顯示手牌供選擇召喚</summary>
         public async Task<(Embed embed, ComponentBuilder component)> ShowHandForSummonAsync(
             ulong channelId, ulong userId)
@@ -557,12 +624,13 @@ namespace MusicBot2.Service
             if (duel == null) return Error("沒有進行中的決鬥。");
             if (duel.CurrentTurnPlayerId != userId) return Error("還沒輪到你！");
             if (duel.CurrentPhase != DuelPhase.BattlePhase) return Error("只能在戰鬥階段攻擊。");
+            if (duel.CurrentField.CannotDeclareAttackThisTurn) return Error("本回合無法宣告攻擊！（Threatening Roar）");
 
             var field = duel.CurrentField;
             var atkers = field.MonsterZones
                 .Select((c, i) => (c, i))
                 .Where(x => x.c != null && !x.c.SummonedThisTurn &&
-                            !x.c.AttackedThisTurn && !x.c.IsDefensePosition)
+                            !x.c.AttackedThisTurn && !x.c.IsDefensePosition && !x.c.CannotAttack)
                 .ToList();
 
             if (!atkers.Any()) return Error("沒有可以攻擊的怪獸！（召喚病、已攻擊、或守備表示）");
@@ -609,7 +677,10 @@ namespace MusicBot2.Service
                 duel.CurrentPhase = DuelPhase.GameOver;
             }
 
-            await SaveDuelAsync(channelId, duel);
+            if (!duel.IsActive)
+                await DeleteDuelAsync(channelId);
+            else
+                await SaveDuelAsync(channelId, duel);
             return (BuildBoardEmbed(duel), BuildBoardButtons(duel));
         }
 
@@ -661,7 +732,8 @@ namespace MusicBot2.Service
             {
                 if (defField.GetMonstersOnField().Count > 0)
                     return Error("對方場上有怪獸，不能直接攻擊！");
-                defField.LifePoints -= attacker.EffectiveAtk;
+                if (!defField.WabokuActive)
+                    defField.LifePoints -= attacker.EffectiveAtk;
                 attacker.AttackedThisTurn = true;
                 duel.AddLog($"⚔️ {attacker.ShortName} 直接攻擊！{defField.UserName} -{attacker.EffectiveAtk} LP → **{defField.LifePoints}**");
             }
@@ -692,7 +764,10 @@ namespace MusicBot2.Service
                 duel.AddLog($"🏆 **{winner} 獲勝！**");
             }
 
-            await SaveDuelAsync(channelId, duel);
+            if (!duel.IsActive)
+                await DeleteDuelAsync(channelId);
+            else
+                await SaveDuelAsync(channelId, duel);
             return (BuildBoardEmbed(duel), BuildBoardButtons(duel));
         }
 
@@ -735,7 +810,7 @@ namespace MusicBot2.Service
             duel.CurrentPhase = DuelPhase.GameOver;
             duel.AddLog($"🏳️ {loser.UserName} 投降了！{winner.UserName} 獲勝！");
 
-            await SaveDuelAsync(channelId, duel);
+            await DeleteDuelAsync(channelId);
             return (BuildBoardEmbed(duel), new ComponentBuilder());
         }
 
@@ -854,7 +929,7 @@ namespace MusicBot2.Service
                 duel.WinnerName = opp.UserName;
                 duel.CurrentPhase = DuelPhase.GameOver;
                 duel.AddLog($"💀 {aiField.UserName} 牌組耗盡！{opp.UserName} 獲勝！");
-                await SaveDuelAsync(channelId, duel);
+                await DeleteDuelAsync(channelId);
                 return (BuildBoardEmbed(duel), new ComponentBuilder());
             }
             duel.CurrentPhase = DuelPhase.MainPhase1;
@@ -950,7 +1025,7 @@ namespace MusicBot2.Service
                         duel.WinnerName = winner;
                         duel.CurrentPhase = DuelPhase.GameOver;
                         duel.AddLog($"🏆 **{winner} 獲勝！**");
-                        await SaveDuelAsync(channelId, duel);
+                        await DeleteDuelAsync(channelId);
                         return (BuildBoardEmbed(duel), new ComponentBuilder());
                     }
                 }
@@ -968,17 +1043,6 @@ namespace MusicBot2.Service
                 aiField.SpellTrapZones[slot] = placed;
                 duel.AddLog($"🔽 {aiField.UserName} 覆蓋了一張牌");
             }
-
-            // AI narration
-            try
-            {
-                var personality = deckDef?.AiPersonality ?? "你是決鬥 AI";
-                var prompt = $"{personality}\n你剛完成了自己的回合，說一句決鬥台詞（20字以內，充滿個性）：";
-                var speech = await _ai.GenerateSimpleTextAsync(prompt, null, false);
-                if (!string.IsNullOrWhiteSpace(speech))
-                    duel.AddLog($"💬 {aiField.UserName}：「{speech.Trim()}」");
-            }
-            catch { /* 台詞生成失敗不影響遊戲 */ }
 
             // End turn → switch to player
             await DoEndPhase(duel);
@@ -1093,7 +1157,8 @@ namespace MusicBot2.Service
                 {
                     defField.MonsterZones[dZone] = null;
                     defField.Graveyard.Add(def);
-                    defField.LifePoints -= diff;
+                    if (!defField.WabokuActive)
+                        defField.LifePoints -= diff;
                     duel.AddLog($"⚔️ {atk.ShortName}({atk.EffectiveAtk}) vs {def.ShortName}({def.EffectiveAtk}) → {def.ShortName} 毀滅！{defField.UserName} -{diff} LP");
                 }
                 else if (diff == 0)
@@ -1108,7 +1173,8 @@ namespace MusicBot2.Service
                 {
                     atkField.MonsterZones[aZone] = null;
                     atkField.Graveyard.Add(atk);
-                    atkField.LifePoints += diff; // diff is negative
+                    if (!atkField.WabokuActive)
+                        atkField.LifePoints += diff; // diff is negative
                     duel.AddLog($"⚔️ {atk.ShortName}({atk.EffectiveAtk}) vs {def.ShortName}({def.EffectiveAtk}) → {atk.ShortName} 毀滅！{atkField.UserName} {diff} LP");
                 }
             }
@@ -1130,7 +1196,8 @@ namespace MusicBot2.Service
                 }
                 else
                 {
-                    atkField.LifePoints += diff; // diff is negative
+                    if (!atkField.WabokuActive)
+                        atkField.LifePoints += diff; // diff is negative
                     duel.AddLog($"⚔️ {atk.ShortName}({atk.EffectiveAtk}) 攻擊守備({def.Def}) → {atkField.UserName} {diff} LP");
                 }
             }
@@ -1150,36 +1217,56 @@ namespace MusicBot2.Service
             var caster   = duel.CurrentField;
             var opponent = duel.OpponentField;
 
-            if (spell.Name == "Pot of Greed")
+            // ── 通用工具 ────────────────────────────────────────────────
+            YgoCard? StrongestOpponentMonster() =>
+                opponent.MonsterZones.Where(c => c != null).OrderByDescending(c => c!.EffectiveAtk).FirstOrDefault();
+
+            YgoCard? StrongestCasterGYMonster() =>
+                caster.Graveyard.Where(c => c.IsMonster).OrderByDescending(c => c.EffectiveAtk).FirstOrDefault();
+
+            // ── 基本抽牌魔法 ─────────────────────────────────────────────
+            if (spell.Name == "Pot of Greed" || spell.Name == "Graceful Charity")
+            {
+                int draw = spell.Name == "Graceful Charity" ? 3 : 2;
+                DrawCards(caster, draw);
+                if (spell.Name == "Graceful Charity" && caster.Hand.Count > 0)
+                {
+                    int discard = Math.Min(2, caster.Hand.Count);
+                    for (int i = 0; i < discard; i++)
+                    {
+                        caster.Graveyard.Add(caster.Hand[^1]);
+                        caster.Hand.RemoveAt(caster.Hand.Count - 1);
+                    }
+                    return $"抽了 {draw} 張牌，棄掉 {discard} 張（手牌 {caster.HandCount} 張）";
+                }
+                return $"抽了 {draw} 張牌（手牌 {caster.HandCount} 張）";
+            }
+            if (spell.Name == "Allure of Darkness" || spell.Name == "Cards for Black Feathers")
             {
                 DrawCards(caster, 2);
                 return $"抽了 2 張牌（手牌 {caster.HandCount} 張）";
             }
-            if (spell.Name == "Monster Reborn")
+            if (spell.Name == "Card Destruction")
             {
-                var allGY = caster.Graveyard.Concat(opponent.Graveyard)
-                            .Where(c => c.IsMonster)
-                            .OrderByDescending(c => c.EffectiveAtk)
-                            .FirstOrDefault();
-                if (allGY == null) return "墓地沒有怪獸可以復活！";
-                if (caster.FirstEmptyMonsterZone() < 0) return "怪獸區已滿，無法特殊召喚！";
-                caster.Graveyard.Remove(allGY);
-                opponent.Graveyard.Remove(allGY);
-                var revived = allGY.Clone();
-                revived.SummonedThisTurn = true;
-                int reSlot = caster.FirstEmptyMonsterZone();
-                while (caster.MonsterZones.Count <= reSlot) caster.MonsterZones.Add(null);
-                caster.MonsterZones[reSlot] = revived;
-                return $"特殊召喚 **{revived.Name}** (ATK {revived.Atk})";
+                int casterDraw = caster.Hand.Count;
+                int oppDraw    = opponent.Hand.Count;
+                caster.Graveyard.AddRange(caster.Hand);
+                caster.Hand.Clear();
+                opponent.Graveyard.AddRange(opponent.Hand);
+                opponent.Hand.Clear();
+                DrawCards(caster, casterDraw);
+                DrawCards(opponent, oppDraw);
+                return $"雙方棄掉手牌並重新抽牌！（{caster.UserName} 抽 {casterDraw}，{opponent.UserName} 抽 {oppDraw}）";
             }
+
+            // ── 場地清除 ─────────────────────────────────────────────────
             if (spell.Name == "Dark Hole")
             {
                 int count = 0;
-                for (int i = 0; i < caster.MonsterZones.Count; i++)
-                    if (caster.MonsterZones[i] != null) { caster.Graveyard.Add(caster.MonsterZones[i]!); caster.MonsterZones[i] = null; count++; }
-                for (int i = 0; i < opponent.MonsterZones.Count; i++)
-                    if (opponent.MonsterZones[i] != null) { opponent.Graveyard.Add(opponent.MonsterZones[i]!); opponent.MonsterZones[i] = null; count++; }
-                return $"毀滅了場上 {count} 隻怪獸！";
+                foreach (var f in new[] { caster, opponent })
+                    for (int i = 0; i < f.MonsterZones.Count; i++)
+                        if (f.MonsterZones[i] != null) { f.Graveyard.Add(f.MonsterZones[i]!); f.MonsterZones[i] = null; count++; }
+                return $"毀滅了場上全部 {count} 隻怪獸！";
             }
             if (spell.Name == "Raigeki")
             {
@@ -1188,10 +1275,142 @@ namespace MusicBot2.Service
                     if (opponent.MonsterZones[i] != null) { opponent.Graveyard.Add(opponent.MonsterZones[i]!); opponent.MonsterZones[i] = null; count++; }
                 return $"毀滅了對方 {count} 隻怪獸！";
             }
+            if (spell.Name == "Harpie's Feather Duster")
+            {
+                int count = 0;
+                for (int i = 0; i < opponent.SpellTrapZones.Count; i++)
+                    if (opponent.SpellTrapZones[i] != null) { opponent.Graveyard.Add(opponent.SpellTrapZones[i]!); opponent.SpellTrapZones[i] = null; count++; }
+                return $"掃場！摧毀了對方 {count} 張魔陷！";
+            }
+            if (spell.Name == "Mystical Space Typhoon")
+            {
+                for (int i = 0; i < opponent.SpellTrapZones.Count; i++)
+                    if (opponent.SpellTrapZones[i] != null)
+                    {
+                        var target = opponent.SpellTrapZones[i]!;
+                        opponent.Graveyard.Add(target);
+                        opponent.SpellTrapZones[i] = null;
+                        return $"摧毀了對方的 {target.Name}！";
+                    }
+                return "對方魔陷區是空的！";
+            }
+            if (spell.Name == "Dark Magic Attack")
+            {
+                bool hasDM = caster.GetMonstersOnField().Any(m =>
+                    m.Name.Contains("Dark Magician"));
+                if (!hasDM) return "場上沒有黑魔術師，無法發動效果！";
+                int count = 0;
+                for (int i = 0; i < opponent.SpellTrapZones.Count; i++)
+                    if (opponent.SpellTrapZones[i] != null) { opponent.Graveyard.Add(opponent.SpellTrapZones[i]!); opponent.SpellTrapZones[i] = null; count++; }
+                return $"黑魔術師的力量！摧毀對方 {count} 張魔陷！";
+            }
+            if (spell.Name == "Crush Card Virus")
+            {
+                int count = 0;
+                for (int i = 0; i < opponent.MonsterZones.Count; i++)
+                    if (opponent.MonsterZones[i] != null && opponent.MonsterZones[i]!.Atk >= 1500)
+                    { opponent.Graveyard.Add(opponent.MonsterZones[i]!); opponent.MonsterZones[i] = null; count++; }
+                int handDest = 0;
+                for (int i = opponent.Hand.Count - 1; i >= 0; i--)
+                    if (opponent.Hand[i].IsMonster && opponent.Hand[i].Atk >= 1500)
+                    { opponent.Graveyard.Add(opponent.Hand[i]); opponent.Hand.RemoveAt(i); handDest++; }
+                return $"病毒作戰！場上摧毀 {count} 隻、手牌摧毀 {handDest} 隻（ATK 1500以上）";
+            }
+
+            // ── 怪獸控制 / 復活 ──────────────────────────────────────────
+            if (spell.Name == "Monster Reborn" || spell.Name == "Premature Burial" || spell.Name == "Shallow Grave")
+            {
+                if (spell.Name == "Premature Burial")
+                {
+                    caster.LifePoints -= 800;
+                    if (caster.LifePoints <= 0) caster.LifePoints = 1;
+                }
+                var pool = spell.Name == "Shallow Grave"
+                    ? (IEnumerable<YgoCard>)caster.Graveyard.Where(c => c.IsMonster)
+                    : caster.Graveyard.Concat(opponent.Graveyard).Where(c => c.IsMonster);
+                var target = pool.OrderByDescending(c => c.EffectiveAtk).FirstOrDefault();
+                if (target == null) return "墓地沒有怪獸！";
+                if (caster.FirstEmptyMonsterZone() < 0) return "怪獸區已滿！";
+                caster.Graveyard.Remove(target);
+                opponent.Graveyard.Remove(target);
+                var revived = target.Clone();
+                revived.SummonedThisTurn = spell.Name != "Premature Burial"; // Premature Burial no SS-sickness? simplified: yes sickness
+                if (spell.Name == "Shallow Grave") { revived.FaceDown = true; revived.IsDefensePosition = true; }
+                int slot = caster.FirstEmptyMonsterZone();
+                while (caster.MonsterZones.Count <= slot) caster.MonsterZones.Add(null);
+                caster.MonsterZones[slot] = revived;
+                string prefix = spell.Name == "Premature Burial" ? "（付出 800 LP）" : "";
+                return $"{prefix}特殊召喚 **{revived.Name}** (ATK {revived.Atk})";
+            }
+            if (spell.Name == "Change of Heart" || spell.Name == "Brain Control" || spell.Name == "Snatch Steal")
+            {
+                if (spell.Name == "Brain Control") { caster.LifePoints -= 800; if (caster.LifePoints <= 0) caster.LifePoints = 1; }
+                var target = StrongestOpponentMonster();
+                if (target == null) return "對方沒有怪獸！";
+                int oZone = opponent.MonsterZones.IndexOf(target);
+                if (oZone < 0) return "找不到目標怪獸！";
+                if (caster.FirstEmptyMonsterZone() < 0) return "我方怪獸區已滿！";
+                opponent.MonsterZones[oZone] = null;
+                var stolen = target.Clone();
+                stolen.SummonedThisTurn = false;
+                stolen.AttackedThisTurn = false;
+                int slot = caster.FirstEmptyMonsterZone();
+                while (caster.MonsterZones.Count <= slot) caster.MonsterZones.Add(null);
+                caster.MonsterZones[slot] = stolen;
+                string prefix2 = spell.Name == "Brain Control" ? "（付 800 LP）" : "";
+                return $"{prefix2}取得 **{stolen.Name}**（ATK {stolen.Atk}）的控制權！";
+            }
+            if (spell.Name == "O - Oversoul" || spell.Name == "A Hero Lives")
+            {
+                YgoCard? hero = null;
+                if (spell.Name == "O - Oversoul")
+                    hero = caster.Graveyard.Where(c => c.IsMonster && c.Name.Contains("Elemental HERO"))
+                                 .OrderByDescending(c => c.EffectiveAtk).FirstOrDefault();
+                else
+                {
+                    caster.LifePoints -= caster.LifePoints / 2;
+                    hero = caster.Deck.FirstOrDefault(c => c.IsMonster && c.Name.Contains("Elemental HERO"));
+                    if (hero != null) caster.Deck.Remove(hero);
+                }
+                if (hero == null) return "找不到 Elemental HERO 怪獸！";
+                if (caster.FirstEmptyMonsterZone() < 0) return "怪獸區已滿！";
+                if (spell.Name == "O - Oversoul") { caster.Graveyard.Remove(hero); }
+                var summoned = hero.Clone();
+                summoned.SummonedThisTurn = true;
+                int slot = caster.FirstEmptyMonsterZone();
+                while (caster.MonsterZones.Count <= slot) caster.MonsterZones.Add(null);
+                caster.MonsterZones[slot] = summoned;
+                return $"特殊召喚 **{summoned.Name}** (ATK {summoned.Atk})！";
+            }
+
+            // ── 封印 / 強化 ───────────────────────────────────────────────
             if (spell.Name == "Swords of Revealing Light")
             {
                 opponent.SwordsCounter = 3;
                 return "對方怪獸 3 回合內無法攻擊（光之護封劍）";
+            }
+            if (spell.Name == "Messenger of Peace")
+            {
+                opponent.SwordsCounter = Math.Max(opponent.SwordsCounter, 2);
+                return "和平使者！對方 ATK 1500 以上的怪獸 2 回合內無法攻擊";
+            }
+            if (spell.Name == "Enemy Controller")
+            {
+                foreach (var m in opponent.GetMonstersOnField())
+                { m.IsDefensePosition = true; m.FaceDown = false; }
+                return "Enemy Controller！對方所有怪獸轉守備表示！";
+            }
+            if (spell.Name == "Windstorm of Etaqua")
+            {
+                foreach (var m in opponent.GetMonstersOnField())
+                { m.IsDefensePosition = true; m.FaceDown = false; }
+                return "哈比的旋風！對方所有怪獸轉守備表示！";
+            }
+            if (spell.Name == "Mirror Wall")
+            {
+                foreach (var m in opponent.GetMonstersOnField())
+                    m.TempAtk = m.EffectiveAtk / 2;
+                return "魔鏡牆！對方所有攻擊表示怪獸 ATK 減半！";
             }
             if (spell.Name == "Spiral Flame Strike")
             {
@@ -1203,9 +1422,584 @@ namespace MusicBot2.Service
                 int cnt = caster.GetMonstersOnField().Count + opponent.GetMonstersOnField().Count;
                 int boost = cnt * 100;
                 foreach (var m in caster.GetMonstersOnField()) m.TempAtk = m.EffectiveAtk + boost;
-                return $"場上怪獸各 +{boost} ATK（直到回合結束）";
+                return $"場上怪獸各 +{boost} ATK";
             }
-            return $"效果：{spell.Desc?.Split('.').FirstOrDefault() ?? "（需手動協議執行）"}";
+
+            // ── 傷害 ────────────────────────────────────────────────────
+            if (spell.Name == "Ring of Destruction")
+            {
+                var target = StrongestOpponentMonster();
+                if (target == null) return "對方沒有怪獸！";
+                int dmg = target.EffectiveAtk;
+                int tZone = opponent.MonsterZones.IndexOf(target);
+                if (tZone >= 0) { opponent.MonsterZones[tZone] = null; opponent.Graveyard.Add(target); }
+                caster.LifePoints  -= dmg;
+                opponent.LifePoints -= dmg;
+                return $"毀滅 **{target.Name}**（ATK {dmg}）！雙方各 -{dmg} LP";
+            }
+            if (spell.Name == "Coffin Seller")
+            {
+                opponent.LifePoints -= 300 * Math.Max(1, opponent.Graveyard.Count(c => c.IsMonster));
+                return $"棺材販子！{opponent.UserName} -{300 * Math.Max(1, opponent.Graveyard.Count(c => c.IsMonster))} LP";
+            }
+
+            // ── 融合 ─────────────────────────────────────────────────────
+            if (spell.Name == "Polymerization" || spell.Name == "Miracle Fusion")
+            {
+                // 從手牌或場上找怪獸，嘗試特殊召喚額外牌組中的融合怪獸
+                var extraFusion = caster.ExtraDeck.FirstOrDefault(c => c.IsFusion);
+                if (extraFusion == null) return "額外牌組沒有融合怪獸！";
+                if (caster.FirstEmptyMonsterZone() < 0) return "怪獸區已滿！";
+                var fusion = extraFusion.Clone();
+                fusion.SummonedThisTurn = true;
+                int fSlot = caster.FirstEmptyMonsterZone();
+                while (caster.MonsterZones.Count <= fSlot) caster.MonsterZones.Add(null);
+                caster.MonsterZones[fSlot] = fusion;
+                duel.LastPlayedCardImageUrl = fusion.RareImageUrl;
+                return $"融合召喚！特殊召喚 **{fusion.Name}** (ATK {fusion.Atk})！";
+            }
+
+            // ── 場地破壞/返回 ──────────────────────────────────────────────
+            if (spell.Name == "Giant Trunade")
+            {
+                var cHand = new List<YgoCard>();
+                var oHand = new List<YgoCard>();
+                for (int i = 0; i < caster.SpellTrapZones.Count; i++)
+                    if (caster.SpellTrapZones[i] != null) { cHand.Add(caster.SpellTrapZones[i]!); caster.SpellTrapZones[i] = null; }
+                for (int i = 0; i < opponent.SpellTrapZones.Count; i++)
+                    if (opponent.SpellTrapZones[i] != null) { oHand.Add(opponent.SpellTrapZones[i]!); opponent.SpellTrapZones[i] = null; }
+                caster.Hand.AddRange(cHand);
+                opponent.Hand.AddRange(oHand);
+                return $"大龍捲！場上全部魔陷回到手牌（我方 +{cHand.Count}，對方 +{oHand.Count}）";
+            }
+            if (spell.Name == "Fissure")
+            {
+                var weakest = opponent.MonsterZones
+                    .Where(c => c != null && !c.IsDefensePosition)
+                    .OrderBy(c => c!.EffectiveAtk).FirstOrDefault();
+                if (weakest == null) return "對方沒有攻擊表示怪獸！";
+                int z = opponent.MonsterZones.IndexOf(weakest);
+                opponent.MonsterZones[z] = null;
+                opponent.Graveyard.Add(weakest);
+                return $"裂縫！摧毀對方 **{weakest.Name}**（ATK 最低 {weakest.EffectiveAtk}）";
+            }
+            if (spell.Name == "Stamping Destruction")
+            {
+                bool hasDragon = caster.GetMonstersOnField().Any(m =>
+                    m.Attribute?.Contains("WIND") == false || m.Race?.Contains("Dragon") == true || m.Name.Contains("Dragon"));
+                for (int i = 0; i < opponent.SpellTrapZones.Count; i++)
+                    if (opponent.SpellTrapZones[i] != null)
+                    {
+                        var t = opponent.SpellTrapZones[i]!;
+                        opponent.Graveyard.Add(t);
+                        opponent.SpellTrapZones[i] = null;
+                        opponent.LifePoints -= 500;
+                        return $"踏擊破壞！摧毀對方 **{t.Name}**，{opponent.UserName} -500 LP";
+                    }
+                return "對方魔陷區是空的！";
+            }
+            if (spell.Name == "Stop Defense")
+            {
+                var defM = opponent.MonsterZones.FirstOrDefault(c => c != null && c.IsDefensePosition);
+                if (defM == null) return "對方沒有守備表示怪獸！";
+                defM.IsDefensePosition = false;
+                defM.FaceDown = false;
+                return $"撤除守備！**{defM.Name}** 轉為攻擊表示";
+            }
+
+            // ── ATK 強化 ─────────────────────────────────────────────────────
+            if (spell.Name == "Shrink")
+            {
+                var target = StrongestOpponentMonster();
+                if (target == null) return "對方沒有怪獸！";
+                target.TempAtk = target.EffectiveAtk / 2;
+                return $"**{target.Name}** ATK 減半 → {target.TempAtk}";
+            }
+            if (spell.Name == "Dragon Nails")
+            {
+                var myDragon = caster.GetMonstersOnField().OrderByDescending(m => m.EffectiveAtk).FirstOrDefault();
+                if (myDragon == null) return "場上沒有我方怪獸！";
+                myDragon.TempAtk = myDragon.EffectiveAtk + 600;
+                return $"龍爪！**{myDragon.Name}** +600 ATK → {myDragon.TempAtk}";
+            }
+            if (spell.Name == "Reinforcements")
+            {
+                var myM = caster.GetMonstersOnField().OrderByDescending(m => m.EffectiveAtk).FirstOrDefault();
+                if (myM == null) return "場上沒有我方怪獸！";
+                myM.TempAtk = myM.EffectiveAtk + 500;
+                return $"**{myM.Name}** +500 ATK → {myM.TempAtk}";
+            }
+            if (spell.Name == "Limiter Removal")
+            {
+                var machines = caster.GetMonstersOnField().Where(m => m.Race == "Machine" || m.Name.Contains("Cyber") || m.Name.Contains("Dragon")).ToList();
+                if (!machines.Any()) return "場上沒有機械族怪獸！";
+                foreach (var m in machines) m.TempAtk = m.EffectiveAtk * 2;
+                return $"解除限制器！{machines.Count} 隻機械族 ATK 加倍！（本回合結束後摧毀）";
+            }
+            if (spell.Name == "The A. Forces")
+            {
+                var warriors = caster.GetMonstersOnField().ToList();
+                int boost = warriors.Count * 200;
+                foreach (var m in warriors) m.TempAtk = m.EffectiveAtk + boost;
+                return $"A部隊！我方 {warriors.Count} 隻怪獸各 +{boost} ATK";
+            }
+            if (spell.Name == "Graceful Dice")
+            {
+                var rng = new Random();
+                int roll = rng.Next(1, 7);
+                var myM = caster.GetMonstersOnField().OrderByDescending(m => m.EffectiveAtk).FirstOrDefault();
+                if (myM == null) return $"骰子結果 {roll}，但場上沒有怪獸！";
+                myM.TempAtk = myM.EffectiveAtk * roll;
+                return $"骰子結果 🎲{roll}！**{myM.Name}** ATK × {roll} → {myM.TempAtk}";
+            }
+            if (spell.Name == "Skull Dice")
+            {
+                var rng2 = new Random();
+                int roll2 = rng2.Next(1, 7);
+                if (roll2 == 1) roll2 = 2;
+                foreach (var m in opponent.GetMonstersOnField()) m.TempAtk = m.EffectiveAtk / roll2;
+                return $"骷髏骰子 🎲{roll2}！對方所有怪獸 ATK ÷ {roll2}";
+            }
+
+            // ── 手牌 / 牌組操作 ────────────────────────────────────────────
+            if (spell.Name == "The Flute of Summoning Dragon")
+            {
+                var dragon = caster.Hand.FirstOrDefault(c => c.IsMonster &&
+                    (c.Race?.Contains("Dragon") == true || c.Name.Contains("Dragon")));
+                if (dragon == null) return "手牌沒有龍族怪獸！";
+                if (caster.FirstEmptyMonsterZone() < 0) return "怪獸區已滿！";
+                caster.Hand.Remove(dragon);
+                var d = dragon.Clone(); d.SummonedThisTurn = true;
+                int sl = caster.FirstEmptyMonsterZone();
+                while (caster.MonsterZones.Count <= sl) caster.MonsterZones.Add(null);
+                caster.MonsterZones[sl] = d;
+                duel.LastPlayedCardImageUrl = d.RareImageUrl;
+                return $"龍笛！從手牌特殊召喚 **{d.Name}** (ATK {d.Atk})";
+            }
+            if (spell.Name == "Cost Down")
+            {
+                if (caster.Hand.Count == 0) return "沒有手牌可棄！";
+                caster.Graveyard.Add(caster.Hand[^1]);
+                caster.Hand.RemoveAt(caster.Hand.Count - 1);
+                return "降低費用！棄 1 張牌，本回合手牌中的怪獸需貢獻數 -1（請自行協議）";
+            }
+            if (spell.Name == "Scapegoat")
+            {
+                int placed = 0;
+                for (int i = 0; i < 4; i++)
+                {
+                    int sl2 = caster.FirstEmptyMonsterZone();
+                    if (sl2 < 0) break;
+                    var token = new YgoCard { Name = "Sheep Token", Type = "Monster", FrameType = "normal",
+                        Atk = 0, Def = 0, Level = 1, Race = "Beast", Attribute = "EARTH",
+                        SummonedThisTurn = true };
+                    while (caster.MonsterZones.Count <= sl2) caster.MonsterZones.Add(null);
+                    caster.MonsterZones[sl2] = token;
+                    placed++;
+                }
+                return $"替代羊！特殊召喚 {placed} 隻綿羊衍生物（ATK/DEF 0）";
+            }
+            if (spell.Name == "Reinforcement of the Army")
+            {
+                var warrior = caster.Deck.FirstOrDefault(c => c.IsMonster && c.Level <= 4 &&
+                    (c.Race == "Warrior" || c.Name.Contains("Armed Dragon")));
+                if (warrior == null) return "牌組沒有 Level 4 以下戰士族！";
+                caster.Deck.Remove(warrior);
+                caster.Hand.Add(warrior);
+                return $"戰士的生還！**{warrior.Name}** 加入手牌";
+            }
+            if (spell.Name == "Cyber Repair Plant")
+            {
+                var cyber = caster.Deck.FirstOrDefault(c => c.IsMonster && c.Name.Contains("Cyber Dragon"));
+                if (cyber == null) return "牌組沒有電子龍！";
+                caster.Deck.Remove(cyber);
+                caster.Hand.Add(cyber);
+                return $"電子修復廠！**{cyber.Name}** 加入手牌";
+            }
+            if (spell.Name == "Toon Table of Contents")
+            {
+                var toon = caster.Deck.FirstOrDefault(c => c.Name.Contains("Toon") || c.Name.Contains("Blue-Eyes Toon"));
+                if (toon == null) return "牌組沒有卡通卡片！";
+                caster.Deck.Remove(toon);
+                caster.Hand.Add(toon);
+                return $"卡通目錄！**{toon.Name}** 加入手牌";
+            }
+            if (spell.Name == "Toon World")
+            {
+                return "卡通世界！（持續魔法，卡通怪獸現在可以攻擊對手直接攻擊）";
+            }
+            if (spell.Name == "Card of Safe Return")
+            {
+                DrawCards(caster, 1);
+                return $"安全回歸！抽 1 張牌（手牌 {caster.HandCount} 張）";
+            }
+            if (spell.Name == "Graverobber")
+            {
+                var oppSpell = opponent.Graveyard.FirstOrDefault(c => c.IsSpell);
+                if (oppSpell == null) return "對方墓地沒有魔法牌！";
+                opponent.Graveyard.Remove(oppSpell);
+                caster.LifePoints -= 2000;
+                var effectMsg = ApplySpellEffect(oppSpell, duel);
+                return $"掘墓賊！使用對方的 **{oppSpell.Name}**，付出 2000 LP。{effectMsg}";
+            }
+            if (spell.Name == "Level Up!")
+            {
+                var lv3 = caster.GetMonstersOnField().FirstOrDefault(m => m.Name.Contains("Armed Dragon LV3"));
+                var lv5 = caster.GetMonstersOnField().FirstOrDefault(m => m.Name.Contains("Armed Dragon LV5"));
+                YgoCard? nextLv = null;
+                if (lv3 != null)
+                {
+                    caster.MonsterZones[caster.MonsterZones.IndexOf(lv3)] = null;
+                    caster.Graveyard.Add(lv3);
+                    nextLv = caster.Hand.FirstOrDefault(c => c.Name.Contains("Armed Dragon LV5"))
+                          ?? caster.Deck.FirstOrDefault(c => c.Name.Contains("Armed Dragon LV5"));
+                    if (nextLv != null) { caster.Hand.Remove(nextLv); caster.Deck.Remove(nextLv); }
+                }
+                else if (lv5 != null)
+                {
+                    caster.MonsterZones[caster.MonsterZones.IndexOf(lv5)] = null;
+                    caster.Graveyard.Add(lv5);
+                    nextLv = caster.Hand.FirstOrDefault(c => c.Name.Contains("Armed Dragon LV7"))
+                          ?? caster.Deck.FirstOrDefault(c => c.Name.Contains("Armed Dragon LV7"));
+                    if (nextLv != null) { caster.Hand.Remove(nextLv); caster.Deck.Remove(nextLv); }
+                }
+                if (nextLv == null) return "找不到可升級的武裝龍！";
+                int sl3 = caster.FirstEmptyMonsterZone();
+                if (sl3 < 0) return "怪獸區已滿！";
+                var upgraded = nextLv.Clone(); upgraded.SummonedThisTurn = true;
+                while (caster.MonsterZones.Count <= sl3) caster.MonsterZones.Add(null);
+                caster.MonsterZones[sl3] = upgraded;
+                duel.LastPlayedCardImageUrl = upgraded.RareImageUrl;
+                return $"等級提升！特殊召喚 **{upgraded.Name}** (ATK {upgraded.Atk})";
+            }
+
+            // ── 儀式召喚 ─────────────────────────────────────────────────────
+            if (spell.Name == "Machine Angel Ritual" || spell.Name == "Hymn of Light")
+            {
+                var ritualTarget = spell.Name == "Hymn of Light"
+                    ? (caster.Hand.FirstOrDefault(c => c.IsMonster && c.Name.Contains("Cyber Angel Benten"))
+                    ?? caster.Deck.FirstOrDefault(c => c.IsMonster && c.Name.Contains("Cyber Angel Benten")))
+                    : (caster.Hand.FirstOrDefault(c => c.IsMonster && c.Name.Contains("Cyber Angel"))
+                    ?? caster.Deck.FirstOrDefault(c => c.IsMonster && c.Name.Contains("Cyber Angel")));
+                if (ritualTarget == null) return "手牌/牌組找不到網路天使！";
+                var tribute = caster.Hand.FirstOrDefault(c => c.IsMonster && !c.Name.Contains("Cyber Angel"))
+                           ?? caster.GetMonstersOnField().FirstOrDefault();
+                if (tribute == null) return "沒有可貢獻的怪獸！";
+                // Remove tribute
+                int tribZone = caster.MonsterZones.IndexOf(tribute);
+                if (tribZone >= 0) { caster.Graveyard.Add(tribute); caster.MonsterZones[tribZone] = null; }
+                else { caster.Graveyard.Add(tribute); caster.Hand.Remove(tribute); }
+                // Summon ritual
+                caster.Hand.Remove(ritualTarget); caster.Deck.Remove(ritualTarget);
+                if (caster.FirstEmptyMonsterZone() < 0) return "怪獸區已滿！";
+                var ritual = ritualTarget.Clone(); ritual.SummonedThisTurn = true;
+                int rslot = caster.FirstEmptyMonsterZone();
+                while (caster.MonsterZones.Count <= rslot) caster.MonsterZones.Add(null);
+                caster.MonsterZones[rslot] = ritual;
+                duel.LastPlayedCardImageUrl = ritual.RareImageUrl;
+                return $"儀式召喚！**{ritual.Name}** (ATK {ritual.Atk}) 降臨！";
+            }
+            if (spell.Name == "Black Illusion Ritual")
+            {
+                var relinquished = caster.Hand.FirstOrDefault(c => c.IsMonster && c.Name.Contains("Relinquished"))
+                                ?? caster.Deck.FirstOrDefault(c => c.IsMonster && c.Name.Contains("Relinquished"));
+                if (relinquished == null) return "手牌/牌組沒有解除（Relinquished）！";
+                var tribute2 = caster.Hand.FirstOrDefault(c => c.IsMonster && !c.Name.Contains("Relinquished"))
+                            ?? caster.GetMonstersOnField().FirstOrDefault();
+                if (tribute2 == null) return "沒有可貢獻的怪獸！";
+                int t2zone = caster.MonsterZones.IndexOf(tribute2);
+                if (t2zone >= 0) { caster.Graveyard.Add(tribute2); caster.MonsterZones[t2zone] = null; }
+                else { caster.Graveyard.Add(tribute2); caster.Hand.Remove(tribute2); }
+                caster.Hand.Remove(relinquished); caster.Deck.Remove(relinquished);
+                if (caster.FirstEmptyMonsterZone() < 0) return "怪獸區已滿！";
+                var rSlot = caster.FirstEmptyMonsterZone();
+                var r2 = relinquished.Clone(); r2.SummonedThisTurn = true;
+                while (caster.MonsterZones.Count <= rSlot) caster.MonsterZones.Add(null);
+                caster.MonsterZones[rSlot] = r2;
+                duel.LastPlayedCardImageUrl = r2.RareImageUrl;
+                return $"黑暗儀式！儀式召喚 **{r2.Name}** (ATK {r2.Atk})";
+            }
+
+            // ── 特殊召喚 ─────────────────────────────────────────────────────
+            if (spell.Name == "Machine Duplication")
+            {
+                var cyberD = caster.Deck.Where(c => c.IsMonster && c.Name.Contains("Cyber Dragon")).Take(2).ToList();
+                int placed2 = 0;
+                foreach (var cd in cyberD)
+                {
+                    int sl4 = caster.FirstEmptyMonsterZone();
+                    if (sl4 < 0) break;
+                    caster.Deck.Remove(cd);
+                    var cdC = cd.Clone(); cdC.SummonedThisTurn = true;
+                    while (caster.MonsterZones.Count <= sl4) caster.MonsterZones.Add(null);
+                    caster.MonsterZones[sl4] = cdC;
+                    placed2++;
+                }
+                return placed2 > 0 ? $"機械增殖！從牌組特殊召喚 {placed2} 隻電子龍" : "牌組沒有電子龍！";
+            }
+            if (spell.Name == "Elegant Egotist")
+            {
+                bool hasHarpie = caster.GetMonstersOnField().Any(m => m.Name.Contains("Harpie"));
+                if (!hasHarpie) return "場上沒有哈彼！";
+                var harpieNext = caster.Deck.FirstOrDefault(c => c.IsMonster && c.Name.Contains("Harpie"));
+                if (harpieNext == null) return "牌組沒有哈彼怪獸！";
+                if (caster.FirstEmptyMonsterZone() < 0) return "怪獸區已滿！";
+                caster.Deck.Remove(harpieNext);
+                var hC = harpieNext.Clone(); hC.SummonedThisTurn = true;
+                int hSlot = caster.FirstEmptyMonsterZone();
+                while (caster.MonsterZones.Count <= hSlot) caster.MonsterZones.Add(null);
+                caster.MonsterZones[hSlot] = hC;
+                duel.LastPlayedCardImageUrl = hC.RareImageUrl;
+                return $"高傲自我！從牌組特殊召喚 **{hC.Name}** (ATK {hC.Atk})";
+            }
+            if (spell.Name == "Harpie's Hunting Ground")
+            {
+                // Field spell: SS Harpie → destroy 1 opponent S/T
+                for (int i = 0; i < opponent.SpellTrapZones.Count; i++)
+                    if (opponent.SpellTrapZones[i] != null)
+                    {
+                        var st = opponent.SpellTrapZones[i]!;
+                        opponent.Graveyard.Add(st);
+                        opponent.SpellTrapZones[i] = null;
+                        return $"哈彼的狩獵場！摧毀對方 **{st.Name}**";
+                    }
+                return "哈彼的狩獵場啟動！（對方無魔陷可摧毀）";
+            }
+            if (spell.Name == "Bubble Shuffle")
+            {
+                var hero = caster.GetMonstersOnField().FirstOrDefault(m => m.Name.Contains("Elemental HERO"));
+                if (hero != null) hero.IsDefensePosition = true;
+                DrawCards(caster, 1);
+                return $"泡泡混洗！{(hero != null ? hero.Name + " 轉守備" : "")} 抽 1 張牌";
+            }
+
+            // ── LP 增減 / 犧牲效果 ─────────────────────────────────────────
+            if (spell.Name == "Mystik Wok")
+            {
+                var tribute3 = caster.GetMonstersOnField().OrderByDescending(m => m.EffectiveAtk).FirstOrDefault();
+                if (tribute3 == null) return "場上沒有怪獸可以貢獻！";
+                int gain = tribute3.EffectiveAtk;
+                int tz = caster.MonsterZones.IndexOf(tribute3);
+                if (tz >= 0) { caster.MonsterZones[tz] = null; caster.Graveyard.Add(tribute3); }
+                caster.LifePoints += gain;
+                return $"神秘中華料理！貢獻 **{tribute3.Name}**，回復 {gain} LP → {caster.LifePoints}";
+            }
+            if (spell.Name == "Ectoplasmer")
+            {
+                var tribute4 = caster.GetMonstersOnField().OrderByDescending(m => m.EffectiveAtk).FirstOrDefault();
+                if (tribute4 == null) return "場上沒有怪獸！";
+                int dmgEcto = tribute4.EffectiveAtk / 2;
+                int ez = caster.MonsterZones.IndexOf(tribute4);
+                if (ez >= 0) { caster.MonsterZones[ez] = null; caster.Graveyard.Add(tribute4); }
+                opponent.LifePoints -= dmgEcto;
+                return $"靈體外出！貢獻 **{tribute4.Name}**，{opponent.UserName} -{dmgEcto} LP";
+            }
+            if (spell.Name == "Soul Exchange")
+            {
+                var target2 = StrongestOpponentMonster();
+                if (target2 == null) return "對方沒有怪獸！";
+                int oIdx = opponent.MonsterZones.IndexOf(target2);
+                opponent.MonsterZones[oIdx] = null;
+                opponent.Graveyard.Add(target2);
+                return $"靈魂交換！將對方的 **{target2.Name}** 作為貢獻（送墓地）";
+            }
+            if (spell.Name == "My Body as a Shield")
+            {
+                caster.LifePoints -= 1500;
+                if (caster.LifePoints <= 1) caster.LifePoints = 1;
+                return $"以我的身體為盾！付出 1500 LP，下次我方怪獸不會被破壞（本次已模擬付費）";
+            }
+            if (spell.Name == "Evolution Burst")
+            {
+                var advCyber = caster.GetMonstersOnField().FirstOrDefault(m => m.Level >= 6 && m.Name.Contains("Cyber"));
+                if (advCyber == null) return "場上沒有高等電子龍！";
+                caster.MonsterZones[caster.MonsterZones.IndexOf(advCyber)] = null;
+                caster.Graveyard.Add(advCyber);
+                var targetCard = StrongestOpponentMonster();
+                if (targetCard != null)
+                {
+                    int tcIdx = opponent.MonsterZones.IndexOf(targetCard);
+                    opponent.MonsterZones[tcIdx] = null;
+                    opponent.Graveyard.Add(targetCard);
+                    return $"進化爆炸！送 **{advCyber.Name}** 到墓地，摧毀對方 **{targetCard.Name}**！";
+                }
+                return $"進化爆炸！送 **{advCyber.Name}** 到墓地（對方無怪獸）";
+            }
+            if (spell.Name == "System Down")
+            {
+                caster.LifePoints -= 1000;
+                int removed = 0;
+                for (int i = 0; i < opponent.MonsterZones.Count; i++)
+                    if (opponent.MonsterZones[i] != null &&
+                        (opponent.MonsterZones[i]!.Race == "Machine" || opponent.MonsterZones[i]!.Name.Contains("Cyber")))
+                    { opponent.Graveyard.Add(opponent.MonsterZones[i]!); opponent.MonsterZones[i] = null; removed++; }
+                return $"系統重置！付 1000 LP，除外對方 {removed} 隻機械族！";
+            }
+            if (spell.Name == "Power Bond")
+            {
+                // Fusion summon with ATK doubled, caster takes original ATK as damage at end of turn
+                var extraF = caster.ExtraDeck.FirstOrDefault(c => c.IsFusion && c.Name.Contains("Cyber"));
+                if (extraF == null) return "額外牌組沒有電子融合怪獸！";
+                if (caster.FirstEmptyMonsterZone() < 0) return "怪獸區已滿！";
+                var fusion = extraF.Clone(); fusion.SummonedThisTurn = true;
+                int origAtk = fusion.Atk;
+                fusion.TempAtk = fusion.Atk * 2;
+                int pbSlot = caster.FirstEmptyMonsterZone();
+                while (caster.MonsterZones.Count <= pbSlot) caster.MonsterZones.Add(null);
+                caster.MonsterZones[pbSlot] = fusion;
+                caster.PendingEndTurnDamage += origAtk;
+                duel.LastPlayedCardImageUrl = fusion.RareImageUrl;
+                return $"力量紐帶！融合召喚 **{fusion.Name}** (ATK {fusion.TempAtk})！回合結束時 -{origAtk} LP";
+            }
+            if (spell.Name == "Comic Hand")
+            {
+                var target3 = StrongestOpponentMonster();
+                if (target3 == null) return "對方沒有怪獸！";
+                int ct3z = opponent.MonsterZones.IndexOf(target3);
+                opponent.MonsterZones[ct3z] = null;
+                var stolen2 = target3.Clone();
+                int stSlot = caster.FirstEmptyMonsterZone();
+                if (stSlot < 0) return "我方怪獸區已滿！";
+                while (caster.MonsterZones.Count <= stSlot) caster.MonsterZones.Add(null);
+                caster.MonsterZones[stSlot] = stolen2;
+                return $"漫畫之手！取得 **{stolen2.Name}** 的控制權！";
+            }
+
+            // ── 陷阱效果（手動發動版）────────────────────────────────────────
+            if (spell.Name == "Mirror Force")
+            {
+                int cnt2 = 0;
+                for (int i = 0; i < opponent.MonsterZones.Count; i++)
+                    if (opponent.MonsterZones[i] != null && !opponent.MonsterZones[i]!.IsDefensePosition)
+                    { opponent.Graveyard.Add(opponent.MonsterZones[i]!); opponent.MonsterZones[i] = null; cnt2++; }
+                return $"聖光護盾！摧毀對方 {cnt2} 隻攻擊表示怪獸！";
+            }
+            if (spell.Name == "Magic Cylinder")
+            {
+                var strongestOpp = StrongestOpponentMonster();
+                if (strongestOpp == null) return "對方沒有怪獸！";
+                int cylDmg = strongestOpp.EffectiveAtk;
+                opponent.LifePoints -= cylDmg;
+                return $"魔法筒！無效攻擊，{opponent.UserName} -{cylDmg} LP → {opponent.LifePoints}";
+            }
+            if (spell.Name == "Spellbinding Circle")
+            {
+                var sTarget = StrongestOpponentMonster();
+                if (sTarget == null) return "對方沒有怪獸！";
+                sTarget.CannotAttack = true;
+                sTarget.CannotChangePosition = true;
+                return $"封印魔輪！**{sTarget.Name}** 無法攻擊或改變表示形式";
+            }
+            if (spell.Name == "Negate Attack")
+            {
+                if (duel.CurrentPhase == DuelPhase.BattlePhase)
+                {
+                    duel.CurrentPhase = DuelPhase.MainPhase2;
+                    return "攻擊無效！戰鬥階段結束，進入主要階段 2";
+                }
+                return "攻擊無效！（無效對方 1 次攻擊，結束戰鬥階段）";
+            }
+            if (spell.Name == "Magic Jammer")
+            {
+                if (caster.Hand.Count == 0) return "沒有手牌可棄！";
+                caster.Graveyard.Add(caster.Hand[^1]);
+                caster.Hand.RemoveAt(caster.Hand.Count - 1);
+                for (int i = opponent.SpellTrapZones.Count - 1; i >= 0; i--)
+                    if (opponent.SpellTrapZones[i] != null)
+                    {
+                        opponent.Graveyard.Add(opponent.SpellTrapZones[i]!);
+                        opponent.SpellTrapZones[i] = null;
+                        return "魔法干擾！棄 1 張牌，無效對方 1 張魔陷！";
+                    }
+                return "魔法干擾！棄 1 張牌（對方無魔陷可無效）";
+            }
+            if (spell.Name == "OJAMA Trio")
+            {
+                int tokensPlaced = 0;
+                for (int i = 0; i < 3; i++)
+                {
+                    int oSlot = 0;
+                    for (int j = 0; j < 5; j++)
+                        if (j >= opponent.MonsterZones.Count || opponent.MonsterZones[j] == null) { oSlot = j; break; }
+                    var ojTok = new YgoCard { Name = "OJAMA Token", Type = "Monster", FrameType = "normal",
+                        Atk = 0, Def = 1000, Level = 2, Race = "Beast", Attribute = "LIGHT",
+                        IsDefensePosition = true, SummonedThisTurn = true };
+                    while (opponent.MonsterZones.Count <= oSlot) opponent.MonsterZones.Add(null);
+                    if (opponent.MonsterZones[oSlot] == null) { opponent.MonsterZones[oSlot] = ojTok; tokensPlaced++; }
+                }
+                return $"腐叫聲三連！在對方場上放置 {tokensPlaced} 隻 OJAMA Token（ATK 0/DEF 1000）";
+            }
+            if (spell.Name == "Threatening Roar")
+            {
+                opponent.CannotDeclareAttackThisTurn = true;
+                return $"威嚇咆哮！{opponent.UserName} 本回合無法宣告攻擊！";
+            }
+            if (spell.Name == "Waboku")
+            {
+                caster.WabokuActive = true;
+                return "和睦的使者！本回合戰鬥傷害無效！";
+            }
+            if (spell.Name == "Trap Hole")
+            {
+                var tHole = opponent.GetMonstersOnField()
+                    .Where(m => m.EffectiveAtk >= 1000 && m.SummonedThisTurn)
+                    .OrderByDescending(m => m.EffectiveAtk).FirstOrDefault()
+                    ?? opponent.GetMonstersOnField().Where(m => m.EffectiveAtk >= 1000)
+                    .OrderByDescending(m => m.EffectiveAtk).FirstOrDefault();
+                if (tHole == null) return "對方沒有 ATK 1000 以上的怪獸！";
+                int thz = opponent.MonsterZones.IndexOf(tHole);
+                opponent.MonsterZones[thz] = null;
+                opponent.Graveyard.Add(tHole);
+                return $"落穴！摧毀 **{tHole.Name}**（ATK {tHole.EffectiveAtk}）";
+            }
+            if (spell.Name == "Nightmare Wheel")
+            {
+                var nwTarget = StrongestOpponentMonster();
+                if (nwTarget == null) return "對方沒有怪獸！";
+                nwTarget.CannotAttack = true;
+                nwTarget.CannotChangePosition = true;
+                opponent.LifePoints -= 500;
+                return $"惡夢之輪！**{nwTarget.Name}** 無法攻擊/換表示，{opponent.UserName} -500 LP";
+            }
+            if (spell.Name == "Hysteric Party")
+            {
+                if (caster.Hand.Count == 0) return "沒有手牌可棄！";
+                caster.Graveyard.Add(caster.Hand[^1]);
+                caster.Hand.RemoveAt(caster.Hand.Count - 1);
+                var harpiesInGY = caster.Graveyard.Where(c => c.IsMonster && c.Name.Contains("Harpie")).Take(3).ToList();
+                int hpPlaced = 0;
+                foreach (var hp in harpiesInGY)
+                {
+                    int hpSlot = caster.FirstEmptyMonsterZone();
+                    if (hpSlot < 0) break;
+                    caster.Graveyard.Remove(hp);
+                    var hpC2 = hp.Clone(); hpC2.SummonedThisTurn = true;
+                    while (caster.MonsterZones.Count <= hpSlot) caster.MonsterZones.Add(null);
+                    caster.MonsterZones[hpSlot] = hpC2;
+                    hpPlaced++;
+                }
+                return $"歇斯底里派對！棄 1 張牌，從墓地特殊召喚 {hpPlaced} 隻哈彼！";
+            }
+            if (spell.Name == "Hero Signal")
+            {
+                var heroInHand = caster.Hand.FirstOrDefault(c => c.IsMonster && c.Name.Contains("HERO"));
+                if (heroInHand == null) return "手牌沒有HERO！";
+                int hsSlot = caster.FirstEmptyMonsterZone();
+                if (hsSlot < 0) return "怪獸區已滿！";
+                caster.Hand.Remove(heroInHand);
+                var hsC = heroInHand.Clone(); hsC.SummonedThisTurn = true;
+                while (caster.MonsterZones.Count <= hsSlot) caster.MonsterZones.Add(null);
+                caster.MonsterZones[hsSlot] = hsC;
+                duel.LastPlayedCardImageUrl = hsC.RareImageUrl;
+                return $"英雄信號！從手牌特殊召喚 **{hsC.Name}** (ATK {hsC.Atk})";
+            }
+            if (spell.Name == "Destiny Board")
+            {
+                opponent.LifePoints -= 500;
+                return $"命運之板！F-I-N-A-L 計劃開始！（{opponent.UserName} -500 LP，完整效果請手動協議）";
+            }
+
+            return $"效果：{spell.Desc?.Split('.').FirstOrDefault() ?? "（無法自動執行，請手動協議）"}";
         }
 
         private static void PlaceMonster(YgoPlayerField field, YgoCard card, int handIndex)
@@ -1240,6 +2034,24 @@ namespace MusicBot2.Service
             }
             // Clear TempAtk
             foreach (var m in field.GetMonstersOnField()) m.TempAtk = null;
+
+            // 重置回合旗標
+            duel.Field1.WabokuActive = false;
+            duel.Field2.WabokuActive = false;
+            duel.Field1.CannotDeclareAttackThisTurn = false;
+            duel.Field2.CannotDeclareAttackThisTurn = false;
+            foreach (var f in new[] { duel.Field1, duel.Field2 })
+                foreach (var m in f.GetMonstersOnField())
+                { m.CannotAttack = false; m.CannotChangePosition = false; }
+
+            // Power Bond 結算傷害
+            if (duel.CurrentField.PendingEndTurnDamage > 0)
+            {
+                duel.CurrentField.LifePoints -= duel.CurrentField.PendingEndTurnDamage;
+                duel.AddLog($"⚡ Power Bond 結算：{duel.CurrentField.UserName} -{duel.CurrentField.PendingEndTurnDamage} LP → {duel.CurrentField.LifePoints}");
+                duel.CurrentField.PendingEndTurnDamage = 0;
+            }
+
             // Swords counter
             if (field.SwordsCounter > 0) field.SwordsCounter--;
             if (duel.OpponentField.SwordsCounter > 0 && duel.CurrentField != duel.Field1)
@@ -1474,7 +2286,19 @@ namespace MusicBot2.Service
             }
             row2.WithButton("🏳️ 投降", $"ygo_surrender_{did}", ButtonStyle.Danger);
 
-            return cb.AddRow(row1).AddRow(row2);
+            cb.AddRow(row1);
+            cb.AddRow(row2);
+
+            // Row 3: 發動伏地牌（若場上有伏地的魔陷）
+            bool hasSetST = isMyTurn && duel.CurrentField.SpellTrapZones.Any(c => c != null && c.FaceDown);
+            if (hasSetST)
+            {
+                var row3 = new ActionRowBuilder();
+                row3.WithButton("⚡ 發動伏地牌", $"ygo_stmenu_{did}", ButtonStyle.Primary);
+                cb.AddRow(row3);
+            }
+
+            return cb;
         }
 
         private static ComponentBuilder BuildAttackTargetButtons(YgoDuelState duel, bool hasMonsters)
@@ -1604,6 +2428,20 @@ namespace MusicBot2.Service
             }
         }
 
+        private async Task DeleteDuelAsync(ulong channelId)
+        {
+            _memDuels.Remove(channelId);
+            if (_useRedis)
+            {
+                try
+                {
+                    await _redisDb!.KeyDeleteAsync(DUEL_KEY + channelId);
+                    await _redisDb!.KeyDeleteAsync(CHAN_KEY + channelId);
+                }
+                catch { }
+            }
+        }
+
         private async Task<YgoDuelState?> LoadDuelAsync(ulong channelId)
         {
             if (_memDuels.TryGetValue(channelId, out var m)) return m;
@@ -1728,37 +2566,50 @@ namespace MusicBot2.Service
                     },
                     ExtraDeckNames = new() { "Elemental HERO Flame Wingman","Elemental HERO Thunder Giant","Elemental HERO Shining Flare Wingman" }
                 },
-                new()
+                new() {
+                Key = "chazz", CharacterName = "万丈目準", Series = "GX",
+                Emoji = "🏆", Color = 0xFFD700,
+                AiPersonality = "你是萬丈目準，傲慢自大的決鬥者，使用武裝龍和腐叫聲牌組",
+                MainDeckNames = new()
                 {
-                    Key = "yusei", CharacterName = "不動遊星", Series = "5D's",
-                    Emoji = "✨", Color = 0x263238,
-                    AiPersonality = "你是不動遊星，沉著冷靜，相信羈絆的力量，言簡意賅。",
-                    MainDeckNames = new()
-                    {
-                        "Junk Synchron","Junk Synchron","Speed Warrior","Speed Warrior",
-                        "Quillbolt Hedgehog","Nitro Synchron","Turbo Synchron","Quickdraw Synchron",
-                        "Debris Dragon","Hyper Synchron","Synchron Explorer","Unknown Synchron",
-                        "Synchro Blast Wave","Graceful Revival","Fighting Spirit","Scrapstorm",
-                        "Monster Reborn","Scrap-Iron Scarecrow","Synchro Strike","Urgent Tuning",
-                    },
-                    ExtraDeckNames = new() { "Stardust Dragon","Junk Warrior","Nitro Warrior" }
+                    "Armed Dragon LV3","Armed Dragon LV3","Armed Dragon LV5","Armed Dragon LV5",
+                    "Armed Dragon LV7","OJAMA Yellow","OJAMA Green","OJAMA Black",
+                    "Sangan","Big Shield Gardna",
+                    "Level Up!","Level Up!","The A. Forces","Reinforcement of the Army",
+                    "Graceful Charity","Monster Reborn","Fissure","Stamping Destruction",
+                    "OJAMA Trio","Threatening Roar"
                 },
-                new()
+                ExtraDeckNames = new() { "OJAMA King" }
+            },
+            new() {
+                Key = "alexis", CharacterName = "天上院明日香", Series = "GX",
+                Emoji = "🌸", Color = 0xFF69B4,
+                AiPersonality = "你是天上院明日香，高雅的決鬥者，使用網路天使儀式牌組",
+                MainDeckNames = new()
                 {
-                    Key = "yuya", CharacterName = "榊遊矢", Series = "ARC-V",
-                    Emoji = "🎭", Color = 0x2E7D32,
-                    AiPersonality = "你是榊遊矢，充滿表演精神，相信決鬥能帶來笑容，喜歡以特技翻盤。",
-                    MainDeckNames = new()
-                    {
-                        "Odd-Eyes Pendulum Dragon","Odd-Eyes Pendulum Dragon","Odd-Eyes Dragon",
-                        "Performapal Sword Fish","Performapal Trampolynx","Performapal Springoose",
-                        "Performapal Monkeyboard","Performapal Skullcrobat Joker","Performapal Partnaga",
-                        "Performapal Whip Snake","Performapal Hip Hippo","Performapal Pendulum Sorcerer",
-                        "Sky Iris","Duelist Alliance","Pendulum Shift","Smile World","Spiral Flame Strike",
-                        "Pendulum Reborn","Performapal Popperup","Damage = Reptile",
-                    },
-                    ExtraDeckNames = new() { "Odd-Eyes Rebellion Dragon","Odd-Eyes Vortex Dragon" }
+                    "Cyber Angel Benten","Cyber Angel Benten","Cyber Angel Idaten","Cyber Angel Idaten",
+                    "Etoile Cyber","Etoile Cyber","Blade Skater","Blade Skater",
+                    "Cyber Gymnast","Cyber Tutu","Shining Angel","Shining Angel",
+                    "Machine Angel Ritual","Machine Angel Ritual","Hymn of Light","Graceful Charity",
+                    "Monster Reborn","Dark Hole","Negate Attack","My Body as a Shield"
                 },
+                ExtraDeckNames = new()
+            },
+            new() {
+                Key = "zane", CharacterName = "丸藤亮", Series = "GX",
+                Emoji = "⚙️", Color = 0x4169E1,
+                AiPersonality = "你是丸藤亮，冷酷強大的決鬥者，使用電子龍機械牌組",
+                MainDeckNames = new()
+                {
+                    "Cyber Dragon","Cyber Dragon","Cyber Dragon",
+                    "Proto-Cyber Dragon","Proto-Cyber Dragon","Cyber Dragon Core","Cyber Dragon Core",
+                    "Cyber Barrier Dragon","Cyber Laser Dragon","Attachment Cybern",
+                    "Power Bond","Power Bond","Machine Duplication","Cyber Repair Plant",
+                    "Limiter Removal","System Down","Evolution Burst",
+                    "Monster Reborn","Dark Hole","Negate Attack"
+                },
+                ExtraDeckNames = new() { "Cyber Twin Dragon","Cyber End Dragon","Chimeratech Overdragon" }
+            },
                 new()
                 {
                     Key = "mai", CharacterName = "孔雀舞", Series = "DM",
@@ -1820,53 +2671,6 @@ namespace MusicBot2.Service
                         "Shallow Grave","Premature Burial","Magic Jammer","Ring of Destruction",
                     },
                     ExtraDeckNames = new()
-                },
-                new()
-                {
-                    Key = "jack", CharacterName = "傑克·亞特拉斯", Series = "5D's",
-                    Emoji = "👑", Color = 0xB71C1C,
-                    AiPersonality = "你是傑克·亞特拉斯，自稱「King」，傲慢霸道，以紅蓮魔龍為榮耀。",
-                    MainDeckNames = new()
-                    {
-                        "Red Dragon Archfiend","Vice Dragon","Strong Wind Dragon","Twin-Sword Marauder",
-                        "Dark Resonator","Dark Resonator","Infernity Archfiend","Battle Fader",
-                        "Exploder Dragon","Lancer Archfiend","Assault Beast",
-                        "Assault Mode Activate","Trap Eater","Power Frame","Mirror Force",
-                        "Solemn Judgment","Bottomless Trap Hole","Book of Moon","Scrap-Iron Scarecrow","Shock Wave",
-                    },
-                    ExtraDeckNames = new() { "Red Dragon Archfiend/Assault Mode","Exploder Dragonwing" }
-                },
-                new()
-                {
-                    Key = "crow", CharacterName = "克羅·霍根", Series = "5D's",
-                    Emoji = "🐦", Color = 0x212121,
-                    AiPersonality = "你是克羅·霍根，義氣當先，以黑羽牌組行俠仗義，言語直率豪邁。",
-                    MainDeckNames = new()
-                    {
-                        "Blackwing - Gale the Whirlwind","Blackwing - Shura the Blue Flame",
-                        "Blackwing - Blizzard the Far North","Blackwing - Bora the Spear",
-                        "Blackwing - Kalut the Moon Shadow","Blackwing - Sirocco the Dawn",
-                        "Dark Armed Dragon","Allure of Darkness","Black Whirlwind","Black Whirlwind",
-                        "Delta Crow - Anti Reverse","Icarus Attack","Icarus Attack",
-                        "Monster Reborn","Foolish Burial","Cards for Black Feathers",
-                        "Book of Moon","Torrential Tribute","Bottomless Trap Hole","Mystical Space Typhoon",
-                    },
-                    ExtraDeckNames = new() { "Blackwing Armed Wing","Blackwing Armor Master","Black-Winged Dragon" }
-                },
-                new()
-                {
-                    Key = "yuma", CharacterName = "九十九遊馬", Series = "ZEXAL",
-                    Emoji = "⭐", Color = 0xF9A825,
-                    AiPersonality = "你是九十九遊馬，充滿熱情，相信「決鬥魂」，絕不放棄，口頭禪是「這就是我的決鬥！」。",
-                    MainDeckNames = new()
-                    {
-                        "Gagaga Magician","Gagaga Magician","Gagaga Girl","Gogogo Giant",
-                        "Gogogo Ghost","Dododo Warrior","Dododo Witch","Zubaba Knight",
-                        "Ganbara Knight","Acorno","Pinecono","Bicular",
-                        "Xyz Energy","Heartfelt Appeal","Monster Reborn","Dark Hole",
-                        "Half Unbreak","Xyz Unit","Onomatopair","Bound Wand",
-                    },
-                    ExtraDeckNames = new() { "Number 39: Utopia","Number C39: Utopia Ray" }
                 },
             };
 
