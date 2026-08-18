@@ -162,7 +162,7 @@ public class Program
             .AddSingleton<PokeTowerService>(sp =>
                 new PokeTowerService(redisConn, sp.GetService<OpenRouterService>(), sp.GetService<GetChampService>()))
               .AddSingleton<HolyGrailTowerService>(sp => new HolyGrailTowerService(redisConn))
-              .AddSingleton<YgoDuelService>(sp => new YgoDuelService(redisConn, sp.GetRequiredService<OpenRouterService>()))
+              .AddSingleton<YgoDuelService>(sp => new YgoDuelService(redisConn, sp.GetRequiredService<OpenRouterService>(), _client))
               .BuildServiceProvider();
 
         _googleAIStudioService = _services.GetRequiredService<GoogleAIStudioService>();
@@ -455,9 +455,27 @@ public class Program
                     result = await ygoSvc.GetBoardAsync(cid);
                 else if (component.Data.CustomId.StartsWith("ygo_hand_"))
                 {
-                    // 手牌檢視：公開 FollowupAsync，同一訊息可透過 ygo_cardimg_ 切換卡圖
                     var (handEmbed, handComp) = await ygoSvc.GetHandEmbedAsync(cid, uid, 0);
-                    await component.FollowupAsync(embed: handEmbed, components: handComp.Build());
+
+                    // 若已有手牌訊息 → 直接 edit，不新增
+                    var existingDuel = await ygoSvc.GetDuelStateAsync(cid);
+                    if (existingDuel?.HandMessageId > 0 && _client.GetChannel(cid) is IMessageChannel hCh)
+                    {
+                        try
+                        {
+                            if (await hCh.GetMessageAsync(existingDuel.HandMessageId) is IUserMessage existMsg)
+                            {
+                                await existMsg.ModifyAsync(m => { m.Embed = handEmbed; m.Components = handComp.Build(); });
+                                await component.DeferAsync();
+                                return;
+                            }
+                        }
+                        catch { }
+                    }
+
+                    // 第一次或舊訊息找不到 → 新建 followup 並儲存 ID
+                    var newMsg = await component.FollowupAsync(embed: handEmbed, components: handComp.Build());
+                    await ygoSvc.SetHandMessageIdAsync(cid, newMsg.Id);
                 }
                 else if (component.Data.CustomId.StartsWith("ygo_cardimg_"))
                 {

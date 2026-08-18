@@ -17,6 +17,7 @@ namespace MusicBot2.Service
         private readonly bool _useRedis;
         private readonly OpenRouterService _ai;
         private readonly Random _rng = new();
+        private readonly DiscordSocketClient? _client;
 
         private const string DUEL_KEY   = "ygo:duel:";
         private const string CHAN_KEY   = "ygo:channel:";
@@ -31,9 +32,10 @@ namespace MusicBot2.Service
         // ─────────────────────────────────────────────────────────────────
         private static readonly Dictionary<string, AnimeDeckDefinition> _decks = BuildDecks();
 
-        public YgoDuelService(string? redisConn, OpenRouterService ai)
+        public YgoDuelService(string? redisConn, OpenRouterService ai, DiscordSocketClient? client = null)
         {
             _ai = ai;
+            _client = client;
             try
             {
                 if (!string.IsNullOrWhiteSpace(redisConn))
@@ -230,6 +232,7 @@ namespace MusicBot2.Service
             duel.AddLog($"🎴 {field.UserName} 抽了一張牌（手牌 {field.HandCount} 張）");
 
             await SaveDuelAsync(channelId, duel);
+            await RefreshHandDisplayAsync(channelId, userId);
             return (BuildBoardEmbed(duel), BuildBoardButtons(duel));
         }
 
@@ -327,6 +330,7 @@ namespace MusicBot2.Service
             duel.AddLog($"⬆️ {field.UserName} 通常召喚 **{card.Name}** (ATK {card.Atk})");
 
             await SaveDuelAsync(channelId, duel);
+            await RefreshHandDisplayAsync(channelId, userId);
             return (BuildBoardEmbed(duel), BuildBoardButtons(duel));
         }
 
@@ -400,6 +404,7 @@ namespace MusicBot2.Service
             duel.AddLog($"🔽 {field.UserName} 將一張牌怪獸覆蓋");
 
             await SaveDuelAsync(channelId, duel);
+            await RefreshHandDisplayAsync(channelId, userId);
             return (BuildBoardEmbed(duel), BuildBoardButtons(duel));
         }
 
@@ -428,6 +433,7 @@ namespace MusicBot2.Service
             duel.AddLog($"🔽 {field.UserName} 覆蓋了一張 {(card.IsSpell ? "魔法" : "陷阱")}");
 
             await SaveDuelAsync(channelId, duel);
+            await RefreshHandDisplayAsync(channelId, userId);
             return (BuildBoardEmbed(duel), BuildBoardButtons(duel));
         }
 
@@ -445,21 +451,25 @@ namespace MusicBot2.Service
                 : await SetSpellTrapAsync(channelId, userId, handIndex);
         }
 
-        /// <summary>顯示場上伏地的魔陷牌，供選擇發動</summary>
+        /// <summary>顯示場上伏地的魔陷牌，供選擇發動（可在對方回合觸發）</summary>
         public async Task<(Embed embed, ComponentBuilder component)> ShowSetSTMenuAsync(
             ulong channelId, ulong userId)
         {
             var duel = await LoadDuelAsync(channelId);
             if (duel == null) return Error("沒有進行中的決鬥。");
-            if (duel.CurrentTurnPlayerId != userId) return Error("還沒輪到你！");
 
-            var field = duel.CurrentField;
+            // 找到這個玩家自己的場地（不限制輪次）
+            var field = duel.Field1.UserId == userId ? duel.Field1
+                      : duel.Field2.UserId == userId ? duel.Field2
+                      : null;
+            if (field == null) return Error("你不是這場決鬥的參與者！");
+
             var faceDown = field.SpellTrapZones
                 .Select((c, i) => (c, i))
                 .Where(x => x.c != null && x.c.FaceDown)
                 .ToList();
 
-            if (!faceDown.Any()) return Error("場上沒有可發動的伏地牌！");
+            if (!faceDown.Any()) return Error("你的場上沒有可發動的伏地牌！");
 
             var eb = new EmbedBuilder()
                 .WithTitle("⚡ 選擇要發動的伏地牌")
@@ -470,31 +480,41 @@ namespace MusicBot2.Service
             var cb  = new ComponentBuilder();
             var row = new ActionRowBuilder();
             foreach (var (c, i) in faceDown)
-                row.WithButton($"ST[{i+1}] {c!.ShortName}", $"ygo_stact_{duel.DuelId}_{i}", ButtonStyle.Primary);
+                row.WithButton($"ST[{i+1}] {c!.ShortName}", $"ygo_stact_{duel.DuelId}_{i}", ButtonStyle.Danger);
             cb.AddRow(row);
             return (eb.Build(), cb);
         }
 
-        /// <summary>發動場上指定格子的伏地魔陷</summary>
+        /// <summary>發動場上指定格子的伏地魔陷（可在對方回合觸發）</summary>
         public async Task<(Embed embed, ComponentBuilder component)> ActivateSetSTAsync(
             ulong channelId, ulong userId, int stZone)
         {
             var duel = await LoadDuelAsync(channelId);
             if (duel == null) return Error("沒有進行中的決鬥。");
-            if (duel.CurrentTurnPlayerId != userId) return Error("還沒輪到你！");
 
-            var field = duel.CurrentField;
+            // 找到這個玩家自己的場地（不限制輪次）
+            var field = duel.Field1.UserId == userId ? duel.Field1
+                      : duel.Field2.UserId == userId ? duel.Field2
+                      : null;
+            if (field == null) return Error("你不是這場決鬥的參與者！");
+
             if (stZone < 0 || stZone >= field.SpellTrapZones.Count || field.SpellTrapZones[stZone] == null)
                 return Error("無效的格子。");
             var card = field.SpellTrapZones[stZone]!;
             if (!card.FaceDown) return Error("這張牌已經是表側了。");
 
             field.SpellTrapZones[stZone] = null;
-            var msg = ApplySpellEffect(card, duel);
             field.Graveyard.Add(card);
             duel.LastPlayedCardImageUrl = card.RareImageUrl;
             duel.AddLog($"⚡ {field.UserName} 發動伏地牌 **{card.Name}**");
-            if (!string.IsNullOrWhiteSpace(msg)) duel.AddLog($"　→ {msg}");
+
+            // 暫時切換視角讓 ApplySpellEffect 以「我方/對方」正確計算
+            ulong savedTurnId = duel.CurrentTurnPlayerId;
+            duel.CurrentTurnPlayerId = userId;
+            var effectMsg = ApplySpellEffect(card, duel);
+            duel.CurrentTurnPlayerId = savedTurnId; // 還原回合玩家
+
+            if (!string.IsNullOrWhiteSpace(effectMsg)) duel.AddLog($"　→ {effectMsg}");
 
             var (ended, winner) = CheckGameOver(duel);
             if (ended)
@@ -680,7 +700,10 @@ namespace MusicBot2.Service
             if (!duel.IsActive)
                 await DeleteDuelAsync(channelId);
             else
+            {
                 await SaveDuelAsync(channelId, duel);
+                await RefreshHandDisplayAsync(channelId, userId);
+            }
             return (BuildBoardEmbed(duel), BuildBoardButtons(duel));
         }
 
@@ -711,6 +734,11 @@ namespace MusicBot2.Service
 
             var opp = duel.OpponentField;
             var hasMonsters = opp.MonsterZones.Any(c => c != null);
+
+            // 對方沒有怪獸 → 直接跳過選目標，自動直接攻擊
+            if (!hasMonsters)
+                return await ConfirmAttackAsync(channelId, userId, null);
+
             return (BuildAttackTargetEmbed(duel, attacker, hasMonsters), BuildAttackTargetButtons(duel, hasMonsters));
         }
 
@@ -2289,8 +2317,9 @@ namespace MusicBot2.Service
             cb.AddRow(row1);
             cb.AddRow(row2);
 
-            // Row 3: 發動伏地牌（若場上有伏地的魔陷）
-            bool hasSetST = isMyTurn && duel.CurrentField.SpellTrapZones.Any(c => c != null && c.FaceDown);
+            // Row 3: 發動伏地牌（任一方有伏地魔陷就顯示，對方回合也可觸發陷阱）
+            bool hasSetST = duel.Field1.SpellTrapZones.Any(c => c != null && c.FaceDown)
+                         || duel.Field2.SpellTrapZones.Any(c => c != null && c.FaceDown);
             if (hasSetST)
             {
                 var row3 = new ActionRowBuilder();
@@ -2319,7 +2348,7 @@ namespace MusicBot2.Service
                     if (opp.MonsterZones.Count > i && opp.MonsterZones[i] != null)
                         row.WithButton($"攻擊格 {i+1}", $"ygo_atktarget_{did}_{i}", ButtonStyle.Danger);
                 }
-                row.WithButton("直接攻擊", $"ygo_atktarget_{did}_direct", ButtonStyle.Secondary, disabled: hasMonsters);
+                // 不加 disabled「直接攻擊」— 有怪獸時不能直接攻擊，且加了可能超過每列 5 個按鈕上限
             }
 
             return cb.AddRow(row);
@@ -2440,6 +2469,34 @@ namespace MusicBot2.Service
                 }
                 catch { }
             }
+        }
+
+        /// <summary>將手牌訊息 ID 存入決鬥狀態</summary>
+        public async Task SetHandMessageIdAsync(ulong channelId, ulong messageId)
+        {
+            var duel = await LoadDuelAsync(channelId);
+            if (duel == null) return;
+            duel.HandMessageId = messageId;
+            await SaveDuelAsync(channelId, duel);
+        }
+
+        /// <summary>取得決鬥狀態（供 Program.cs 查詢）</summary>
+        public async Task<YgoDuelState?> GetDuelStateAsync(ulong channelId)
+            => await LoadDuelAsync(channelId);
+
+        /// <summary>當手牌有變動時，in-place 更新已存在的手牌訊息</summary>
+        private async Task RefreshHandDisplayAsync(ulong channelId, ulong userId)
+        {
+            var duel = await LoadDuelAsync(channelId);
+            if (duel == null || duel.HandMessageId == 0) return;
+            try
+            {
+                if (_client.GetChannel(channelId) is not IMessageChannel ch) return;
+                if (await ch.GetMessageAsync(duel.HandMessageId) is not IUserMessage msg) return;
+                var (handEmbed, handComp) = await GetHandEmbedAsync(channelId, userId, 0);
+                await msg.ModifyAsync(m => { m.Embed = handEmbed; m.Components = handComp.Build(); });
+            }
+            catch { /* 手牌更新失敗不影響主流程 */ }
         }
 
         private async Task<YgoDuelState?> LoadDuelAsync(ulong channelId)
