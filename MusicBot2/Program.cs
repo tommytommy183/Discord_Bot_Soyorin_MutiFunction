@@ -162,6 +162,7 @@ public class Program
             .AddSingleton<PokeTowerService>(sp =>
                 new PokeTowerService(redisConn, sp.GetService<OpenRouterService>(), sp.GetService<GetChampService>()))
               .AddSingleton<HolyGrailTowerService>(sp => new HolyGrailTowerService(redisConn))
+              .AddSingleton<YgoDuelService>(sp => new YgoDuelService(redisConn, sp.GetRequiredService<OpenRouterService>()))
               .BuildServiceProvider();
 
         _googleAIStudioService = _services.GetRequiredService<GoogleAIStudioService>();
@@ -433,7 +434,62 @@ public class Program
                     });
                 }
             }
-            // 處理聖杯塔 Roguelike 按鈕 
+            // 遊戲王決鬥按鈕
+            else if (component.Data.CustomId.StartsWith("ygo_"))
+            {
+                await component.DeferAsync();
+                var ygoSvc = _services.GetRequiredService<YgoDuelService>();
+                var cid    = component.ChannelId ?? 0;
+                var uid    = component.User.Id;
+                var parts  = component.Data.CustomId.Split('_');
+
+                (Embed? embed, ComponentBuilder? comp) result = (null, null);
+
+                if (component.Data.CustomId.StartsWith("ygo_draw_"))
+                    result = await ygoSvc.DrawCardAsync(cid, uid);
+                else if (component.Data.CustomId.StartsWith("ygo_phase_"))
+                    result = await ygoSvc.AdvancePhaseAsync(cid, uid);
+                else if (component.Data.CustomId.StartsWith("ygo_endturn_"))
+                    result = await ygoSvc.EndTurnAsync(cid, uid);
+                else if (component.Data.CustomId.StartsWith("ygo_board_"))
+                    result = await ygoSvc.GetBoardAsync(cid);
+                else if (component.Data.CustomId.StartsWith("ygo_hand_"))
+                {
+                    var handEmbed = await ygoSvc.GetHandEmbedAsync(cid, uid);
+                    await component.FollowupAsync(embed: handEmbed, ephemeral: true);
+                }
+                else if (component.Data.CustomId.StartsWith("ygo_surrender_") && !component.Data.CustomId.Contains("confirm"))
+                    result = await ygoSvc.SurrenderAsync(cid, uid);
+                else if (component.Data.CustomId.StartsWith("ygo_atkselect_"))
+                {
+                    // ygo_atkselect_{duelId}_{zone}
+                    int zone = int.Parse(parts[^1]);
+                    result = await ygoSvc.SelectAttackerAsync(cid, uid, zone);
+                }
+                else if (component.Data.CustomId.StartsWith("ygo_atktarget_"))
+                {
+                    // ygo_atktarget_{duelId}_{zone|direct}
+                    var zoneStr = parts[^1];
+                    int? tZone = zoneStr == "direct" ? null : int.Parse(zoneStr);
+                    result = await ygoSvc.ConfirmAttackAsync(cid, uid, tZone);
+                }
+                else if (component.Data.CustomId.StartsWith("ygo_tribute_"))
+                {
+                    // ygo_tribute_{duelId}_{zone}
+                    int zone = int.Parse(parts[^1]);
+                    result = await ygoSvc.SelectTributeAsync(cid, uid, zone);
+                }
+
+                if (result.embed != null)
+                {
+                    await component.ModifyOriginalResponseAsync(msg =>
+                    {
+                        msg.Embed = result.embed;
+                        msg.Components = result.comp?.Build();
+                    });
+                }
+            }
+            // 處理聖杯塔 Roguelike 按鈕
             else if (component.Data.CustomId.StartsWith("hgwt_"))
             {
                 await component.DeferAsync();
@@ -1293,6 +1349,18 @@ public class Program
 
         bool isMentioned = message.MentionedUsers.Any(u => u.Id == _client.CurrentUser.Id);
         bool isSelf = message.Author.Id == _client.CurrentUser.Id;
+
+        // 遊戲王決鬥 NLP（頻道有決鬥中才偵測）
+        var ygoSvc = _services?.GetService<YgoDuelService>();
+        if (ygoSvc != null && ygoSvc.IsChannelInDuel(message.Channel.Id) && !isSelf)
+        {
+            var (ygoEmbed, ygoComp) = await ygoSvc.ProcessNlpAsync(message.Channel.Id, message.Author.Id, message.Content);
+            if (ygoEmbed != null)
+            {
+                await message.Channel.SendMessageAsync(embed: ygoEmbed, components: ygoComp?.Build());
+                return;
+            }
+        }
 
         if (isMentioned ||
             message.Content.ToLower().Contains("soyo") ||
