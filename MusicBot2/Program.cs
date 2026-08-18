@@ -1169,6 +1169,14 @@ public class Program
                 return;
             }
 
+            if (feature.StartsWith("抓寶可夢:"))
+            {
+                var svc = _services.GetRequiredService<PokeGameService>();
+                var (embed, comp) = await svc.CatchPokemonAsync(userId, talker?.DisplayName ?? talker?.Username ?? "訓練師");
+                await channel.SendMessageAsync(embed: embed, components: comp.Build());
+                return;
+            }
+
             switch (feature)
             {
                 case "1a2b":
@@ -1233,13 +1241,6 @@ public class Program
                         var txt = await svc.GetUselessFactsAsync();
                         if (!string.IsNullOrWhiteSpace(txt))
                             await channel.SendMessageAsync(txt);
-                        break;
-                    }
-                case "抓寶可夢":
-                    {
-                        var svc = _services.GetRequiredService<PokeGameService>();
-                        var (embed, comp) = await svc.CatchPokemonAsync(userId, talker?.DisplayName ?? talker?.Username ?? "訓練師");
-                        await channel.SendMessageAsync(embed: embed, components: comp.Build());
                         break;
                     }
             }
