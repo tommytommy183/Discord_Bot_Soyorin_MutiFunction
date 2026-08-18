@@ -145,14 +145,45 @@ namespace MusicBot2.Service
             return (BuildBoardEmbed(duel), BuildBoardButtons(duel));
         }
 
-        /// <summary>顯示玩家手牌（回傳 Embed，由 caller 用 DM 傳送）</summary>
-        public async Task<Embed> GetHandEmbedAsync(ulong channelId, ulong userId)
+        /// <summary>顯示玩家手牌（含看牌圖按鈕）</summary>
+        public async Task<(Embed embed, ComponentBuilder component)> GetHandEmbedAsync(
+            ulong channelId, ulong userId)
         {
             var duel = await LoadDuelAsync(channelId);
-            if (duel == null) return Error("此頻道沒有進行中的決鬥。").embed;
+            if (duel == null) return Error("此頻道沒有進行中的決鬥。");
 
             var field = duel.Field1.UserId == userId ? duel.Field1 : duel.Field2;
-            return BuildHandEmbed(field);
+            var embed = BuildHandEmbed(field);
+            var cb    = BuildHandImageButtons(duel.DuelId, field);
+            return (embed, cb);
+        }
+
+        /// <summary>顯示特定手牌卡圖（ephemeral）</summary>
+        public async Task<(Embed embed, ComponentBuilder component)> ShowCardImageAsync(
+            ulong channelId, ulong userId, int handIndex)
+        {
+            var duel = await LoadDuelAsync(channelId);
+            if (duel == null) return Error("沒有進行中的決鬥。");
+
+            var field = duel.Field1.UserId == userId ? duel.Field1 : duel.Field2;
+            if (handIndex < 0 || handIndex >= field.Hand.Count) return Error("無效的索引。");
+            var card = field.Hand[handIndex];
+
+            string imgUrl = card.RareImageUrl;
+            if (string.IsNullOrWhiteSpace(imgUrl)) imgUrl = card.ImageUrl;
+
+            var eb = new EmbedBuilder()
+                .WithTitle($"🖼️ {card.Name}")
+                .WithColor(card.IsMonster ? new Color(0xFFD700) :
+                           card.IsSpell   ? new Color(0x1DB954) : new Color(0xE74C3C))
+                .WithDescription(card.IsMonster
+                    ? $"ATK {card.Atk} / DEF {card.Def}  ★{card.Level}  {card.Attribute}/{card.Race}"
+                    : card.Type);
+
+            if (!string.IsNullOrWhiteSpace(imgUrl))
+                eb.WithImageUrl(imgUrl);
+
+            return (eb.Build(), new ComponentBuilder());
         }
 
         /// <summary>抽牌</summary>
@@ -277,6 +308,7 @@ namespace MusicBot2.Service
             if (field.FirstEmptyMonsterZone() == -1) return Error("怪獸區已滿！");
             PlaceMonster(field, card, handIndex);
             field.NormalSummonedThisTurn = true;
+            duel.LastPlayedCardImageUrl = card.RareImageUrl;
             duel.AddLog($"⬆️ {field.UserName} 通常召喚 **{card.Name}** (ATK {card.Atk})");
 
             await SaveDuelAsync(channelId, duel);
@@ -315,6 +347,7 @@ namespace MusicBot2.Service
             // 貢獻完成，召喚
             PlaceMonster(field, summonCard, duel.PendingSummonHandIndex.Value);
             field.NormalSummonedThisTurn = true;
+            duel.LastPlayedCardImageUrl = summonCard.RareImageUrl;
             duel.PendingSummonHandIndex = null;
             duel.PendingTributeZones = new();
             duel.AddLog($"⬆️ {field.UserName} 貢獻召喚 **{summonCard.Name}** (ATK {summonCard.Atk})");
@@ -323,7 +356,7 @@ namespace MusicBot2.Service
             return (BuildBoardEmbed(duel), BuildBoardButtons(duel));
         }
 
-        /// <summary>伏地怪獸（守備伏地）</summary>
+        /// <summary>覆蓋怪獸（守備覆蓋）</summary>
         public async Task<(Embed embed, ComponentBuilder component)> SetMonsterAsync(
             ulong channelId, ulong userId, int handIndex)
         {
@@ -331,10 +364,10 @@ namespace MusicBot2.Service
             if (duel == null) return Error("沒有進行中的決鬥。");
             if (duel.CurrentTurnPlayerId != userId) return Error("還沒輪到你！");
             if (duel.CurrentPhase != DuelPhase.MainPhase1 && duel.CurrentPhase != DuelPhase.MainPhase2)
-                return Error("只能在主要階段伏地。");
+                return Error("只能在主要階段覆蓋。");
 
             var field = duel.CurrentField;
-            if (field.NormalSummonedThisTurn) return Error("本回合已通常召喚/伏地過了。");
+            if (field.NormalSummonedThisTurn) return Error("本回合已通常召喚/覆蓋過了。");
             if (handIndex < 0 || handIndex >= field.Hand.Count) return Error("無效的索引。");
             var card = field.Hand[handIndex];
             if (!card.IsMonster) return Error($"{card.Name} 不是怪獸！");
@@ -349,13 +382,13 @@ namespace MusicBot2.Service
             while (field.MonsterZones.Count <= slot) field.MonsterZones.Add(null);
             field.MonsterZones[slot] = placed;
             field.NormalSummonedThisTurn = true;
-            duel.AddLog($"🔽 {field.UserName} 將一張牌怪獸伏地");
+            duel.AddLog($"🔽 {field.UserName} 將一張牌怪獸覆蓋");
 
             await SaveDuelAsync(channelId, duel);
             return (BuildBoardEmbed(duel), BuildBoardButtons(duel));
         }
 
-        /// <summary>伏地魔陷</summary>
+        /// <summary>覆蓋魔陷</summary>
         public async Task<(Embed embed, ComponentBuilder component)> SetSpellTrapAsync(
             ulong channelId, ulong userId, int handIndex)
         {
@@ -363,7 +396,7 @@ namespace MusicBot2.Service
             if (duel == null) return Error("沒有進行中的決鬥。");
             if (duel.CurrentTurnPlayerId != userId) return Error("還沒輪到你！");
             if (duel.CurrentPhase != DuelPhase.MainPhase1 && duel.CurrentPhase != DuelPhase.MainPhase2)
-                return Error("只能在主要階段伏地。");
+                return Error("只能在主要階段覆蓋。");
 
             var field = duel.CurrentField;
             if (handIndex < 0 || handIndex >= field.Hand.Count) return Error("無效的索引。");
@@ -377,10 +410,160 @@ namespace MusicBot2.Service
             int slot = field.FirstEmptySTZone();
             while (field.SpellTrapZones.Count <= slot) field.SpellTrapZones.Add(null);
             field.SpellTrapZones[slot] = placed;
-            duel.AddLog($"🔽 {field.UserName} 伏地了一張 {(card.IsSpell ? "魔法" : "陷阱")}");
+            duel.AddLog($"🔽 {field.UserName} 覆蓋了一張 {(card.IsSpell ? "魔法" : "陷阱")}");
 
             await SaveDuelAsync(channelId, duel);
             return (BuildBoardEmbed(duel), BuildBoardButtons(duel));
+        }
+
+        /// <summary>統一覆蓋（自動判斷怪獸 or 魔陷）</summary>
+        public async Task<(Embed embed, ComponentBuilder component)> SetCardAsync(
+            ulong channelId, ulong userId, int handIndex)
+        {
+            var duel = await LoadDuelAsync(channelId);
+            if (duel == null) return Error("沒有進行中的決鬥。");
+            if (duel.CurrentTurnPlayerId != userId) return Error("還沒輪到你！");
+            var field = duel.CurrentField;
+            if (handIndex < 0 || handIndex >= field.Hand.Count) return Error("無效的手牌索引。");
+            return field.Hand[handIndex].IsMonster
+                ? await SetMonsterAsync(channelId, userId, handIndex)
+                : await SetSpellTrapAsync(channelId, userId, handIndex);
+        }
+
+        /// <summary>顯示手牌供選擇召喚</summary>
+        public async Task<(Embed embed, ComponentBuilder component)> ShowHandForSummonAsync(
+            ulong channelId, ulong userId)
+        {
+            var duel = await LoadDuelAsync(channelId);
+            if (duel == null) return Error("沒有進行中的決鬥。");
+            if (duel.CurrentTurnPlayerId != userId) return Error("還沒輪到你！");
+            if (duel.CurrentPhase != DuelPhase.MainPhase1 && duel.CurrentPhase != DuelPhase.MainPhase2)
+                return Error("只能在主要階段召喚。");
+            if (duel.CurrentField.NormalSummonedThisTurn) return Error("本回合已通常召喚過了。");
+
+            var hand = duel.CurrentField.Hand;
+            var monsters = hand.Select((c, i) => (c, i)).Where(x => x.c.IsMonster).ToList();
+            if (!monsters.Any()) return Error("手牌中沒有怪獸牌！");
+
+            var eb = new EmbedBuilder()
+                .WithTitle("⬆️ 選擇要召喚的怪獸")
+                .WithColor(Color.Gold);
+            foreach (var (c, i) in monsters)
+                eb.AddField($"{i+1}. {c.Name}",
+                    $"ATK {c.Atk} / DEF {c.Def}  Lv{c.Level}" +
+                    (c.TributeRequired > 0 ? $"  ⚠️需{c.TributeRequired}貢獻" : "  ✅可直接召喚"),
+                    inline: true);
+
+            var cb  = new ComponentBuilder();
+            var row = new ActionRowBuilder();
+            int cnt = 0;
+            foreach (var (c, i) in monsters)
+            {
+                if (cnt == 5) { cb.AddRow(row); row = new ActionRowBuilder(); cnt = 0; }
+                row.WithButton($"{i+1}.{c.ShortName}", $"ygo_ns_{duel.DuelId}_{i}", ButtonStyle.Primary);
+                cnt++;
+            }
+            cb.AddRow(row);
+            return (eb.Build(), cb);
+        }
+
+        /// <summary>顯示手牌供選擇覆蓋</summary>
+        public async Task<(Embed embed, ComponentBuilder component)> ShowHandForSetAsync(
+            ulong channelId, ulong userId)
+        {
+            var duel = await LoadDuelAsync(channelId);
+            if (duel == null) return Error("沒有進行中的決鬥。");
+            if (duel.CurrentTurnPlayerId != userId) return Error("還沒輪到你！");
+            if (duel.CurrentPhase != DuelPhase.MainPhase1 && duel.CurrentPhase != DuelPhase.MainPhase2)
+                return Error("只能在主要階段覆蓋。");
+
+            var hand = duel.CurrentField.Hand;
+            if (!hand.Any()) return Error("手牌是空的！");
+
+            var eb = new EmbedBuilder()
+                .WithTitle("🔽 選擇要覆蓋的牌（怪獸=守備覆蓋，魔陷=覆蓋魔陷）")
+                .WithColor(Color.DarkGrey);
+            for (int i = 0; i < hand.Count; i++)
+            {
+                var c = hand[i];
+                string kind = c.IsMonster ? $"怪獸 Lv{c.Level} DEF{c.Def}" : (c.IsSpell ? "魔法" : "陷阱");
+                eb.AddField($"{i+1}. {c.Name}", kind, inline: true);
+            }
+
+            var cb  = new ComponentBuilder();
+            var row = new ActionRowBuilder();
+            int cnt = 0;
+            for (int i = 0; i < hand.Count; i++)
+            {
+                if (cnt == 5) { cb.AddRow(row); row = new ActionRowBuilder(); cnt = 0; }
+                row.WithButton($"{i+1}.{hand[i].ShortName}", $"ygo_sc_{duel.DuelId}_{i}", ButtonStyle.Secondary);
+                cnt++;
+            }
+            cb.AddRow(row);
+            return (eb.Build(), cb);
+        }
+
+        /// <summary>顯示手牌供選擇發動魔法</summary>
+        public async Task<(Embed embed, ComponentBuilder component)> ShowHandForActivateAsync(
+            ulong channelId, ulong userId)
+        {
+            var duel = await LoadDuelAsync(channelId);
+            if (duel == null) return Error("沒有進行中的決鬥。");
+            if (duel.CurrentTurnPlayerId != userId) return Error("還沒輪到你！");
+
+            var hand = duel.CurrentField.Hand;
+            var spells = hand.Select((c, i) => (c, i)).Where(x => x.c.IsSpell).ToList();
+            if (!spells.Any()) return Error("手牌中沒有魔法牌可以發動！");
+
+            var eb = new EmbedBuilder()
+                .WithTitle("✨ 選擇要發動的魔法")
+                .WithColor(new Color(0x1DB954));
+            foreach (var (c, i) in spells)
+                eb.AddField($"{i+1}. {c.Name}", c.Desc?.Split('.').FirstOrDefault() ?? c.Race, inline: true);
+
+            var cb  = new ComponentBuilder();
+            var row = new ActionRowBuilder();
+            int cnt = 0;
+            foreach (var (c, i) in spells)
+            {
+                if (cnt == 5) { cb.AddRow(row); row = new ActionRowBuilder(); cnt = 0; }
+                row.WithButton($"{i+1}.{c.ShortName}", $"ygo_act_{duel.DuelId}_{i}", ButtonStyle.Success);
+                cnt++;
+            }
+            cb.AddRow(row);
+            return (eb.Build(), cb);
+        }
+
+        /// <summary>顯示場上怪獸供選擇攻擊方</summary>
+        public async Task<(Embed embed, ComponentBuilder component)> ShowMonstersForAttackAsync(
+            ulong channelId, ulong userId)
+        {
+            var duel = await LoadDuelAsync(channelId);
+            if (duel == null) return Error("沒有進行中的決鬥。");
+            if (duel.CurrentTurnPlayerId != userId) return Error("還沒輪到你！");
+            if (duel.CurrentPhase != DuelPhase.BattlePhase) return Error("只能在戰鬥階段攻擊。");
+
+            var field = duel.CurrentField;
+            var atkers = field.MonsterZones
+                .Select((c, i) => (c, i))
+                .Where(x => x.c != null && !x.c.SummonedThisTurn &&
+                            !x.c.AttackedThisTurn && !x.c.IsDefensePosition)
+                .ToList();
+
+            if (!atkers.Any()) return Error("沒有可以攻擊的怪獸！（召喚病、已攻擊、或守備表示）");
+
+            var eb = new EmbedBuilder()
+                .WithTitle("⚔️ 選擇要發動攻擊的怪獸")
+                .WithColor(Color.Red);
+            foreach (var (c, i) in atkers)
+                eb.AddField($"格子 {i+1}：{c!.Name}", $"ATK {c.EffectiveAtk}", inline: true);
+
+            var cb  = new ComponentBuilder();
+            var row = new ActionRowBuilder();
+            foreach (var (c, i) in atkers)
+                row.WithButton($"[{i+1}]{c!.ShortName}", $"ygo_atkselect_{duel.DuelId}_{i}", ButtonStyle.Danger);
+            cb.AddRow(row);
+            return (eb.Build(), cb);
         }
 
         /// <summary>發動魔法（從手牌）</summary>
@@ -399,6 +582,7 @@ namespace MusicBot2.Service
             field.Hand.RemoveAt(handIndex);
             var msg = ApplySpellEffect(card, duel);
             field.Graveyard.Add(card);
+            duel.LastPlayedCardImageUrl = card.RareImageUrl;
             duel.AddLog($"✨ {field.UserName} 發動 **{card.Name}**");
             if (!string.IsNullOrWhiteSpace(msg)) duel.AddLog($"　→ {msg}");
 
@@ -477,6 +661,7 @@ namespace MusicBot2.Service
                 if (defender.FaceDown)
                 {
                     defender.FaceDown = false;
+                    duel.LastPlayedCardImageUrl = defender.RareImageUrl;
                     duel.AddLog($"🔄 {defender.ShortName} 翻面！(DEF {defender.Def})");
                 }
 
@@ -576,8 +761,8 @@ namespace MusicBot2.Service
                 if (idx >= 0) return await NormalSummonAsync(channelId, userId, idx);
             }
 
-            // 伏地 <卡名/數字>
-            var setMatch = Regex.Match(m, @"(伏地|set)\s*(.+)", RegexOptions.IgnoreCase);
+            // 覆蓋 <卡名/數字>
+            var setMatch = Regex.Match(m, @"(覆蓋|set)\s*(.+)", RegexOptions.IgnoreCase);
             if (setMatch.Success)
             {
                 var target = setMatch.Groups[2].Value.Trim();
@@ -688,6 +873,7 @@ namespace MusicBot2.Service
                 }
                 PlaceMonster(aiField, summonable, hi);
                 aiField.NormalSummonedThisTurn = true;
+                duel.LastPlayedCardImageUrl = summonable.RareImageUrl;
                 duel.AddLog($"⬆️ {aiField.UserName} 召喚 **{summonable.Name}** (ATK {summonable.Atk})");
             }
 
@@ -699,6 +885,7 @@ namespace MusicBot2.Service
                     aiField.Hand.Remove(spell);
                     var msg = ApplySpellEffect(spell, duel);
                     aiField.Graveyard.Add(spell);
+                    duel.LastPlayedCardImageUrl = spell.RareImageUrl;
                     duel.AddLog($"✨ {aiField.UserName} 發動 **{spell.Name}**");
                     if (!string.IsNullOrWhiteSpace(msg)) duel.AddLog($"　→ {msg}");
                 }
@@ -764,7 +951,7 @@ namespace MusicBot2.Service
                 int slot = aiField.FirstEmptySTZone();
                 while (aiField.SpellTrapZones.Count <= slot) aiField.SpellTrapZones.Add(null);
                 aiField.SpellTrapZones[slot] = placed;
-                duel.AddLog($"🔽 {aiField.UserName} 伏地了一張牌");
+                duel.AddLog($"🔽 {aiField.UserName} 覆蓋了一張牌");
             }
 
             // AI narration
@@ -1152,6 +1339,10 @@ namespace MusicBot2.Service
                 eb.WithFooter(turnName);
             }
 
+            // 顯示最後打出的卡圖
+            if (!string.IsNullOrWhiteSpace(duel.LastPlayedCardImageUrl))
+                eb.WithImageUrl(duel.LastPlayedCardImageUrl);
+
             return eb.Build();
         }
 
@@ -1217,7 +1408,7 @@ namespace MusicBot2.Service
                 var c = opp.MonsterZones[i];
                 if (c != null)
                 {
-                    string info = c.FaceDown ? "❓ 伏地" :
+                    string info = c.FaceDown ? "❓ 覆蓋" :
                                   c.IsDefensePosition ? $"守備 DEF {c.Def}" :
                                   $"攻擊 ATK {c.EffectiveAtk}";
                     eb.AddField($"格子 {i+1}：{c.Name}", info, inline: true);
@@ -1242,28 +1433,60 @@ namespace MusicBot2.Service
             return eb.Build();
         }
 
+        /// <summary>手牌列表下面附上每張牌的「看圖」按鈕</summary>
+        private static ComponentBuilder BuildHandImageButtons(string duelId, YgoPlayerField field)
+        {
+            var cb  = new ComponentBuilder();
+            var row = new ActionRowBuilder();
+            int cnt = 0;
+            for (int i = 0; i < field.Hand.Count; i++)
+            {
+                if (cnt == 5) { cb.AddRow(row); row = new ActionRowBuilder(); cnt = 0; }
+                row.WithButton($"🖼️{i+1}", $"ygo_cardimg_{duelId}_{i}", ButtonStyle.Secondary);
+                cnt++;
+            }
+            if (cnt > 0) cb.AddRow(row);
+            return cb;
+        }
+
         private ComponentBuilder BuildBoardButtons(YgoDuelState duel)
         {
             var cb  = new ComponentBuilder();
             var did = duel.DuelId;
             bool isActive = duel.IsActive;
-            bool isPlayerTurn = duel.CurrentField.UserId == duel.Field1.UserId;
+            bool isMyTurn = duel.CurrentField.UserId == duel.Field1.UserId && !duel.CurrentField.IsAi;
 
             if (!isActive) return cb;
 
+            // Row 1: Phase controls
             var row1 = new ActionRowBuilder();
-            var row2 = new ActionRowBuilder();
-
-            if (duel.CurrentPhase == DuelPhase.DrawPhase && isPlayerTurn)
-                row1.WithButton("🎴 抽牌", $"ygo_draw_{did}", ButtonStyle.Primary);
-            else
-                row1.WithButton("🎴 抽牌", $"ygo_draw_{did}", ButtonStyle.Primary, disabled: true);
-
-            row1.WithButton("▶ 下一階段", $"ygo_phase_{did}", ButtonStyle.Secondary);
+            bool canDraw = duel.CurrentPhase == DuelPhase.DrawPhase && isMyTurn;
+            row1.WithButton("🎴 抽牌", $"ygo_draw_{did}", ButtonStyle.Primary, disabled: !canDraw);
+            row1.WithButton("▶ 下階段", $"ygo_phase_{did}", ButtonStyle.Secondary);
             row1.WithButton("⏩ 結束回合", $"ygo_endturn_{did}", ButtonStyle.Success);
-            row1.WithButton("🤚 看手牌", $"ygo_hand_{did}", ButtonStyle.Secondary);
+            row1.WithButton("🤚 手牌", $"ygo_hand_{did}", ButtonStyle.Secondary);
 
-            row2.WithButton("🔄 刷新場地", $"ygo_board_{did}", ButtonStyle.Secondary);
+            // Row 2: Action buttons based on phase
+            var row2 = new ActionRowBuilder();
+            bool isMainPhase = duel.CurrentPhase == DuelPhase.MainPhase1 || duel.CurrentPhase == DuelPhase.MainPhase2;
+            bool isBattlePhase = duel.CurrentPhase == DuelPhase.BattlePhase;
+
+            if (isMainPhase)
+            {
+                row2.WithButton("⬆️ 召喚", $"ygo_summonmenu_{did}", ButtonStyle.Primary);
+                row2.WithButton("🔽 覆蓋", $"ygo_setmenu_{did}", ButtonStyle.Secondary);
+                row2.WithButton("✨ 發動", $"ygo_activatemenu_{did}", ButtonStyle.Success);
+                row2.WithButton("🔄 刷新", $"ygo_board_{did}", ButtonStyle.Secondary);
+            }
+            else if (isBattlePhase)
+            {
+                row2.WithButton("⚔️ 宣告攻擊", $"ygo_atkselmenu_{did}", ButtonStyle.Danger);
+                row2.WithButton("🔄 刷新", $"ygo_board_{did}", ButtonStyle.Secondary);
+            }
+            else
+            {
+                row2.WithButton("🔄 刷新場地", $"ygo_board_{did}", ButtonStyle.Secondary);
+            }
             row2.WithButton("🏳️ 投降", $"ygo_surrender_{did}", ButtonStyle.Danger);
 
             return cb.AddRow(row1).AddRow(row2);
@@ -1361,7 +1584,9 @@ namespace MusicBot2.Service
                 Level     = d.Level ?? 0,
                 Attribute = d.Attribute ?? "",
                 Race      = d.Race ?? "",
-                ImageUrl  = d.CardImages?.FirstOrDefault()?.ImageUrlSmall ?? "",
+                ImageUrl     = d.CardImages?.FirstOrDefault()?.ImageUrlSmall ?? "",
+                RareImageUrl = d.CardImages?.LastOrDefault()?.ImageUrl
+                               ?? d.CardImages?.FirstOrDefault()?.ImageUrl ?? "",
             };
         }
 
@@ -1548,6 +1773,115 @@ namespace MusicBot2.Service
                         "Pendulum Reborn","Performapal Popperup","Damage = Reptile",
                     },
                     ExtraDeckNames = new() { "Odd-Eyes Rebellion Dragon","Odd-Eyes Vortex Dragon" }
+                },
+                new()
+                {
+                    Key = "mai", CharacterName = "孔雀舞", Series = "DM",
+                    Emoji = "🦅", Color = 0xE91E63,
+                    AiPersonality = "你是孔雀舞，以哈比天使牌組決鬥，優雅強勢，輕視弱者，說話帶刺。",
+                    MainDeckNames = new()
+                    {
+                        "Harpie Lady","Harpie Lady","Harpie Lady","Harpie Lady Sisters",
+                        "Cyber Harpie Lady","Harpie Lady 1","Harpie Lady 2","Harpie Lady 3",
+                        "Harpie's Pet Dragon","Harpie's Brother",
+                        "Elegant Egotist","Elegant Egotist","Hysteric Party",
+                        "Harpie's Hunting Ground","Harpie's Feather Duster",
+                        "Mirror Wall","Windstorm of Etaqua","Trap Hole","Monster Reborn","Dark Hole",
+                    },
+                    ExtraDeckNames = new()
+                },
+                new()
+                {
+                    Key = "marik", CharacterName = "馬立克", Series = "DM",
+                    Emoji = "☀️", Color = 0xF57F17,
+                    AiPersonality = "你是馬立克，殘酷冷血，以太陽神巨神鳥為信仰，言語充滿威脅與嘲諷。",
+                    MainDeckNames = new()
+                    {
+                        "The Winged Dragon of Ra","Newdoria","Drillago","Revival Jam",
+                        "Jowgen the Spiritualist","Lava Golem","Metal Reflect Slime","Ectoplasmer",
+                        "Coffin Seller","Nightmare Wheel","Card of Safe Return",
+                        "Change of Heart","Monster Reborn","Dark Hole","Snatch Steal",
+                        "Brain Control","Soul Exchange","Ring of Destruction","Mystik Wok","Stop Defense",
+                    },
+                    ExtraDeckNames = new()
+                },
+                new()
+                {
+                    Key = "pegasus", CharacterName = "佩加瑟斯", Series = "DM",
+                    Emoji = "👁️", Color = 0x880E4F,
+                    AiPersonality = "你是佩加瑟斯，輕浮優雅，以千眼邪教祭師和卡通牌組稱霸，說話帶點譏諷的微笑。",
+                    MainDeckNames = new()
+                    {
+                        "Relinquished","Thousand-Eyes Idol","Toon Mermaid","Toon Mermaid",
+                        "Toon Gemini Elf","Toon Summoned Skull","Blue-Eyes Toon Dragon",
+                        "Toon Dark Magician Girl","Dark-Eyes Illusionist","One-Eyed Shield Dragon",
+                        "Toon World","Toon Table of Contents","Comic Hand","Black Illusion Ritual",
+                        "Polymerization","Messenger of Peace","Monster Reborn","Dark Hole",
+                        "Mirror Force","Magic Jammer",
+                    },
+                    ExtraDeckNames = new() { "Thousand-Eyes Restrict" }
+                },
+                new()
+                {
+                    Key = "bakura", CharacterName = "獏良了", Series = "DM",
+                    Emoji = "💀", Color = 0x37474F,
+                    AiPersonality = "你是獏良了，被闇精靈附身，冰冷陰森，沉迷於讓對手陷入絕望。",
+                    MainDeckNames = new()
+                    {
+                        "Dark Necrofear","Dark Necrofear","Earthbound Spirit","Man-Eater Bug",
+                        "Pumpking the King of Ghosts","The Earl of Demise","Puppet King",
+                        "Spirit of Flames","Headless Knight","Tainted Wisdom","Nightmare Horse",
+                        "Destiny Board","Change of Heart","Card Destruction","Monster Reborn","Dark Hole",
+                        "Shallow Grave","Premature Burial","Magic Jammer","Ring of Destruction",
+                    },
+                    ExtraDeckNames = new()
+                },
+                new()
+                {
+                    Key = "jack", CharacterName = "傑克·亞特拉斯", Series = "5D's",
+                    Emoji = "👑", Color = 0xB71C1C,
+                    AiPersonality = "你是傑克·亞特拉斯，自稱「King」，傲慢霸道，以紅蓮魔龍為榮耀。",
+                    MainDeckNames = new()
+                    {
+                        "Red Dragon Archfiend","Vice Dragon","Strong Wind Dragon","Twin-Sword Marauder",
+                        "Dark Resonator","Dark Resonator","Infernity Archfiend","Battle Fader",
+                        "Exploder Dragon","Lancer Archfiend","Assault Beast",
+                        "Assault Mode Activate","Trap Eater","Power Frame","Mirror Force",
+                        "Solemn Judgment","Bottomless Trap Hole","Book of Moon","Scrap-Iron Scarecrow","Shock Wave",
+                    },
+                    ExtraDeckNames = new() { "Red Dragon Archfiend/Assault Mode","Exploder Dragonwing" }
+                },
+                new()
+                {
+                    Key = "crow", CharacterName = "克羅·霍根", Series = "5D's",
+                    Emoji = "🐦", Color = 0x212121,
+                    AiPersonality = "你是克羅·霍根，義氣當先，以黑羽牌組行俠仗義，言語直率豪邁。",
+                    MainDeckNames = new()
+                    {
+                        "Blackwing - Gale the Whirlwind","Blackwing - Shura the Blue Flame",
+                        "Blackwing - Blizzard the Far North","Blackwing - Bora the Spear",
+                        "Blackwing - Kalut the Moon Shadow","Blackwing - Sirocco the Dawn",
+                        "Dark Armed Dragon","Allure of Darkness","Black Whirlwind","Black Whirlwind",
+                        "Delta Crow - Anti Reverse","Icarus Attack","Icarus Attack",
+                        "Monster Reborn","Foolish Burial","Cards for Black Feathers",
+                        "Book of Moon","Torrential Tribute","Bottomless Trap Hole","Mystical Space Typhoon",
+                    },
+                    ExtraDeckNames = new() { "Blackwing Armed Wing","Blackwing Armor Master","Black-Winged Dragon" }
+                },
+                new()
+                {
+                    Key = "yuma", CharacterName = "九十九遊馬", Series = "ZEXAL",
+                    Emoji = "⭐", Color = 0xF9A825,
+                    AiPersonality = "你是九十九遊馬，充滿熱情，相信「決鬥魂」，絕不放棄，口頭禪是「這就是我的決鬥！」。",
+                    MainDeckNames = new()
+                    {
+                        "Gagaga Magician","Gagaga Magician","Gagaga Girl","Gogogo Giant",
+                        "Gogogo Ghost","Dododo Warrior","Dododo Witch","Zubaba Knight",
+                        "Ganbara Knight","Acorno","Pinecono","Bicular",
+                        "Xyz Energy","Heartfelt Appeal","Monster Reborn","Dark Hole",
+                        "Half Unbreak","Xyz Unit","Onomatopair","Bound Wand",
+                    },
+                    ExtraDeckNames = new() { "Number 39: Utopia","Number C39: Utopia Ray" }
                 },
             };
 

@@ -455,8 +455,8 @@ public class Program
                     result = await ygoSvc.GetBoardAsync(cid);
                 else if (component.Data.CustomId.StartsWith("ygo_hand_"))
                 {
-                    var handEmbed = await ygoSvc.GetHandEmbedAsync(cid, uid);
-                    await component.FollowupAsync(embed: handEmbed, ephemeral: true);
+                    var (handEmbed, handComp) = await ygoSvc.GetHandEmbedAsync(cid, uid);
+                    await component.FollowupAsync(embed: handEmbed, components: handComp.Build(), ephemeral: true);
                 }
                 else if (component.Data.CustomId.StartsWith("ygo_surrender_") && !component.Data.CustomId.Contains("confirm"))
                     result = await ygoSvc.SurrenderAsync(cid, uid);
@@ -478,6 +478,39 @@ public class Program
                     // ygo_tribute_{duelId}_{zone}
                     int zone = int.Parse(parts[^1]);
                     result = await ygoSvc.SelectTributeAsync(cid, uid, zone);
+                }
+                else if (component.Data.CustomId.StartsWith("ygo_summonmenu_"))
+                    result = await ygoSvc.ShowHandForSummonAsync(cid, uid);
+                else if (component.Data.CustomId.StartsWith("ygo_setmenu_"))
+                    result = await ygoSvc.ShowHandForSetAsync(cid, uid);
+                else if (component.Data.CustomId.StartsWith("ygo_activatemenu_"))
+                    result = await ygoSvc.ShowHandForActivateAsync(cid, uid);
+                else if (component.Data.CustomId.StartsWith("ygo_atkselmenu_"))
+                    result = await ygoSvc.ShowMonstersForAttackAsync(cid, uid);
+                else if (component.Data.CustomId.StartsWith("ygo_ns_"))
+                {
+                    // ygo_ns_{duelId}_{handIdx}
+                    int idx = int.Parse(parts[^1]);
+                    result = await ygoSvc.NormalSummonAsync(cid, uid, idx);
+                }
+                else if (component.Data.CustomId.StartsWith("ygo_sc_"))
+                {
+                    // ygo_sc_{duelId}_{handIdx}
+                    int idx = int.Parse(parts[^1]);
+                    result = await ygoSvc.SetCardAsync(cid, uid, idx);
+                }
+                else if (component.Data.CustomId.StartsWith("ygo_act_"))
+                {
+                    // ygo_act_{duelId}_{handIdx}
+                    int idx = int.Parse(parts[^1]);
+                    result = await ygoSvc.ActivateSpellAsync(cid, uid, idx);
+                }
+                else if (component.Data.CustomId.StartsWith("ygo_cardimg_"))
+                {
+                    // ygo_cardimg_{duelId}_{handIdx}  — ephemeral card image
+                    int idx = int.Parse(parts[^1]);
+                    var (imgEmbed, _) = await ygoSvc.ShowCardImageAsync(cid, uid, idx);
+                    await component.FollowupAsync(embed: imgEmbed, ephemeral: true);
                 }
 
                 if (result.embed != null)

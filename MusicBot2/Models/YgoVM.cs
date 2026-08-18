@@ -43,7 +43,8 @@ namespace MusicBot2.Models
         public int Level { get; set; }
         public string Attribute { get; set; }
         public string Race { get; set; }
-        public string ImageUrl { get; set; }
+        public string ImageUrl { get; set; }     // small thumbnail
+        public string RareImageUrl { get; set; } // rarest alt-art full image
 
         // 執行時狀態（不需要序列化到 Redis）
         public bool FaceDown { get; set; }
@@ -165,6 +166,7 @@ namespace MusicBot2.Models
         public bool IsActive { get; set; } = true;
         public string WinnerName { get; set; }
         public DateTime LastActionTime { get; set; } = DateTime.UtcNow;
+        public string LastPlayedCardImageUrl { get; set; } // 最後打出的卡圖 URL
 
         // 多步驟動作暫存
         public int? PendingAttackerZone { get; set; }       // 攻擊選擇第一步：攻擊方格子

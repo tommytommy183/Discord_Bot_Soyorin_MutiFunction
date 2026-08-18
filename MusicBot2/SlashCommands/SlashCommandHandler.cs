@@ -1738,110 +1738,41 @@ namespace MusicBot2.SlahCommands
 
         [SlashCommand("決鬥ai", "用動漫牌組挑戰AI決鬥")]
         public async Task YgoDuelAiAsync(
-            [Summary("我的牌組", "你使用的牌組（yugi/kaiba/joey/jaden/yusei/yuya）")] string myDeck = "yugi",
-            [Summary("ai牌組", "AI 使用的牌組（yugi/kaiba/joey/jaden/yusei/yuya）")] string aiDeck = "kaiba")
+            [Summary("我的牌組", "你使用的牌組")]
+            [Choice("🔮 武藤遊戲 (DM)", "yugi")]
+            [Choice("🐉 海馬瀨人 (DM)", "kaiba")]
+            [Choice("🃏 城之內克也 (DM)", "joey")]
+            [Choice("🦅 孔雀舞 (DM)", "mai")]
+            [Choice("☀️ 馬立克 (DM)", "marik")]
+            [Choice("👁️ 佩加瑟斯 (DM)", "pegasus")]
+            [Choice("💀 獏良了 (DM)", "bakura")]
+            [Choice("⚡ 遊城十代 (GX)", "jaden")]
+            [Choice("✨ 不動遊星 (5D's)", "yusei")]
+            [Choice("👑 傑克·亞特拉斯 (5D's)", "jack")]
+            [Choice("🐦 克羅·霍根 (5D's)", "crow")]
+            [Choice("🎭 榊遊矢 (ARC-V)", "yuya")]
+            [Choice("⭐ 九十九遊馬 (ZEXAL)", "yuma")]
+            string myDeck = "yugi",
+            [Summary("ai牌組", "AI 使用的牌組")]
+            [Choice("🔮 武藤遊戲 (DM)", "yugi")]
+            [Choice("🐉 海馬瀨人 (DM)", "kaiba")]
+            [Choice("🃏 城之內克也 (DM)", "joey")]
+            [Choice("🦅 孔雀舞 (DM)", "mai")]
+            [Choice("☀️ 馬立克 (DM)", "marik")]
+            [Choice("👁️ 佩加瑟斯 (DM)", "pegasus")]
+            [Choice("💀 獏良了 (DM)", "bakura")]
+            [Choice("⚡ 遊城十代 (GX)", "jaden")]
+            [Choice("✨ 不動遊星 (5D's)", "yusei")]
+            [Choice("👑 傑克·亞特拉斯 (5D's)", "jack")]
+            [Choice("🐦 克羅·霍根 (5D's)", "crow")]
+            [Choice("🎭 榊遊矢 (ARC-V)", "yuya")]
+            [Choice("⭐ 九十九遊馬 (ZEXAL)", "yuma")]
+            string aiDeck = "kaiba")
         {
             await DeferAsync();
             var player = Context.User as Discord.WebSocket.SocketGuildUser;
             var (embed, component) = await _ygoService.StartPvAiDuelAsync(
                 Context.Channel.Id, player!, myDeck.ToLower(), aiDeck.ToLower());
-            await FollowupAsync(embed: embed, components: component.Build());
-        }
-
-        [SlashCommand("決鬥場地", "顯示當前決鬥場地")]
-        public async Task YgoBoardAsync()
-        {
-            await DeferAsync();
-            var (embed, component) = await _ygoService.GetBoardAsync(Context.Channel.Id);
-            await FollowupAsync(embed: embed, components: component.Build());
-        }
-
-        [SlashCommand("決鬥手牌", "查看自己的手牌")]
-        public async Task YgoHandAsync()
-        {
-            await DeferAsync();
-            var embed = await _ygoService.GetHandEmbedAsync(Context.Channel.Id, Context.User.Id);
-            await FollowupAsync(embed: embed, ephemeral: true);
-        }
-
-        [SlashCommand("決鬥抽牌", "抽牌階段抽一張牌")]
-        public async Task YgoDrawAsync()
-        {
-            await DeferAsync();
-            var (embed, component) = await _ygoService.DrawCardAsync(Context.Channel.Id, Context.User.Id);
-            await FollowupAsync(embed: embed, components: component.Build());
-        }
-
-        [SlashCommand("決鬥召喚", "通常召喚手牌中的怪獸")]
-        public async Task YgoSummonAsync([Summary("手牌編號", "手牌中第幾張（1開始）")] int index)
-        {
-            await DeferAsync();
-            var (embed, component) = await _ygoService.NormalSummonAsync(Context.Channel.Id, Context.User.Id, index - 1);
-            await FollowupAsync(embed: embed, components: component.Build());
-        }
-
-        [SlashCommand("決鬥伏地", "將手牌中的牌伏地")]
-        public async Task YgoSetAsync([Summary("手牌編號", "手牌中第幾張（1開始）")] int index)
-        {
-            await DeferAsync();
-            var field = (await _ygoService.GetBoardAsync(Context.Channel.Id)).embed; // just to trigger load
-            // Determine if monster or ST
-            var (embed, component) = await _ygoService.SetMonsterAsync(Context.Channel.Id, Context.User.Id, index - 1);
-            await FollowupAsync(embed: embed, components: component.Build());
-        }
-
-        [SlashCommand("決鬥發動", "發動手牌中的魔法或陷阱")]
-        public async Task YgoActivateAsync([Summary("手牌編號", "手牌中第幾張（1開始）")] int index)
-        {
-            await DeferAsync();
-            var (embed, component) = await _ygoService.ActivateSpellAsync(Context.Channel.Id, Context.User.Id, index - 1);
-            await FollowupAsync(embed: embed, components: component.Build());
-        }
-
-        [SlashCommand("決鬥攻擊", "宣告攻擊")]
-        public async Task YgoAttackAsync(
-            [Summary("攻擊方格", "我方怪獸格子（1-5）")] int attackerZone,
-            [Summary("目標格", "對方怪獸格子（1-5），填 0 = 直接攻擊")] int targetZone = 0)
-        {
-            await DeferAsync();
-            var sel = await _ygoService.SelectAttackerAsync(Context.Channel.Id, Context.User.Id, attackerZone - 1);
-            // If error
-            if (!sel.component.Build().Components.Any() && sel.embed.Title.Contains("❌"))
-            { await FollowupAsync(embed: sel.embed); return; }
-            var (embed, component) = await _ygoService.ConfirmAttackAsync(
-                Context.Channel.Id, Context.User.Id, targetZone == 0 ? null : (int?)(targetZone - 1));
-            await FollowupAsync(embed: embed, components: component.Build());
-        }
-
-        [SlashCommand("決鬥換相", "切換場上怪獸攻守表示")]
-        public async Task YgoChangeAsync([Summary("格子", "怪獸格子（1-5）")] int zone)
-        {
-            await DeferAsync();
-            var (embed, component) = await _ygoService.ChangePositionAsync(Context.Channel.Id, Context.User.Id, zone - 1);
-            await FollowupAsync(embed: embed, components: component.Build());
-        }
-
-        [SlashCommand("決鬥下一階段", "進入下一個回合階段")]
-        public async Task YgoPhaseAsync()
-        {
-            await DeferAsync();
-            var (embed, component) = await _ygoService.AdvancePhaseAsync(Context.Channel.Id, Context.User.Id);
-            await FollowupAsync(embed: embed, components: component.Build());
-        }
-
-        [SlashCommand("結束回合", "直接結束你的回合")]
-        public async Task YgoEndTurnAsync()
-        {
-            await DeferAsync();
-            var (embed, component) = await _ygoService.EndTurnAsync(Context.Channel.Id, Context.User.Id);
-            await FollowupAsync(embed: embed, components: component.Build());
-        }
-
-        [SlashCommand("決鬥投降", "投降，結束決鬥")]
-        public async Task YgoSurrenderAsync()
-        {
-            await DeferAsync();
-            var (embed, component) = await _ygoService.SurrenderAsync(Context.Channel.Id, Context.User.Id);
             await FollowupAsync(embed: embed, components: component.Build());
         }
 
