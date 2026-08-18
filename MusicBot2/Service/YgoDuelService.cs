@@ -20,7 +20,7 @@ namespace MusicBot2.Service
 
         private const string DUEL_KEY   = "ygo:duel:";
         private const string CHAN_KEY   = "ygo:channel:";
-        private const string CARD_KEY   = "ygo:card:";
+        private const string CARD_KEY   = "ygo:cards";   // Redis Hash key（所有卡合併存一個 Hash）
         private const string API_BASE   = "https://db.ygoprodeck.com/api/v7/cardinfo.php";
 
         private static readonly Dictionary<ulong, YgoDuelState> _memDuels = new();
@@ -999,13 +999,12 @@ namespace MusicBot2.Service
             var cacheKey = name.ToLowerInvariant().Trim();
             if (_cardCache.TryGetValue(cacheKey, out var cached)) return cached;
 
-            // Redis cache
+            // Redis Hash 快取（ygo:cards → field=卡名, value=JSON）
             if (_useRedis)
             {
                 try
                 {
-                    var redisKey = CARD_KEY + Uri.EscapeDataString(cacheKey);
-                    var raw = await _redisDb!.StringGetAsync(redisKey);
+                    var raw = await _redisDb!.HashGetAsync(CARD_KEY, cacheKey);
                     if (raw.HasValue)
                     {
                         var c = JsonSerializer.Deserialize<YgoCardData>(raw!);
@@ -1028,9 +1027,10 @@ namespace MusicBot2.Service
                 {
                     try
                     {
-                        var redisKey = CARD_KEY + Uri.EscapeDataString(cacheKey);
-                        await _redisDb!.StringSetAsync(redisKey,
-                            JsonSerializer.Serialize(card), TimeSpan.FromHours(24));
+                        await _redisDb!.HashSetAsync(CARD_KEY, cacheKey,
+                            JsonSerializer.Serialize(card));
+                        // Hash 本身設定 TTL（每次存入都重設，確保不過期）
+                        await _redisDb!.KeyExpireAsync(CARD_KEY, TimeSpan.FromHours(48));
                     }
                     catch { }
                 }
