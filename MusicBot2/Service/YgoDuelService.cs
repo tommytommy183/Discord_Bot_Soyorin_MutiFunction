@@ -306,12 +306,14 @@ namespace MusicBot2.Service
             var card = field.Hand[handIndex];
             if (!card.IsMonster) return Error($"{card.Name} 不是怪獸牌！");
 
-            int tribute = card.TributeRequired;
+            bool costDown2 = field.CostDownActive;
+            int effLevel = costDown2 ? Math.Max(0, card.Level - 2) : card.Level;
+            int tribute = effLevel >= 7 ? 2 : effLevel >= 5 ? 1 : 0;
             int monstersOnField = field.GetMonstersOnField().Count;
 
             // 需要貢獻但場上怪獸不夠
             if (tribute > 0 && monstersOnField < tribute)
-                return Error($"召喚 {card.Name}（Lv{card.Level}）需要 {tribute} 隻怪獸作為貢獻，但場上只有 {monstersOnField} 隻。");
+                return Error($"召喚 {card.Name}（有效Lv{effLevel}）需要 {tribute} 隻怪獸作為貢獻，但場上只有 {monstersOnField} 隻。");
 
             // 需要貢獻 → 進入選擇流程
             if (tribute > 0)
@@ -551,6 +553,64 @@ namespace MusicBot2.Service
             return (BuildBoardEmbed(duel), BuildBoardButtons(duel));
         }
 
+        /// <summary>Cost Down 棄牌選擇介面</summary>
+        private static (Embed embed, ComponentBuilder component) BuildCostDownDiscardUI(YgoDuelState duel)
+        {
+            var hand = duel.CurrentField.Hand;
+            if (!hand.Any())
+            {
+                // 沒有手牌可棄，直接生效（不常見）
+                duel.CurrentField.CostDownActive = true;
+                var noCardEb = new EmbedBuilder()
+                    .WithTitle("⬇️ Cost Down 發動！")
+                    .WithDescription("沒有其他手牌可棄，直接效果生效。本回合手牌怪獸等級 -2。")
+                    .WithColor(Color.Orange).Build();
+                return (noCardEb, new ComponentBuilder());
+            }
+
+            var eb = new EmbedBuilder()
+                .WithTitle("⬇️ Cost Down — 選擇要棄掉的手牌")
+                .WithDescription("選擇 1 張手牌棄掉，本回合所有手牌怪獸等級 -2")
+                .WithColor(Color.Orange);
+            foreach (var (c, i) in hand.Select((c, i) => (c, i)))
+                eb.AddField($"{i+1}. {c.Name}", c.IsMonster ? $"Lv{c.Level} ATK {c.Atk}" : (c.IsSpell ? "魔法" : "陷阱"), inline: true);
+
+            var cb  = new ComponentBuilder();
+            var row = new ActionRowBuilder();
+            int cnt = 0;
+            foreach (var (c, i) in hand.Select((c, i) => (c, i)))
+            {
+                if (cnt == 5) { cb.AddRow(row); row = new ActionRowBuilder(); cnt = 0; }
+                row.WithButton($"{i+1}.{c.ShortName}", $"ygo_costdown_{duel.DuelId}_{i}", ButtonStyle.Danger);
+                cnt++;
+            }
+            cb.AddRow(row);
+            return (eb.Build(), cb);
+        }
+
+        /// <summary>Cost Down 棄牌確認：玩家選了要棄的牌</summary>
+        public async Task<(Embed embed, ComponentBuilder component)> ConfirmCostDownDiscardAsync(
+            ulong channelId, ulong userId, int discardIdx)
+        {
+            var duel = await LoadDuelAsync(channelId);
+            if (duel == null) return Error("沒有進行中的決鬥。");
+            if (duel.CurrentTurnPlayerId != userId) return Error("還沒輪到你！");
+
+            var field = duel.CurrentField;
+            if (discardIdx < 0 || discardIdx >= field.Hand.Count) return Error("無效的手牌索引。");
+
+            var discarded = field.Hand[discardIdx];
+            field.Hand.RemoveAt(discardIdx);
+            field.Graveyard.Add(discarded);
+            field.CostDownActive = true;
+            duel.PendingCostDownSpellHandIdx = null;
+            duel.AddLog($"⬇️ {field.UserName} 棄掉 **{discarded.Name}**，Cost Down 生效！本回合手牌怪獸等級 -2");
+
+            await SaveDuelAsync(channelId, duel);
+            await RefreshHandDisplayAsync(channelId, userId);
+            return (BuildBoardEmbed(duel), BuildBoardButtons(duel));
+        }
+
         /// <summary>顯示手牌供選擇召喚</summary>
         public async Task<(Embed embed, ComponentBuilder component)> ShowHandForSummonAsync(
             ulong channelId, ulong userId)
@@ -564,8 +624,15 @@ namespace MusicBot2.Service
 
             var hand = duel.CurrentField.Hand;
             int fieldCount = duel.CurrentField.GetMonstersOnField().Count;
+            bool costDown = duel.CurrentField.CostDownActive;
             var monsters = hand.Select((c, i) => (c, i))
-                .Where(x => x.c.IsMonster && x.c.TributeRequired <= fieldCount)
+                .Where(x => x.c.IsMonster)
+                .Where(x =>
+                {
+                    int effLv = costDown ? Math.Max(0, x.c.Level - 2) : x.c.Level;
+                    int trib  = effLv >= 7 ? 2 : effLv >= 5 ? 1 : 0;
+                    return trib <= fieldCount;
+                })
                 .ToList();
             if (!monsters.Any()) return Error("手牌中沒有怪獸牌！");
 
@@ -575,7 +642,10 @@ namespace MusicBot2.Service
             foreach (var (c, i) in monsters)
                 eb.AddField($"{i+1}. {c.Name}",
                     $"ATK {c.Atk} / DEF {c.Def}  Lv{c.Level}" +
-                    (c.TributeRequired > 0 ? $"  🔥貢獻{c.TributeRequired}隻" : "  ✅直接召喚"),
+                    (costDown
+                        ? (Math.Max(0, c.Level - 2) >= 7 ? "  🔥貢獻2隻(降級後)" :
+                           Math.Max(0, c.Level - 2) >= 5 ? "  🔥貢獻1隻(降級後)" : "  ✅直接召喚(降級後)")
+                        : (c.TributeRequired > 0 ? $"  🔥貢獻{c.TributeRequired}隻" : "  ✅直接召喚")),
                     inline: true);
 
             var cb  = new ComponentBuilder();
@@ -669,6 +739,10 @@ namespace MusicBot2.Service
             if (duel.CurrentTurnPlayerId != userId) return Error("還沒輪到你！");
             if (duel.CurrentPhase != DuelPhase.BattlePhase) return Error("只能在戰鬥階段攻擊。");
 
+            // 先攻玩家第一回合不能戰鬥（YGO 規則）
+            if (duel.TurnNumber == 1 && duel.CurrentTurnPlayerId == duel.Field1.UserId)
+                return Error("先攻玩家的第一回合無法進行戰鬥！");
+
             var field = duel.CurrentField;
 
             // 早期攔截全局封印
@@ -679,7 +753,7 @@ namespace MusicBot2.Service
 
             var atkers = field.MonsterZones
                 .Select((c, i) => (c, i))
-                .Where(x => x.c != null && !x.c.SummonedThisTurn &&
+                .Where(x => x.c != null &&
                             !x.c.AttackedThisTurn && !x.c.IsDefensePosition && !x.c.CannotAttack)
                 .ToList();
 
@@ -691,10 +765,9 @@ namespace MusicBot2.Service
                 var reasons = new List<string>();
                 foreach (var m in all)
                 {
-                    if (m.SummonedThisTurn)       reasons.Add($"{m.ShortName}（召喚病）");
-                    else if (m.AttackedThisTurn)   reasons.Add($"{m.ShortName}（已攻擊）");
+                    if (m.AttackedThisTurn)        reasons.Add($"{m.ShortName}（已攻擊）");
                     else if (m.IsDefensePosition)  reasons.Add($"{m.ShortName}（守備）");
-                    else if (m.CannotAttack)       reasons.Add($"{m.ShortName}（被封印）");
+                    else if (m.CannotAttack)        reasons.Add($"{m.ShortName}（被封印）");
                 }
                 return Error("沒有可攻擊的怪獸：" + string.Join("、", reasons));
             }
@@ -727,6 +800,15 @@ namespace MusicBot2.Service
             if (!card.IsSpell) return Error($"{card.Name} 不是魔法！");
 
             field.Hand.RemoveAt(handIndex);
+
+            // ── Cost Down：先讓玩家選擇要棄哪張牌 ──────────────────────────
+            if (card.Name == "Cost Down")
+            {
+                duel.PendingCostDownSpellHandIdx = -1; // -1 = waiting for discard
+                await SaveDuelAsync(channelId, duel);
+                return BuildCostDownDiscardUI(duel);
+            }
+
             var msg = ApplySpellEffect(card, duel);
             field.Graveyard.Add(card);
             duel.LastPlayedCardImageUrl = card.RareImageUrl;
@@ -765,7 +847,6 @@ namespace MusicBot2.Service
                 return Error("無效的攻擊方格子。");
 
             var attacker = field.MonsterZones[attackerZone]!;
-            if (attacker.SummonedThisTurn) return Error($"{attacker.ShortName} 本回合剛召喚，不能攻擊（召喚病）。");
             if (attacker.AttackedThisTurn) return Error($"{attacker.ShortName} 本回合已攻擊過了。");
             if (attacker.IsDefensePosition) return Error("守備表示的怪獸不能攻擊。");
 
@@ -2181,6 +2262,8 @@ namespace MusicBot2.Service
             duel.Field2.WabokuActive = false;
             duel.Field1.CannotDeclareAttackThisTurn = false;
             duel.Field2.CannotDeclareAttackThisTurn = false;
+            duel.Field1.CostDownActive = false;
+            duel.Field2.CostDownActive = false;
             foreach (var f in new[] { duel.Field1, duel.Field2 })
                 foreach (var m in f.GetMonstersOnField())
                 { m.CannotAttack = false; m.CannotChangePosition = false; }

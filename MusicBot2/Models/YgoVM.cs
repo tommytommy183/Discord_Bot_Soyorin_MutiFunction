@@ -120,6 +120,7 @@ namespace MusicBot2.Models
         public bool WabokuActive { get; set; }                // Waboku — 本回合戰鬥傷害無效
         public bool CannotDeclareAttackThisTurn { get; set; } // Threatening Roar
         public int PendingEndTurnDamage { get; set; }         // Power Bond — 下回合結算傷害
+        public bool CostDownActive { get; set; }  // Cost Down 效果：手牌怪獸等級 -2
 
         public int DeckCount => Deck.Count;
         public int HandCount => Hand.Count;
@@ -175,6 +176,7 @@ namespace MusicBot2.Models
         public DateTime LastActionTime { get; set; } = DateTime.UtcNow;
         public string LastPlayedCardImageUrl { get; set; } // 最後打出的卡圖 URL
         public ulong HandMessageId { get; set; }  // 手牌訊息 ID，用於 in-place 更新
+        public int? PendingCostDownSpellHandIdx { get; set; } // 等待棄牌確認的 Cost Down 手牌索引
 
         // 多步驟動作暫存
         public int? PendingAttackerZone { get; set; }       // 攻擊選擇第一步：攻擊方格子

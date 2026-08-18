@@ -497,6 +497,12 @@ public class Program
                     int zone = int.Parse(parts[^1]);
                     result = await ygoSvc.ActivateSetSTAsync(cid, uid, zone);
                 }
+                else if (component.Data.CustomId.StartsWith("ygo_costdown_"))
+                {
+                    // ygo_costdown_{duelId}_{discardIdx}
+                    int idx = int.Parse(parts[^1]);
+                    result = await ygoSvc.ConfirmCostDownDiscardAsync(cid, uid, idx);
+                }
                 else if (component.Data.CustomId.StartsWith("ygo_surrender_") && !component.Data.CustomId.Contains("confirm"))
                     result = await ygoSvc.SurrenderAsync(cid, uid);
                 else if (component.Data.CustomId.StartsWith("ygo_atkselect_"))
