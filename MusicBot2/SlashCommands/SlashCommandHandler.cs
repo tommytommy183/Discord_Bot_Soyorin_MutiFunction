@@ -1736,6 +1736,14 @@ namespace MusicBot2.SlahCommands
             await RespondAsync(embed: embed, components: component.Build());
         }
 
+        [SlashCommand("決鬥場地", "顯示當前決鬥場地")]
+        public async Task YgoBoardAsync()
+        {
+            await DeferAsync();
+            var (embed, component) = await _ygoService.GetBoardAsync(Context.Channel.Id);
+            await FollowupAsync(embed: embed, components: component.Build());
+        }
+
         [SlashCommand("決鬥ai", "用動漫牌組挑戰AI決鬥")]
         public async Task YgoDuelAiAsync(
             [Summary("我的牌組", "你使用的牌組")]

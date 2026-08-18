@@ -145,45 +145,60 @@ namespace MusicBot2.Service
             return (BuildBoardEmbed(duel), BuildBoardButtons(duel));
         }
 
-        /// <summary>顯示玩家手牌（含看牌圖按鈕）</summary>
+        /// <summary>顯示玩家手牌＋所選卡圖（selectedIdx 決定目前顯示哪張圖）</summary>
         public async Task<(Embed embed, ComponentBuilder component)> GetHandEmbedAsync(
-            ulong channelId, ulong userId)
+            ulong channelId, ulong userId, int selectedIdx = 0)
         {
             var duel = await LoadDuelAsync(channelId);
             if (duel == null) return Error("此頻道沒有進行中的決鬥。");
 
             var field = duel.Field1.UserId == userId ? duel.Field1 : duel.Field2;
-            var embed = BuildHandEmbed(field);
-            var cb    = BuildHandImageButtons(duel.DuelId, field);
-            return (embed, cb);
-        }
+            var hand  = field.Hand;
 
-        /// <summary>顯示特定手牌卡圖（ephemeral）</summary>
-        public async Task<(Embed embed, ComponentBuilder component)> ShowCardImageAsync(
-            ulong channelId, ulong userId, int handIndex)
-        {
-            var duel = await LoadDuelAsync(channelId);
-            if (duel == null) return Error("沒有進行中的決鬥。");
+            if (hand.Count == 0)
+            {
+                var emptyEb = new EmbedBuilder()
+                    .WithTitle($"🤚 {field.UserName} 的手牌（0 張）")
+                    .WithColor(Color.DarkGrey)
+                    .WithDescription("手牌是空的！");
+                return (emptyEb.Build(), new ComponentBuilder());
+            }
 
-            var field = duel.Field1.UserId == userId ? duel.Field1 : duel.Field2;
-            if (handIndex < 0 || handIndex >= field.Hand.Count) return Error("無效的索引。");
-            var card = field.Hand[handIndex];
-
-            string imgUrl = card.RareImageUrl;
-            if (string.IsNullOrWhiteSpace(imgUrl)) imgUrl = card.ImageUrl;
+            int sel     = Math.Clamp(selectedIdx, 0, hand.Count - 1);
+            var selCard = hand[sel];
 
             var eb = new EmbedBuilder()
-                .WithTitle($"🖼️ {card.Name}")
-                .WithColor(card.IsMonster ? new Color(0xFFD700) :
-                           card.IsSpell   ? new Color(0x1DB954) : new Color(0xE74C3C))
-                .WithDescription(card.IsMonster
-                    ? $"ATK {card.Atk} / DEF {card.Def}  ★{card.Level}  {card.Attribute}/{card.Race}"
-                    : card.Type);
+                .WithTitle($"🤚 {field.UserName} 的手牌（{hand.Count} 張）　　▶ {selCard.Name}")
+                .WithColor(selCard.IsMonster ? new Color(0xFFD700) :
+                           selCard.IsSpell   ? new Color(0x1DB954) : new Color(0xE74C3C));
 
+            for (int i = 0; i < hand.Count; i++)
+            {
+                var c     = hand[i];
+                string stats = c.IsMonster
+                    ? $"ATK {c.Atk} / DEF {c.Def}  Lv{c.Level}"
+                    : c.Type;
+                string name = i == sel ? $"**[{i+1}] {c.Name}**" : $"{i+1}. {c.Name}";
+                eb.AddField(name, stats, inline: true);
+            }
+
+            // 顯示所選牌的卡圖（embed 大圖）
+            string imgUrl = selCard.RareImageUrl;
+            if (string.IsNullOrWhiteSpace(imgUrl)) imgUrl = selCard.ImageUrl;
             if (!string.IsNullOrWhiteSpace(imgUrl))
                 eb.WithImageUrl(imgUrl);
 
-            return (eb.Build(), new ComponentBuilder());
+            // 切換按鈕（所選高亮 Primary，其他 Secondary）
+            var cb  = new ComponentBuilder();
+            var row = new ActionRowBuilder();
+            for (int i = 0; i < hand.Count; i++)
+            {
+                if (i > 0 && i % 5 == 0) { cb.AddRow(row); row = new ActionRowBuilder(); }
+                var style = i == sel ? ButtonStyle.Primary : ButtonStyle.Secondary;
+                row.WithButton($"🖼️{i+1}", $"ygo_cardimg_{duel.DuelId}_{i}", style);
+            }
+            cb.AddRow(row);
+            return (eb.Build(), cb);
         }
 
         /// <summary>抽牌</summary>
@@ -1381,20 +1396,6 @@ namespace MusicBot2.Service
             return sb.ToString();
         }
 
-        private static Embed BuildHandEmbed(YgoPlayerField field)
-        {
-            var eb = new EmbedBuilder()
-                .WithTitle($"🤚 {field.UserName} 的手牌（{field.Hand.Count} 張）")
-                .WithColor(Color.DarkGrey);
-            for (int i = 0; i < field.Hand.Count; i++)
-            {
-                var c = field.Hand[i];
-                string stats = c.IsMonster ? $"ATK {c.Atk} / DEF {c.Def}  Lv{c.Level}" : c.Type;
-                eb.AddField($"{i+1}. {c.Name}", stats, inline: true);
-            }
-            return eb.Build();
-        }
-
         private Embed BuildAttackTargetEmbed(YgoDuelState duel, YgoCard attacker, bool hasTargets)
         {
             var eb = new EmbedBuilder()
@@ -1431,22 +1432,6 @@ namespace MusicBot2.Service
                     eb.AddField($"格子 {i+1}：{c.Name}", $"ATK {c.EffectiveAtk}", inline: true);
             }
             return eb.Build();
-        }
-
-        /// <summary>手牌列表下面附上每張牌的「看圖」按鈕</summary>
-        private static ComponentBuilder BuildHandImageButtons(string duelId, YgoPlayerField field)
-        {
-            var cb  = new ComponentBuilder();
-            var row = new ActionRowBuilder();
-            int cnt = 0;
-            for (int i = 0; i < field.Hand.Count; i++)
-            {
-                if (cnt == 5) { cb.AddRow(row); row = new ActionRowBuilder(); cnt = 0; }
-                row.WithButton($"🖼️{i+1}", $"ygo_cardimg_{duelId}_{i}", ButtonStyle.Secondary);
-                cnt++;
-            }
-            if (cnt > 0) cb.AddRow(row);
-            return cb;
         }
 
         private ComponentBuilder BuildBoardButtons(YgoDuelState duel)

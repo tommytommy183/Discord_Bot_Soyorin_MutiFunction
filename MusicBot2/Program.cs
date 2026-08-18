@@ -455,8 +455,15 @@ public class Program
                     result = await ygoSvc.GetBoardAsync(cid);
                 else if (component.Data.CustomId.StartsWith("ygo_hand_"))
                 {
-                    var (handEmbed, handComp) = await ygoSvc.GetHandEmbedAsync(cid, uid);
-                    await component.FollowupAsync(embed: handEmbed, components: handComp.Build(), ephemeral: true);
+                    // 手牌檢視：公開 FollowupAsync，同一訊息可透過 ygo_cardimg_ 切換卡圖
+                    var (handEmbed, handComp) = await ygoSvc.GetHandEmbedAsync(cid, uid, 0);
+                    await component.FollowupAsync(embed: handEmbed, components: handComp.Build());
+                }
+                else if (component.Data.CustomId.StartsWith("ygo_cardimg_"))
+                {
+                    // ygo_cardimg_{duelId}_{handIdx} — 更新手牌訊息以顯示所選卡圖
+                    int idx = int.Parse(parts[^1]);
+                    result = await ygoSvc.GetHandEmbedAsync(cid, uid, idx);
                 }
                 else if (component.Data.CustomId.StartsWith("ygo_surrender_") && !component.Data.CustomId.Contains("confirm"))
                     result = await ygoSvc.SurrenderAsync(cid, uid);
@@ -479,14 +486,6 @@ public class Program
                     int zone = int.Parse(parts[^1]);
                     result = await ygoSvc.SelectTributeAsync(cid, uid, zone);
                 }
-                else if (component.Data.CustomId.StartsWith("ygo_summonmenu_"))
-                    result = await ygoSvc.ShowHandForSummonAsync(cid, uid);
-                else if (component.Data.CustomId.StartsWith("ygo_setmenu_"))
-                    result = await ygoSvc.ShowHandForSetAsync(cid, uid);
-                else if (component.Data.CustomId.StartsWith("ygo_activatemenu_"))
-                    result = await ygoSvc.ShowHandForActivateAsync(cid, uid);
-                else if (component.Data.CustomId.StartsWith("ygo_atkselmenu_"))
-                    result = await ygoSvc.ShowMonstersForAttackAsync(cid, uid);
                 else if (component.Data.CustomId.StartsWith("ygo_ns_"))
                 {
                     // ygo_ns_{duelId}_{handIdx}
@@ -505,12 +504,24 @@ public class Program
                     int idx = int.Parse(parts[^1]);
                     result = await ygoSvc.ActivateSpellAsync(cid, uid, idx);
                 }
-                else if (component.Data.CustomId.StartsWith("ygo_cardimg_"))
+                // ── 選單類按鈕：成功時更新牌桌，失敗時 FollowupAsync（不砸掉牌桌）──
+                else if (component.Data.CustomId.StartsWith("ygo_summonmenu_") ||
+                         component.Data.CustomId.StartsWith("ygo_setmenu_")    ||
+                         component.Data.CustomId.StartsWith("ygo_activatemenu_")||
+                         component.Data.CustomId.StartsWith("ygo_atkselmenu_"))
                 {
-                    // ygo_cardimg_{duelId}_{handIdx}  — ephemeral card image
-                    int idx = int.Parse(parts[^1]);
-                    var (imgEmbed, _) = await ygoSvc.ShowCardImageAsync(cid, uid, idx);
-                    await component.FollowupAsync(embed: imgEmbed, ephemeral: true);
+                    (Embed embed, ComponentBuilder comp) menuResult = component.Data.CustomId switch
+                    {
+                        var s when s.StartsWith("ygo_summonmenu_")  => await ygoSvc.ShowHandForSummonAsync(cid, uid),
+                        var s when s.StartsWith("ygo_setmenu_")     => await ygoSvc.ShowHandForSetAsync(cid, uid),
+                        var s when s.StartsWith("ygo_activatemenu_")=> await ygoSvc.ShowHandForActivateAsync(cid, uid),
+                        _                                            => await ygoSvc.ShowMonstersForAttackAsync(cid, uid),
+                    };
+                    // 若是錯誤訊息（component 是空的），用 FollowupAsync 提示，不覆蓋牌桌
+                    if (menuResult.comp.Build().Components.Count == 0)
+                        await component.FollowupAsync(embed: menuResult.embed);
+                    else
+                        result = menuResult;
                 }
 
                 if (result.embed != null)
