@@ -320,6 +320,7 @@ namespace MusicBot2.Service
             {
                 duel.PendingSummonHandIndex = handIndex;
                 duel.PendingTributeZones = new List<int>();
+                duel.PendingSummonMode = "normal";
                 await SaveDuelAsync(channelId, duel);
                 return (BuildTributeSelectEmbed(duel, card, tribute), BuildTributeButtons(duel));
             }
@@ -365,15 +366,96 @@ namespace MusicBot2.Service
                 return (BuildTributeSelectEmbed(duel, summonCard, needed), BuildTributeButtons(duel));
             }
 
-            // 貢獻完成，召喚
-            PlaceMonster(field, summonCard, duel.PendingSummonHandIndex.Value);
+            // 貢獻完成，召喚或覆蓋
+            if (duel.PendingSummonMode == "set")
+            {
+                PlaceMonsterFaceDown(field, summonCard, duel.PendingSummonHandIndex.Value);
+                duel.AddLog($"🔽 {field.UserName} 貢獻覆蓋了 **{summonCard.Name}**（守備表示）");
+            }
+            else
+            {
+                PlaceMonster(field, summonCard, duel.PendingSummonHandIndex.Value);
+                duel.LastPlayedCardImageUrl = summonCard.RareImageUrl;
+                duel.AddLog($"⬆️ {field.UserName} 貢獻召喚 **{summonCard.Name}** (ATK {summonCard.Atk})");
+            }
             field.NormalSummonedThisTurn = true;
-            duel.LastPlayedCardImageUrl = summonCard.RareImageUrl;
             duel.PendingSummonHandIndex = null;
             duel.PendingTributeZones = new();
-            duel.AddLog($"⬆️ {field.UserName} 貢獻召喚 **{summonCard.Name}** (ATK {summonCard.Atk})");
+            duel.PendingSummonMode = null;
 
             await SaveDuelAsync(channelId, duel);
+            return (BuildBoardEmbed(duel), BuildBoardButtons(duel));
+        }
+
+        /// <summary>選擇召喚模式：正面召喚 or 守備覆蓋</summary>
+        public async Task<(Embed embed, ComponentBuilder component)> ShowSummonModeAsync(
+            ulong channelId, ulong userId, int handIndex)
+        {
+            var duel = await LoadDuelAsync(channelId);
+            if (duel == null) return Error("沒有進行中的決鬥。");
+            if (duel.CurrentTurnPlayerId != userId) return Error("還沒輪到你！");
+            if (duel.CurrentPhase != DuelPhase.MainPhase1 && duel.CurrentPhase != DuelPhase.MainPhase2)
+                return Error("只能在主要階段召喚。");
+            var field = duel.CurrentField;
+            if (field.NormalSummonedThisTurn) return Error("本回合已通常召喚/覆蓋過了。");
+            if (handIndex < 0 || handIndex >= field.Hand.Count) return Error("無效的手牌索引。");
+            var card = field.Hand[handIndex];
+            if (!card.IsMonster) return Error($"{card.Name} 不是怪獸！");
+
+            var did = duel.DuelId;
+            var eb = new EmbedBuilder()
+                .WithTitle($"🃏 {card.Name}  Lv{card.Level}  ATK {card.Atk} / DEF {card.Def}")
+                .WithDescription("選擇召喚方式：")
+                .WithColor(Color.Gold);
+            if (!string.IsNullOrEmpty(card.RareImageUrl ?? card.ImageUrl))
+                eb.WithThumbnailUrl(card.RareImageUrl ?? card.ImageUrl);
+
+            var cb = new ComponentBuilder()
+                .WithButton("⬆️ 正面召喚（攻擊表示）", $"ygo_nssummon_{did}_{handIndex}", ButtonStyle.Primary)
+                .WithButton("🔽 守備覆蓋（背面守備）", $"ygo_nsset_{did}_{handIndex}", ButtonStyle.Secondary);
+            return (eb.Build(), cb);
+        }
+
+        /// <summary>守備覆蓋怪獸（含貢獻規則）</summary>
+        public async Task<(Embed embed, ComponentBuilder component)> SetMonsterFromMenuAsync(
+            ulong channelId, ulong userId, int handIndex)
+        {
+            var duel = await LoadDuelAsync(channelId);
+            if (duel == null) return Error("沒有進行中的決鬥。");
+            if (duel.CurrentTurnPlayerId != userId) return Error("還沒輪到你！");
+            if (duel.CurrentPhase != DuelPhase.MainPhase1 && duel.CurrentPhase != DuelPhase.MainPhase2)
+                return Error("只能在主要階段覆蓋。");
+            var field = duel.CurrentField;
+            if (field.NormalSummonedThisTurn) return Error("本回合已通常召喚/覆蓋過了。");
+            if (handIndex < 0 || handIndex >= field.Hand.Count) return Error("無效的手牌索引。");
+            var card = field.Hand[handIndex];
+            if (!card.IsMonster) return Error($"{card.Name} 不是怪獸！");
+            if (field.FirstEmptyMonsterZone() == -1) return Error("怪獸區已滿！");
+
+            bool costDown2 = field.CostDownActive;
+            int effLevel = costDown2 ? Math.Max(0, card.Level - 2) : card.Level;
+            int tribute = effLevel >= 7 ? 2 : effLevel >= 5 ? 1 : 0;
+            int monstersOnField = field.GetMonstersOnField().Count;
+
+            if (tribute > 0 && monstersOnField < tribute)
+                return Error($"覆蓋 {card.Name}（有效Lv{effLevel}）需要 {tribute} 隻怪獸作為貢獻，但場上只有 {monstersOnField} 隻。");
+
+            if (tribute > 0)
+            {
+                duel.PendingSummonHandIndex = handIndex;
+                duel.PendingTributeZones = new List<int>();
+                duel.PendingSummonMode = "set";
+                await SaveDuelAsync(channelId, duel);
+                return (BuildTributeSelectEmbed(duel, card, tribute), BuildTributeButtons(duel));
+            }
+
+            // 直接覆蓋（Lv 1-4）
+            PlaceMonsterFaceDown(field, card, handIndex);
+            field.NormalSummonedThisTurn = true;
+            duel.AddLog($"🔽 {field.UserName} 守備覆蓋了一隻怪獸");
+
+            await SaveDuelAsync(channelId, duel);
+            await RefreshHandDisplayAsync(channelId, userId);
             return (BuildBoardEmbed(duel), BuildBoardButtons(duel));
         }
 
@@ -672,25 +754,22 @@ namespace MusicBot2.Service
                 return Error("只能在主要階段覆蓋。");
 
             var hand = duel.CurrentField.Hand;
-            if (!hand.Any()) return Error("手牌是空的！");
+            var stCards = hand.Select((c, i) => (c, i)).Where(x => !x.c.IsMonster).ToList();
+            if (!stCards.Any()) return Error("手牌中沒有魔法/陷阱牌可覆蓋！（怪獸請透過「召喚怪獸」選擇守備覆蓋）");
 
             var eb = new EmbedBuilder()
-                .WithTitle("🔽 選擇要覆蓋的牌（怪獸=守備覆蓋，魔陷=覆蓋魔陷）")
+                .WithTitle("🔽 選擇要覆蓋的魔法/陷阱")
                 .WithColor(Color.DarkGrey);
-            for (int i = 0; i < hand.Count; i++)
-            {
-                var c = hand[i];
-                string kind = c.IsMonster ? $"怪獸 Lv{c.Level} DEF{c.Def}" : (c.IsSpell ? "魔法" : "陷阱");
-                eb.AddField($"{i+1}. {c.Name}", kind, inline: true);
-            }
+            foreach (var (c, i) in stCards)
+                eb.AddField($"{i+1}. {c.Name}", c.IsSpell ? "魔法" : "陷阱", inline: true);
 
             var cb  = new ComponentBuilder();
             var row = new ActionRowBuilder();
             int cnt = 0;
-            for (int i = 0; i < hand.Count; i++)
+            foreach (var (c, i) in stCards)
             {
                 if (cnt == 5) { cb.AddRow(row); row = new ActionRowBuilder(); cnt = 0; }
-                row.WithButton($"{i+1}.{hand[i].ShortName}", $"ygo_sc_{duel.DuelId}_{i}", ButtonStyle.Secondary);
+                row.WithButton($"{i+1}.{c.ShortName}", $"ygo_sc_{duel.DuelId}_{i}", ButtonStyle.Secondary);
                 cnt++;
             }
             cb.AddRow(row);
@@ -2234,6 +2313,18 @@ namespace MusicBot2.Service
             field.MonsterZones[slot] = placed;
         }
 
+        private static void PlaceMonsterFaceDown(YgoPlayerField field, YgoCard card, int handIndex)
+        {
+            var placed = card.Clone();
+            placed.FaceDown = true;
+            placed.IsDefensePosition = true;
+            placed.SummonedThisTurn = true;
+            field.Hand.RemoveAt(handIndex);
+            int slot = field.FirstEmptyMonsterZone();
+            while (field.MonsterZones.Count <= slot) field.MonsterZones.Add(null);
+            field.MonsterZones[slot] = placed;
+        }
+
         private static void DrawCards(YgoPlayerField field, int count)
         {
             for (int i = 0; i < count && field.Deck.Count > 0; i++)
@@ -2817,7 +2908,7 @@ namespace MusicBot2.Service
                         "Polymerization","Miracle Fusion","O - Oversoul","A Hero Lives","Bubble Shuffle",
                         "Hero Signal","Negate Attack","Monster Reborn",
                     },
-                    ExtraDeckNames = new() { "Elemental HERO Flame Wingman","Elemental HERO Thunder Giant","Elemental HERO Shining Flare Wingman" }
+                    ExtraDeckNames = new() { "Elemental HERO Flame Wingman","Elemental HERO Thunder Giant","Elemental HERO Shining Flare Wingman", "Elemental HERO Rampart Blaster", "Elemental HERO Steam Healer", "Elemental HERO Mudballman", "Elemental HERO Wild Wingman", "Elemental HERO Mariner", "Elemental HERO Air Neos", "Elemental HERO Grand Neos" }
                 },
                 new() {
                 Key = "chazz", CharacterName = "万丈目準", Series = "GX",

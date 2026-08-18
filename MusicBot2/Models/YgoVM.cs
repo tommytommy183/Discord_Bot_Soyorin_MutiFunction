@@ -176,7 +176,8 @@ namespace MusicBot2.Models
         public DateTime LastActionTime { get; set; } = DateTime.UtcNow;
         public string LastPlayedCardImageUrl { get; set; } // 最後打出的卡圖 URL
         public ulong HandMessageId { get; set; }  // 手牌訊息 ID，用於 in-place 更新
-        public int? PendingCostDownSpellHandIdx { get; set; } // 等待棄牌確認的 Cost Down 手牌索引
+        public int? PendingCostDownSpellHandIdx { get; set; }
+        public string PendingSummonMode { get; set; } // "normal" or "set" — for tribute summon mode selection // 等待棄牌確認的 Cost Down 手牌索引
 
         // 多步驟動作暫存
         public int? PendingAttackerZone { get; set; }       // 攻擊選擇第一步：攻擊方格子

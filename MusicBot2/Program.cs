@@ -524,11 +524,23 @@ public class Program
                     int zone = int.Parse(parts[^1]);
                     result = await ygoSvc.SelectTributeAsync(cid, uid, zone);
                 }
-                else if (component.Data.CustomId.StartsWith("ygo_ns_"))
+                else if (component.Data.CustomId.StartsWith("ygo_nssummon_"))
                 {
-                    // ygo_ns_{duelId}_{handIdx}
+                    // ygo_nssummon_{duelId}_{handIdx}  ← 正面召喚確認
                     int idx = int.Parse(parts[^1]);
                     result = await ygoSvc.NormalSummonAsync(cid, uid, idx);
+                }
+                else if (component.Data.CustomId.StartsWith("ygo_nsset_"))
+                {
+                    // ygo_nsset_{duelId}_{handIdx}  ← 守備覆蓋確認
+                    int idx = int.Parse(parts[^1]);
+                    result = await ygoSvc.SetMonsterFromMenuAsync(cid, uid, idx);
+                }
+                else if (component.Data.CustomId.StartsWith("ygo_ns_"))
+                {
+                    // ygo_ns_{duelId}_{handIdx}  ← 選牌後先選召喚模式
+                    int idx = int.Parse(parts[^1]);
+                    result = await ygoSvc.ShowSummonModeAsync(cid, uid, idx);
                 }
                 else if (component.Data.CustomId.StartsWith("ygo_sc_"))
                 {
