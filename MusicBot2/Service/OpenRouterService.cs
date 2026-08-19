@@ -70,6 +70,9 @@ namespace MusicBot2.Service
             //"inclusionai/ling-3.0-flash:free",
             //"cohere/north-mini-code:free",
             //"poolside/laguna-s-2.1:free",
+            "dots-studio/dots-3-note-preview:free",
+            "nvidia/nemotron-3.5-lightning:free",
+            "z-ai/glm-5.2:free",
 
             // === 第一梯隊：大型高品質模型 ===
             //"nvidia/nemotron-3.5-content-safety:free",    // 安全檢測模型，非聊天模型，會直接失敗
