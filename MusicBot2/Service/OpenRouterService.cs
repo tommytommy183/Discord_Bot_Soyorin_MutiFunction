@@ -70,7 +70,7 @@ namespace MusicBot2.Service
             //"inclusionai/ling-3.0-flash:free",
             //"cohere/north-mini-code:free",
             //"poolside/laguna-s-2.1:free",
-            "dots-studio/dots-3-note-preview:free",
+            "dots-studio/dots-3-note-preview:free", //講話固定變簡中
             "nvidia/nemotron-3.5-lightning:free",
             "z-ai/glm-5.2:free",
 
@@ -315,6 +315,12 @@ namespace MusicBot2.Service
             else
                 Console.WriteLine($"✅ [AI Service] OpenRouter 模式（視覺用 Google AI，共 {_googleApiKeys.Length} 個 key）");
 
+            // 從環境變數或檔案載入模型列表
+            _models = LoadModelsFromEnvOrFile("OPENROUTER_MODELS", Path.Combine("TxtFolder", "OpenRouterModels.txt"));
+            _modelsForSimpleText = LoadModelsFromEnvOrFile("OPENROUTER_MODELS_SIMPLE", Path.Combine("TxtFolder", "OpenRouterModelsSimple.txt"));
+
+            Console.WriteLine($"✅ [OpenRouter] 載入 {_models.Length} 個主要模型、{_modelsForSimpleText.Length} 個簡單模型");
+
             if (!string.IsNullOrEmpty(redisConnectionString))
             {
                 try
@@ -339,6 +345,107 @@ namespace MusicBot2.Service
         }
 
         #region Memory Persistence
+
+        /// <summary>
+        /// 優先從環境變數載入模型列表，找不到時從檔案載入。
+        /// 環境變數格式：每行一個模型 ID，# 開頭為註解，用 | 分隔多行。
+        /// 範例：model1:free|# 這是註解|model2:free
+        /// </summary>
+        private static string[] LoadModelsFromEnvOrFile(string envVarName, string filePath)
+        {
+            // 優先讀取環境變數
+            var envValue = Environment.GetEnvironmentVariable(envVarName);
+            if (!string.IsNullOrWhiteSpace(envValue))
+            {
+                try
+                {
+                    // 環境變數用 | 分隔多行
+                    var lines = envValue.Split('|', StringSplitOptions.RemoveEmptyEntries);
+                    var models = lines
+                        .Select(line => line.Trim())
+                        .Where(line => !string.IsNullOrEmpty(line) && !line.StartsWith("#"))
+                        .ToArray();
+
+                    if (models.Length > 0)
+                    {
+                        Console.WriteLine($"✅ [OpenRouter] 從環境變數 {envVarName} 載入 {models.Length} 個模型");
+                        return models;
+                    }
+                    else
+                    {
+                        Console.WriteLine($"⚠️ [OpenRouter] 環境變數 {envVarName} 為空，嘗試從檔案載入");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"❌ [OpenRouter] 解析環境變數 {envVarName} 失敗: {ex.Message}，嘗試從檔案載入");
+                }
+            }
+
+            // 環境變數不存在或解析失敗，從檔案載入
+            return LoadModelsFromFile(filePath);
+        }
+
+        /// <summary>
+        /// 從檔案載入模型列表。
+        /// 格式：每行一個模型 ID，# 開頭為註解，空行會被忽略。
+        /// </summary>
+        private static string[] LoadModelsFromFile(string filePath)
+        {
+            try
+            {
+                if (!File.Exists(filePath))
+                {
+                    Console.WriteLine($"⚠️ [OpenRouter] 模型列表檔案不存在: {filePath}，使用內建預設");
+                    return GetDefaultModels(filePath.Contains("Simple"));
+                }
+
+                var lines = File.ReadAllLines(filePath, Encoding.UTF8);
+                var models = lines
+                    .Select(line => line.Trim())
+                    .Where(line => !string.IsNullOrEmpty(line) && !line.StartsWith("#"))
+                    .ToArray();
+
+                if (models.Length == 0)
+                {
+                    Console.WriteLine($"⚠️ [OpenRouter] 模型列表為空: {filePath}，使用內建預設");
+                    return GetDefaultModels(filePath.Contains("Simple"));
+                }
+
+                Console.WriteLine($"✅ [OpenRouter] 從 {filePath} 載入 {models.Length} 個模型");
+                return models;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"❌ [OpenRouter] 載入模型列表失敗: {ex.Message}，使用內建預設");
+                return GetDefaultModels(filePath.Contains("Simple"));
+            }
+        }
+
+        /// <summary>
+        /// 當環境變數和檔案都讀取失敗時的備援預設模型列表
+        /// </summary>
+        private static string[] GetDefaultModels(bool isSimple)
+        {
+            if (isSimple)
+            {
+                return new[]
+                {
+                    "meta-llama/llama-3.3-70b-instruct:free",
+                    "meta-llama/llama-3.2-3b-instruct:free",
+                    "google/gemma-4-26b-a4b-it:free"
+                };
+            }
+            else
+            {
+                return new[]
+                {
+                    "nvidia/nemotron-3-super-120b-a12b:free",
+                    "meta-llama/llama-3.3-70b-instruct:free",
+                    "google/gemma-4-26b-a4b-it:free"
+                };
+            }
+        }
 
         private void LoadMemory()
         {
