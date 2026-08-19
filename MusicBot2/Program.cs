@@ -48,6 +48,7 @@ public class Program
     private GoogleAIStudioService _googleAIStudioService;
     private OpenRouterService _openRouterService;
     private SetTextService _setTextService;
+    private FreeDuelService _freeDuelSvc;
     private TRPGService _trpgService;
     private FishAudioService _fishAudioService;
     private GroqWhisperService _groqWhisperService;
@@ -163,11 +164,13 @@ public class Program
                 new PokeTowerService(redisConn, sp.GetService<OpenRouterService>(), sp.GetService<GetChampService>()))
               .AddSingleton<HolyGrailTowerService>(sp => new HolyGrailTowerService(redisConn))
               .AddSingleton<YgoDuelService>(sp => new YgoDuelService(redisConn, sp.GetRequiredService<OpenRouterService>(), _client))
+              .AddSingleton<FreeDuelService>(sp => new FreeDuelService(redisConn, sp.GetRequiredService<OpenRouterService>(), _client))
               .BuildServiceProvider();
 
         _googleAIStudioService = _services.GetRequiredService<GoogleAIStudioService>();
         _openRouterService = _services.GetRequiredService<OpenRouterService>();
         _setTextService = _services.GetRequiredService<SetTextService>();
+        _freeDuelSvc = _services.GetRequiredService<FreeDuelService>();
         _trpgService = _services.GetRequiredService<TRPGService>();
         _fishAudioService = _services.GetRequiredService<FishAudioService>();
         _groqWhisperService = _services.GetRequiredService<GroqWhisperService>();
@@ -1406,6 +1409,19 @@ public class Program
         bool ispassBot = passBotList.Contains(message.Author.Id);
         // 忽略非使用者訊息或機器人訊息（除非在 passBotList 中）還有自己
         if (message is not SocketUserMessage userMessage || (message.Author.IsBot && !ispassBot) || message.Author.Id == _client.CurrentUser.Id) return;
+
+        // 🃏 自由決鬥模式攔截
+        if (_freeDuelSvc != null && await _freeDuelSvc.IsDuelActiveAsync(message.Channel.Id))
+        {
+            if (!message.Content.StartsWith("/"))
+            {
+                var (fdEmbed, fdMsg) = await _freeDuelSvc.HandleMessageAsync(
+                    message.Channel.Id, message.Author.Id, message.Content);
+                if (fdMsg != null)
+                    await message.Channel.SendMessageAsync(text: fdMsg, embed: fdEmbed);
+                return;
+            }
+        }
 
         // 🎲 檢查是否在 TRPG 遊戲頻道中
         var trpgUser = message.Author as SocketGuildUser;

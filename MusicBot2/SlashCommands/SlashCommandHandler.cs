@@ -51,8 +51,9 @@ namespace MusicBot2.SlahCommands
         private readonly FgoGuessService _fgoGuessService;
         private readonly HolyGrailTowerService _holyGrailTowerService;
         private readonly YgoDuelService _ygoService;
+        private readonly FreeDuelService _freeDuelSvc;
 
-        public SlashCommandHandler(Program program, WordGuessingService wordService, MineGameService mineGameService, ElevenLabsService elevenLabsService, OldMaidService oldMaidService, RubiksCubeService rubiksCubeService, GoogleAIStudioService googleAIStudioService, OpenRouterService openRouterService, RVC_Service rVC_Service, SetTextService setTextService, Game2048Service game2048Service, Game1A2BService game1A2BService, Pick2Service pick2Service, JikanAnimeService animeService, PokeService pokeService, PokeGameService pokeGameService, ValorantService valorantService, TRPGService trpgService, LyrisService lyrisService, LyricsDisplayService lyricsDisplayService, UselessApiService uselessApiService, NekoBotService nekoBotService, WaifuImService waifuImService, WaifuPicsService waifuPicsService, AIImageService aiImageService, GroqWhisperService groqWhisperService, FishAudioService fishAudioService, PokeTowerService pokeTowerService, FgoGuessService fgoGuessService, HolyGrailTowerService holyGrailTowerService, YgoDuelService ygoService)
+        public SlashCommandHandler(Program program, WordGuessingService wordService, MineGameService mineGameService, ElevenLabsService elevenLabsService, OldMaidService oldMaidService, RubiksCubeService rubiksCubeService, GoogleAIStudioService googleAIStudioService, OpenRouterService openRouterService, RVC_Service rVC_Service, SetTextService setTextService, Game2048Service game2048Service, Game1A2BService game1A2BService, Pick2Service pick2Service, JikanAnimeService animeService, PokeService pokeService, PokeGameService pokeGameService, ValorantService valorantService, TRPGService trpgService, LyrisService lyrisService, LyricsDisplayService lyricsDisplayService, UselessApiService uselessApiService, NekoBotService nekoBotService, WaifuImService waifuImService, WaifuPicsService waifuPicsService, AIImageService aiImageService, GroqWhisperService groqWhisperService, FishAudioService fishAudioService, PokeTowerService pokeTowerService, FgoGuessService fgoGuessService, HolyGrailTowerService holyGrailTowerService, YgoDuelService ygoService, FreeDuelService freeDuelService)
         {
             _program = program;
             _wordService = wordService;
@@ -85,6 +86,7 @@ namespace MusicBot2.SlahCommands
             _fgoGuessService = fgoGuessService;
             _holyGrailTowerService = holyGrailTowerService;
             _ygoService = ygoService;
+            _freeDuelSvc = freeDuelService;
         }
         #region 音樂撥放相關 > 先拿掉，要撥放音樂用$$就好
         //[SlashCommand("播放音樂", "播放音樂")]
@@ -1786,6 +1788,48 @@ namespace MusicBot2.SlahCommands
             await DeferAsync();
             var (embed, component) = await _ygoService.ShowCardInfoAsync(name);
             await FollowupAsync(embed: embed, components: component.Build());
+        }
+
+        #endregion
+
+        #region FreeDuel
+
+        [SlashCommand("freeduel", "開始自由決鬥（對話式，無規則限制）")]
+        public async Task FreeDuelAsync(
+            [Summary("對手"), Discord.Interactions.Choice("武藤遊戲","yugi"), Discord.Interactions.Choice("海馬瀬人","kaiba"),
+             Discord.Interactions.Choice("城之內克也","joey"), Discord.Interactions.Choice("孔雀舞","mai"), Discord.Interactions.Choice("馬立克","marik"),
+             Discord.Interactions.Choice("馬克西米利安・佩格薩斯","pegasus"), Discord.Interactions.Choice("獏良了（闇）","bakura"),
+             Discord.Interactions.Choice("十代","jaden"), Discord.Interactions.Choice("萬丈目準","chazz"),
+             Discord.Interactions.Choice("天上院明日香","alexis"), Discord.Interactions.Choice("丸藤亮","zane")]
+            string opponent = "kaiba")
+        {
+            await DeferAsync();
+            var user = Context.User as Discord.WebSocket.SocketGuildUser;
+            string playerName = user?.DisplayName ?? Context.User.Username;
+
+            if (await _freeDuelSvc.IsDuelActiveAsync(Context.Channel.Id))
+            {
+                await FollowupAsync("❌ 此頻道已有決鬥進行中！請先使用 `/endduel` 結束。");
+                return;
+            }
+
+            var (embed, message) = await _freeDuelSvc.StartDuelAsync(
+                Context.Channel.Id, Context.User.Id, playerName, opponent);
+
+            await FollowupAsync(text: message, embed: embed);
+        }
+
+        [SlashCommand("endduel", "強制結束自由決鬥，恢復頻道正常功能")]
+        public async Task EndFreeDuelAsync()
+        {
+            await DeferAsync();
+            if (!await _freeDuelSvc.IsDuelActiveAsync(Context.Channel.Id))
+            {
+                await FollowupAsync("此頻道沒有進行中的自由決鬥。");
+                return;
+            }
+            var msg = await _freeDuelSvc.ForceEndDuelAsync(Context.Channel.Id);
+            await FollowupAsync(msg);
         }
 
         #endregion
