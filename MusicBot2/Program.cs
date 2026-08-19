@@ -506,12 +506,33 @@ public class Program
                     int idx = int.Parse(parts[^1]);
                     result = await ygoSvc.ConfirmCostDownDiscardAsync(cid, uid, idx);
                 }
+                else if (component.Data.CustomId.StartsWith("ygo_fdcardimg_"))
+                {
+                    // ygo_fdcardimg_{channelId}_{cardIdx}
+                    int idx = int.Parse(parts[^1]);
+                    var (fdImgEmbed, fdImgComp) = await _freeDuelSvc.GetFreeDuelHandEmbedAsync(cid, uid, idx);
+                    result = (fdImgEmbed, fdImgComp);
+                }
                 else if (component.Data.CustomId.StartsWith("ygo_fdhand_"))
                 {
-                    // ygo_fdhand_{channelId}
-                    var (fdHandEmbed, _) = await _freeDuelSvc.ShowHandAsync(component.Channel.Id, uid);
-                    await component.FollowupAsync(embed: fdHandEmbed, ephemeral: true);
-                    return;
+                    // ygo_fdhand_{channelId} — edit-in-place 手牌訊息
+                    var (fdHandEmbed, fdHandComp) = await _freeDuelSvc.GetFreeDuelHandEmbedAsync(cid, uid, 0);
+                    var fdState = await _freeDuelSvc.GetStateAsync(cid);
+                    if (fdState?.HandMessageId > 0 && _client.GetChannel(cid) is IMessageChannel fdHCh)
+                    {
+                        try
+                        {
+                            if (await fdHCh.GetMessageAsync(fdState.HandMessageId) is IUserMessage existFdMsg)
+                            {
+                                await existFdMsg.ModifyAsync(m => { m.Embed = fdHandEmbed; m.Components = fdHandComp.Build(); });
+                                await component.DeferAsync();
+                                return;
+                            }
+                        }
+                        catch { }
+                    }
+                    var newFdMsg = await component.FollowupAsync(embed: fdHandEmbed, components: fdHandComp.Build());
+                    await _freeDuelSvc.SetFreeDuelHandMessageIdAsync(cid, newFdMsg.Id);
                 }
                 else if (component.Data.CustomId.StartsWith("ygo_surrender_") && !component.Data.CustomId.Contains("confirm"))
                     result = await ygoSvc.SurrenderAsync(cid, uid);

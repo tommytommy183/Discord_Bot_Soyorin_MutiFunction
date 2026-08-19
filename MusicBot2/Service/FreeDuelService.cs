@@ -174,33 +174,63 @@ namespace MusicBot2.Service
         // Keep old name for backward compat
         public Task<string> ForceEndDuelAsync(ulong channelId) => ForceEndAsync(channelId);
 
-        /// <summary>Show player hand with card images (edit-in-place if possible)</summary>
-        public async Task<(Embed embed, ComponentBuilder component)> ShowHandAsync(ulong channelId, ulong userId)
+        /// <summary>顯示玩家手牌 embed，selectedIdx 決定顯示哪張卡圖</summary>
+        public async Task<(Embed embed, ComponentBuilder component)> GetFreeDuelHandEmbedAsync(
+            ulong channelId, ulong userId, int selectedIdx = 0)
         {
             var state = await LoadAsync(channelId);
             if (state == null) return (BuildError("沒有進行中的決鬥。"), new ComponentBuilder());
             if (state.PlayerId != userId) return (BuildError("不是你的決鬥！"), new ComponentBuilder());
 
-            if (!state.PlayerHand.Any())
-                return (BuildError("手牌是空的。"), new ComponentBuilder());
+            var hand = state.PlayerHand;
+            if (!hand.Any())
+            {
+                var emptyEb = new EmbedBuilder()
+                    .WithTitle($"🤚 {state.PlayerName} 的手牌（0 張）")
+                    .WithColor(Color.DarkGrey)
+                    .WithDescription("手牌是空的！");
+                return (emptyEb.Build(), new ComponentBuilder());
+            }
+
+            int sel = Math.Clamp(selectedIdx, 0, hand.Count - 1);
+            string selName = hand[sel];
 
             var eb = new EmbedBuilder()
-                .WithTitle($"🃏 {state.PlayerName} 的手牌（{state.PlayerHand.Count} 張）")
+                .WithTitle($"🤚 {state.PlayerName} 的手牌（{hand.Count} 張）　　▶ {selName}")
                 .WithColor(Color.Gold);
 
-            // Try to fetch images for up to 5 cards
-            string? firstImageUrl = null;
-            foreach (var (cardName, idx) in state.PlayerHand.Select((n, i) => (n, i)))
+            for (int i = 0; i < hand.Count; i++)
             {
-                string imageUrl = await TryGetCardImageAsync(cardName);
-                if (firstImageUrl == null && !string.IsNullOrEmpty(imageUrl))
-                    firstImageUrl = imageUrl;
-                eb.AddField($"{idx + 1}. {cardName}", string.IsNullOrEmpty(imageUrl) ? "（無圖）" : $"[圖片]({imageUrl})", inline: true);
+                string label = i == sel ? $"**[{i + 1}] {hand[i]}**" : $"{i + 1}. {hand[i]}";
+                eb.AddField(label, i == sel ? "◀ 目前顯示" : "－", inline: true);
             }
-            if (!string.IsNullOrEmpty(firstImageUrl)) eb.WithImageUrl(firstImageUrl);
 
-            return (eb.Build(), new ComponentBuilder());
+            // Fetch card image for selected card
+            string imgUrl = await TryGetCardImageAsync(selName);
+            if (!string.IsNullOrEmpty(imgUrl)) eb.WithImageUrl(imgUrl);
+
+            // Numbered buttons
+            var cb = new ComponentBuilder();
+            var row = new ActionRowBuilder();
+            for (int i = 0; i < hand.Count; i++)
+            {
+                if (i > 0 && i % 5 == 0) { cb.AddRow(row); row = new ActionRowBuilder(); }
+                var style = i == sel ? ButtonStyle.Primary : ButtonStyle.Secondary;
+                row.WithButton($"🖼️{i + 1}", $"ygo_fdcardimg_{channelId}_{i}", style);
+            }
+            cb.AddRow(row);
+            return (eb.Build(), cb);
         }
+
+        public async Task SetFreeDuelHandMessageIdAsync(ulong channelId, ulong messageId)
+        {
+            var state = await LoadAsync(channelId);
+            if (state == null) return;
+            state.HandMessageId = messageId;
+            await SaveAsync(state);
+        }
+
+        public async Task<FreeDuelState?> GetStateAsync(ulong channelId) => await LoadAsync(channelId);
 
         // ── AI call ────────────────────────────────────────────────────────
         private async Task<(string dialogue, FreeDuelState updatedState)> CallAiAsync(
@@ -242,6 +272,9 @@ namespace MusicBot2.Service
             if (parsed?.Events != null)
                 foreach (var ev in parsed.Events)
                     ApplyEvent(state, ev);
+
+            // 手牌有變動 → 更新手牌訊息
+            await RefreshHandDisplayAsync(state);
 
             // Update history
             state.History.Add(new FreeDuelMessage { Role = "user", Content = userContent });
@@ -478,6 +511,20 @@ namespace MusicBot2.Service
             if (s.IsDuelEnded) return new ComponentBuilder();
             return new ComponentBuilder()
                 .WithButton("🃏 查看手牌", $"ygo_fdhand_{s.ChannelId}", ButtonStyle.Secondary);
+        }
+
+        /// <summary>若有手牌訊息存在，自動更新顯示（回合結束/手牌變動後呼叫）</summary>
+        private async Task RefreshHandDisplayAsync(FreeDuelState state)
+        {
+            if (state.HandMessageId == 0) return;
+            try
+            {
+                if (_client.GetChannel(state.ChannelId) is not IMessageChannel ch) return;
+                if (await ch.GetMessageAsync(state.HandMessageId) is not IUserMessage msg) return;
+                var (handEmbed, handComp) = await GetFreeDuelHandEmbedAsync(state.ChannelId, state.PlayerId, 0);
+                await msg.ModifyAsync(m => { m.Embed = handEmbed; m.Components = handComp.Build(); });
+            }
+            catch { /* 手牌更新失敗不影響主流程 */ }
         }
 
         private static Embed BuildError(string msg) =>
