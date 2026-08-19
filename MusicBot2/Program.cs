@@ -510,7 +510,7 @@ public class Program
                 {
                     // ygo_fdhand_{channelId}
                     var (fdHandEmbed, _) = await _freeDuelSvc.ShowHandAsync(component.Channel.Id, uid);
-                    await component.RespondAsync(embed: fdHandEmbed, ephemeral: true);
+                    await component.FollowupAsync(embed: fdHandEmbed, ephemeral: true);
                     return;
                 }
                 else if (component.Data.CustomId.StartsWith("ygo_surrender_") && !component.Data.CustomId.Contains("confirm"))
