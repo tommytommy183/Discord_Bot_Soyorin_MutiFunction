@@ -369,6 +369,9 @@ namespace MusicBot2.Service
                     if (models.Length > 0)
                     {
                         Console.WriteLine($"✅ [OpenRouter] 從環境變數 {envVarName} 載入 {models.Length} 個模型");
+                        Console.WriteLine($"   第一個模型: {models[0]}");
+                        if (models.Length > 1)
+                            Console.WriteLine($"   第二個模型: {models[1]}");
                         return models;
                     }
                     else
@@ -413,6 +416,9 @@ namespace MusicBot2.Service
                 }
 
                 Console.WriteLine($"✅ [OpenRouter] 從 {filePath} 載入 {models.Length} 個模型");
+                Console.WriteLine($"   第一個模型: {models[0]}");
+                if (models.Length > 1)
+                    Console.WriteLine($"   第二個模型: {models[1]}");
                 return models;
             }
             catch (Exception ex)
