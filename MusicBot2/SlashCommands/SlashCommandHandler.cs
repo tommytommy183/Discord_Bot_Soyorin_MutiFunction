@@ -1796,10 +1796,16 @@ namespace MusicBot2.SlahCommands
 
         [SlashCommand("freeduel", "開始自由決鬥（對話式，無規則限制）")]
         public async Task FreeDuelAsync(
+            [Summary("我的牌組"), Discord.Interactions.Choice("武藤遊戲","yugi"), Discord.Interactions.Choice("海馬瀬人","kaiba"),
+             Discord.Interactions.Choice("城之內克也","joey"), Discord.Interactions.Choice("孔雀舞","mai"), Discord.Interactions.Choice("馬立克","marik"),
+             Discord.Interactions.Choice("佩加瑟斯","pegasus"), Discord.Interactions.Choice("獏良了","bakura"),
+             Discord.Interactions.Choice("遊城十代","jaden"), Discord.Interactions.Choice("萬丈目準","chazz"),
+             Discord.Interactions.Choice("天上院明日香","alexis"), Discord.Interactions.Choice("丸藤亮","zane")]
+            string myDeck = "yugi",
             [Summary("對手"), Discord.Interactions.Choice("武藤遊戲","yugi"), Discord.Interactions.Choice("海馬瀬人","kaiba"),
              Discord.Interactions.Choice("城之內克也","joey"), Discord.Interactions.Choice("孔雀舞","mai"), Discord.Interactions.Choice("馬立克","marik"),
-             Discord.Interactions.Choice("馬克西米利安・佩格薩斯","pegasus"), Discord.Interactions.Choice("獏良了（闇）","bakura"),
-             Discord.Interactions.Choice("十代","jaden"), Discord.Interactions.Choice("萬丈目準","chazz"),
+             Discord.Interactions.Choice("佩加瑟斯","pegasus"), Discord.Interactions.Choice("獏良了","bakura"),
+             Discord.Interactions.Choice("遊城十代","jaden"), Discord.Interactions.Choice("萬丈目準","chazz"),
              Discord.Interactions.Choice("天上院明日香","alexis"), Discord.Interactions.Choice("丸藤亮","zane")]
             string opponent = "kaiba")
         {
@@ -1813,10 +1819,10 @@ namespace MusicBot2.SlahCommands
                 return;
             }
 
-            var (embed, message) = await _freeDuelSvc.StartDuelAsync(
-                Context.Channel.Id, Context.User.Id, playerName, opponent);
+            var (embed, component, message) = await _freeDuelSvc.StartDuelAsync(
+                Context.Channel.Id, Context.User.Id, playerName, myDeck, opponent);
 
-            await FollowupAsync(text: message, embed: embed);
+            await FollowupAsync(text: message, embed: embed, components: component.Build());
         }
 
         [SlashCommand("endduel", "強制結束自由決鬥，恢復頻道正常功能")]

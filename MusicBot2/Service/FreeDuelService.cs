@@ -2,108 +2,58 @@ using Discord;
 using Discord.WebSocket;
 using MusicBot2.Models;
 using StackExchange.Redis;
-using StackExchange.Redis.Configuration;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net.Http;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 
 namespace MusicBot2.Service
 {
     public class FreeDuelService
     {
-        private readonly IDatabase _redisDb;
+        private readonly IDatabase? _redisDb;
         private readonly bool _useRedis;
         private readonly OpenRouterService _ai;
         private readonly DiscordSocketClient _client;
+        private readonly YgoDuelService _ygoSvc;
         private static readonly Dictionary<ulong, FreeDuelState> _memFallback = new();
+        private static readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(10) };
 
         private static readonly TimeSpan DuelTimeout = TimeSpan.FromMinutes(30);
 
         // ── Character definitions ──────────────────────────────────────────
-        private static readonly Dictionary<string, (string Name, string Personality, string DeckDesc)> Characters = new()
+        private record CharDef(string Name, string Personality, string DeckHint);
+        private static readonly Dictionary<string, CharDef> Chars = new()
         {
-            ["yugi"] = (
-    "武藤遊戲",
-    "善良溫和、害羞內向但非常重視朋友，相信夥伴與團結的力量；遇到危機時會鼓起勇氣。喜歡遊戲、謎題與決鬥，性格不像另一個自己那麼強勢，會尊重對手並相信自己的夥伴。",
-    "黑魔術師、黑魔術師女孩、千年積木、魔法卡、儀式召喚"
-),
-
-            ["kaiba"] = (
-    "海馬瀬人",
-    "極度自信、高傲自負、勝負欲與自尊心極強，認為弱者沒有資格與自己決鬥；經常嘲諷對手，但對真正強大的對手會認真看待。極度執著於超越遊戲並成為最強決鬥者。",
-    "青眼白龍、青眼究極龍、巨神兵、XYZ機械、Kaiba Corporation"
-),
-
-            ["joey"] = (
-    "城之內克也",
-    "直率粗獷、愛逞強、嘴硬但重情重義，尤其珍惜朋友；不是最精密的策略型決鬥者，但意志力極強，經常靠臨場反應、直覺與驚人的運氣逆轉局勢。",
-    "真紅眼黑龍、戰士族、骰子怪獸、時間魔術師、骰盅"
-),
-
-            ["mai"] = (
-    "孔雀舞",
-    "成熟自信、驕傲而有魅力，說話帶有毒舌和戲謔感，不喜歡示弱；表面上獨立強勢，實際上非常重視友情，尤其在與遊戲和城之內相處後逐漸學會信任他人。",
-    "Harpie Lady、Harpie Lady Sisters、Elegant Egotist、Harpie牌組、Amazoness"
-),
-
-            ["marik"] = (
-    "馬利克・伊修達爾",
-    "外表冷靜但內心充滿怨恨，對自己的過去與家族抱持強烈的痛苦與矛盾；如果是闇馬利克人格，則會變得殘酷扭曲，喜歡折磨對手並享受黑暗遊戲帶來的恐懼。",
-    "拉之翼神龍、Lava Golem、Slime、墓地與黑暗系卡片、千年錫杖"
-),
-
-            ["pegasus"] = (
-    "馬克西米利安・佩格薩斯",
-    "優雅、有教養、幽默而戲謔，喜歡用誇張又做作的語氣嘲弄對手；表面像紳士，實際上非常狡猾，喜歡利用千年眼讀取對手想法並玩弄對方心理。",
-    "Toon World、Toon怪獸、千年眼、卡通牌組"
-),
-
-            ["bakura"] = (
-    "獏良了（闇獏良）",
-    "陰森詭異、狡猾殘忍，喜歡操弄對手的心理與靈魂，說話經常帶著令人不安的笑意；擅長利用黑暗遊戲、詛咒與墓地相關效果慢慢逼迫對手走向絕境。",
-    "Destiny Board、Dark Necrofear、Diabound、詛咒與黑暗系卡片"
-),
-
-            ["jaden"] = (
-    "遊城十代",
-    "樂觀開朗、喜歡享受決鬥，對強者與新卡充滿興奮；相信自己的英雄與夥伴，經常憑直覺做出決定。即使面臨逆境，也傾向把決鬥視為一件有趣的事情。",
-    "Elemental HERO、Polymerization、Winged Kuriboh、Skyscraper、融合召喚"
-),
-
-            ["chazz"] = (
-    "萬丈目準",
-    "自大傲慢、極度愛面子，認為自己是菁英；嘴硬又好勝，不願承認自己的弱點，但其實非常有潛力且不服輸。遭遇挫折後反而會更加努力證明自己。",
-    "Armed Dragon、Ojama、VWXYZ、Union怪獸"
-),
-
-            ["alexis"] = (
-    "天上院明日香",
-    "冷靜、自信、聰明而有競爭心，擅長分析局勢，不容易被情緒左右；外表優雅成熟，對自己的決鬥能力有很高要求，也非常重視朋友與同伴。",
-    "Cyber Angel Benten、Cyber Angel Dakini、Cyber Angel Idaten、Cyber Blader、儀式召喚"
-),
-
-            ["zane"] = (
-    "丸藤亮",
-    "冷酷寡言、極度重視勝負與力量，將決鬥視為證明自身價值的方式；遭遇挫折後變得更加執著甚至近乎瘋狂，願意承受巨大代價追求勝利。",
-    "Cyber Dragon、Cyber Twin Dragon、Cyber End Dragon、Power Bond、Cyberdark"
-),
+            ["yugi"]    = new("武藤遊戲",   "熱血、相信夥伴與抽卡的力量，說話充滿鬥志。常說「我相信抽卡的力量！」", "暗黑魔術師、千年之眼、黑魔法儀式"),
+            ["kaiba"]   = new("海馬瀬人",   "高傲自大、瞧不起對手，口頭禪是「蠢貨」，但決鬥全力以赴", "青眼白龍×3、白龍降臨、龍之力、敵對英雄"),
+            ["joey"]    = new("城之內克也", "大而化之、義氣當頭、愛靠運氣，常說「哥哥我就靠運氣了！」", "紅眼黑龍、骰子怪獸、戰士族"),
+            ["mai"]     = new("孔雀舞",     "性感自信、毒舌，內心重視友情", "亞馬遜族女戰士、香水陷阱"),
+            ["marik"]   = new("馬立克",     "扭曲殘忍，喜歡折磨對手，使用暗黑魔法", "拉之翼神龍、墓地炸彈、洗腦魔法"),
+            ["pegasus"] = new("ペガサス",   "優雅風趣、帶著紅酒杯，用千年之眼讀取手牌", "卡通怪獸、千年之眼"),
+            ["bakura"]  = new("闇獏良",     "詭異陰沉、喜歡靈魂類效果與詭計", "屍鬼族、詛咒陷阱"),
+            ["jaden"]   = new("響紅一",     "超樂觀、口頭禪是「收到！」，相信英雄的力量", "元素英雄、融合召喚、Wingman"),
+            ["chazz"]   = new("萬丈目準",   "自大傲慢，常說「萬丈目準様だぞ！」", "武裝龍、VWXYZ機械合體"),
+            ["alexis"]  = new("天上院明日香","冷靜優雅，決鬥時心思縝密", "Cyber Angel、寶石獸"),
+            ["zane"]    = new("丸藤亮",     "冷酷強硬、不說廢話，決鬥即一切", "賽博龍、超導波動炮"),
         };
 
-        public FreeDuelService(string? redisConn, OpenRouterService ai, DiscordSocketClient client)
+        public FreeDuelService(string? redisConn, OpenRouterService ai, DiscordSocketClient client, YgoDuelService ygoSvc)
         {
             _ai = ai;
             _client = client;
+            _ygoSvc = ygoSvc;
             try
             {
-                if (!string.IsNullOrEmpty(redisConn))
+                if (!string.IsNullOrWhiteSpace(redisConn))
                 {
                     var opts = ConfigurationOptions.Parse(redisConn);
-                    opts.ConnectTimeout = 10000;
                     opts.AbortOnConnectFail = false;
-                    opts.ConnectRetry = 3;
+                    opts.ConnectTimeout = 10000;
                     var conn = ConnectionMultiplexer.Connect(opts);
                     _redisDb = conn.GetDatabase();
                     _useRedis = true;
@@ -113,328 +63,430 @@ namespace MusicBot2.Service
         }
 
         // ── Redis helpers ──────────────────────────────────────────────────
-        private string Key(ulong channelId) => $"freeduel:{channelId}";
+        private string Key(ulong cid) => $"freeduel:{cid}";
 
-        private async Task<FreeDuelState> LoadAsync(ulong channelId)
+        private async Task<FreeDuelState?> LoadAsync(ulong cid)
         {
             if (_useRedis)
             {
-                var json = await _redisDb.StringGetAsync(Key(channelId));
-                if (json.HasValue) return JsonSerializer.Deserialize<FreeDuelState>(json.ToString());
+                try
+                {
+                    var v = await _redisDb!.StringGetAsync(Key(cid));
+                    if (v.HasValue) return JsonSerializer.Deserialize<FreeDuelState>(v!);
+                }
+                catch { }
             }
-            return _memFallback.TryGetValue(channelId, out var s) ? s : null;
+            return _memFallback.TryGetValue(cid, out var s) ? s : null;
         }
 
-        private async Task SaveAsync(FreeDuelState state)
+        private async Task SaveAsync(FreeDuelState s)
         {
-            var json = JsonSerializer.Serialize(state);
-            if (_useRedis) await _redisDb.StringSetAsync(Key(state.ChannelId), json, TimeSpan.FromHours(2));
-            else _memFallback[state.ChannelId] = state;
+            var json = JsonSerializer.Serialize(s);
+            if (_useRedis) try { await _redisDb!.StringSetAsync(Key(s.ChannelId), json, TimeSpan.FromHours(2)); } catch { }
+            _memFallback[s.ChannelId] = s;
         }
 
-        private async Task DeleteAsync(ulong channelId)
+        private async Task DeleteAsync(ulong cid)
         {
-            if (_useRedis) await _redisDb.KeyDeleteAsync(Key(channelId));
-            else _memFallback.Remove(channelId);
+            if (_useRedis) try { await _redisDb!.KeyDeleteAsync(Key(cid)); } catch { }
+            _memFallback.Remove(cid);
         }
 
         // ── Public API ─────────────────────────────────────────────────────
-        public async Task<bool> IsDuelActiveAsync(ulong channelId)
+        public async Task<bool> IsDuelActiveAsync(ulong cid)
         {
-            var state = await LoadAsync(channelId);
-            if (state == null || state.IsDuelEnded) return false;
-            if (DateTime.UtcNow - state.LastActionTime > DuelTimeout)
-            {
-                await DeleteAsync(channelId);
-                return false;
-            }
+            var s = await LoadAsync(cid);
+            if (s == null || s.IsDuelEnded) return false;
+            if (DateTime.UtcNow - s.LastActionTime > DuelTimeout) { await DeleteAsync(cid); return false; }
             return true;
         }
 
-        public async Task<(Embed embed, string message)> StartDuelAsync(
-            ulong channelId, ulong playerId, string playerName, string characterKey)
+        public async Task<(Embed embed, ComponentBuilder component, string message)> StartDuelAsync(
+            ulong channelId, ulong playerId, string playerName, string playerDeckKey, string aiCharacterKey)
         {
-            if (!Characters.ContainsKey(characterKey))
-                characterKey = "kaiba";
-            var ch = Characters[characterKey];
+            if (!Chars.ContainsKey(aiCharacterKey)) aiCharacterKey = "kaiba";
+            if (!_ygoSvc.GetDeckDefinitions().ContainsKey(playerDeckKey)) playerDeckKey = "yugi";
+
+            var ch = Chars[aiCharacterKey];
+            var deck = _ygoSvc.GetDeckDefinitions()[playerDeckKey];
+
+            // Deal 5 cards from player's deck
+            var deckCards = deck.MainDeckNames.OrderBy(_ => Guid.NewGuid()).ToList();
+            var startHand = deckCards.Take(5).ToList();
 
             var state = new FreeDuelState
             {
                 ChannelId = channelId,
                 PlayerId = playerId,
                 PlayerName = playerName,
-                AiCharacterKey = characterKey,
+                PlayerDeckKey = playerDeckKey,
+                AiCharacterKey = aiCharacterKey,
                 AiCharacterName = ch.Name,
-                PlayerHp = 8000,
-                AiHp = 8000,
+                PlayerHand = startHand,
                 AiHandCount = 5,
                 LastActionTime = DateTime.UtcNow,
             };
 
-            string openingPrompt = BuildSystemPrompt(state) +
-                "\n\n【開局】決鬥開始！用角色口吻說一段開場宣言（2-4句話），然後描述你的第一回合行動（抽牌、可選擇召喚一隻怪獸）。" +
-                "\n直接回傳 JSON，不要有其他文字。初始狀態：雙方手牌都是5張（你自己決定你的手牌），場上空白。";
+            // Opening AI message
+            var openingCtx = $"決鬥開始！玩家{playerName}的牌組是「{deck.CharacterName}」風格，你是「{ch.Name}」。\n" +
+                             $"玩家初始手牌（5張）：{string.Join("、", startHand)}\n" +
+                             $"請用角色口吻說開場宣言（2-4句話），然後描述你的第一回合行動（你先手：抽1張牌，可以選擇召喚一隻怪獸或不行動）。\n" +
+                             "回傳 JSON，dialogue 包含台詞，events 包含你這回合的行動事件。";
 
-            var (opening, updatedState) = await CallAiAsync(state, openingPrompt);
+            var (dialogue, updatedState) = await CallAiAsync(state, openingCtx);
             await SaveAsync(updatedState);
 
             var embed = BuildBoardEmbed(updatedState);
-            return (embed, opening);
+            var cb = BuildBoardButtons(updatedState);
+            return (embed, cb, dialogue);
         }
 
-        public async Task<(Embed embed, string message)> HandleMessageAsync(
+        public async Task<(Embed embed, ComponentBuilder component, string? message)> HandleMessageAsync(
             ulong channelId, ulong userId, string content)
         {
             var state = await LoadAsync(channelId);
-            if (state == null) return (null, null);
+            if (state == null) return (null!, null!, null);
 
             if (DateTime.UtcNow - state.LastActionTime > DuelTimeout)
             {
                 await DeleteAsync(channelId);
-                return (null, "⏰ 決鬥超時（30分鐘無操作），決鬥自動結束，頻道回復正常。");
+                return (null!, null!, "⏰ 決鬥超時（30分鐘無操作），自動結束。");
             }
 
             state.LastActionTime = DateTime.UtcNow;
+            var ctx = BuildTurnContext(state, content);
+            var (dialogue, updatedState) = await CallAiAsync(state, ctx);
 
-            var userTurnContext = BuildUserTurnContext(state, content);
-            var (reply, updatedState) = await CallAiAsync(state, userTurnContext);
-
-            bool ended = updatedState.IsDuelEnded;
-            if (ended) await DeleteAsync(channelId);
+            if (updatedState.IsDuelEnded) await DeleteAsync(channelId);
             else await SaveAsync(updatedState);
 
             var embed = BuildBoardEmbed(updatedState);
-            return (embed, reply);
+            var cb = BuildBoardButtons(updatedState);
+            return (embed, cb, dialogue);
         }
 
-        public async Task<string> ForceEndDuelAsync(ulong channelId)
+        public async Task<string> ForceEndAsync(ulong channelId)
         {
             await DeleteAsync(channelId);
             return "🏳️ 決鬥強制結束，頻道回復正常。";
         }
 
+        // Keep old name for backward compat
+        public Task<string> ForceEndDuelAsync(ulong channelId) => ForceEndAsync(channelId);
+
+        /// <summary>Show player hand with card images (edit-in-place if possible)</summary>
+        public async Task<(Embed embed, ComponentBuilder component)> ShowHandAsync(ulong channelId, ulong userId)
+        {
+            var state = await LoadAsync(channelId);
+            if (state == null) return (BuildError("沒有進行中的決鬥。"), new ComponentBuilder());
+            if (state.PlayerId != userId) return (BuildError("不是你的決鬥！"), new ComponentBuilder());
+
+            if (!state.PlayerHand.Any())
+                return (BuildError("手牌是空的。"), new ComponentBuilder());
+
+            var eb = new EmbedBuilder()
+                .WithTitle($"🃏 {state.PlayerName} 的手牌（{state.PlayerHand.Count} 張）")
+                .WithColor(Color.Gold);
+
+            // Try to fetch images for up to 5 cards
+            string? firstImageUrl = null;
+            foreach (var (cardName, idx) in state.PlayerHand.Select((n, i) => (n, i)))
+            {
+                string imageUrl = await TryGetCardImageAsync(cardName);
+                if (firstImageUrl == null && !string.IsNullOrEmpty(imageUrl))
+                    firstImageUrl = imageUrl;
+                eb.AddField($"{idx + 1}. {cardName}", string.IsNullOrEmpty(imageUrl) ? "（無圖）" : $"[圖片]({imageUrl})", inline: true);
+            }
+            if (!string.IsNullOrEmpty(firstImageUrl)) eb.WithImageUrl(firstImageUrl);
+
+            return (eb.Build(), new ComponentBuilder());
+        }
+
         // ── AI call ────────────────────────────────────────────────────────
-        private async Task<(string reply, FreeDuelState updatedState)> CallAiAsync(
+        private async Task<(string dialogue, FreeDuelState updatedState)> CallAiAsync(
             FreeDuelState state, string userContent)
         {
-            // Build full prompt with history embedded in the message
-            var sb = new StringBuilder();
-            sb.AppendLine(BuildSystemPrompt(state));
-            sb.AppendLine();
+            // Build full prompt: system + history + current turn
+            var historyBlock = new StringBuilder();
+            foreach (var h in state.History.TakeLast(8))
+                historyBlock.AppendLine($"[{h.Role.ToUpper()}]: {h.Content}");
 
-            // Add last 10 history entries inline
-            var recentHistory = state.History.TakeLast(10).ToList();
-            if (recentHistory.Any())
-            {
-                sb.AppendLine("【對話記錄】");
-                foreach (var h in recentHistory)
-                {
-                    string roleLabel = h.Role == "user" ? "玩家" : "AI";
-                    sb.AppendLine($"[{roleLabel}]: {h.Content}");
-                }
-                sb.AppendLine();
-            }
+            string fullPrompt = BuildSystemPrompt(state) + "\n\n" +
+                                (historyBlock.Length > 0 ? "【對話歷史】\n" + historyBlock + "\n" : "") +
+                                userContent;
 
-            sb.AppendLine("【本次輸入】");
-            sb.AppendLine(userContent);
-
-            string fullPrompt = sb.ToString();
             string raw = "";
-            try
-            {
-                raw = await _ai.GenerateSimpleTextAsync(fullPrompt);
-            }
+            try { raw = await _ai.GenerateSimpleTextAsync(fullPrompt); }
             catch (Exception ex)
             {
-                Console.WriteLine($"[FreeDuel] AI call failed: {ex.Message}");
-                return ("（AI 暫時無法回應，請稍後再試）", state);
+                Console.WriteLine($"[FreeDuel] AI error: {ex.Message}");
+                return ("（AI 暫時無法回應）", state);
             }
 
-            // Parse JSON
-            FreeDuelAiResponse parsed = null;
+            // Parse AI response
+            FreeDuelAiTurn? parsed = null;
             string dialogue = raw;
-
             try
             {
                 var jsonStr = ExtractJson(raw);
                 if (!string.IsNullOrEmpty(jsonStr))
                 {
                     var opts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-                    parsed = JsonSerializer.Deserialize<FreeDuelAiResponse>(jsonStr, opts);
-                    dialogue = parsed?.Dialogue ?? raw;
+                    parsed = JsonSerializer.Deserialize<FreeDuelAiTurn>(jsonStr, opts);
+                    if (parsed != null) dialogue = parsed.Dialogue;
                 }
             }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[FreeDuel] JSON parse failed: {ex.Message}\nRaw: {raw.Substring(0, Math.Min(200, raw.Length))}");
-            }
+            catch (Exception ex) { Console.WriteLine($"[FreeDuel] JSON parse failed: {ex.Message}"); }
 
-            // Update state from parsed response
-            if (parsed != null)
-            {
-                state.PlayerHp = Math.Max(0, parsed.PlayerHp);
-                state.AiHp = Math.Max(0, parsed.AiHp);
-                if (parsed.PlayerHand?.Any() == true) state.PlayerHand = parsed.PlayerHand;
-                if (parsed.PlayerField != null) state.PlayerField = parsed.PlayerField;
-                if (parsed.PlayerGraveyard != null) state.PlayerGraveyard = parsed.PlayerGraveyard;
-                if (parsed.AiField != null) state.AiField = parsed.AiField;
-                if (parsed.AiGraveyard != null) state.AiGraveyard = parsed.AiGraveyard;
-                state.AiHandCount = parsed.AiHandCount;
-                state.TurnNumber++;
+            // Apply events to state
+            if (parsed?.Events != null)
+                foreach (var ev in parsed.Events)
+                    ApplyEvent(state, ev);
 
-                if (parsed.DuelEnded || state.PlayerHp <= 0 || state.AiHp <= 0)
-                {
-                    state.IsDuelEnded = true;
-                    state.Winner = parsed.Winner ?? (state.PlayerHp <= 0 ? "ai" : "player");
-                }
-            }
-
-            // Add to history
+            // Update history
             state.History.Add(new FreeDuelMessage { Role = "user", Content = userContent });
             state.History.Add(new FreeDuelMessage { Role = "assistant", Content = dialogue });
-            if (state.History.Count > 20) state.History.RemoveRange(0, state.History.Count - 20);
+            if (state.History.Count > 16) state.History.RemoveRange(0, state.History.Count - 16);
+            state.TurnNumber++;
 
             return (dialogue, state);
         }
 
-        // ── Prompt builders ────────────────────────────────────────────────
-        private static string BuildSystemPrompt(FreeDuelState state)
+        // ── Event applicator ───────────────────────────────────────────────
+        private static void ApplyEvent(FreeDuelState s, FreeDuelEvent ev)
         {
-            if (!Characters.TryGetValue(state.AiCharacterKey, out var ch))
-                ch = Characters["kaiba"];
+            bool isPlayer = ev.Target == "player";
+            try
+            {
+                switch (ev.Type)
+                {
+                    case "draw":
+                        if (isPlayer && !string.IsNullOrEmpty(ev.Card))
+                            s.PlayerHand.Add(ev.Card);
+                        else if (!isPlayer)
+                            s.AiHandCount = Math.Max(0, s.AiHandCount + 1);
+                        break;
 
-            return $@"你是遊戲王中的決鬥者【{ch.Name}】，正在與【{state.PlayerName}】進行一場遊戲王卡片決鬥。
+                    case "summon":
+                        if (isPlayer) { s.PlayerHand.Remove(ev.Card); s.PlayerField.Add(new FreeDuelCardOnField { Name = ev.Card, Atk = ev.Atk, Def = ev.Def, IsDefense = ev.Position == "defense" }); }
+                        else { s.AiHandCount = Math.Max(0, s.AiHandCount - 1); s.AiField.Add(new FreeDuelCardOnField { Name = ev.Card, Atk = ev.Atk, Def = ev.Def, IsDefense = ev.Position == "defense" }); }
+                        break;
 
-【角色個性】
-{ch.Personality}
+                    case "set_monster":
+                        if (isPlayer) { s.PlayerHand.Remove(ev.Card); s.PlayerField.Add(new FreeDuelCardOnField { Name = ev.Card, FaceDown = true, IsDefense = true }); }
+                        else { s.AiHandCount = Math.Max(0, s.AiHandCount - 1); s.AiField.Add(new FreeDuelCardOnField { Name = "？", FaceDown = true, IsDefense = true }); }
+                        break;
 
-【你的牌組風格】
-{ch.DeckDesc}
+                    case "set_st":
+                        if (isPlayer) s.PlayerHand.Remove(ev.Card);
+                        else s.AiHandCount = Math.Max(0, s.AiHandCount - 1);
+                        break;
+
+                    case "activate_spell":
+                        if (isPlayer) { s.PlayerHand.Remove(ev.Card); s.PlayerGraveyard.Add(ev.Card); }
+                        else { s.AiHandCount = Math.Max(0, s.AiHandCount - 1); s.AiGraveyard.Add(ev.Card); }
+                        break;
+
+                    case "flip":
+                        var flipList = isPlayer ? s.PlayerField : s.AiField;
+                        var flipCard = flipList.FirstOrDefault(c => c.FaceDown);
+                        if (flipCard != null) { flipCard.FaceDown = false; flipCard.Name = ev.Card; flipCard.Atk = ev.Atk; flipCard.Def = ev.Def; }
+                        break;
+
+                    case "destroy":
+                        if (ev.Zone == "hand") { if (isPlayer) s.PlayerHand.Remove(ev.Card); else s.AiHandCount = Math.Max(0, s.AiHandCount - 1); }
+                        else
+                        {
+                            var fList = isPlayer ? s.PlayerField : s.AiField;
+                            var gy = isPlayer ? s.PlayerGraveyard : s.AiGraveyard;
+                            var toRemove = fList.FirstOrDefault(c => c.Name == ev.Card || (ev.Card == "？" && c.FaceDown));
+                            if (toRemove != null) { fList.Remove(toRemove); if (!toRemove.FaceDown) gy.Add(toRemove.Name); else gy.Add(ev.Card); }
+                        }
+                        break;
+
+                    case "discard":
+                        if (isPlayer) { s.PlayerHand.Remove(ev.Card); s.PlayerGraveyard.Add(ev.Card); }
+                        else { s.AiHandCount = Math.Max(0, s.AiHandCount - 1); s.AiGraveyard.Add(ev.Card); }
+                        break;
+
+                    case "damage":
+                        if (isPlayer) s.PlayerHp = Math.Max(0, s.PlayerHp - ev.Amount);
+                        else s.AiHp = Math.Max(0, s.AiHp - ev.Amount);
+                        if (s.PlayerHp == 0 || s.AiHp == 0) { s.IsDuelEnded = true; s.Winner = s.PlayerHp == 0 ? "ai" : "player"; }
+                        break;
+
+                    case "heal":
+                        if (isPlayer) s.PlayerHp = Math.Min(8000, s.PlayerHp + ev.Amount);
+                        else s.AiHp = Math.Min(8000, s.AiHp + ev.Amount);
+                        break;
+
+                    case "attack":
+                        // Calculate battle damage
+                        var atkCard = ev.AttackerOwner == "player"
+                            ? s.PlayerField.FirstOrDefault(c => c.Name == ev.Attacker)
+                            : s.AiField.FirstOrDefault(c => c.Name == ev.Attacker);
+                        if (atkCard != null)
+                        {
+                            if (string.IsNullOrEmpty(ev.Defender))
+                            {
+                                // Direct attack
+                                int directDmg = atkCard.Atk;
+                                if (ev.DefenderOwner == "player" || ev.AttackerOwner == "ai") s.PlayerHp = Math.Max(0, s.PlayerHp - directDmg);
+                                else s.AiHp = Math.Max(0, s.AiHp - directDmg);
+                            }
+                            // Actual destruction is handled by separate destroy events
+                        }
+                        if (s.PlayerHp == 0 || s.AiHp == 0) { s.IsDuelEnded = true; s.Winner = s.PlayerHp == 0 ? "ai" : "player"; }
+                        break;
+
+                    case "end_duel":
+                        s.IsDuelEnded = true;
+                        s.Winner = ev.Winner;
+                        break;
+                }
+            }
+            catch (Exception ex) { Console.WriteLine($"[FreeDuel] ApplyEvent error ({ev.Type}): {ex.Message}"); }
+        }
+
+        // ── Prompt builders ────────────────────────────────────────────────
+        private static string BuildSystemPrompt(FreeDuelState s)
+        {
+            var ch = Chars.TryGetValue(s.AiCharacterKey, out var c) ? c : Chars["kaiba"];
+            return $@"你是遊戲王中的決鬥者【{ch.Name}】，正在與【{s.PlayerName}】進行一場遊戲王卡片決鬥。
+
+【角色個性】{ch.Personality}
+【你的牌組風格】{ch.DeckHint}
 
 【決鬥規則】
 - 雙方初始 LP 8000，先降至 0 者敗
-- 玩家用文字描述行動，你判斷合理性後做出反應，並執行自己的回合行動
-- 你同時是對手與裁判，公平計算傷害（攻擊力差距 = 傷害）
+- 玩家用文字描述行動，你判斷合理性後回應，並執行自己的回合
+- 你是裁判也是對手，公平計算傷害（ATK 差距 = 傷害）
 - 榮譽制：相信玩家宣告的手牌，但可以偶爾懷疑或嘲諷
-- 你的手牌玩家看不到，由你自行管理決定
+- 你的手牌玩家看不到，由你自行決定抽到什麼
 
-【回應格式】
-只回傳一個 JSON 物件，不要有其他文字、不要用 markdown code block：
+【回應格式 — 只回傳 JSON，不要有任何其他文字】
 {{
-  ""dialogue"": ""角色台詞與決鬥描述（包含你的行動，可以很精彩）"",
-  ""player_hp"": 數字,
-  ""ai_hp"": 數字,
-  ""player_hand"": [""牌名1"",""牌名2""],
-  ""player_field"": [{{""name"":""牌名"",""atk"":數字,""def"":數字,""face_down"":false,""is_defense"":false}}],
-  ""player_graveyard"": [""牌名1""],
-  ""ai_field"": [{{""name"":""牌名"",""atk"":數字,""def"":數字,""face_down"":false,""is_defense"":false}}],
-  ""ai_graveyard"": [""牌名1""],
-  ""ai_hand_count"": 數字,
-  ""duel_ended"": false,
-  ""winner"": null
+  ""dialogue"": ""你的台詞與決鬥描述（包含你自己這回合的所有行動）"",
+  ""events"": [
+    {{""type"":""draw"",""target"":""ai""}},
+    {{""type"":""summon"",""target"":""ai"",""card"":""青眼白龍"",""atk"":3000,""def"":2500,""position"":""attack""}},
+    {{""type"":""attack"",""attacker_owner"":""ai"",""attacker"":""青眼白龍"",""defender_owner"":""player"",""defender"":""暗黑騎士蓋亞""}},
+    {{""type"":""destroy"",""target"":""player"",""card"":""暗黑騎士蓋亞"",""zone"":""field""}},
+    {{""type"":""damage"",""target"":""player"",""amount"":700}}
+  ]
 }}
-決鬥結束時設 ""duel_ended"": true，""winner"": ""player"" 或 ""winner"": ""ai""";
+
+事件類型說明：
+- draw: 抽牌（player/ai）
+- summon: 正面召喚怪獸（需 card/atk/def/position）
+- set_monster: 背面覆蓋怪獸（AI 的 card 可以不填）
+- set_st: 覆蓋魔陷（AI 的 card 可以不填）
+- activate_spell: 發動魔法（card=牌名）
+- attack: 攻擊（attacker_owner/attacker/defender_owner/defender，直接攻擊時 defender 留空）
+- destroy: 破壞（target=被破壞方，card=牌名，zone=field/hand）
+- damage: 傷害（target=受傷方，amount=數值）
+- heal: 回復 LP（target/amount）
+- discard: 棄牌（target/card）
+- end_duel: 決鬥結束（winner=player/ai）
+
+【重要】只列出確實發生的事件。events 可以是空陣列。";
         }
 
-        private static string BuildUserTurnContext(FreeDuelState state, string playerAction)
+        private static string BuildTurnContext(FreeDuelState s, string playerAction)
         {
             var sb = new StringBuilder();
             sb.AppendLine("【當前場面】");
-            sb.AppendLine($"回合: {state.TurnNumber}");
-            sb.AppendLine($"玩家 LP: {state.PlayerHp}  |  {state.AiCharacterName} LP: {state.AiHp}");
-            sb.AppendLine($"玩家手牌: {(state.PlayerHand.Any() ? string.Join("、", state.PlayerHand) : "（空）")}");
+            sb.AppendLine($"回合 {s.TurnNumber}  |  玩家 LP: {s.PlayerHp}  |  {s.AiCharacterName} LP: {s.AiHp}");
+            sb.AppendLine($"玩家手牌（{s.PlayerHand.Count}張）: {(s.PlayerHand.Any() ? string.Join("、", s.PlayerHand) : "空")}");
 
-            if (state.PlayerField.Any())
-                sb.AppendLine("玩家場上: " + string.Join("、", state.PlayerField.Select(c =>
-                    c.FaceDown ? "？（背面）" : $"{c.Name}({(c.IsDefense ? "守備" : "攻擊")} {c.Atk})")));
-            else
-                sb.AppendLine("玩家場上: 空");
-
-            if (state.AiField.Any())
-                sb.AppendLine($"{state.AiCharacterName}場上: " + string.Join("、", state.AiField.Select(c =>
-                    c.FaceDown ? "？（背面）" : $"{c.Name}({(c.IsDefense ? "守備" : "攻擊")} {c.Atk})")));
-            else
-                sb.AppendLine($"{state.AiCharacterName}場上: 空");
-
-            sb.AppendLine($"玩家墓地: {(state.PlayerGraveyard.Any() ? string.Join("、", state.PlayerGraveyard.TakeLast(5)) : "空")}");
-            sb.AppendLine($"{state.AiCharacterName}墓地: {(state.AiGraveyard.Any() ? string.Join("、", state.AiGraveyard.TakeLast(5)) : "空")}");
-            sb.AppendLine($"{state.AiCharacterName}手牌數: {state.AiHandCount}");
+            sb.AppendLine("玩家場上: " + (s.PlayerField.Any()
+                ? string.Join("、", s.PlayerField.Select(c => c.FaceDown ? "背面覆蓋" : $"{c.Name} ATK{c.Atk}/{(c.IsDefense ? "守" : "攻")}"))
+                : "空"));
+            sb.AppendLine($"{s.AiCharacterName}場上: " + (s.AiField.Any()
+                ? string.Join("、", s.AiField.Select(c => c.FaceDown ? "背面覆蓋" : $"{c.Name} ATK{c.Atk}/{(c.IsDefense ? "守" : "攻")}"))
+                : "空"));
+            sb.AppendLine($"玩家墓地: {(s.PlayerGraveyard.Any() ? string.Join("、", s.PlayerGraveyard.TakeLast(5)) : "空")}");
+            sb.AppendLine($"{s.AiCharacterName}墓地: {(s.AiGraveyard.Any() ? string.Join("、", s.AiGraveyard.TakeLast(5)) : "空")}");
+            sb.AppendLine($"{s.AiCharacterName}手牌數: {s.AiHandCount}");
             sb.AppendLine();
             sb.AppendLine($"【玩家行動】: {playerAction}");
             sb.AppendLine();
-            sb.AppendLine("請做出反應，執行你的回合，回傳 JSON。");
+            sb.AppendLine("根據玩家行動做出反應，然後執行你自己的回合行動。回傳 JSON。");
             return sb.ToString();
         }
 
+        // ── Helpers ────────────────────────────────────────────────────────
         private static string ExtractJson(string raw)
         {
             raw = raw.Trim();
-            if (raw.StartsWith("```"))
-            {
-                var start = raw.IndexOf('{');
-                var end = raw.LastIndexOf('}');
-                if (start >= 0 && end > start) return raw.Substring(start, end - start + 1);
-            }
-            if (raw.StartsWith("{"))
-            {
-                var end = raw.LastIndexOf('}');
-                if (end >= 0) return raw.Substring(0, end + 1);
-            }
+            int start = raw.IndexOf('{');
+            int end   = raw.LastIndexOf('}');
+            if (start >= 0 && end > start) return raw.Substring(start, end - start + 1);
             return "";
         }
 
-        // ── Embed builder ──────────────────────────────────────────────────
-        public static Embed BuildBoardEmbed(FreeDuelState state)
+        private async Task<string> TryGetCardImageAsync(string cardName)
         {
-            var eb = new EmbedBuilder()
-                .WithTitle($"⚔️ 自由決鬥  回合 {state.TurnNumber}")
-                .WithColor(state.IsDuelEnded ? Color.DarkRed : new Color(0xFFD700));
-
-            string playerHpBar = HpBar(state.PlayerHp);
-            string aiHpBar = HpBar(state.AiHp);
-            eb.AddField($"🧑 {state.PlayerName}", $"{playerHpBar} **{state.PlayerHp} LP**", inline: true);
-            eb.AddField($"🤖 {state.AiCharacterName}", $"{aiHpBar} **{state.AiHp} LP**", inline: true);
-            eb.AddField("​", "​", inline: false);
-
-            string playerFieldStr = state.PlayerField.Any()
-                ? string.Join("\n", state.PlayerField.Select(c => c.FaceDown ? "▣ 背面守備" : $"▲ {c.Name} ATK{c.Atk}/{(c.IsDefense ? "DEF守" : "ATK攻")}"))
-                : "（空）";
-            string aiFieldStr = state.AiField.Any()
-                ? string.Join("\n", state.AiField.Select(c => c.FaceDown ? "▣ 背面守備" : $"▲ {c.Name} ATK{c.Atk}/{(c.IsDefense ? "DEF守" : "ATK攻")}"))
-                : "（空）";
-            eb.AddField("🧑 場上", playerFieldStr, inline: true);
-            eb.AddField("🤖 場上", aiFieldStr, inline: true);
-            eb.AddField("​", "​", inline: false);
-
-            string handStr = state.PlayerHand.Any() ? string.Join("、", state.PlayerHand) : "（空）";
-            eb.AddField("🧑 手牌", handStr, inline: true);
-            eb.AddField("🤖 手牌", $"{state.AiHandCount} 張（未知）", inline: true);
-
-            if (state.PlayerGraveyard.Any() || state.AiGraveyard.Any())
+            try
             {
-                eb.AddField("🧑 墓地", state.PlayerGraveyard.Any() ? string.Join("、", state.PlayerGraveyard.TakeLast(3)) : "空", inline: true);
-                eb.AddField("🤖 墓地", state.AiGraveyard.Any() ? string.Join("、", state.AiGraveyard.TakeLast(3)) : "空", inline: true);
+                var data = await _ygoSvc.FetchCardAsync(cardName);
+                return data?.CardImages?.FirstOrDefault()?.ImageUrl ?? "";
+            }
+            catch { return ""; }
+        }
+
+        // ── Embed / UI builders ────────────────────────────────────────────
+        public static Embed BuildBoardEmbed(FreeDuelState s)
+        {
+            var color = s.IsDuelEnded ? Color.DarkRed : new Color(0xFFD700);
+            var eb = new EmbedBuilder().WithTitle($"⚔️ 自由決鬥  回合 {s.TurnNumber}").WithColor(color);
+
+            eb.AddField($"🧑 {s.PlayerName}", $"{HpBar(s.PlayerHp)} **{s.PlayerHp} LP**", inline: true);
+            eb.AddField($"🤖 {s.AiCharacterName}", $"{HpBar(s.AiHp)} **{s.AiHp} LP**", inline: true);
+            eb.AddField("​", "​", inline: false);
+
+            eb.AddField("🧑 場上", s.PlayerField.Any()
+                ? string.Join("\n", s.PlayerField.Select(c => c.FaceDown ? "▣ 背面" : $"▲ {c.Name} {(c.IsDefense ? "DEF" : "ATK")}{c.Atk}"))
+                : "（空）", inline: true);
+            eb.AddField("🤖 場上", s.AiField.Any()
+                ? string.Join("\n", s.AiField.Select(c => c.FaceDown ? "▣ 背面" : $"▲ {c.Name} {(c.IsDefense ? "DEF" : "ATK")}{c.Atk}"))
+                : "（空）", inline: true);
+            eb.AddField("​", "​", inline: false);
+
+            eb.AddField("🧑 手牌", $"{s.PlayerHand.Count} 張", inline: true);
+            eb.AddField("🤖 手牌", $"{s.AiHandCount} 張（未知）", inline: true);
+
+            if (s.PlayerGraveyard.Any() || s.AiGraveyard.Any())
+            {
+                eb.AddField("🧑 墓地", s.PlayerGraveyard.Any() ? string.Join("、", s.PlayerGraveyard.TakeLast(3)) : "空", inline: true);
+                eb.AddField("🤖 墓地", s.AiGraveyard.Any() ? string.Join("、", s.AiGraveyard.TakeLast(3)) : "空", inline: true);
             }
 
-            if (state.IsDuelEnded)
+            if (s.IsDuelEnded)
             {
-                string winnerDisplay = state.Winner == "player" ? $"🏆 {state.PlayerName} 勝利！" : $"🏆 {state.AiCharacterName} 勝利！";
-                eb.AddField("決鬥結果", winnerDisplay);
+                string w = s.Winner == "player" ? $"🏆 {s.PlayerName} 勝利！" : $"🏆 {s.AiCharacterName} 勝利！";
+                eb.AddField("決鬥結果", w);
                 eb.WithFooter("決鬥已結束，頻道回復正常");
             }
-            else
-            {
-                eb.WithFooter("直接輸入你的決鬥行動 | 使用 /endduel 強制結束");
-            }
+            else eb.WithFooter("直接輸入你的決鬥行動 | /endduel 強制結束");
 
             return eb.Build();
         }
 
+        public static ComponentBuilder BuildBoardButtons(FreeDuelState s)
+        {
+            if (s.IsDuelEnded) return new ComponentBuilder();
+            return new ComponentBuilder()
+                .WithButton("🃏 查看手牌", $"ygo_fdhand_{s.ChannelId}", ButtonStyle.Secondary);
+        }
+
+        private static Embed BuildError(string msg) =>
+            new EmbedBuilder().WithTitle("❌ 錯誤").WithDescription(msg).WithColor(Color.Red).Build();
+
         private static string HpBar(int hp)
         {
-            int filled = (int)Math.Round(hp / 8000.0 * 10);
-            filled = Math.Clamp(filled, 0, 10);
-            return new string('█', filled) + new string('░', 10 - filled);
+            int f = Math.Clamp((int)Math.Round(hp / 800.0), 0, 10);
+            return new string('█', f) + new string('░', 10 - f);
         }
     }
 }

@@ -164,7 +164,7 @@ public class Program
                 new PokeTowerService(redisConn, sp.GetService<OpenRouterService>(), sp.GetService<GetChampService>()))
               .AddSingleton<HolyGrailTowerService>(sp => new HolyGrailTowerService(redisConn))
               .AddSingleton<YgoDuelService>(sp => new YgoDuelService(redisConn, sp.GetRequiredService<OpenRouterService>(), _client))
-              .AddSingleton<FreeDuelService>(sp => new FreeDuelService(redisConn, sp.GetRequiredService<OpenRouterService>(), _client))
+              .AddSingleton<FreeDuelService>(sp => new FreeDuelService(redisConn, sp.GetRequiredService<OpenRouterService>(), _client, sp.GetRequiredService<YgoDuelService>()))
               .BuildServiceProvider();
 
         _googleAIStudioService = _services.GetRequiredService<GoogleAIStudioService>();
@@ -505,6 +505,13 @@ public class Program
                     // ygo_costdown_{duelId}_{discardIdx}
                     int idx = int.Parse(parts[^1]);
                     result = await ygoSvc.ConfirmCostDownDiscardAsync(cid, uid, idx);
+                }
+                else if (component.Data.CustomId.StartsWith("ygo_fdhand_"))
+                {
+                    // ygo_fdhand_{channelId}
+                    var (fdHandEmbed, _) = await _freeDuelSvc.ShowHandAsync(component.Channel.Id, uid);
+                    await component.RespondAsync(embed: fdHandEmbed, ephemeral: true);
+                    return;
                 }
                 else if (component.Data.CustomId.StartsWith("ygo_surrender_") && !component.Data.CustomId.Contains("confirm"))
                     result = await ygoSvc.SurrenderAsync(cid, uid);
@@ -1415,10 +1422,10 @@ public class Program
         {
             if (!message.Content.StartsWith("/"))
             {
-                var (fdEmbed, fdMsg) = await _freeDuelSvc.HandleMessageAsync(
+                var (fdEmbed, fdComponent, fdMsg) = await _freeDuelSvc.HandleMessageAsync(
                     message.Channel.Id, message.Author.Id, message.Content);
                 if (fdMsg != null)
-                    await message.Channel.SendMessageAsync(text: fdMsg, embed: fdEmbed);
+                    await message.Channel.SendMessageAsync(text: fdMsg, embed: fdEmbed, components: fdComponent?.Build());
                 return;
             }
         }
