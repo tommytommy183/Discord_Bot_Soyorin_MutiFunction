@@ -619,64 +619,64 @@ namespace MusicBot2.SlahCommands
         #endregion
 
         #region 動漫相關 > 等待jikan能被打再開啟
-//        [SlashCommand("猜動漫角色", "猜動漫角色")]
-//        public async Task GuessAnimeCharaAsync(
-//    [Summary("模式", "模式")][Choice("角色猜角色", "ctc"), Choice("角色猜動畫", "cta")] string mode,
-//    [Summary("是否查詢熱門", "是否查詢熱門")] bool isTop
-//)
-//        {
-//            await DeferAsync();
+        [SlashCommand("猜動漫角色", "猜動漫角色")]
+        public async Task GuessAnimeCharaAsync(
+    [Summary("模式", "模式")][Choice("角色猜角色", "ctc"), Choice("角色猜動畫", "cta")] string mode,
+    [Summary("是否查詢熱門", "是否查詢熱門")] bool isTop
+)
+        {
+            await DeferAsync();
 
-//            var result = await _animeService.StartGameAsync(mode, isTop);
+            var result = await _animeService.StartGameAsync(mode, isTop);
 
-//            await FollowupAsync(embed: result.embed, components: result.component?.Build());
-//        }
+            await FollowupAsync(embed: result.embed, components: result.component?.Build());
+        }
 
-//        [SlashCommand("隨機抽取一部幸運動畫", "隨機抽取一部幸運動畫")]
-//        public async Task GetSomeRandomAnime(
-//            [Summary("種類", "種類")][Choice("TV", "TV"), Choice("OVA", "OVA"), Choice("Movie", "Movie"), Choice("Special", "Special"), Choice("ONA", "ONA"), Choice("Music", "Music"), Choice("CM", "CM"), Choice("PV", "PV"), Choice("TV Special", "TV Special")] string type = "",
-//            [Summary("分級", "分級")][Choice("G", "G"), Choice("pg", "pg"), Choice("pg13", "pg13"), Choice("r17", "r17"), Choice("r", "r"), Choice("rx", "rx")] string ratings = ""
-//        )
-//        {
-//            await DeferAsync();
+        [SlashCommand("隨機抽取一部幸運動畫", "隨機抽取一部幸運動畫")]
+        public async Task GetSomeRandomAnime(
+            [Summary("種類", "種類")][Choice("TV", "TV"), Choice("OVA", "OVA"), Choice("Movie", "Movie"), Choice("Special", "Special"), Choice("ONA", "ONA"), Choice("Music", "Music"), Choice("CM", "CM"), Choice("PV", "PV"), Choice("TV Special", "TV Special")] string type = "",
+            [Summary("分級", "分級")][Choice("G", "G"), Choice("pg", "pg"), Choice("pg13", "pg13"), Choice("r17", "r17"), Choice("r", "r"), Choice("rx", "rx")] string ratings = ""
+        )
+        {
+            await DeferAsync();
 
-//            var result = await _animeService.GetSomeRandomAnime(type, ratings);
+            var result = await _animeService.GetSomeRandomAnime(type, ratings);
 
-//            await FollowupAsync(embed: result.Item1.embed, components: result.Item1.component?.Build());
+            await FollowupAsync(embed: result.Item1.embed, components: result.Item1.component?.Build());
 
-//            if (!string.IsNullOrEmpty(result.imageUrl))
-//            {
-//                using var http = new HttpClient();
-//                var imageBytes = await http.GetByteArrayAsync(result.imageUrl);
-//                var stream = new MemoryStream(imageBytes);
-//                var attachment = new FileAttachment(stream, "SPOILER_anime.jpg");
+            if (!string.IsNullOrEmpty(result.imageUrl))
+            {
+                using var http = new HttpClient();
+                var imageBytes = await http.GetByteArrayAsync(result.imageUrl);
+                var stream = new MemoryStream(imageBytes);
+                var attachment = new FileAttachment(stream, "SPOILER_anime.jpg");
 
-//                await Context.Channel.SendFileAsync(attachment);
-//            }
-//        }
+                await Context.Channel.SendFileAsync(attachment);
+            }
+        }
 
-//        [SlashCommand("隨機抽取一部幸運書籍", "隨機抽取一部幸運書籍")]
-//        public async Task GetSomeRandomManga(
-//            [Summary("種類", "種類")][Choice("manga", "manga"), Choice("novel", "novel"), Choice("lightnovel", "lightnovel"), Choice("oneshot", "oneshot"), Choice("doujin", "doujin"), Choice("manhwa", "manhwa"), Choice("manhua", "manhua")] string type = "",
-//            [Summary("標籤", "標籤")][Choice("Hentai", "12"), Choice("Horror", "14"), Choice("Ecchi", "9"), Choice("Adventure", "2"), Choice("Boys Love", "28"), Choice("Comedy", "4")] string genres = ""
-//        )
-//        {
-//            await DeferAsync();
+        [SlashCommand("隨機抽取一部幸運書籍", "隨機抽取一部幸運書籍")]
+        public async Task GetSomeRandomManga(
+            [Summary("種類", "種類")][Choice("manga", "manga"), Choice("novel", "novel"), Choice("lightnovel", "lightnovel"), Choice("oneshot", "oneshot"), Choice("doujin", "doujin"), Choice("manhwa", "manhwa"), Choice("manhua", "manhua")] string type = "",
+            [Summary("標籤", "標籤")][Choice("Hentai", "12"), Choice("Horror", "14"), Choice("Ecchi", "9"), Choice("Adventure", "2"), Choice("Boys Love", "28"), Choice("Comedy", "4")] string genres = ""
+        )
+        {
+            await DeferAsync();
 
-//            var result = await _animeService.GetSomeRandomManga(type, genres);
+            var result = await _animeService.GetSomeRandomManga(type, genres);
 
-//            await FollowupAsync(embed: result.Item1.embed, components: result.Item1.component?.Build());
+            await FollowupAsync(embed: result.Item1.embed, components: result.Item1.component?.Build());
 
-//            if (!string.IsNullOrEmpty(result.imageUrl))
-//            {
-//                using var http = new HttpClient();
-//                var imageBytes = await http.GetByteArrayAsync(result.imageUrl);
-//                var stream = new MemoryStream(imageBytes);
-//                var attachment = new FileAttachment(stream, "SPOILER_manga.jpg");
+            if (!string.IsNullOrEmpty(result.imageUrl))
+            {
+                using var http = new HttpClient();
+                var imageBytes = await http.GetByteArrayAsync(result.imageUrl);
+                var stream = new MemoryStream(imageBytes);
+                var attachment = new FileAttachment(stream, "SPOILER_manga.jpg");
 
-//                await Context.Channel.SendFileAsync(attachment);
-//            }
-//        }
+                await Context.Channel.SendFileAsync(attachment);
+            }
+        }
         #endregion
 
         #region pokemon相關
