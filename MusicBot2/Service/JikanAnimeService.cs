@@ -15,7 +15,11 @@ namespace MusicBot2.Service
     public class JikanAnimeService
     {
         private readonly HttpClient _httpClient;
-        private const string API_BASE_URL = "https://api.jikan.moe/v4";
+        //正式版，目前無法使用
+        //private const string API_BASE_URL = "https://api.jikan.moe/v4";
+        //測試版，使用 Cloudflare 代理
+        private const string API_BASE_URL = "https://jikan-edge.lucas-hdo.workers.dev/v1";
+
 
         public JikanAnimeService()
         {

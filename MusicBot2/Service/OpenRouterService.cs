@@ -1101,7 +1101,7 @@ namespace MusicBot2.Service
                         {
                             Model = model,
                             Messages = messages,
-                            MaxTokens = 512
+                            MaxTokens = 1024
                         };
 
                         var json = JsonSerializer.Serialize(apiRequest, new JsonSerializerOptions
