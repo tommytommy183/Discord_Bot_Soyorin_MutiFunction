@@ -327,18 +327,17 @@ namespace MusicBot2.Service
             var options = new List<AnimeV1Response> { correctEntry };
             var rng = new Random();
 
-            // 先取第 1 頁，順便算出合法 totalPages，避免隨機打到超出範圍的頁碼
+            // /top/anime 不需要 filter 參數，先抓第 1 頁建候選池並取得 totalPages
             int totalPages = 1;
             try
             {
-                var firstResp = await _httpClient.GetAsync($"{API_BASE_URL}/anime?page=1");
+                var firstResp = await _httpClient.GetAsync($"{API_BASE_URL}/top/anime?page=1");
                 if (firstResp.IsSuccessStatusCode)
                 {
                     var firstJson = await firstResp.Content.ReadAsStringAsync();
                     var firstWrap = JsonConvert.DeserializeObject<JikanAnimeDevV1>(firstJson);
                     if (firstWrap?.data != null)
                     {
-                        // 同時把第 1 頁的資料加進候選池
                         foreach (var a in firstWrap.data)
                             if (a != null && a.malId != correctMalId && !options.Any(o => o.malId == a.malId))
                                 options.Add(a);
@@ -346,21 +345,23 @@ namespace MusicBot2.Service
                         if (firstWrap.meta?.pagination?.total != null && firstWrap.meta.pagination.limit > 0)
                             totalPages = Math.Max(1, firstWrap.meta.pagination.total.Value / firstWrap.meta.pagination.limit);
                         else if (firstWrap.meta?.pagination?.hasNextPage == true)
-                            totalPages = 20; // 不知道上限就保守抓 20
+                            totalPages = 20;
                     }
                     Console.WriteLine($"[Jikan] GetAnimeOptions: totalPages={totalPages}, pool after page1={options.Count}");
                 }
+                else
+                    Console.WriteLine($"[Jikan] GetAnimeOptions page1: HTTP {(int)firstResp.StatusCode}");
             }
             catch (Exception ex) { Console.WriteLine($"[Jikan] GetAnimeOptions page1 例外: {ex.Message}"); }
 
             int retries = 0;
-            while (options.Count < 6 && retries < 15)
+            while (options.Count < 6 && retries < 10)
             {
                 retries++;
                 try
                 {
                     int page = rng.Next(1, totalPages + 1);
-                    string url = $"{API_BASE_URL}/anime?page={page}";
+                    string url = $"{API_BASE_URL}/top/anime?page={page}";
                     var response = await _httpClient.GetAsync(url);
                     if (!response.IsSuccessStatusCode)
                     {
