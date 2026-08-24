@@ -325,32 +325,69 @@ namespace MusicBot2.Service
         {
             var correctEntry = new AnimeV1Response { malId = correctMalId, title = correctTitle };
             var options = new List<AnimeV1Response> { correctEntry };
-            int retries = 0;
             var rng = new Random();
 
-            while (options.Count < 6 && retries < 20)
+            // 先取第 1 頁，順便算出合法 totalPages，避免隨機打到超出範圍的頁碼
+            int totalPages = 1;
+            try
+            {
+                var firstResp = await _httpClient.GetAsync($"{API_BASE_URL}/anime?page=1");
+                if (firstResp.IsSuccessStatusCode)
+                {
+                    var firstJson = await firstResp.Content.ReadAsStringAsync();
+                    var firstWrap = JsonConvert.DeserializeObject<JikanAnimeDevV1>(firstJson);
+                    if (firstWrap?.data != null)
+                    {
+                        // 同時把第 1 頁的資料加進候選池
+                        foreach (var a in firstWrap.data)
+                            if (a != null && a.malId != correctMalId && !options.Any(o => o.malId == a.malId))
+                                options.Add(a);
+
+                        if (firstWrap.meta?.pagination?.total != null && firstWrap.meta.pagination.limit > 0)
+                            totalPages = Math.Max(1, firstWrap.meta.pagination.total.Value / firstWrap.meta.pagination.limit);
+                        else if (firstWrap.meta?.pagination?.hasNextPage == true)
+                            totalPages = 20; // 不知道上限就保守抓 20
+                    }
+                    Console.WriteLine($"[Jikan] GetAnimeOptions: totalPages={totalPages}, pool after page1={options.Count}");
+                }
+            }
+            catch (Exception ex) { Console.WriteLine($"[Jikan] GetAnimeOptions page1 例外: {ex.Message}"); }
+
+            int retries = 0;
+            while (options.Count < 6 && retries < 15)
             {
                 retries++;
                 try
                 {
-                    int page = rng.Next(1, 100);
+                    int page = rng.Next(1, totalPages + 1);
                     string url = $"{API_BASE_URL}/anime?page={page}";
                     var response = await _httpClient.GetAsync(url);
-                    if (!response.IsSuccessStatusCode) { await Task.Delay(300); continue; }
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        Console.WriteLine($"[Jikan] GetAnimeOptions: HTTP {(int)response.StatusCode} page={page}");
+                        await Task.Delay(300); continue;
+                    }
 
                     var content = await response.Content.ReadAsStringAsync();
                     var wrapper = JsonConvert.DeserializeObject<JikanAnimeDevV1>(content);
                     if (wrapper?.data == null || wrapper.data.Count == 0) { await Task.Delay(300); continue; }
 
-                    var candidate = wrapper.data[rng.Next(wrapper.data.Count)];
-                    if (candidate != null && candidate.malId != correctMalId && !options.Any(o => o.malId == candidate.malId))
-                        options.Add(candidate);
+                    foreach (var a in wrapper.data)
+                    {
+                        if (a != null && a.malId != correctMalId && !options.Any(o => o.malId == a.malId))
+                            options.Add(a);
+                        if (options.Count >= 6) break;
+                    }
+                    Console.WriteLine($"[Jikan] GetAnimeOptions: retry={retries}, pool={options.Count}");
                 }
                 catch (Exception ex) { Console.WriteLine($"[Jikan] GetAnimeOptions loop 例外: {ex.Message}"); }
                 await Task.Delay(200);
             }
 
-            return (options.OrderBy(_ => Guid.NewGuid()).ToList(), correctMalId, correctTitle);
+            // 取 6 個打亂，確保選項夠多才顯示
+            var pool = options.OrderBy(_ => Guid.NewGuid()).Take(6).ToList();
+            Console.WriteLine($"[Jikan] GetAnimeOptions: 最終選項數={pool.Count}");
+            return (pool, correctMalId, correctTitle);
         }
 
         // ── Buttons v1 ────────────────────────────────────────────────────
