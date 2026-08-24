@@ -278,7 +278,7 @@ namespace MusicBot2.Service
         {
             "上網查", "上網搜", "幫我查", "幫我找", "幫查", "幫找",
             "查一下", "找一下", "搜一下", "搜尋一下",
-            "查詢", "搜尋", "搜索", "找尋", "尋找"
+            "查詢", "搜尋", "搜索", "找尋", "尋找","請問"
         };
 
         public OpenRouterService(string apiKey, string redisConnectionString = null, string tavilyApiKey = null, string googleApiKey = null, string visionGoogleKeys = null)
@@ -657,6 +657,7 @@ namespace MusicBot2.Service
                     sb.AppendLine("- 使用簡短條列式，不要 Markdown 格式");
                     sb.AppendLine("- 每個話題用一句話概括");
                     sb.AppendLine("- 不要開場白，直接輸出摘要");
+                    sb.AppendLine("- 訊息中若提到 soyo / 爽世 / 搜幽林 都是在叫你");
                     sb.AppendLine();
                 }
                 foreach (var msg in toSummarize)

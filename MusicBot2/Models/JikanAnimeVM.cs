@@ -1,4 +1,4 @@
-﻿using Newtonsoft.Json;
+using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -40,9 +40,7 @@ namespace MusicBot2.Models
         public int mal_id { get; set; }
         public string url { get; set; }
         public Images images { get; set; }
-        public Trailer trailer{ get; set; }
-
-
+        public Trailer trailer { get; set; }
         public string title { get; set; }
         public string title_english { get; set; }
         public string title_japanese { get; set; }
@@ -82,6 +80,7 @@ namespace MusicBot2.Models
     {
         public AnimeResponse anime { get; set; }
     }
+
     public class TopMangaResponse
     {
         public List<MangaResponse> data { get; set; }
@@ -92,7 +91,6 @@ namespace MusicBot2.Models
         public int mal_id { get; set; }
         public string url { get; set; }
         public Images images { get; set; }
-
         public string title { get; set; }
         public string title_english { get; set; }
         public string title_japanese { get; set; }
@@ -126,6 +124,7 @@ namespace MusicBot2.Models
         public int total { get; set; }
         public int per_page { get; set; }
     }
+
     public class Voices
     {
         public Person person { get; set; }
@@ -138,16 +137,45 @@ namespace MusicBot2.Models
         public string name { get; set; }
     }
 
-    #region 代餐
+    #region 代餐 v1 (jikan-edge.lucas-hdo.workers.dev/v1)
+
+    // /v1/manga and /v1/anime shared data model
     public class MangaV1Response
     {
         public int malId { get; set; }
         public string url { get; set; }
         public string imageUrl { get; set; }
-
         public string title { get; set; }
         public string synopsis { get; set; }
         public double? score { get; set; }
+        public string type { get; set; }
+    }
+
+    public class AnimeV1Response
+    {
+        public int malId { get; set; }
+        public string url { get; set; }
+        public string imageUrl { get; set; }
+        public string title { get; set; }
+        public string synopsis { get; set; }
+        public double? score { get; set; }
+        public string type { get; set; }
+        public int? episodes { get; set; }
+    }
+
+    // Pagination inside meta
+    public class PaginationV1
+    {
+        public int page { get; set; }
+        public int limit { get; set; }
+        public int count { get; set; }
+        public int? total { get; set; }   // CAN be null — handle before dividing
+        public bool hasNextPage { get; set; }
+    }
+
+    public class MetaV1
+    {
+        public PaginationV1 pagination { get; set; }  // JSON key is "pagination", NOT "pagination1V1"
     }
 
     public class JikanMangaDevV1
@@ -156,40 +184,33 @@ namespace MusicBot2.Models
         public MetaV1 meta { get; set; }
     }
 
-    public class MetaV1
-    {
-        public Pagination1V1 pagination1V1 { get; set; }
-    }
-
-    public class Pagination1V1
-    {
-        public int page { get; set; }
-        public int limit { get; set; }
-        public int count { get; set; }
-        public int total { get; set; }
-        public bool hasNextPage { get; set; }
-    }
-
-
-    public class AnimeV1Response
-    {
-        public int malId { get; set; }
-        public string url { get; set; }
-        public string imageUrl { get; set; }
-
-        public string title { get; set; }
-        public string synopsis { get; set; }
-        public double? score { get; set; }
-        public string type { get; set; }
-        public int episodes { get; set; }
-    }
-
     public class JikanAnimeDevV1
     {
         public List<AnimeV1Response> data { get; set; }
         public MetaV1 meta { get; set; }
     }
+
+    // Characters v1
+    public class AnimeographyItem
+    {
+        public int malId { get; set; }
+        public string title { get; set; }
+    }
+
+    public class CharactersV1Resopnse
+    {
+        public int malId { get; set; }
+        public string name { get; set; }
+        public string nameKanji { get; set; }
+        public string imageUrl { get; set; }
+        public int favorites { get; set; }
+        public List<AnimeographyItem> animeography { get; set; }
+    }
+
+    public class TopCharactersV1Response
+    {
+        public List<CharactersV1Resopnse> data { get; set; }
+    }
+
     #endregion
-
-
 }
