@@ -212,33 +212,67 @@ namespace MusicBot2.Service
         //    return embedBuilder.Build();
         //}
 
-        // 處理按鈕點擊（不需要改，與 API 版本無關）
-        public async Task<(Embed embed, ComponentBuilder component)> HandleButtonClickAsync(SocketMessageComponent interaction, int selectedId, int correctId, string correctName)
+        // 處理按鈕點擊
+        // isFirstAttempt=true  → 第一次猜（customId: anime_guess_...）
+        // isFirstAttempt=false → 第二次猜（customId: anime_guess_r2_...），猜錯直接結束並顯示提示
+        public async Task<(Embed embed, ComponentBuilder component)> HandleButtonClickAsync(
+            SocketMessageComponent interaction, int selectedId, int correctId, string correctName, bool isFirstAttempt)
         {
             bool isCorrect = selectedId == correctId;
             var originalEmbed = interaction.Message.Embeds.FirstOrDefault();
+
             var embedBuilder = new EmbedBuilder();
             if (originalEmbed != null)
             {
                 embedBuilder.Title = originalEmbed.Title;
                 embedBuilder.Description = originalEmbed.Description;
-                embedBuilder.Color = isCorrect ? Color.Green : Color.Red;
                 embedBuilder.Timestamp = DateTimeOffset.Now;
                 if (originalEmbed.Image.HasValue) embedBuilder.WithImageUrl(originalEmbed.Image.Value.Url);
-                if (originalEmbed.Fields.Length > 0)
-                    foreach (var field in originalEmbed.Fields)
-                        embedBuilder.AddField(field.Name, field.Value, field.Inline);
+                // 保留原本 field（提示欄位），但跳過之前已加的猜測結果 field
+                foreach (var field in originalEmbed.Fields)
+                    embedBuilder.AddField(field.Name, field.Value, field.Inline);
             }
             else
             {
-                embedBuilder.Color = isCorrect ? Color.Green : Color.Red;
                 embedBuilder.Timestamp = DateTimeOffset.Now;
             }
+
             if (isCorrect)
-                embedBuilder.AddField($"✅ 宅斃了: {correctName}", $"恭喜 宅王之王 **{interaction.User.Mention}** 答對了！ 獎勵你 \n\n{await RewardsHelpers.GetRandomRewards(interaction.Channel, interaction.User as SocketGuildUser)}");
+            {
+                embedBuilder.Color = Color.Green;
+                embedBuilder.AddField($"✅ 宅斃了: {correctName}",
+                    $"恭喜 宅王之王 **{interaction.User.Mention}** 答對了！ 獎勵你 \n\n{await RewardsHelpers.GetRandomRewards(interaction.Channel, interaction.User as SocketGuildUser)}");
+                return (embedBuilder.Build(), new ComponentBuilder());
+            }
+
+            if (isFirstAttempt)
+            {
+                // 第一次猜錯：給一次機會，把原本按鈕改成 r2 前綴繼續
+                embedBuilder.Color = Color.Orange;
+                embedBuilder.AddField("⚠️ 答錯了！還有一次機會", $"{interaction.User.Mention} 猜錯惹，再想想看？");
+
+                // 從原訊息的按鈕重建 r2 版本
+                var r2Component = new ComponentBuilder();
+                int btnIdx = 0;
+                foreach (var actionRow in interaction.Message.Components.OfType<ActionRowComponent>())
+                {
+                    foreach (var btn in actionRow.Components.OfType<ButtonComponent>())
+                    {
+                        string newId = btn.CustomId.Replace("anime_guess_", "anime_guess_r2_");
+                        r2Component.WithButton(btn.Label, newId, ButtonStyle.Secondary, row: btnIdx / 3);
+                        btnIdx++;
+                    }
+                }
+                return (embedBuilder.Build(), r2Component);
+            }
             else
-                embedBuilder.AddField("❌ 菜逼八", $"{interaction.User.Mention} so 菜！這你都不認識？ {correctName}");
-            return (embedBuilder.Build(), new ComponentBuilder());
+            {
+                // 第二次猜錯：遊戲結束，暴雷
+                embedBuilder.Color = Color.Red;
+                embedBuilder.AddField("❌ 菜逼八（兩次都錯）",
+                    $"{interaction.User.Mention} 這你都不認識？ 正確答案是：||{correctName}||");
+                return (embedBuilder.Build(), new ComponentBuilder());
+            }
         }
 
         #region 代餐（jikan-edge.lucas-hdo.workers.dev/v1）

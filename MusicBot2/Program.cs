@@ -393,26 +393,33 @@ public class Program
                     });
                 }
             }
-            // 處理動畫猜謎按鈕
+            // 處理動畫猜謎按鈕（第一次：anime_guess_{sel}_{cor}_{name}；第二次：anime_guess_r2_{sel}_{cor}_{name}）
             else if (component.Data.CustomId.StartsWith("anime_guess_"))
             {
                 await component.DeferAsync();
 
+                bool isR2 = component.Data.CustomId.StartsWith("anime_guess_r2_");
+                // r2 格式: anime_guess_r2_{sel}_{cor}_{name} → Split('_') → [anime,guess,r2,sel,cor,name]
+                // 一般格式: anime_guess_{sel}_{cor}_{name}   → Split('_') → [anime,guess,sel,cor,name]
                 var parts = component.Data.CustomId.Split('_');
-                if (parts.Length == 5)
+                int offset = isR2 ? 3 : 2; // r2 多一個 "r2" segment
+                if (parts.Length >= offset + 3)
                 {
-                    int selectedId = int.Parse(parts[2]);
-                    int correctId = int.Parse(parts[3]);
-                    string correctName = parts[4];
-
-                    var jikanService = _services.GetService<JikanAnimeService>();
-                    var (embed, newComponent) = await jikanService.HandleButtonClickAsync(component, selectedId, correctId, correctName);
-
-                    await component.ModifyOriginalResponseAsync(msg =>
+                    if (int.TryParse(parts[offset], out int selectedId)
+                        && int.TryParse(parts[offset + 1], out int correctId))
                     {
-                        msg.Embed = embed;
-                        msg.Components = newComponent?.Build();
-                    });
+                        string correctName = parts[offset + 2];
+
+                        var jikanService = _services.GetService<JikanAnimeService>();
+                        var (embed, newComponent) = await jikanService.HandleButtonClickAsync(
+                            component, selectedId, correctId, correctName, isFirstAttempt: !isR2);
+
+                        await component.ModifyOriginalResponseAsync(msg =>
+                        {
+                            msg.Embed = embed;
+                            msg.Components = newComponent?.Build();
+                        });
+                    }
                 }
             }
 
@@ -1370,7 +1377,7 @@ public class Program
                 case "猜動漫":
                     {
                         var svc = _services.GetRequiredService<JikanAnimeService>();
-                        var (comp, embed) = await svc.StartGameAsync("character", false);
+                        var (comp, embed) = await svc.StartGameAsync("ctc", false);
                         await channel.SendMessageAsync(embed: embed, components: comp.Build());
                         break;
                     }
