@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Newtonsoft.Json;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -137,7 +138,58 @@ namespace MusicBot2.Models
         public string name { get; set; }
     }
 
+    #region 代餐
+    public class MangaV1Response
+    {
+        public int malId { get; set; }
+        public string url { get; set; }
+        public string imageUrl { get; set; }
+
+        public string title { get; set; }
+        public string synopsis { get; set; }
+        public double? score { get; set; }
+    }
+
+    public class JikanMangaDevV1
+    {
+        public List<MangaV1Response> data { get; set; }
+        public MetaV1 meta { get; set; }
+    }
+
+    public class MetaV1
+    {
+        public Pagination1V1 pagination1V1 { get; set; }
+    }
+
+    public class Pagination1V1
+    {
+        public int page { get; set; }
+        public int limit { get; set; }
+        public int count { get; set; }
+        public int total { get; set; }
+        public bool hasNextPage { get; set; }
+    }
 
 
-   
+    public class AnimeV1Response
+    {
+        public int malId { get; set; }
+        public string url { get; set; }
+        public string imageUrl { get; set; }
+
+        public string title { get; set; }
+        public string synopsis { get; set; }
+        public double? score { get; set; }
+        public string type { get; set; }
+        public int episodes { get; set; }
+    }
+
+    public class JikanAnimeDevV1
+    {
+        public List<AnimeV1Response> data { get; set; }
+        public MetaV1 meta { get; set; }
+    }
+    #endregion
+
+
 }
