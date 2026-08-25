@@ -36,6 +36,19 @@ namespace MusicBot2.Service
         private const string MATCHMAKING_KEY_2V2 = "pokegame:matchmaking:2v2";
         private const string TEAM_FIGHT_BOSS_KEY = "pokegame:teamfight:boss";
         private const string LEGENDARY_POKEMON_KEY = "pokegame:legendary:ids";
+        private const string MANGO_BAND_COUNT_KEY = "pokegame:mango_band_count";
+        private static long _mangoBandCountFallback = 0;
+
+        // 有計數的 flavor text：key = Redis key, value = (基礎文字, 計數後綴格式 {0}=計數)
+        private static readonly Dictionary<string, (string baseText, string suffix)> _countedFlavorTexts = new()
+        {
+            [MANGO_BAND_COUNT_KEY]           = ("他最後加入了芒果醬樂團",             "目前該樂團已經有 **{0}** 之寶可夢"),
+            ["pokegame:dinwang_count"]        = ("被放生後他被抓去鼎王煮掉了，這都是你害的", "牠是鼎王的第 **{0}** 個火鍋料"),
+            ["pokegame:release_assoc_count"]  = ("牠已加入『被放生者互助會』",           "牠成為了互助會的第 **{0}** 位參加者"),
+            ["pokegame:rocket_count"]         = ("牠加入了火箭隊。這都是你的錯",         "火箭隊目前已有 **{0}** 隻被背叛的pokemon"),
+            ["pokegame:boss_count"]           = ("恭喜，你成功培養了一位未來的Boss",     "目前已有 **{0}** 位準反派正在修練中"),
+        };
+        private static readonly Dictionary<string, long> _countedFallbacks = new();
 
         private readonly DiscordSocketClient _client;
 
@@ -776,11 +789,30 @@ namespace MusicBot2.Service
                 player.CaughtPokemon.RemoveAt(pokemonIndex - 1);
                 await SavePlayerDataAsync(player);
 
-                string discriptionText = "";
+                string flavorText = GetRandomReleasePokemonText();
+
+                // 通用計數 flavor text
+                var matched = _countedFlavorTexts.FirstOrDefault(kv => kv.Value.baseText == flavorText);
+                if (matched.Key != null)
+                {
+                    long count;
+                    if (_useRedis)
+                        count = await _redisDb.StringIncrementAsync(matched.Key);
+                    else
+                    {
+                        lock (_countedFallbacks)
+                        {
+                            _countedFallbacks.TryGetValue(matched.Key, out long cur);
+                            count = cur + 1;
+                            _countedFallbacks[matched.Key] = count;
+                        }
+                    }
+                    flavorText = $"{matched.Value.baseText}\n{string.Format(matched.Value.suffix, count)}";
+                }
 
                 var embed = new EmbedBuilder()
                     .WithTitle("👋 釋放pokemon")
-                    .WithDescription($"你釋放了 **{pokemonName}**！\n {GetRandomReleasePokemonText()}")
+                    .WithDescription($"你釋放了 **{pokemonName}**！\n {flavorText}")
                     .WithThumbnailUrl(pokemon.ImageUrl)
                     .WithColor(Color.Blue)
                     .WithFooter($"目前剩餘 {player.CaughtPokemon.Count} 隻pokemon")
