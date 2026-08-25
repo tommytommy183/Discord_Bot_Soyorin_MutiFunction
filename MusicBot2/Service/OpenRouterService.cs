@@ -54,7 +54,7 @@ namespace MusicBot2.Service
         // key → 冷卻到期時間（429 後暫停此 key）
         private readonly Dictionary<string, DateTime> _googleKeyCooldown = new();
 
-        private const int MaxRecentMessages = 16;
+        private const int MaxRecentMessages = 10;
         private const int MaxTotalMessages = 40;      // 提高觸發摘要的門檻
         private const int MaxContextChars = 5000;
         private const int SummarizeChunkSize = 20;     // 每次摘要舊的 20 條
@@ -731,6 +731,30 @@ namespace MusicBot2.Service
                         ?? (msg.Channel as SocketGuildChannel)?.Guild.GetUser(msg.Author.Id);
                     var authorName = guildMember?.DisplayName ?? msg.Author?.GlobalName ?? msg.Author?.Username ?? "某人";
                     var rawText = Truncate(msg.Content, MaxMessageStoreLength);
+
+                    // 補充 embed 內容，讓 AI 知道 bot 說過什麼功能回覆
+                    if (msg.Embeds != null && msg.Embeds.Count > 0)
+                    {
+                        var embedParts = new List<string>();
+                        foreach (var emb in msg.Embeds)
+                        {
+                            var parts = new List<string>();
+                            if (!string.IsNullOrEmpty(emb.Title)) parts.Add(emb.Title);
+                            if (!string.IsNullOrEmpty(emb.Description))
+                                parts.Add(emb.Description.Length > 150 ? emb.Description[..150] + "…" : emb.Description);
+                            foreach (var field in emb.Fields)
+                                parts.Add($"{field.Name}: {(field.Value?.Length > 100 ? field.Value[..100] + "…" : field.Value)}");
+                            if (parts.Count > 0)
+                                embedParts.Add(string.Join(" / ", parts));
+                        }
+                        if (embedParts.Count > 0)
+                        {
+                            var embedSummary = $"[Embed: {string.Join(" | ", embedParts)}]";
+                            rawText = string.IsNullOrWhiteSpace(rawText)
+                                ? embedSummary
+                                : rawText + "\n" + embedSummary;
+                        }
+                    }
 
                     // 用與當前訊息相同的格式儲存，讓 AI 能分辨誰說的
                     var role = msg.Author.IsBot ? "model" : "user";
