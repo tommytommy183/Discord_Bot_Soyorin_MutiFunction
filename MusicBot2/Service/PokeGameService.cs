@@ -534,6 +534,7 @@ namespace MusicBot2.Service
                     $"原名: {shinyText + pokemon.Name}\n" +
                     $"屬性: {string.Join(", ", pokemon.Types)}\n" +
                     $"HP: {pokemon.HP} | 攻: {pokemon.Attack} | 防: {pokemon.Defense}\n" +
+                    $"特攻: {pokemon.SpecialAttack} | 特防: {pokemon.SpecialDefense} | 速: {pokemon.Speed}\n" +
                     $"抓到時間: {pokemon.CaughtDate:yyyy-MM-dd}" +
                     evolutionInfo,
                     false
@@ -583,6 +584,7 @@ namespace MusicBot2.Service
                         $"原名: {pokemon.Name}\n" +
                         $"屬性: {string.Join(", ", pokemon.Types)}\n" +
                         $"HP: {pokemon.HP} | 攻: {pokemon.Attack} | 防: {pokemon.Defense}\n" +
+                        $"特攻: {pokemon.SpecialAttack} | 特防: {pokemon.SpecialDefense} | 速: {pokemon.Speed}\n" +
                         $"抓到時間: {pokemon.CaughtDate:yyyy-MM-dd}" +
                         evolutionInfo,
                         false
@@ -594,6 +596,140 @@ namespace MusicBot2.Service
             catch (Exception ex)
             {
                 return (CommonHelper.BuildErrorResponse($"列出pokemon時發生錯誤: {ex}").Item2, new ComponentBuilder());
+            }
+        }
+
+        // ── 選單：蛋雕（ephemeral 按鈕）────────────────────────────────────
+        public async Task<(Embed embed, ComponentBuilder component)> ShowReleasePokemonMenuAsync(ulong userId, string userName)
+        {
+            try
+            {
+                var player = await GetPlayerDataAsync(userId, userName);
+                if (player.CaughtPokemon.Count == 0)
+                    return (new EmbedBuilder().WithTitle("❌ 你還沒有任何pokemon！").WithColor(Color.Red).Build(), new ComponentBuilder());
+                if (player.CaughtPokemon.Count < 6)
+                    return (new EmbedBuilder().WithTitle("❌ 你的pokemon數量不足！").WithDescription("至少需要 6 隻pokemon才能蛋雕喔！").WithColor(Color.Red).Build(), new ComponentBuilder());
+
+                var embed = new EmbedBuilder()
+                    .WithTitle("👋 選擇要蛋雕的 pokemon")
+                    .WithDescription("選一隻你要放生的寶可夢：")
+                    .WithColor(Color.Orange)
+                    .Build();
+
+                var comp = new ComponentBuilder();
+                for (int i = 0; i < player.CaughtPokemon.Count; i++)
+                {
+                    var p = player.CaughtPokemon[i];
+                    string shiny = p.isShiny ? "✨" : "";
+                    string label = string.IsNullOrEmpty(p.CustomName)
+                        ? $"{i + 1}. {shiny}{p.Name}"
+                        : $"{i + 1}. {shiny}{p.CustomName}（{p.Name}）";
+                    if (label.Length > 80) label = label[..77] + "...";
+                    comp.WithButton(label, $"poke_release_{userId}_{i}", ButtonStyle.Danger, row: i / 5);
+                }
+                return (embed, comp);
+            }
+            catch (Exception ex)
+            {
+                return (CommonHelper.BuildErrorResponse($"顯示選單時發生錯誤: {ex.Message}").Item2, new ComponentBuilder());
+            }
+        }
+
+        // ── 選單：1v1 對戰（ephemeral 按鈕）─────────────────────────────────
+        public async Task<(Embed embed, ComponentBuilder component)> ShowBattleSelectMenuAsync(ulong userId, string userName)
+        {
+            try
+            {
+                var player = await GetPlayerDataAsync(userId, userName);
+                if (player.CaughtPokemon.Count == 0)
+                    return (new EmbedBuilder().WithTitle("❌ 你還沒有任何pokemon！").WithColor(Color.Red).Build(), new ComponentBuilder());
+
+                var embed = new EmbedBuilder()
+                    .WithTitle("⚔️ 選擇出戰 pokemon")
+                    .WithDescription("選一隻寶可夢出戰：")
+                    .WithColor(Color.Blue)
+                    .Build();
+
+                var comp = new ComponentBuilder();
+                for (int i = 0; i < player.CaughtPokemon.Count; i++)
+                {
+                    var p = player.CaughtPokemon[i];
+                    string shiny = p.isShiny ? "✨" : "";
+                    string label = string.IsNullOrEmpty(p.CustomName)
+                        ? $"{i + 1}. {shiny}{p.Name}"
+                        : $"{i + 1}. {shiny}{p.CustomName}（{p.Name}）";
+                    if (label.Length > 80) label = label[..77] + "...";
+                    comp.WithButton(label, $"poke_battle_{userId}_{i}", ButtonStyle.Primary, row: i / 5);
+                }
+                return (embed, comp);
+            }
+            catch (Exception ex)
+            {
+                return (CommonHelper.BuildErrorResponse($"顯示選單時發生錯誤: {ex.Message}").Item2, new ComponentBuilder());
+            }
+        }
+
+        // ── 選單：2v2 第一隻（ephemeral）────────────────────────────────────
+        public async Task<(Embed embed, ComponentBuilder component)> Show2v2Step1MenuAsync(ulong userId, string userName)
+        {
+            try
+            {
+                var player = await GetPlayerDataAsync(userId, userName);
+                if (player.CaughtPokemon.Count < 2)
+                    return (new EmbedBuilder().WithTitle("❌ 至少需要 2 隻pokemon！").WithColor(Color.Red).Build(), new ComponentBuilder());
+
+                var embed = new EmbedBuilder()
+                    .WithTitle("⚔️ 2v2 — 選擇第一隻出戰 pokemon")
+                    .WithColor(Color.Blue).Build();
+
+                var comp = new ComponentBuilder();
+                for (int i = 0; i < player.CaughtPokemon.Count; i++)
+                {
+                    var p = player.CaughtPokemon[i];
+                    string shiny = p.isShiny ? "✨" : "";
+                    string label = string.IsNullOrEmpty(p.CustomName)
+                        ? $"{i + 1}. {shiny}{p.Name}"
+                        : $"{i + 1}. {shiny}{p.CustomName}（{p.Name}）";
+                    if (label.Length > 80) label = label[..77] + "...";
+                    comp.WithButton(label, $"poke_battle2v2_1_{userId}_{i}", ButtonStyle.Primary, row: i / 5);
+                }
+                return (embed, comp);
+            }
+            catch (Exception ex)
+            {
+                return (CommonHelper.BuildErrorResponse($"顯示選單時發生錯誤: {ex.Message}").Item2, new ComponentBuilder());
+            }
+        }
+
+        // ── 選單：2v2 第二隻（ephemeral）────────────────────────────────────
+        public async Task<(Embed embed, ComponentBuilder component)> Show2v2Step2MenuAsync(ulong userId, string userName, int firstIdx)
+        {
+            try
+            {
+                var player = await GetPlayerDataAsync(userId, userName);
+
+                var embed = new EmbedBuilder()
+                    .WithTitle("⚔️ 2v2 — 選擇第二隻出戰 pokemon")
+                    .WithDescription($"第一隻：**{player.CaughtPokemon[firstIdx].CustomName ?? player.CaughtPokemon[firstIdx].Name}**")
+                    .WithColor(Color.Blue).Build();
+
+                var comp = new ComponentBuilder();
+                for (int i = 0; i < player.CaughtPokemon.Count; i++)
+                {
+                    if (i == firstIdx) continue; // 不能選同一隻
+                    var p = player.CaughtPokemon[i];
+                    string shiny = p.isShiny ? "✨" : "";
+                    string label = string.IsNullOrEmpty(p.CustomName)
+                        ? $"{i + 1}. {shiny}{p.Name}"
+                        : $"{i + 1}. {shiny}{p.CustomName}（{p.Name}）";
+                    if (label.Length > 80) label = label[..77] + "...";
+                    comp.WithButton(label, $"poke_battle2v2_2_{userId}_{firstIdx}_{i}", ButtonStyle.Primary, row: i / 5);
+                }
+                return (embed, comp);
+            }
+            catch (Exception ex)
+            {
+                return (CommonHelper.BuildErrorResponse($"顯示選單時發生錯誤: {ex.Message}").Item2, new ComponentBuilder());
             }
         }
 
@@ -861,7 +997,7 @@ namespace MusicBot2.Service
                         var name = p.CustomName ?? p.Name;
                         var shinyIcon = p.isShiny ? "✨" : "";
                         selectEmbed.AddField($"{i + 1}. {name} {shinyIcon}",
-                            $"屬性: {string.Join(", ", p.Types)}\nHP: {p.HP} | 攻: {p.Attack} | 防: {p.Defense}",
+                            $"屬性: {string.Join(", ", p.Types)}\nHP: {p.HP} | 攻: {p.Attack} | 防: {p.Defense}\n特攻: {p.SpecialAttack} | 特防: {p.SpecialDefense} | 速: {p.Speed}",
                             inline: true);
                     }
 
@@ -910,12 +1046,14 @@ namespace MusicBot2.Service
                         .AddField($"{request.RequesterName} 提供",
                             $"**{request.RequesterPokemon.CustomName ?? request.RequesterPokemon.Name}** {(request.RequesterPokemon.isShiny ? "✨" : "")}\n" +
                             $"屬性: {string.Join(", ", request.RequesterPokemon.Types)}\n" +
-                            $"HP: {request.RequesterPokemon.HP} | 攻: {request.RequesterPokemon.Attack} | 防: {request.RequesterPokemon.Defense}",
+                            $"HP: {request.RequesterPokemon.HP} | 攻: {request.RequesterPokemon.Attack} | 防: {request.RequesterPokemon.Defense}\n" +
+                            $"特攻: {request.RequesterPokemon.SpecialAttack} | 特防: {request.RequesterPokemon.SpecialDefense} | 速: {request.RequesterPokemon.Speed}",
                             inline: true)
                         .AddField($"{request.TargetName} 提供",
                             $"**{request.TargetPokemon.CustomName ?? request.TargetPokemon.Name}** {(request.TargetPokemon.isShiny ? "✨" : "")}\n" +
                             $"屬性: {string.Join(", ", request.TargetPokemon.Types)}\n" +
-                            $"HP: {request.TargetPokemon.HP} | 攻: {request.TargetPokemon.Attack} | 防: {request.TargetPokemon.Defense}",
+                            $"HP: {request.TargetPokemon.HP} | 攻: {request.TargetPokemon.Attack} | 防: {request.TargetPokemon.Defense}\n" +
+                            $"特攻: {request.TargetPokemon.SpecialAttack} | 特防: {request.TargetPokemon.SpecialDefense} | 速: {request.TargetPokemon.Speed}",
                             inline: true)
                         .WithColor(Color.Blue)
                         .WithFooter($"請 {request.RequesterName} 確認")

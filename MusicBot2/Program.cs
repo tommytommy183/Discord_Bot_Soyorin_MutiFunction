@@ -772,6 +772,125 @@ public class Program
                     }
                 }
             }
+            // ── 蛋雕選擇按鈕 poke_release_{userId}_{pokemonIdx} ───────────────
+            else if (component.Data.CustomId.StartsWith("poke_release_"))
+            {
+                var parts = component.Data.CustomId.Split('_');
+                // parts: [poke, release, userId, pokemonIdx]
+                if (parts.Length == 4
+                    && ulong.TryParse(parts[2], out ulong releaseOwnerId)
+                    && int.TryParse(parts[3], out int releaseIdx))
+                {
+                    if (component.User.Id != releaseOwnerId)
+                    {
+                        await component.RespondAsync("❌ 這不是你的選單！", ephemeral: true);
+                        return;
+                    }
+                    await component.DeferAsync();
+                    var pokeSvc = _services.GetService<PokeGameService>();
+                    var guildUser = component.User as Discord.WebSocket.SocketGuildUser;
+                    var userName = guildUser?.DisplayName ?? component.User.Username;
+                    // index+1 因為 ReleasePokemonAsync 是 1-based
+                    var (embed, newComp) = await pokeSvc.ReleasePokemonAsync(releaseOwnerId, userName, releaseIdx + 1);
+                    // 把 ephemeral 選單改掉（隱藏），再公開發送結果
+                    await component.ModifyOriginalResponseAsync(msg =>
+                    {
+                        msg.Embed = null;
+                        msg.Content = "✅";
+                        msg.Components = new ComponentBuilder().Build();
+                    });
+                    await component.Channel.SendMessageAsync(embed: embed);
+                }
+            }
+
+            // ── 1v1 對戰選擇 poke_battle_{userId}_{pokemonIdx} ──────────────
+            else if (component.Data.CustomId.StartsWith("poke_battle_")
+                && !component.Data.CustomId.StartsWith("poke_battle2v2_"))
+            {
+                var parts = component.Data.CustomId.Split('_');
+                // parts: [poke, battle, userId, pokemonIdx]
+                if (parts.Length == 4
+                    && ulong.TryParse(parts[2], out ulong battleOwnerId)
+                    && int.TryParse(parts[3], out int battleIdx))
+                {
+                    if (component.User.Id != battleOwnerId)
+                    {
+                        await component.RespondAsync("❌ 這不是你的選單！", ephemeral: true);
+                        return;
+                    }
+                    await component.DeferAsync();
+                    var pokeSvc = _services.GetService<PokeGameService>();
+                    var guildUser = component.User as Discord.WebSocket.SocketGuildUser;
+                    var userName = guildUser?.DisplayName ?? component.User.Username;
+                    await component.ModifyOriginalResponseAsync(msg =>
+                    {
+                        msg.Embed = null;
+                        msg.Content = "✅";
+                        msg.Components = new ComponentBuilder().Build();
+                    });
+                    var (embed, newComp) = await pokeSvc.StartBattleSearchAsync(battleOwnerId, userName, battleIdx + 1, component.Channel);
+                    await component.Channel.SendMessageAsync(embed: embed, components: newComp?.Build());
+                }
+            }
+
+            // ── 2v2 第一隻選擇 poke_battle2v2_1_{userId}_{pokemonIdx} ────────
+            else if (component.Data.CustomId.StartsWith("poke_battle2v2_1_"))
+            {
+                var parts = component.Data.CustomId.Split('_');
+                // parts: [poke, battle2v2, 1, userId, pokemonIdx]
+                if (parts.Length == 5
+                    && ulong.TryParse(parts[3], out ulong b2v2OwnerId)
+                    && int.TryParse(parts[4], out int b2v2Idx1))
+                {
+                    if (component.User.Id != b2v2OwnerId)
+                    {
+                        await component.RespondAsync("❌ 這不是你的選單！", ephemeral: true);
+                        return;
+                    }
+                    await component.DeferAsync(ephemeral: true);
+                    var pokeSvc = _services.GetService<PokeGameService>();
+                    var guildUser = component.User as Discord.WebSocket.SocketGuildUser;
+                    var userName = guildUser?.DisplayName ?? component.User.Username;
+                    var (embed, newComp) = await pokeSvc.Show2v2Step2MenuAsync(b2v2OwnerId, userName, b2v2Idx1);
+                    await component.ModifyOriginalResponseAsync(msg =>
+                    {
+                        msg.Embed = embed;
+                        msg.Components = newComp?.Build();
+                    });
+                }
+            }
+
+            // ── 2v2 第二隻選擇 poke_battle2v2_2_{userId}_{idx1}_{idx2} ───────
+            else if (component.Data.CustomId.StartsWith("poke_battle2v2_2_"))
+            {
+                var parts = component.Data.CustomId.Split('_');
+                // parts: [poke, battle2v2, 2, userId, idx1, idx2]
+                if (parts.Length == 6
+                    && ulong.TryParse(parts[3], out ulong b2v2OwnerId2)
+                    && int.TryParse(parts[4], out int b2v2Idx1b)
+                    && int.TryParse(parts[5], out int b2v2Idx2))
+                {
+                    if (component.User.Id != b2v2OwnerId2)
+                    {
+                        await component.RespondAsync("❌ 這不是你的選單！", ephemeral: true);
+                        return;
+                    }
+                    await component.DeferAsync();
+                    var pokeSvc = _services.GetService<PokeGameService>();
+                    var guildUser = component.User as Discord.WebSocket.SocketGuildUser;
+                    var userName = guildUser?.DisplayName ?? component.User.Username;
+                    await component.ModifyOriginalResponseAsync(msg =>
+                    {
+                        msg.Embed = null;
+                        msg.Content = "✅";
+                        msg.Components = new ComponentBuilder().Build();
+                    });
+                    var (embed, newComp) = await pokeSvc.Start2v2BattleSearchAsync(
+                        b2v2OwnerId2, userName, b2v2Idx1b + 1, b2v2Idx2 + 1, component.Channel);
+                    await component.Channel.SendMessageAsync(embed: embed, components: newComp?.Build());
+                }
+            }
+
             else if (component.Data.CustomId.StartsWith("1a2b_"))
             {
                 var parts = component.Data.CustomId.Split('_');
