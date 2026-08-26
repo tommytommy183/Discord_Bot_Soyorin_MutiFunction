@@ -1468,7 +1468,7 @@ namespace MusicBot2.Service
                                     .GetProperty("candidates")[0];
 
                                 // 檢查模型為什麼結束
-                                var finishReason =
+                                var finishReason = 
                                     candidate.TryGetProperty("finishReason", out var finishElement)
                                         ? finishElement.GetString()
                                         : null;
