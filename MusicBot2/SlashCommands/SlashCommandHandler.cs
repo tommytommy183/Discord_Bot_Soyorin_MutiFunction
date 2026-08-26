@@ -1672,25 +1672,42 @@ namespace MusicBot2.SlahCommands
         }
 
         [SlashCommand("fate聖杯塔召喚", "使用召喚券抽取從者")]
-        public async Task TowerSummonAsync()
+        public async Task TowerSummonAsync([Summary("五連抽", "是否開啟五連抽（預設單抽）")] bool multip = false)
         {
             await DeferAsync();
-            var (embed, component) = await _holyGrailTowerService.SummonServantAsync(Context.User.Id, Context.User.Username);
-            await FollowupAsync(embed: embed, components: component.Build());
+            if (multip)
+            {
+                var results = await _holyGrailTowerService.SummonMultipleAsync(Context.User.Id, Context.User.Username, 5);
+                foreach (var (embed, component) in results)
+                    await FollowupAsync(embed: embed, components: component.Build());
+            }
+            else
+            {
+                var (embed, component) = await _holyGrailTowerService.SummonServantAsync(Context.User.Id, Context.User.Username);
+                await FollowupAsync(embed: embed, components: component.Build());
+            }
         }
 
         [SlashCommand("fate聖杯塔圖鑑", "查看你的從者圖鑑")]
-        public async Task TowerServantsAsync()
+        public async Task TowerServantsAsync([Summary("從者編號", "輸入 No. 查詢單一從者；不填則顯示全部")] int? collectionNo = null)
         {
-            var (embed, component) = _holyGrailTowerService.ListServants(Context.User.Id);
-            await RespondAsync(embed: embed, components: component.Build());
+            if (collectionNo.HasValue)
+            {
+                var (embed, component) = _holyGrailTowerService.GetServantDetail(Context.User.Id, collectionNo.Value);
+                await RespondAsync(embed: embed, components: component.Build());
+            }
+            else
+            {
+                var (embed, component) = _holyGrailTowerService.ListServants(Context.User.Id);
+                await RespondAsync(embed: embed, components: component.Build());
+            }
         }
 
-        [SlashCommand("fate聖杯塔丟棄從者", "從圖鑑中移除一位從者")]
-        public async Task TowerReleaseServantAsync([Summary("從者編號", "請輸入圖鑑中的 collectionNo / No.")] int collectionNo)
+        [SlashCommand("fate聖杯塔丟棄從者", "批量丟棄從者（顯示選單）")]
+        public async Task TowerReleaseServantAsync()
         {
-            var (embed, component) = _holyGrailTowerService.ReleaseServant(Context.User.Id, collectionNo);
-            await RespondAsync(embed: embed, components: component.Build());
+            var (embed, component) = _holyGrailTowerService.ShowBatchReleaseMenuAsync(Context.User.Id);
+            await RespondAsync(embed: embed, components: component.Build(), ephemeral: true);
         }
 
         [SlashCommand("fate聖杯塔每日", "領取每日獎勵（3 張召喚券）")]

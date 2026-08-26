@@ -891,6 +891,90 @@ public class Program
                 }
             }
 
+            // ── 聖杯塔：圖鑑翻頁 hgt_list_{userId}_{page} ────────────────
+            else if (component.Data.CustomId.StartsWith("hgt_list_") && !component.Data.CustomId.StartsWith("hgt_list_noop"))
+            {
+                var parts = component.Data.CustomId.Split('_');
+                if (parts.Length == 4 && ulong.TryParse(parts[2], out ulong listOwnerId) && int.TryParse(parts[3], out int listPage))
+                {
+                    if (component.User.Id != listOwnerId)
+                    {
+                        await component.RespondAsync("這不是你的選單！", ephemeral: true);
+                    }
+                    else
+                    {
+                        var holyGrailService = _services.GetRequiredService<HolyGrailTowerService>();
+                        var (updEmbed, updComp) = holyGrailService.ListServants(listOwnerId, listPage);
+                        await component.UpdateAsync(p =>
+                        {
+                            p.Embed = updEmbed;
+                            p.Components = updComp.Build();
+                        });
+                    }
+                }
+            }
+            // ── 聖杯塔批量丟棄：完成 ────────────────────────────────────
+            else if (component.Data.CustomId.StartsWith("hgt_release_done_"))
+            {
+                var doneEmbed = new EmbedBuilder()
+                    .WithTitle("✅ 完成")
+                    .WithDescription("已結束批量丟棄流程。")
+                    .WithColor(Color.Green)
+                    .WithCurrentTimestamp()
+                    .Build();
+                await component.UpdateAsync(p =>
+                {
+                    p.Embed = doneEmbed;
+                    p.Components = new ComponentBuilder().Build();
+                });
+            }
+            // ── 聖杯塔批量丟棄：翻頁 hgt_rpage_{userId}_{page} ──────────
+            else if (component.Data.CustomId.StartsWith("hgt_rpage_") && !component.Data.CustomId.StartsWith("hgt_rpage_noop"))
+            {
+                var parts = component.Data.CustomId.Split('_');
+                if (parts.Length == 4 && ulong.TryParse(parts[2], out ulong rpOwner) && int.TryParse(parts[3], out int rpPage))
+                {
+                    if (component.User.Id != rpOwner)
+                    {
+                        await component.RespondAsync("這不是你的選單！", ephemeral: true);
+                    }
+                    else
+                    {
+                        var holyGrailService = _services.GetRequiredService<HolyGrailTowerService>();
+                        var (updEmbed, updComp) = holyGrailService.ShowBatchReleaseMenuAsync(rpOwner, rpPage);
+                        await component.UpdateAsync(p =>
+                        {
+                            p.Embed = updEmbed;
+                            p.Components = updComp.Build();
+                        });
+                    }
+                }
+            }
+            // ── 聖杯塔批量丟棄：丟棄單隻 hgt_release_{userId}_{collectionNo}_{page} ──
+            else if (component.Data.CustomId.StartsWith("hgt_release_"))
+            {
+                var parts = component.Data.CustomId.Split('_');
+                // parts: [hgt, release, userId, collectionNo, page]
+                if (parts.Length == 5 && ulong.TryParse(parts[2], out ulong releaseOwner)
+                    && int.TryParse(parts[3], out int releaseNo)
+                    && int.TryParse(parts[4], out int releasePage))
+                {
+                    if (component.User.Id != releaseOwner)
+                    {
+                        await component.RespondAsync("這不是你的選單！", ephemeral: true);
+                    }
+                    else
+                    {
+                        var holyGrailService = _services.GetRequiredService<HolyGrailTowerService>();
+                        var (updEmbed, updComp) = holyGrailService.HandleBatchRelease(releaseOwner, releaseNo, releasePage);
+                        await component.UpdateAsync(p =>
+                        {
+                            p.Embed = updEmbed;
+                            p.Components = updComp.Build();
+                        });
+                    }
+                }
+            }
             else if (component.Data.CustomId.StartsWith("1a2b_"))
             {
                 var parts = component.Data.CustomId.Split('_');

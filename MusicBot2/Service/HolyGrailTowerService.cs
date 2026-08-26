@@ -33,7 +33,7 @@ namespace MusicBot2.Service
         private const string RedisPlayerPrefix = "hgwt_player:";
         private const string BasicServantUrl = "https://api.atlasacademy.io/export/TW/basic_servant.json";
         private const string NiceServantUrl = "https://api.atlasacademy.io/nice/TW/servant/{0}?lore=false";
-        private const int MaxOwnedServants = 20;
+        private const int MaxOwnedServants = 30;
         private const int MaxBattleSkillButtons = 6;
 
         public HolyGrailTowerService(string redisConnectionString)
@@ -292,6 +292,37 @@ namespace MusicBot2.Service
             return (embed, new ComponentBuilder());
         }
 
+        // ── 五連抽（每抽各自一個 embed）────────────────────────────────────
+        public async Task<List<(Embed embed, ComponentBuilder component)>> SummonMultipleAsync(ulong userId, string userName, int count = 5)
+        {
+            await EnsureInitAsync();
+            var results = new List<(Embed, ComponentBuilder)>();
+
+            var player = LoadPlayer(userId, userName);
+            if (player.SummonTickets < count)
+            {
+                var err = new EmbedBuilder()
+                    .WithTitle("❌ 召喚券不足")
+                    .WithDescription($"五連抽需要 **{count}** 張召喚券，你目前只有 **{player.SummonTickets}** 張。")
+                    .WithColor(Color.Red).Build();
+                results.Add((err, new ComponentBuilder()));
+                return results;
+            }
+            if (player.OwnedServants.Count + count > MaxOwnedServants)
+            {
+                var err = CommonHelper.BuildErrorResponse($"圖鑑空間不足！最多 {MaxOwnedServants} 位，目前 {player.OwnedServants.Count} 位。").Item2;
+                results.Add((err, new ComponentBuilder()));
+                return results;
+            }
+
+            for (int i = 0; i < count; i++)
+            {
+                var (embed, comp) = await SummonServantAsync(userId, userName);
+                results.Add((embed, comp));
+            }
+            return results;
+        }
+
         private int RollRarity()
         {
             var roll = _rng.Next(100);
@@ -305,37 +336,83 @@ namespace MusicBot2.Service
             };
         }
 
-        public (Embed embed, ComponentBuilder component) ListServants(ulong userId)
+        // 圖鑑全覽（分頁，每頁 10 筆）
+        private const int ListPageSize = 10;
+
+        public (Embed embed, ComponentBuilder component) ListServants(ulong userId, int page = 0)
         {
             var player = LoadPlayer(userId);
             if (player.OwnedServants.Count == 0)
                 return (CommonHelper.BuildErrorResponse("你尚未召喚任何英靈！請先使用 `/fate聖杯塔召喚`").Item2, new ComponentBuilder());
 
+            var sorted = player.OwnedServants
+                .OrderByDescending(s => s.Rarity)
+                .ThenByDescending(s => s.Level)
+                .ToList();
+
+            int totalPages = (sorted.Count + ListPageSize - 1) / ListPageSize;
+            page = Math.Clamp(page, 0, totalPages - 1);
+            int start = page * ListPageSize;
+            var pageItems = sorted.Skip(start).Take(ListPageSize).ToList();
+
             var embedBuilder = new EmbedBuilder()
                 .WithTitle($"🎴 {player.UserName} 的英靈圖鑑")
                 .WithColor(Color.Blue)
+                .WithFooter($"第 {page + 1} / {totalPages} 頁　共 {sorted.Count}/{MaxOwnedServants} 位英靈")
                 .WithCurrentTimestamp();
 
-            var sorted = player.OwnedServants.OrderByDescending(s => s.Rarity).ThenByDescending(s => s.Level).ToList();
-            var displayLimit = Math.Min(15, sorted.Count);
-
-            for (int i = 0; i < displayLimit; i++)
+            foreach (var s in pageItems)
             {
-                var s = sorted[i];
                 string classEmoji = GetClassEmoji(s.ClassName);
                 string stars = string.Concat(Enumerable.Repeat("★", s.Rarity));
                 embedBuilder.AddField(
-                    $"{classEmoji} {s.Name} Lv.{s.Level} (寶具 Lv.{s.NpLevel})",
+                    $"{classEmoji} {s.Name} Lv.{s.Level}（寶具 Lv.{s.NpLevel}）",
                     $"{stars}\nATK: {s.GetAttack()} | HP: {s.GetMaxHp()}\nNo. {s.CollectionNo}",
                     inline: true);
             }
 
-            if (sorted.Count > displayLimit)
-                embedBuilder.WithFooter($"已顯示前 {displayLimit} /共 {sorted.Count} 位英靈");
-            else
-                embedBuilder.WithFooter($"目前持有 {sorted.Count}/{MaxOwnedServants} 位英靈");
+            var comp = new ComponentBuilder();
+            if (totalPages > 1)
+            {
+                if (page > 0)
+                    comp.WithButton("◀ 上一頁", $"hgt_list_{userId}_{page - 1}", ButtonStyle.Secondary, row: 0);
+                comp.WithButton($"第 {page + 1}/{totalPages} 頁", "hgt_list_noop", ButtonStyle.Secondary, row: 0, disabled: true);
+                if (page < totalPages - 1)
+                    comp.WithButton("▶ 下一頁", $"hgt_list_{userId}_{page + 1}", ButtonStyle.Secondary, row: 0);
+            }
 
-            return (embedBuilder.Build(), new ComponentBuilder());
+            return (embedBuilder.Build(), comp);
+        }
+
+        // 圖鑑單隻查詢
+        public (Embed embed, ComponentBuilder component) GetServantDetail(ulong userId, int collectionNo)
+        {
+            var player = LoadPlayer(userId);
+            var s = player.OwnedServants.FirstOrDefault(x => x.CollectionNo == collectionNo);
+            if (s == null)
+                return (CommonHelper.BuildErrorResponse($"你的圖鑑中找不到 No.{collectionNo}，請確認編號。").Item2, new ComponentBuilder());
+
+            string classEmoji = GetClassEmoji(s.ClassName);
+            string stars = string.Concat(Enumerable.Repeat("★", s.Rarity));
+            string cardsShow = string.Join(" | ", s.Cards.Select(c => c.ToUpper() switch
+            {
+                "BUSTER" => "🔴 B", "ARTS" => "🔵 A", "QUICK" => "🟢 Q", _ => c
+            }));
+
+            var eb = new EmbedBuilder()
+                .WithTitle($"{classEmoji} {s.Name}")
+                .WithDescription(
+                    $"{stars}\n" +
+                    $"職階：{s.ClassName}　No. {s.CollectionNo}\n" +
+                    $"等級：**Lv.{s.Level}** / 100　寶具等級：**Lv.{s.NpLevel}** / 5\n" +
+                    $"ATK: **{s.GetAttack()}**　HP: **{s.GetMaxHp()}**\n" +
+                    $"指令卡：[{cardsShow}]\n" +
+                    $"寶具：『{s.NpName}』（{s.NpRuby ?? ""}）")
+                .WithColor(GetRarityColor(s.Rarity))
+                .WithImageUrl(s.FullImageUrl ?? "")
+                .WithCurrentTimestamp();
+
+            return (eb.Build(), new ComponentBuilder());
         }
 
         public (Embed embed, ComponentBuilder component) ReleaseServant(ulong userId, int collectionNo)
@@ -356,6 +433,86 @@ namespace MusicBot2.Service
                 .Build();
 
             return (embed, new ComponentBuilder());
+        }
+
+        // ── 批量丟棄：每頁 16 位（4 rows × 4 buttons），第 5 row 導覽 ──────
+        private const int ReleasePageSize = 16;
+
+        public (Embed embed, ComponentBuilder component) ShowBatchReleaseMenuAsync(ulong userId, int page = 0)
+        {
+            var player = LoadPlayer(userId);
+            if (player.OwnedServants.Count == 0)
+                return (CommonHelper.BuildErrorResponse("你的圖鑑是空的！").Item2, new ComponentBuilder());
+
+            var sorted = player.OwnedServants
+                .OrderByDescending(s => s.Rarity)
+                .ThenByDescending(s => s.Level)
+                .ToList();
+
+            int totalPages = (sorted.Count + ReleasePageSize - 1) / ReleasePageSize;
+            page = Math.Clamp(page, 0, totalPages - 1);
+            int start = page * ReleasePageSize;
+            var pageItems = sorted.Skip(start).Take(ReleasePageSize).ToList();
+
+            var eb = new EmbedBuilder()
+                .WithTitle("🗑️ 批量丟棄從者")
+                .WithDescription("點選按鈕丟棄英靈，丟完後點「✅ 完成」關閉選單。")
+                .WithColor(Color.DarkOrange)
+                .WithFooter($"第 {page + 1} / {totalPages} 頁　共 {sorted.Count} 位英靈")
+                .WithCurrentTimestamp();
+
+            foreach (var s in pageItems)
+            {
+                string stars = string.Concat(Enumerable.Repeat("★", s.Rarity));
+                eb.AddField($"{GetClassEmoji(s.ClassName)} {s.Name}", $"{stars} | Lv.{s.Level} | No.{s.CollectionNo}", inline: true);
+            }
+
+            var comp = new ComponentBuilder();
+            // row 0–3：從者按鈕（每 row 4 顆）
+            for (int i = 0; i < pageItems.Count; i++)
+            {
+                var s = pageItems[i];
+                string label = $"{s.Name} (No.{s.CollectionNo})";
+                if (label.Length > 80) label = label[..77] + "...";
+                comp.WithButton(label, $"hgt_release_{userId}_{s.CollectionNo}_{page}", ButtonStyle.Danger, row: i / 4);
+            }
+            // row 4：導覽列
+            if (page > 0)
+                comp.WithButton("◀ 上一頁", $"hgt_rpage_{userId}_{page - 1}", ButtonStyle.Secondary, row: 4);
+            comp.WithButton($"{page + 1}/{totalPages}", "hgt_rpage_noop", ButtonStyle.Secondary, row: 4, disabled: true);
+            if (page < totalPages - 1)
+                comp.WithButton("▶ 下一頁", $"hgt_rpage_{userId}_{page + 1}", ButtonStyle.Secondary, row: 4);
+            comp.WithButton("✅ 完成", $"hgt_release_done_{userId}", ButtonStyle.Success, row: 4);
+
+            return (eb.Build(), comp);
+        }
+
+        // ── 批量丟棄：執行單隻並回傳更新後選單────────────────────────────
+        public (Embed embed, ComponentBuilder component) HandleBatchRelease(ulong userId, int collectionNo, int page = 0)
+        {
+            var player = LoadPlayer(userId);
+            var servant = player.OwnedServants.FirstOrDefault(x => x.CollectionNo == collectionNo);
+            if (servant != null)
+            {
+                player.OwnedServants.Remove(servant);
+                SavePlayer(player);
+            }
+
+            if (player.OwnedServants.Count == 0)
+            {
+                var doneEmbed = new EmbedBuilder()
+                    .WithTitle("🗑️ 圖鑑已清空")
+                    .WithDescription("你的圖鑑現在是空的了。")
+                    .WithColor(Color.DarkGrey)
+                    .WithCurrentTimestamp()
+                    .Build();
+                return (doneEmbed, new ComponentBuilder());
+            }
+
+            // 丟掉後該頁可能剩不夠，自動修正到合法頁
+            int totalPages = (player.OwnedServants.Count + ReleasePageSize - 1) / ReleasePageSize;
+            page = Math.Clamp(page, 0, totalPages - 1);
+            return ShowBatchReleaseMenuAsync(userId, page);
         }
 
         // ═══════════════════════════════════════════════════════════
