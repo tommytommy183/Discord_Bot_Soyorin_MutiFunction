@@ -4,44 +4,45 @@ using System.Text.Json.Serialization;
 
 namespace MusicBot2.Models
 {
-    /// <summary>¸tªM¶ð - ª±®a¸ê®Æ¡]¥Ã¤[¡^</summary>
+    /// <summary>ï¿½tï¿½Mï¿½ï¿½ - ï¿½ï¿½ï¿½aï¿½ï¿½Æ¡]ï¿½Ã¤[ï¿½^</summary>
     public class HolyGrailTowerPlayer
     {
         [JsonPropertyName("userId")]
+        [JsonNumberHandling(JsonNumberHandling.WriteAsString | JsonNumberHandling.AllowReadingFromString)]
         public ulong UserId { get; set; }
 
         [JsonPropertyName("userName")]
         public string UserName { get; set; }
 
         [JsonPropertyName("summonTickets")]
-        public int SummonTickets { get; set; } = 10; // ¥l³ê¨é
+        public int SummonTickets { get; set; } = 10; // ï¿½lï¿½ï¿½ï¿½
 
         [JsonPropertyName("saintQuartz")]
-        public int SaintQuartz { get; set; } = 0; // ¸t´¹¥Û¡]premium³f¹ô¡^
+        public int SaintQuartz { get; set; } = 0; // ï¿½tï¿½ï¿½ï¿½Û¡]premiumï¿½fï¿½ï¿½ï¿½^
 
         [JsonPropertyName("ownedServants")]
-        public List<TowerServant> OwnedServants { get; set; } = new(); // ¾Ö¦³ªº±qªÌ¹ÏÅ²
+        public List<TowerServant> OwnedServants { get; set; } = new(); // ï¿½Ö¦ï¿½ï¿½ï¿½ï¿½qï¿½Ì¹ï¿½Å²
 
         [JsonPropertyName("highestFloor")]
-        public int HighestFloor { get; set; } = 0; // ³Ì°ª¨ì¹F¼h¼Æ
+        public int HighestFloor { get; set; } = 0; // ï¿½Ì°ï¿½ï¿½ï¿½Fï¿½hï¿½ï¿½
 
         [JsonPropertyName("totalRuns")]
-        public int TotalRuns { get; set; } = 0; // Á`¬D¾Ô¦¸¼Æ
+        public int TotalRuns { get; set; } = 0; // ï¿½`ï¿½Dï¿½Ô¦ï¿½ï¿½ï¿½
 
         [JsonPropertyName("totalKills")]
-        public int TotalKills { get; set; } = 0; // Á`À»±þ¼Æ
+        public int TotalKills { get; set; } = 0; // ï¿½`ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 
         [JsonPropertyName("lastDailyReward")]
         public DateTime? LastDailyReward { get; set; }
 
         [JsonPropertyName("permanentUpgrades")]
-        public Dictionary<string, int> PermanentUpgrades { get; set; } = new(); // ¥Ã¤[¤É¯Å
+        public Dictionary<string, int> PermanentUpgrades { get; set; } = new(); // ï¿½Ã¤[ï¿½É¯ï¿½
 
         [JsonPropertyName("createdAt")]
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     }
 
-    /// <summary>±qªÌ¥d¤ù¡]¹ÏÅ²¡^</summary>
+    /// <summary>ï¿½qï¿½Ì¥dï¿½ï¿½ï¿½]ï¿½ï¿½Å²ï¿½^</summary>
     public class TowerServant
     {
         [JsonPropertyName("collectionNo")]
@@ -93,7 +94,7 @@ namespace MusicBot2.Models
         public string NpIconUrl { get; set; }
 
         [JsonPropertyName("cards")]
-        public List<string> Cards { get; set; } = new(); // 5±i«ü¥O¥d, Ä´¦p ["buster", "buster", "arts", "quick", "quick"]
+        public List<string> Cards { get; set; } = new(); // 5ï¿½iï¿½ï¿½ï¿½Oï¿½d, Ä´ï¿½p ["buster", "buster", "arts", "quick", "quick"]
 
         [JsonPropertyName("skills")]
         public List<HgwSkillData> Skills { get; set; } = new();
@@ -107,13 +108,13 @@ namespace MusicBot2.Models
         [JsonPropertyName("obtainedAt")]
         public DateTime ObtainedAt { get; set; } = DateTime.UtcNow;
 
-        // °ò©óµ¥¯Å»Pµ}¦³«×­pºâ¾Ô°«¼Æ­È
+        // ï¿½ï¿½óµ¥¯Å»Pï¿½}ï¿½ï¿½ï¿½×­pï¿½ï¿½Ô°ï¿½ï¿½Æ­ï¿½
         public int GetMaxHp() => (1200 + Rarity * 400) + Level * 100;
         public int GetAttack() => (150 + Rarity * 50) + Level * 15;
         public int GetDefense() => (50 + Rarity * 15) + Level * 5;
     }
 
-    /// <summary>³æ¦¸ª¦¶ð Run ª¬ºA</summary>
+    /// <summary>ï¿½æ¦¸ï¿½ï¿½ï¿½ï¿½ Run ï¿½ï¿½ï¿½A</summary>
     public class HgwTowerRun
     {
         public ulong ChannelId { get; set; }
@@ -121,19 +122,19 @@ namespace MusicBot2.Models
         public string PlayerName { get; set; }
 
         public int CurrentFloor { get; set; } = 1;
-        public List<HgwTowerServantInstance> Team { get; set; } = new(); // ·í«e¥X¾Ô¶¤¥î¡]¦Ü¦h3¤H¡^
+        public List<HgwTowerServantInstance> Team { get; set; } = new(); // ï¿½ï¿½ï¿½eï¿½Xï¿½Ô¶ï¿½ï¿½ï¿½]ï¿½Ü¦h3ï¿½Hï¿½^
 
-        public int Gold { get; set; } = 50; // ¥»¦¸«_ÀIÀò±oªºª÷¹ô
-        public List<HgwTowerRelic> Relics { get; set; } = new(); // Àò±oªº¿òª«
+        public int Gold { get; set; } = 50; // ï¿½ï¿½ï¿½ï¿½ï¿½_ï¿½Iï¿½ï¿½oï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+        public List<HgwTowerRelic> Relics { get; set; } = new(); // ï¿½ï¿½oï¿½ï¿½ï¿½ï¿½
 
-        public HgwTowerEncounter CurrentEncounter { get; set; } // ·í«e¾D¹J¨Æ¥ó
-        public List<string> EventLog { get; set; } = new(); // ¾D¹J¤é»x
+        public HgwTowerEncounter CurrentEncounter { get; set; } // ï¿½ï¿½ï¿½eï¿½Dï¿½Jï¿½Æ¥ï¿½
+        public List<string> EventLog { get; set; } = new(); // ï¿½Dï¿½Jï¿½ï¿½x
 
         public DateTime StartTime { get; set; } = DateTime.UtcNow;
         public bool IsFinished { get; set; } = false;
     }
 
-    /// <summary>«_ÀI¤¤ªº±qªÌ¹êÅé</summary>
+    /// <summary>ï¿½_ï¿½Iï¿½ï¿½ï¿½ï¿½ï¿½qï¿½Ì¹ï¿½ï¿½ï¿½</summary>
     public class HgwTowerServantInstance
     {
         public int CollectionNo { get; set; }
@@ -147,7 +148,7 @@ namespace MusicBot2.Models
         public int Attack { get; set; }
         public int Defense { get; set; }
 
-        public int NpCharge { get; set; } = 0; // NP ­p¶q¡G0 - 100
+        public int NpCharge { get; set; } = 0; // NP ï¿½pï¿½qï¿½G0 - 100
         public string NpName { get; set; }
         public string NpRuby { get; set; }
         public string NpCard { get; set; }
@@ -156,13 +157,13 @@ namespace MusicBot2.Models
         public string NpEffect { get; set; }
         public string NpIconUrl { get; set; }
 
-        public List<string> Cards { get; set; } = new(); // 5±i«ü¥O¥d
+        public List<string> Cards { get; set; } = new(); // 5ï¿½iï¿½ï¿½ï¿½Oï¿½d
         public string FaceUrl { get; set; }
         public string FullImageUrl { get; set; }
         public List<HgwSkillData> Skills { get; set; } = new();
         public HashSet<int> UsedSkillIndexes { get; set; } = new();
 
-        // ¥»¦¸«_ÀI¼W¯q (Buffs)
+        // ï¿½ï¿½ï¿½ï¿½ï¿½_ï¿½Iï¿½Wï¿½q (Buffs)
         public int BonusAtk { get; set; } = 0;
         public int BonusDef { get; set; } = 0;
         public int BonusHp { get; set; } = 0;
@@ -202,7 +203,7 @@ namespace MusicBot2.Models
         public bool CanUseNp => NpCharge >= 100;
     }
 
-    /// <summary>¾D¹JÃþ«¬</summary>
+    /// <summary>ï¿½Dï¿½Jï¿½ï¿½ï¿½ï¿½</summary>
     public enum EncounterType
     {
         NormalBattle,
@@ -214,18 +215,18 @@ namespace MusicBot2.Models
         Event
     }
 
-    /// <summary>·í«e¾D¹J</summary>
+    /// <summary>ï¿½ï¿½ï¿½eï¿½Dï¿½J</summary>
     public class HgwTowerEncounter
     {
         public EncounterType Type { get; set; }
         public List<HgwTowerEnemy> Enemies { get; set; } = new();
         public int TurnCount { get; set; } = 1;
         
-        // FGO «ü¥O¥d¾Ô°«±MÄÝª¬ºA
-        public int CritStars { get; set; } = 0; // ¤W¦^¦X²Ö¿nªº¼ÉÀ»¬P
+        // FGO ï¿½ï¿½ï¿½Oï¿½dï¿½Ô°ï¿½ï¿½Mï¿½Ýªï¿½ï¿½A
+        public int CritStars { get; set; } = 0; // ï¿½Wï¿½^ï¿½Xï¿½Ö¿nï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½P
 
-        public List<HgwCardPlay> HandCards { get; set; } = new(); // ·í«e©âµP¤âµP (5±i)
-        public List<HgwCardPlay> SelectedCards { get; set; } = new(); // ª±®a¤w¿ï¤¤±ý¥X¤âªºµP
+        public List<HgwCardPlay> HandCards { get; set; } = new(); // ï¿½ï¿½ï¿½eï¿½ï¿½Pï¿½ï¿½P (5ï¿½i)
+        public List<HgwCardPlay> SelectedCards { get; set; } = new(); // ï¿½ï¿½ï¿½aï¿½wï¿½ï¤¤ï¿½ï¿½ï¿½Xï¿½âªºï¿½P
         public List<HgwBattleSkillOption> AvailableSkills { get; set; } = new();
 
         public List<string> BattleLog { get; set; } = new();
@@ -234,11 +235,11 @@ namespace MusicBot2.Models
         public bool AllEnemiesDead() => Enemies.TrueForAll(e => !e.IsAlive);
     }
 
-    /// <summary>¼Ä¹ïNPC©Çª«¼Æ­È</summary>
+    /// <summary>ï¿½Ä¹ï¿½NPCï¿½Çªï¿½ï¿½Æ­ï¿½</summary>
     public class HgwTowerEnemy
     {
         public string Name { get; set; }
-        public string ClassName { get; set; } // FGO ­^ÆFÂ¾¶¥
+        public string ClassName { get; set; } // FGO ï¿½^ï¿½FÂ¾ï¿½ï¿½
         public int CurrentHp { get; set; }
         public int MaxHp { get; set; }
         public int Attack { get; set; }
@@ -250,14 +251,14 @@ namespace MusicBot2.Models
         public bool IsAlive => CurrentHp > 0;
     }
 
-    /// <summary>FGO «ü¥O¥d¥´¥X¦æ¬°</summary>
+    /// <summary>FGO ï¿½ï¿½ï¿½Oï¿½dï¿½ï¿½ï¿½Xï¿½æ¬°</summary>
     public class HgwCardPlay
     {
-        public int ServantIndex { get; set; } // ¶¤¤Í¯Á¤Þ¡G0, 1, 2
+        public int ServantIndex { get; set; } // ï¿½ï¿½ï¿½Í¯ï¿½ï¿½Þ¡G0, 1, 2
         public string ServantName { get; set; }
         public string CardType { get; set; } // "buster", "arts", "quick", "np"
-        public int CardIndex { get; set; } // ¦b¤âµP (0~4) ¤¤ªº index¡A¦pªG¬OÄ_¨ã¥d«h¬° -1
-        public int CritChance { get; set; } = 0; // ¼ÉÀ»¾÷²v (0 - 100)
+        public int CardIndex { get; set; } // ï¿½bï¿½ï¿½P (0~4) ï¿½ï¿½ï¿½ï¿½ indexï¿½Aï¿½pï¿½Gï¿½Oï¿½_ï¿½ï¿½dï¿½hï¿½ï¿½ -1
+        public int CritChance { get; set; } = 0; // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½v (0 - 100)
     }
 
     public class HgwSkillData
@@ -298,7 +299,7 @@ namespace MusicBot2.Models
         public string ImageUrl { get; set; }
     }
 
-    /// <summary>¿òª«¡]¥Ã¤[¼W¯q¡^</summary>
+    /// <summary>ï¿½òª«¡]ï¿½Ã¤[ï¿½Wï¿½qï¿½^</summary>
     public class HgwTowerRelic
     {
         public string Id { get; set; }
@@ -317,7 +318,7 @@ namespace MusicBot2.Models
         Legendary
     }
 
-    /// <summary>¼Ó¼h¼úÀy</summary>
+    /// <summary>ï¿½Ó¼hï¿½ï¿½ï¿½y</summary>
     public class HgwFloorReward
     {
         public int Gold { get; set; }
@@ -326,16 +327,16 @@ namespace MusicBot2.Models
         public List<HgwTowerRelic> Relics { get; set; } = new();
     }
 
-    /// <summary>¥Ã¤[¤É¯Å¶µ¥Ø</summary>
+    /// <summary>ï¿½Ã¤[ï¿½É¯Å¶ï¿½ï¿½ï¿½</summary>
     public static class PermanentUpgrades
     {
-        public const string MAX_TEAM_SIZE = "max_team_size";      // ³Ì¤j¶¤¥î¤H¼Æ (Àq»{3)
-        public const string STARTING_GOLD = "starting_gold";      // °_©lª÷¹ô
-        public const string NP_GAIN = "np_gain";                  // NP ÃB¥~Àò±o¦Ê¤À¤ñ
-        public const string HP_BOOST = "hp_boost";                // °_¦æ¦å¶qÃB¥~¥[¦¨
+        public const string MAX_TEAM_SIZE = "max_team_size";      // ï¿½Ì¤jï¿½ï¿½ï¿½ï¿½Hï¿½ï¿½ (ï¿½qï¿½{3)
+        public const string STARTING_GOLD = "starting_gold";      // ï¿½_ï¿½lï¿½ï¿½ï¿½ï¿½
+        public const string NP_GAIN = "np_gain";                  // NP ï¿½Bï¿½~ï¿½ï¿½oï¿½Ê¤ï¿½ï¿½ï¿½
+        public const string HP_BOOST = "hp_boost";                // ï¿½_ï¿½ï¿½ï¿½qï¿½Bï¿½~ï¿½[ï¿½ï¿½
     }
 
-    /// <summary>°Ó©±ª««~</summary>
+    /// <summary>ï¿½Ó©ï¿½ï¿½ï¿½ï¿½~</summary>
     public class HgwShopItem
     {
         public string Id { get; set; }
@@ -353,7 +354,7 @@ namespace MusicBot2.Models
         UpgradeServant
     }
 
-    /// <summary>Â¾¶¥¬Û«gÃö«Y</summary>
+    /// <summary>Â¾ï¿½ï¿½ï¿½Û«gï¿½ï¿½ï¿½Y</summary>
     public static class ClassAdvantage
     {
         private static readonly Dictionary<string, List<string>> _advantages = new()
