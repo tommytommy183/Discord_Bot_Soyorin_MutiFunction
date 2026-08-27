@@ -1423,7 +1423,7 @@ public class Program
 
     #region MSreceive
     private static readonly System.Text.RegularExpressions.Regex _launchTagRegex =
-        new(@"\[LAUNCH:(.+?)\]", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        new(@"\[LAUNCH[：:]\s*(.+?)\]", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
     private static string BuildUserMessageWithVision(string userText, List<string> descParts)
     {
