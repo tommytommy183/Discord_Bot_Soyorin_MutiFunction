@@ -1560,7 +1560,7 @@ public class Program
                 return;
             }
 
-            if (feature.StartsWith("抓寶可夢:"))
+            if (feature.StartsWith("抓寶可夢"))
             {
                 var svc = _services.GetRequiredService<PokeGameService>();
                 var (embed, comp) = await svc.CatchPokemonAsync(userId, talker?.DisplayName ?? talker?.Username ?? "訓練師");
