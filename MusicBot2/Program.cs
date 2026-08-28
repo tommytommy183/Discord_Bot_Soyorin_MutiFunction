@@ -57,7 +57,9 @@ public class Program
     public bool IsTtsEnabled => _isTtsEnabled;
     public void ToggleTts() => _isTtsEnabled = !_isTtsEnabled;
     private List<ulong> passBotList = new List<ulong>
-    {   //1499768328586002473, //魚骨頭
+    {   1499768328586002473, //魚骨頭
+        1531250143435948062,
+        1536702526156443748,
         1286491383426711563, //soyo自己的，這樣才能讀到之前的訊息
     }; // 這裡放置要排除的 Bot ID
     #endregion
@@ -1644,7 +1646,8 @@ public class Program
 
     public async Task MessageReceivedHandler(SocketMessage message)
     {
-        bool ispassBot = passBotList.Contains(message.Author.Id);
+        //bool ispassBot = passBotList.Contains(message.Author.Id);
+        bool ispassBot = false;
         // 忽略非使用者訊息或機器人訊息（除非在 passBotList 中）還有自己
         if (message is not SocketUserMessage userMessage || (message.Author.IsBot && !ispassBot) || message.Author.Id == _client.CurrentUser.Id) return;
 
