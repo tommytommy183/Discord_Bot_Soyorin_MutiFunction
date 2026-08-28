@@ -478,6 +478,19 @@ namespace MusicBot2.SlahCommands
             await FollowupAsync($"已清除 Soyo 的記憶與對話摘要 ({channelKey ?? "全部頻道"})");
         }
 
+        [SlashCommand("soyo清除遊戲記憶", "強制結束 Soyo 正在進行的遊戲短期記憶")]
+        public async Task ClearSoyoGameState(
+            [Summary("頻道", "要清除的頻道（留空 = 當前頻道）")] string channelKey = null)
+        {
+            channelKey ??= Context.Channel.Id.ToString();
+            var state = _openRouterService.GetGameState(channelKey);
+            await _openRouterService.ClearGameStateAsync(channelKey);
+            if (state != null)
+                await RespondAsync($"✅ 已清除遊戲記憶（{state.GameType}：{state.Secret}）", ephemeral: true);
+            else
+                await RespondAsync("目前沒有進行中的遊戲記憶。", ephemeral: true);
+        }
+
         [SlashCommand("soyo對話摘要", "查看目前整理出來的對話摘要")]
         public async Task GetSoyoSummary()
         {

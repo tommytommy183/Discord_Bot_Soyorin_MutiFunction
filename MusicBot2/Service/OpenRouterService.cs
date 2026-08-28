@@ -40,12 +40,103 @@ namespace MusicBot2.Service
         private readonly bool _useRedis;
         private const string HISTORIES_REDIS_KEY = "chat:all_histories";
         private const string SUMMARIES_REDIS_KEY = "chat:all_summaries";
+        private const string GAME_REDIS_PREFIX    = "soyo:game:";
 
         // 以「頻道」為單位分開存對話
         private Dictionary<string, List<ConversationMessage>> _channelHistories = new();
         private Dictionary<string, string> _channelSummaries = new();
         private readonly SemaphoreSlim _saveLock = new(1, 1);
         private readonly HashSet<string> _summarizingChannels = new();
+
+        // ── 遊戲短期記憶（海龜湯 / 猜角色 / 卡片決鬥 …）────────────────
+        private readonly Dictionary<string, SoyoGameState> _gameStates = new();
+
+        public record SoyoGameState(string GameType, string Secret, DateTime StartedAt);
+
+        public async Task SetGameStateAsync(string channelKey, string gameType, string secret)
+        {
+            var state = new SoyoGameState(gameType, secret, DateTime.UtcNow);
+            _gameStates[channelKey] = state;
+            if (_useRedis)
+            {
+                var json = System.Text.Json.JsonSerializer.Serialize(new { gameType, secret, startedAt = state.StartedAt });
+                await _redisDb.StringSetAsync(GAME_REDIS_PREFIX + channelKey, json,
+                    expiry: TimeSpan.FromHours(3));
+            }
+            Console.WriteLine($"[Game] {channelKey} 遊戲開始：{gameType} | 答案：{secret}");
+        }
+
+        public async Task ClearGameStateAsync(string channelKey)
+        {
+            _gameStates.Remove(channelKey);
+            if (_useRedis) await _redisDb.KeyDeleteAsync(GAME_REDIS_PREFIX + channelKey);
+            Console.WriteLine($"[Game] {channelKey} 遊戲結束，短期記憶已清除");
+        }
+
+        /// <summary>
+        /// 解析 AI 回覆中的遊戲標籤，執行對應動作後回傳已剝除標籤的乾淨文字。
+        /// [GAME_START|類型|答案]  → SetGameStateAsync
+        /// [GAME_END]              → ClearGameStateAsync
+        /// </summary>
+        private async Task<string> ParseAndHandleGameTagsAsync(string text, string channelKey)
+        {
+            if (string.IsNullOrEmpty(text)) return text;
+
+            // GAME_END 優先（結束比開始更常出現在最後一行）
+            var endIdx = text.LastIndexOf("[GAME_END]", StringComparison.Ordinal);
+            if (endIdx >= 0)
+            {
+                text = text.Remove(endIdx, "[GAME_END]".Length).Trim();
+                await ClearGameStateAsync(channelKey);
+                return text;
+            }
+
+            // GAME_START|type|secret
+            var startIdx = text.LastIndexOf("[GAME_START|", StringComparison.Ordinal);
+            if (startIdx >= 0)
+            {
+                var closeIdx = text.IndexOf(']', startIdx);
+                if (closeIdx > startIdx)
+                {
+                    var tag = text.Substring(startIdx, closeIdx - startIdx + 1);
+                    var inner = tag[1..^1]; // 去掉 [ ]
+                    var parts = inner.Split('|');
+                    if (parts.Length >= 3)
+                    {
+                        var gameType = parts[1].Trim();
+                        var secret   = string.Join("|", parts[2..]); // 答案本身可能含 |
+                        await SetGameStateAsync(channelKey, gameType, secret);
+                    }
+                    text = text.Remove(startIdx, tag.Length).Trim();
+                }
+            }
+
+            return text;
+        }
+
+        public SoyoGameState GetGameState(string channelKey)
+        {
+            if (_gameStates.TryGetValue(channelKey, out var state)) return state;
+            if (_useRedis)
+            {
+                var json = _redisDb.StringGet(GAME_REDIS_PREFIX + channelKey);
+                if (!json.IsNull)
+                {
+                    try
+                    {
+                        var doc = System.Text.Json.JsonDocument.Parse(json.ToString());
+                        var gt = doc.RootElement.GetProperty("gameType").GetString();
+                        var sc = doc.RootElement.GetProperty("secret").GetString();
+                        var sa = doc.RootElement.GetProperty("startedAt").GetDateTime();
+                        state = new SoyoGameState(gt, sc, sa);
+                        _gameStates[channelKey] = state;
+                        return state;
+                    }
+                    catch { }
+                }
+            }
+            return null;
+        }
 
         // ── Google AI Studio 後端 ──────────────────────────────────────────
         private readonly string[] _googleApiKeys;   // 最多 3 個 key，輪流使用
@@ -262,7 +353,14 @@ namespace MusicBot2.Service
 16. 嚴格禁止把 A 說的話歸咎給 B、或把 A 做的事說成是 B 做的。誰說了什麼，就是那個人說的。
 17. 如果某則訊息不是在叫你（沒有 soyo / 爽世），你不一定要回應；如果決定回，只針對叫你的那個人回就好，不要順便攻擊其他人。
 18. 你的每次回覆只需要處理「最後一則叫你的訊息」，不要把歷史對話裡其他人的八卦全部夾帶進來評論。
-20. 關於寶可夢功能：你是「裁判兼助手」，你幫大家配對、呼叫功能、派出別人的寶可夢，但你自己不會下場對戰、不會派出「自己的」寶可夢。當有人說「派出你的寶可夢」、「你要用什麼寶可夢」之類的話，婉拒說你不下場，只負責幫忙，然後問他們想派誰或想和誰對戰。";
+20. 關於寶可夢功能：你是「裁判兼助手」，你幫大家配對、呼叫功能、派出別人的寶可夢，但你自己不會下場對戰、不會派出「自己的」寶可夢。當有人說「派出你的寶可夢」、「你要用什麼寶可夢」之類的話，婉拒說你不下場，只負責幫忙，然後問他們想派誰或想和誰對戰。
+21. 【遊戲短期記憶標籤】當你發起一個需要「記住答案或題目」的遊戲（如海龜湯、猜角色、猜物品等），請在你的回覆「最後一行」加上這個標籤（玩家看不見）：
+    [GAME_START|遊戲類型|你的答案或題目]
+    例如：[GAME_START|海龜湯|男人在餐廳點了海龜湯，吃了一口後回家自殺了]
+    例如：[GAME_START|猜角色|長崎爽世]
+    當遊戲結束（猜對、你宣布答案、或玩家放棄），在你那則回覆「最後一行」加上：
+    [GAME_END]
+    這兩個標籤都不會顯示給玩家看，只是讓你下一次回覆時能記住自己出的題目。不需要每次都加，只有在「開始新遊戲」或「結束遊戲」時才加。";
 
         private const string TtsEmotionAddon = @"
 
@@ -836,6 +934,12 @@ namespace MusicBot2.Service
             var systemPrompt = string.IsNullOrEmpty(summary)
                 ? basePersona
                 : basePersona + $"\n\n[過去對話摘要]\n{summary}";
+
+            // 注入遊戲短期記憶（如果有進行中的遊戲）
+            var gameState = GetGameState(channelKey);
+            if (gameState != null)
+                systemPrompt += $"\n\n[遊戲短期記憶 - 目前進行中]\n遊戲類型：{gameState.GameType}\n你出的題目／答案：{gameState.Secret}\n（這是你自己設定的，玩家還不知道答案，請牢記並根據它回應猜測）";
+
             if (searchContext != null)
                 systemPrompt += $"\n\n{searchContext}";
 
@@ -975,6 +1079,10 @@ namespace MusicBot2.Service
 
                         text = CleanResponse(text);
                         text = CommonHelper.SwitchSoyoPic(text);
+
+                        // ── 遊戲標籤解析（在存記憶前剝掉，不讓玩家看到）────
+                        text = await ParseAndHandleGameTagsAsync(text, channelKey);
+
                         if (saveToMemory)
                         {
                             var history = GetHistory(channelKey);
