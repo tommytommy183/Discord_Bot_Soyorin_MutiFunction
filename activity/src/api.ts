@@ -1,5 +1,7 @@
 import type { TowerRun, ActionRequest, ApiResponse } from './types';
 
+// Discord Activity proxy 會把 /api 前綴剝掉後轉發給 Northflank
+// 所以前端用 /api/...，Northflank 端路由用 /...（不含 /api）
 async function call<T>(path: string, method = 'GET', body?: unknown): Promise<ApiResponse<T>> {
   try {
     const res = await fetch(path, {
@@ -23,8 +25,8 @@ export interface StartRunRequest {
 }
 
 export const api = {
-  getRun:      (channelId: string) => call<TowerRun>(`/api/tower/run/${channelId}`),
-  getPokemons: (userId: string)    => call<PokeListItem[]>(`/api/tower/pokemon/${userId}`),
-  startRun:    (req: StartRunRequest) => call<TowerRun>('/api/tower/start', 'POST', req),
-  action:      (req: ActionRequest)   => call<TowerRun>('/api/tower/action', 'POST', req),
+  getRun:      (channelId: string)       => call<TowerRun>(`/api/tower/run/${channelId}`),
+  getPokemons: (userId: string)          => call<PokeListItem[]>(`/api/tower/pokemon/${userId}`),
+  startRun:    (req: StartRunRequest)    => call<TowerRun>('/api/tower/start', 'POST', req),
+  action:      (req: ActionRequest)      => call<TowerRun>('/api/tower/action', 'POST', req),
 };

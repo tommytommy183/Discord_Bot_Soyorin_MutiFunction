@@ -37,7 +37,7 @@ public static class TowerApiRoutes
     {
         // ── GET /api/auth/session/{token} ─────────────────────────────
         // 前端用這個換使用者資訊（取代 Discord OAuth）
-        app.MapGet("/api/auth/session/{token}", (string token) =>
+        app.MapGet("/auth/session/{token}", (string token) =>
         {
             if (!_sessions.TryRemove(token, out var info))
                 return Results.Json(new { error = "token 無效或已過期" }, _json, statusCode: 401);
@@ -48,7 +48,7 @@ public static class TowerApiRoutes
         });
 
         // ── GET /api/tower/run/{channelId} ─────────────────────────────
-        app.MapGet("/api/tower/run/{channelId}", (string channelId, PokeTowerService svc) =>
+        app.MapGet("/tower/run/{channelId}", (string channelId, PokeTowerService svc) =>
         {
             if (!ulong.TryParse(channelId, out var cid))
                 return Results.BadRequest("invalid channelId");
@@ -59,7 +59,7 @@ public static class TowerApiRoutes
         });
 
         // ── GET /api/tower/pokemon/{userId} ────────────────────────────
-        app.MapGet("/api/tower/pokemon/{userId}", async (string userId, PokeGameService pokeSvc) =>
+        app.MapGet("/tower/pokemon/{userId}", async (string userId, PokeGameService pokeSvc) =>
         {
             if (!ulong.TryParse(userId, out var uid))
                 return Results.BadRequest("invalid userId");
@@ -83,7 +83,7 @@ public static class TowerApiRoutes
         });
 
         // ── POST /api/tower/start ──────────────────────────────────────
-        app.MapPost("/api/tower/start", async (HttpContext ctx, PokeTowerService towerSvc, PokeGameService pokeSvc) =>
+        app.MapPost("/tower/start", async (HttpContext ctx, PokeTowerService towerSvc, PokeGameService pokeSvc) =>
         {
             var req = await ReadJson<StartRequest>(ctx);
             if (req == null
@@ -107,7 +107,7 @@ public static class TowerApiRoutes
         });
 
         // ── POST /api/tower/action ─────────────────────────────────────
-        app.MapPost("/api/tower/action", async (HttpContext ctx, PokeTowerService svc) =>
+        app.MapPost("/tower/action", async (HttpContext ctx, PokeTowerService svc) =>
         {
             var req = await ReadJson<ActionRequest>(ctx);
             if (req == null || !ulong.TryParse(req.ChannelId, out var cid))

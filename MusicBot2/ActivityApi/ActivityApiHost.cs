@@ -27,7 +27,7 @@ public static class ActivityApiHost
         app.UseCors();
 
         // ── /api/auth/token  （Discord OAuth code → access_token） ────
-        app.MapPost("/api/auth/token", async (HttpContext ctx) =>
+        app.MapPost("/auth/token", async (HttpContext ctx) =>
         {
             using var reader = new StreamReader(ctx.Request.Body);
             var body = await reader.ReadToEndAsync();

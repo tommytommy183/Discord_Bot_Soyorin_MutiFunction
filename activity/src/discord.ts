@@ -22,7 +22,7 @@ export async function initDiscord(): Promise<{ user: DiscordUser; channelId: str
     scope: ['identify'],
   });
 
-  const res = await fetch('/api/auth/token', {
+  const res = await fetch('/api/auth/token', {  // proxy strips /api → /auth/token on Northflank
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ code }),
