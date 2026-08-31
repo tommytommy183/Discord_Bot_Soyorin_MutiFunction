@@ -822,13 +822,15 @@ namespace MusicBot2.SlahCommands
                 {
                     using var http = new System.Net.Http.HttpClient();
                     var json = "{\"type\":12}";
-                    await http.PostAsync(
+                    var resp = await http.PostAsync(
                         $"https://discord.com/api/v10/interactions/{interactionId}/{interactionToken}/callback",
                         new System.Net.Http.StringContent(json, System.Text.Encoding.UTF8, "application/json"));
+                    var body = await resp.Content.ReadAsStringAsync();
+                    Console.WriteLine($"[PokeTower] LAUNCH_ACTIVITY status={resp.StatusCode} body={body}");
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"[PokeTower] LAUNCH_ACTIVITY failed: {ex.Message}");
+                    Console.WriteLine($"[PokeTower] LAUNCH_ACTIVITY exception: {ex.Message}");
                 }
             });
         }
