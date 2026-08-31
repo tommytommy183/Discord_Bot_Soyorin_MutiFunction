@@ -809,27 +809,19 @@ namespace MusicBot2.SlahCommands
             await FollowupAsync(embed: embed, components: component.Build());
         }
 
-        [SlashCommand("pokemon爬塔", "用你的Pokemon挑戰爬塔（網頁遊戲介面）")]
+        [SlashCommand("pokemon爬塔", "用你的Pokemon挑戰爬塔")]
         public async Task PokeTowerAsync()
         {
-            await DeferAsync(ephemeral: true);
-
-            var clientId  = Environment.GetEnvironmentVariable("DISCORD_CLIENT_ID") ?? "";
-            var webUrl    = Environment.GetEnvironmentVariable("POKE_TOWER_WEB_URL") ?? "https://poketower-activity.pages.dev";
-            var redirectUri = Uri.EscapeDataString(webUrl);
-            var channelId = Context.Channel.Id;
-            var oauthUrl  = $"https://discord.com/oauth2/authorize?client_id={clientId}&redirect_uri={redirectUri}&response_type=code&scope=identify&state={channelId}";
-
-            var embed = new EmbedBuilder()
-                .WithTitle("🗼 Pokemon 爬塔")
-                .WithDescription("點下方按鈕，用 Discord 登入後在網頁中選擇 Pokemon 開始挑戰！")
-                .WithColor(new Color(0x5865F2))
-                .Build();
-            var component = new ComponentBuilder()
-                .WithButton("▶️ 開始遊戲", style: ButtonStyle.Link, url: oauthUrl, emote: new Emoji("🎮"))
-                .Build();
-
-            await FollowupAsync(embed: embed, components: component, ephemeral: true);
+            // LAUNCH_ACTIVITY (Discord interaction response type 12)
+            // 直接在 Discord 內開啟 Activity，不需要點按鈕、不需要進語音頻道
+            var token = Context.Interaction.Token;
+            var appId = Context.Client.CurrentUser.Id;
+            using var http = new System.Net.Http.HttpClient();
+            http.DefaultRequestHeaders.Add("Authorization", $"Bot {Environment.GetEnvironmentVariable("Discord__Token") ?? Environment.GetEnvironmentVariable("DISCORD_TOKEN")}");
+            var payload = new System.Text.Json.JsonObject { ["type"] = 12 };
+            await http.PostAsync(
+                $"https://discord.com/api/v10/interactions/{Context.Interaction.Id}/{token}/callback",
+                new System.Net.Http.StringContent(payload.ToJsonString(), System.Text.Encoding.UTF8, "application/json"));
         }
 
         [SlashCommand("爬塔狀態", "把目前爬塔的操作介面重新發到最下方（找不到按鈕時使用）")]
