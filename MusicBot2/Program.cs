@@ -1263,16 +1263,18 @@ public class Program
                         int pi = int.Parse(rest[(under + 1)..]);
                         (tEmbed, tCb) = await towerSvc.HandlePassiveChoiceAsync(ch, pi);
 
-                        // 遊戲開始後，額外送出 Web App 連結
+                        // 遊戲開始後，發 Discord OAuth URL → Discord 會以 overlay 彈窗開啟
+                        var discordClientId = Environment.GetEnvironmentVariable("DISCORD_CLIENT_ID") ?? "";
                         var webUrl = Environment.GetEnvironmentVariable("POKE_TOWER_WEB_URL") ?? "https://poketower-activity.pages.dev";
-                        var gameUrl = $"{webUrl}?channel={ch}";
+                        var redirectUri = Uri.EscapeDataString(webUrl);
+                        var oauthUrl = $"https://discord.com/oauth2/authorize?client_id={discordClientId}&redirect_uri={redirectUri}&response_type=code&scope=identify&state={ch}";
                         var linkEmbed = new EmbedBuilder()
-                            .WithTitle("🗼 Pokemon 爬塔 — Web 遊戲介面")
-                            .WithDescription($"點下方按鈕在瀏覽器中操作爬塔，更直觀！\n（也可以繼續在 Discord 用按鈕操作）")
+                            .WithTitle("🗼 Pokemon 爬塔 — 開始遊戲")
+                            .WithDescription("點下方按鈕進入網頁遊戲介面！")
                             .WithColor(new Color(0x5865F2))
                             .Build();
                         var linkCb = new ComponentBuilder()
-                            .WithButton("▶️ 在瀏覽器中開始遊戲", style: ButtonStyle.Link, url: gameUrl, emote: new Emoji("🌐"))
+                            .WithButton("▶️ 開始遊戲", style: ButtonStyle.Link, url: oauthUrl, emote: new Emoji("🎮"))
                             .Build();
                         await component.Channel.SendMessageAsync(embed: linkEmbed, components: linkCb);
                     }
