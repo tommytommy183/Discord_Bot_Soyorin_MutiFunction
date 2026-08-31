@@ -184,6 +184,10 @@ public class Program
 
         _ = SetBotStatusAsync(_client);
 
+        // ── Activity HTTP API（供 Discord Embedded Activity 前端呼叫）──
+        int activityApiPort = int.TryParse(Environment.GetEnvironmentVariable("ACTIVITY_API_PORT"), out var p) ? p : 5000;
+        _ = MusicBot2.ActivityApi.ActivityApiHost.StartAsync(_services, activityApiPort);
+
         await _client.LoginAsync(TokenType.Bot, token);
         await _client.StartAsync();
         await Task.Delay(-1);

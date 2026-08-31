@@ -1652,6 +1652,196 @@ namespace MusicBot2.Service
         public bool HasActiveRun(ulong channelId) => _activeRuns.ContainsKey(channelId);
         public TowerRun GetRun(ulong channelId) => _activeRuns.TryGetValue(channelId, out var r) ? r : null;
 
+        // ── Activity API 專用 ─────────────────────────────────────────
+
+        /// <summary>回傳前端友善的遊戲狀態 DTO（JSON serializable）</summary>
+        public object GetFrontendState(ulong channelId)
+        {
+            var run = GetRun(channelId);
+            if (run == null) return null;
+
+            var pathOpts = run.CurrentPaths.Select(p => BuildPathOption(p, channelId)).ToList();
+            var battleLogLines = (run.CurrentBattleLog ?? "")
+                .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                .ToList();
+
+            return new
+            {
+                channelId    = channelId.ToString(),
+                playerId     = run.PlayerId.ToString(),
+                playerName   = run.PlayerName,
+                currentFloor = run.CurrentFloor,
+                maxFloor     = run.MaxFloor,
+                gold         = run.Gold,
+                state        = run.State.ToString(),
+                team         = run.Party.Select(p => new
+                {
+                    pokeId        = p.PokeId,
+                    name          = p.Name,
+                    customName    = p.CustomName,
+                    displayName   = p.DisplayName,
+                    types         = p.Types,
+                    maxHP         = p.MaxHP,
+                    currentHP     = p.CurrentHP,
+                    attack        = p.Attack,
+                    defense       = p.Defense,
+                    specialAttack = p.SpecialAttack,
+                    specialDefense= p.SpecialDefense,
+                    speed         = p.Speed,
+                    moves         = p.Moves,
+                    isShiny       = p.IsShiny,
+                    imageUrl      = p.ImageUrl,
+                    backImageUrl  = p.BackImageUrl,
+                    battleStatus  = p.BattleStatus,
+                    atkStage      = p.AtkStage,
+                    defStage      = p.DefStage,
+                    spdStage      = p.SpdStage,
+                    spAtkStage    = p.SpAtkStage,
+                    spDefStage    = p.SpDefStage,
+                }).ToList(),
+                activeIndex = run.ActivePokemonIndex,
+                currentEnemy = run.CurrentEnemy == null ? null : new
+                {
+                    name          = run.CurrentEnemy.Name,
+                    pokeId        = run.CurrentEnemy.PokeId,
+                    types         = run.CurrentEnemy.Types,
+                    maxHP         = run.CurrentEnemy.MaxHP,
+                    currentHP     = run.CurrentEnemy.CurrentHP,
+                    attack        = run.CurrentEnemy.Attack,
+                    defense       = run.CurrentEnemy.Defense,
+                    specialAttack = run.CurrentEnemy.SpecialAttack,
+                    specialDefense= run.CurrentEnemy.SpecialDefense,
+                    speed         = run.CurrentEnemy.Speed,
+                    moves         = run.CurrentEnemy.Moves,
+                    isBoss        = run.CurrentEnemy.IsBoss,
+                    goldReward    = run.CurrentEnemy.GoldReward,
+                    imageUrl      = $"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/{run.CurrentEnemy.PokeId}.png",
+                    battleStatus  = run.CurrentEnemy.BattleStatus,
+                    atkStage      = run.CurrentEnemy.AtkStage,
+                    defStage      = run.CurrentEnemy.DefStage,
+                    spdStage      = run.CurrentEnemy.SpdStage,
+                    spAtkStage    = run.CurrentEnemy.SpAtkStage,
+                    spDefStage    = run.CurrentEnemy.SpDefStage,
+                },
+                runLog     = run.RunLog,
+                pathOptions = pathOpts,
+                battleLog  = battleLogLines,
+                relicIds   = run.RelicIds,
+                cursedRelicIds = run.CursedRelicIds,
+            };
+        }
+
+        private static readonly Dictionary<string, (string label, string emoji)> _pathLabels = new()
+        {
+            ["battle"]         = ("戰鬥", "⚔️"),
+            ["rest"]           = ("休息", "🏕️"),
+            ["shop"]           = ("商店", "🛍️"),
+            ["event"]          = ("隨機事件", "🎉"),
+            ["casino"]         = ("賭場", "🎰"),
+            ["cursed_relic"]   = ("詛咒遺物", "💀"),
+        };
+
+        private static object BuildPathOption(string customId, ulong channelId)
+        {
+            // customId 格式：tower_path_{channelId}_{choice}
+            var prefix = $"tower_path_{channelId}_";
+            var choice = customId.StartsWith(prefix) ? customId[prefix.Length..] : customId;
+            var (label, emoji) = _pathLabels.TryGetValue(choice, out var v) ? v : (choice, "🔮");
+            return new { customId, label, emoji, description = (string?)null };
+        }
+
+        /// <summary>Activity 前端動作路由（對應 Program.cs 的 tower_ 按鈕 handler）</summary>
+        public async Task<object> HandleApiActionAsync(ulong channelId, string customId)
+        {
+            if (customId.StartsWith("tower_path_"))
+            {
+                var afterPrefix = customId[$"tower_path_".Length..];
+                int sepIdx = afterPrefix.IndexOf('_');
+                if (sepIdx > 0)
+                {
+                    var ch = ulong.Parse(afterPrefix[..sepIdx]);
+                    var choice = afterPrefix[(sepIdx + 1)..];
+                    await HandlePathChoiceAsync(ch, choice);
+                }
+            }
+            else if (customId.StartsWith("tower_move_"))
+            {
+                var p = customId.Split('_');
+                if (p.Length >= 4 && ulong.TryParse(p[2], out var ch) && int.TryParse(p[3], out var mi))
+                    await HandleMoveAsync(ch, mi);
+            }
+            else if (customId.StartsWith("tower_shop_"))
+            {
+                var rest = customId[$"tower_shop_".Length..];
+                int under = rest.IndexOf('_');
+                if (under > 0 && ulong.TryParse(rest[..under], out var ch))
+                    await HandleShopItemAsync(ch, rest[(under + 1)..]);
+            }
+            else if (customId.StartsWith("tower_relic_"))
+            {
+                var rest = customId[$"tower_relic_".Length..];
+                int under = rest.LastIndexOf('_');
+                if (under > 0 && ulong.TryParse(rest[..under], out var ch) && int.TryParse(rest[(under + 1)..], out var ri))
+                    await HandleRelicChoiceAsync(ch, ri);
+            }
+            else if (customId.StartsWith("tower_event_"))
+            {
+                var p = customId.Split('_');
+                if (p.Length >= 4 && ulong.TryParse(p[2], out var ch) && int.TryParse(p[3], out var ei))
+                    await HandleEventChoiceAsync(ch, ei);
+            }
+            else if (customId.StartsWith("tower_casino_"))
+            {
+                var rest = customId[$"tower_casino_".Length..];
+                int under = rest.IndexOf('_');
+                if (under > 0 && ulong.TryParse(rest[..under], out var ch))
+                    await HandleCasinoAsync(ch, rest[(under + 1)..]);
+            }
+            else if (customId.StartsWith("tower_passive_"))
+            {
+                var p = customId.Split('_');
+                if (p.Length >= 4 && ulong.TryParse(p[2], out var ch) && int.TryParse(p[3], out var pi))
+                    await HandlePassiveChoiceAsync(ch, pi);
+            }
+            else if (customId.StartsWith("tower_cursed_"))
+            {
+                var p = customId.Split('_');
+                if (p.Length >= 4 && ulong.TryParse(p[2], out var ch) && int.TryParse(p[3], out var ci))
+                    await HandleCursedRelicChoiceAsync(ch, ci);
+            }
+            else if (customId.StartsWith("tower_movereward_"))
+            {
+                var p = customId.Split('_');
+                if (p.Length >= 4 && ulong.TryParse(p[2], out var ch) && int.TryParse(p[3], out var mi))
+                    await HandleMoveRewardAsync(ch, mi);
+            }
+            else if (customId.StartsWith("tower_moveslot_"))
+            {
+                var p = customId.Split('_');
+                if (p.Length >= 4 && ulong.TryParse(p[2], out var ch) && int.TryParse(p[3], out var mi))
+                    await HandleMoveSlotAsync(ch, mi);
+            }
+            else if (customId.StartsWith("tower_catch_"))
+            {
+                var p = customId.Split('_');
+                if (p.Length >= 4 && ulong.TryParse(p[2], out var ch))
+                    await HandleCatchAsync(ch, p[3]);
+            }
+            else if (customId.StartsWith("tower_catchswap_"))
+            {
+                var p = customId.Split('_');
+                if (p.Length >= 4 && ulong.TryParse(p[2], out var ch) && int.TryParse(p[3], out var si))
+                    await HandleCatchSwapAsync(ch, si);
+            }
+            else if (customId.StartsWith("tower_rest_continue_"))
+            {
+                if (ulong.TryParse(customId[$"tower_rest_continue_".Length..], out var ch))
+                    await HandleRestContinueAsync(ch);
+            }
+
+            return GetFrontendState(channelId);
+        }
+
         /// <summary>顯示 Pokemon 選擇畫面（最多顯示10隻）</summary>
         public (Embed embed, ComponentBuilder component) ShowPokemonSelection(
             ulong channelId, ulong playerId, string playerName, List<PokeGamePokemon> pokemons)
