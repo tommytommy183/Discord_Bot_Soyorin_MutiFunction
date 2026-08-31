@@ -27,6 +27,10 @@ export async function initDiscord(): Promise<{ user: DiscordUser; channelId: str
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ code }),
   });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`token exchange failed (${res.status}): ${err}`);
+  }
   const { access_token } = await res.json();
 
   await discordSdk.commands.authenticate({ access_token });
