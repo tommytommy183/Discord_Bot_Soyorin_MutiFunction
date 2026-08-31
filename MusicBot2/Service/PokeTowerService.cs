@@ -132,6 +132,16 @@ namespace MusicBot2.Service
             : null;
     }
 
+    // ── STS-style Map ──────────────────────────────────────────────────────
+    public class TowerMapNode
+    {
+        public string Id { get; set; }           // "f01n0", "f01n1", etc.
+        public int Floor { get; set; }           // 1..maxFloor
+        public string Type { get; set; }         // battle/boss/shop/rest/event/casino/cursed_relic
+        public List<string> NextIds { get; set; } = new();  // connected node IDs on next floor
+        public bool Visited { get; set; } = false;
+    }
+
     public class TowerRun
     {
         public ulong PlayerId { get; set; }
@@ -165,6 +175,12 @@ namespace MusicBot2.Service
         public int Exp { get; set; } = 0;
         public int ExpToNext => Level * 60;
         public List<string> CurrentPaths { get; set; } = new();
+        /// <summary>每層選擇的路徑（順序對應 floor 1, 2, 3…）</summary>
+        public List<string> FloorHistory { get; set; } = new();
+        /// <summary>STS 地圖節點清單（開局預先生成）</summary>
+        public List<TowerMapNode> MapNodes { get; set; } = new();
+        /// <summary>目前所在節點 ID</summary>
+        public string CurrentNodeId { get; set; } = "";
         public bool RestMoveRewardPending { get; set; } = false;
         public bool ShopMoveRewardPending { get; set; } = false;
         public bool EventMoveRewardPending { get; set; } = false;
@@ -1660,7 +1676,7 @@ namespace MusicBot2.Service
             var run = GetRun(channelId);
             if (run == null) return null;
 
-            var pathOpts = run.CurrentPaths.Select(p => BuildPathOption(p, channelId)).ToList();
+            var pathOpts = run.CurrentPaths.Select(p => BuildPathOption(p, channelId, run)).ToList();
             var battleLogLines = (run.CurrentBattleLog ?? "")
                 .Split('\n', StringSplitOptions.RemoveEmptyEntries)
                 .ToList();
@@ -1715,7 +1731,7 @@ namespace MusicBot2.Service
                     moves         = run.CurrentEnemy.Moves,
                     isBoss        = run.CurrentEnemy.IsBoss,
                     goldReward    = run.CurrentEnemy.GoldReward,
-                    imageUrl      = $"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/{run.CurrentEnemy.PokeId}.png",
+                    imageUrl      = $"/sprite/front/{run.CurrentEnemy.PokeId}",
                     battleStatus  = run.CurrentEnemy.BattleStatus,
                     atkStage      = run.CurrentEnemy.AtkStage,
                     defStage      = run.CurrentEnemy.DefStage,
@@ -1723,11 +1739,21 @@ namespace MusicBot2.Service
                     spAtkStage    = run.CurrentEnemy.SpAtkStage,
                     spDefStage    = run.CurrentEnemy.SpDefStage,
                 },
-                runLog     = run.RunLog,
-                pathOptions = pathOpts,
-                battleLog  = battleLogLines,
-                relicIds   = run.RelicIds,
+                runLog       = run.RunLog,
+                pathOptions  = pathOpts,
+                battleLog    = battleLogLines,
+                relicIds     = run.RelicIds,
                 cursedRelicIds = run.CursedRelicIds,
+                floorHistory  = run.FloorHistory,
+                currentNodeId = run.CurrentNodeId,
+                mapNodes      = run.MapNodes?.Select(n => new
+                {
+                    id      = n.Id,
+                    floor   = n.Floor,
+                    type    = n.Type,
+                    nextIds = n.NextIds,
+                    visited = n.Visited,
+                }).ToList(),
             };
         }
 
@@ -1741,13 +1767,27 @@ namespace MusicBot2.Service
             ["cursed_relic"]   = ("詛咒遺物", "💀"),
         };
 
-        private static object BuildPathOption(string customId, ulong channelId)
+        private static object BuildPathOption(string rawChoice, ulong channelId, TowerRun run = null)
         {
-            // customId 格式：tower_path_{channelId}_{choice}
-            var prefix = $"tower_path_{channelId}_";
-            var choice = customId.StartsWith(prefix) ? customId[prefix.Length..] : customId;
+            // rawChoice 可能是 nodeId "f03n1"、老格式 "battle" 或完整 "tower_path_{channelId}_{x}"
+            var mapNode = run?.MapNodes?.FirstOrDefault(n => n.Id == rawChoice);
+            string choice, fullId;
+
+            if (mapNode != null)
+            {
+                // STS 節點：以節點 ID 作為 customId 的 key，類型僅用於 label/emoji
+                choice = mapNode.Type == "boss" ? "boss" : mapNode.Type;
+                fullId = $"tower_path_{channelId}_{rawChoice}";
+            }
+            else
+            {
+                var prefix = $"tower_path_{channelId}_";
+                choice = rawChoice.StartsWith(prefix) ? rawChoice[prefix.Length..] : rawChoice;
+                fullId = rawChoice.StartsWith(prefix) ? rawChoice : $"tower_path_{channelId}_{rawChoice}";
+            }
+
             var (label, emoji) = _pathLabels.TryGetValue(choice, out var v) ? v : (choice, "🔮");
-            return new { customId, label, emoji, description = (string?)null };
+            return new { customId = fullId, label, emoji, description = (string?)null };
         }
 
         /// <summary>Activity 前端動作路由（對應 Program.cs 的 tower_ 按鈕 handler）</summary>
@@ -1951,6 +1991,10 @@ namespace MusicBot2.Service
                 blessingExtra = "🐷✨ **豬豬的祝福降臨！**\n全屬性 **+520**，放心玩，輸不了的！";
             }
 
+            // 預先生成 STS 地圖
+            run.MapNodes = GenerateStsMap(run.MaxFloor);
+            run.CurrentPaths = run.MapNodes.Where(n => n.Floor == 1).Select(n => n.Id).ToList();
+
             _activeRuns[channelId] = run;
             await SaveAsync(run);
             return BuildPathEmbed(run, blessingExtra);
@@ -2027,8 +2071,21 @@ namespace MusicBot2.Service
             if (!_activeRuns.TryGetValue(channelId, out var run))
                 return ErrEmbed("找不到進行中的爬塔");
 
+            // STS Map：若 choice 是節點 ID，解析後取得實際路線類型
+            var mapNode = run.MapNodes?.FirstOrDefault(n => n.Id == choice);
+            if (mapNode != null)
+            {
+                mapNode.Visited = true;
+                run.CurrentNodeId = mapNode.Id;
+                // 預先設好下一層可走節點（在清空前設定）
+                if (mapNode.NextIds?.Count > 0)
+                    run.CurrentPaths = mapNode.NextIds.ToList();
+                choice = mapNode.Type == "boss" ? "battle" : mapNode.Type;
+            }
+
+            run.FloorHistory.Add(choice);   // 記錄地圖歷史
             run.CurrentFloor++;
-            run.CurrentPaths = null;
+            if (mapNode == null) run.CurrentPaths = null;  // 舊模式才清空
             bool isBoss = run.CurrentFloor % 10 == 0;
 
             // curse_gold_tax: deduct 10 gold on floor entry
@@ -4271,6 +4328,72 @@ namespace MusicBot2.Service
 
         private string MovesDisplay(TowerPokemon p) =>
             string.Join(" | ", p.Moves.Select(m => $"{m.Emoji}{m.Name}({m.CurrentPP}/{m.MaxPP}PP)"));
+
+        // ── STS Map Generation ────────────────────────────────
+        private List<TowerMapNode> GenerateStsMap(int maxFloor)
+        {
+            var allNodes = new List<TowerMapNode>();
+            var floorLists = new List<List<TowerMapNode>>();
+
+            // Step 1: create nodes per floor
+            for (int f = 1; f <= maxFloor; f++)
+            {
+                var types = GenStsFloorTypes(f, maxFloor);
+                var floor = new List<TowerMapNode>();
+                for (int i = 0; i < types.Count; i++)
+                    floor.Add(new TowerMapNode { Id = $"f{f:D2}n{i}", Floor = f, Type = types[i] });
+                floorLists.Add(floor);
+                allNodes.AddRange(floor);
+            }
+
+            // Step 2: connect floors
+            for (int fi = 0; fi < floorLists.Count - 1; fi++)
+                ConnectStsFloors(floorLists[fi], floorLists[fi + 1]);
+
+            return allNodes;
+        }
+
+        private List<string> GenStsFloorTypes(int floor, int maxFloor)
+        {
+            if (floor % 10 == 0) return new() { "boss" };
+            if (floor == 9  || floor == 19) return new() { "shop", "rest" };
+            if (floor == 7  || floor == 17) return new() { "cursed_relic", "cursed_relic" };
+            if (floor == 1  || floor == 11) return new() { "battle", "battle", "battle" }; // 3 choices at start
+            var extras = new List<string> { "rest", "shop", "event", "casino", "relic" };
+            int count = _rng.Next(2, 4);   // 2 or 3 nodes
+            var pool = new List<string> { "battle" };
+            pool.AddRange(extras.OrderBy(_ => _rng.Next()).Take(count - 1));
+            return pool.OrderBy(_ => _rng.Next()).ToList();
+        }
+
+        private void ConnectStsFloors(List<TowerMapNode> curr, List<TowerMapNode> next)
+        {
+            int n = curr.Count, m = next.Count;
+
+            // Position-based connection: node i in curr can reach closest nodes in next
+            for (int i = 0; i < n; i++)
+            {
+                float t = n == 1 ? 0.5f : (float)i / (n - 1);
+                float mapped = t * (m - 1);
+                int lo = Math.Max(0, (int)Math.Floor(mapped - 0.6f));
+                int hi = Math.Min(m - 1, (int)Math.Ceiling(mapped + 0.6f));
+                // always at least 1 connection, at most 2
+                for (int j = lo; j <= hi; j++)
+                    if (!curr[i].NextIds.Contains(next[j].Id))
+                        curr[i].NextIds.Add(next[j].Id);
+            }
+
+            // Ensure every next-floor node has ≥1 incoming connection
+            foreach (var nj in next)
+            {
+                if (!curr.Any(c => c.NextIds.Contains(nj.Id)))
+                {
+                    float t2 = m == 1 ? 0.5f : (float)next.IndexOf(nj) / (m - 1);
+                    int ci = (int)Math.Round(t2 * (n - 1));
+                    curr[Math.Max(0, Math.Min(n - 1, ci))].NextIds.Add(nj.Id);
+                }
+            }
+        }
 
         // ── Random path generation ────────────────────────────
         private List<string> GenPaths(int floor)

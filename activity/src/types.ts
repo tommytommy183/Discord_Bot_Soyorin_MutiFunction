@@ -81,6 +81,14 @@ export interface PathOption {
   description?: string;
 }
 
+export interface MapNode {
+  id: string;
+  floor: number;
+  type: string;   // battle/boss/shop/rest/event/casino/cursed_relic/relic
+  nextIds: string[];
+  visited: boolean;
+}
+
 export interface ShopItem {
   label: string;
   price: number;
@@ -105,6 +113,9 @@ export interface TowerRun {
   battleLog: string[];
   relicIds: string[];
   cursedRelicIds: string[];
+  floorHistory: string[];  // 每層走過的路徑選擇（battle/shop/rest/casino/event...）
+  currentNodeId?: string;
+  mapNodes?: MapNode[];
 }
 
 export interface ActionRequest {
