@@ -17,7 +17,7 @@ public static class TowerApiRoutes
 
     public static void Map(WebApplication app)
     {
-        // ── GET /api/tower/run/{channelId} ────────────────────────────
+        // ── GET /api/tower/run/{channelId} ─────────────────────────────
         app.MapGet("/api/tower/run/{channelId}", (string channelId, PokeTowerService svc) =>
         {
             if (!ulong.TryParse(channelId, out var cid))
@@ -25,21 +25,59 @@ public static class TowerApiRoutes
 
             var state = svc.GetFrontendState(cid);
             if (state == null) return Results.NotFound("no active run");
-
             return Results.Json(state, _json);
         });
 
-        // ── POST /api/tower/start ─────────────────────────────────────
-        // 注意：StartRunAsync 需要玩家的 Pokemon 隊伍，這裡先回傳 409 提示用 bot 指令開始
-        app.MapPost("/api/tower/start", (HttpContext ctx, PokeTowerService svc) =>
+        // ── GET /api/tower/pokemon/{userId} ────────────────────────────
+        // 回傳玩家的 Pokemon 清單，供網頁選擇介面使用
+        app.MapGet("/api/tower/pokemon/{userId}", async (string userId, PokeGameService pokeSvc) =>
         {
-            return Results.Json(new
+            if (!ulong.TryParse(userId, out var uid))
+                return Results.BadRequest("invalid userId");
+
+            var player = await pokeSvc.GetPlayerAsync(uid, "");
+            if (player == null)
+                return Results.Json(Array.Empty<object>(), _json);
+
+            var list = player.CaughtPokemon.Select((p, i) => new
             {
-                error = "請先在 Discord 頻道輸入 /pokemon爬塔 指令選擇隊伍，再從語音頻道啟動活動！"
-            }, _json, statusCode: 409);
+                index       = i,
+                pokeId      = p.Id,
+                name        = p.Name,
+                displayName = p.CustomName ?? p.Name,
+                imageUrl    = p.ImageUrl ?? $"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/{p.Id}.png",
+                types       = p.Types ?? new List<string>(),
+                isShiny     = p.isShiny,
+            });
+
+            return Results.Json(list, _json);
         });
 
-        // ── POST /api/tower/action ────────────────────────────────────
+        // ── POST /api/tower/start ──────────────────────────────────────
+        app.MapPost("/api/tower/start", async (HttpContext ctx, PokeTowerService towerSvc, PokeGameService pokeSvc) =>
+        {
+            var req = await ReadJson<StartRequest>(ctx);
+            if (req == null
+                || !ulong.TryParse(req.ChannelId, out var channelId)
+                || !ulong.TryParse(req.UserId, out var userId))
+                return Results.BadRequest("invalid request");
+
+            var player = await pokeSvc.GetPlayerAsync(userId, req.UserName ?? "");
+            if (player == null || player.CaughtPokemon.Count == 0)
+                return Results.Problem("你還沒有抓到任何 Pokemon！", statusCode: 400);
+
+            var idx = req.PokemonIndex;
+            if (idx < 0 || idx >= player.CaughtPokemon.Count)
+                return Results.BadRequest("invalid pokemonIndex");
+
+            var src = player.CaughtPokemon[idx];
+            var (_, _) = await towerSvc.StartRunAsync(channelId, userId, req.UserName ?? player.UserName ?? "Player", src);
+
+            var state = towerSvc.GetFrontendState(channelId);
+            return Results.Json(state, _json);
+        });
+
+        // ── POST /api/tower/action ─────────────────────────────────────
         app.MapPost("/api/tower/action", async (HttpContext ctx, PokeTowerService svc) =>
         {
             var req = await ReadJson<ActionRequest>(ctx);
@@ -67,4 +105,5 @@ public static class TowerApiRoutes
     }
 
     private record ActionRequest(string ChannelId, string CustomId);
+    private record StartRequest(string ChannelId, string UserId, string? UserName, int PokemonIndex);
 }

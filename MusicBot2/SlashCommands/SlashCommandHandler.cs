@@ -809,18 +809,27 @@ namespace MusicBot2.SlahCommands
             await FollowupAsync(embed: embed, components: component.Build());
         }
 
-        [SlashCommand("pokemon爬塔", "用你的Pokemon挑戰爬塔")]
+        [SlashCommand("pokemon爬塔", "用你的Pokemon挑戰爬塔（網頁遊戲介面）")]
         public async Task PokeTowerAsync()
         {
-            await DeferAsync();
-            var player = await _pokeGameService.GetPlayerAsync(Context.User.Id, Context.User.Username);
-            var pokemons = player?.CaughtPokemon ?? new();
-            var (embed, component) = _pokeTowerService.ShowPokemonSelection(
-                Context.Channel.Id,
-                Context.User.Id,
-                Context.User.GlobalName ?? Context.User.Username,
-                pokemons);
-            await FollowupAsync(embed: embed, components: component.Build());
+            await DeferAsync(ephemeral: true);
+
+            var clientId  = Environment.GetEnvironmentVariable("DISCORD_CLIENT_ID") ?? "";
+            var webUrl    = Environment.GetEnvironmentVariable("POKE_TOWER_WEB_URL") ?? "https://poketower-activity.pages.dev";
+            var redirectUri = Uri.EscapeDataString(webUrl);
+            var channelId = Context.Channel.Id;
+            var oauthUrl  = $"https://discord.com/oauth2/authorize?client_id={clientId}&redirect_uri={redirectUri}&response_type=code&scope=identify&state={channelId}";
+
+            var embed = new EmbedBuilder()
+                .WithTitle("🗼 Pokemon 爬塔")
+                .WithDescription("點下方按鈕，用 Discord 登入後在網頁中選擇 Pokemon 開始挑戰！")
+                .WithColor(new Color(0x5865F2))
+                .Build();
+            var component = new ComponentBuilder()
+                .WithButton("▶️ 開始遊戲", style: ButtonStyle.Link, url: oauthUrl, emote: new Emoji("🎮"))
+                .Build();
+
+            await FollowupAsync(embed: embed, components: component, ephemeral: true);
         }
 
         [SlashCommand("爬塔狀態", "把目前爬塔的操作介面重新發到最下方（找不到按鈕時使用）")]

@@ -17,6 +17,7 @@ public static class ActivityApiHost
     {
         var builder = WebApplication.CreateBuilder();
         builder.Services.AddSingleton(services.GetRequiredService<PokeTowerService>());
+        builder.Services.AddSingleton(services.GetRequiredService<PokeGameService>());
 
         // CORS：允許前端 localhost 與 Discord proxy
         builder.Services.AddCors(o => o.AddDefaultPolicy(p =>
