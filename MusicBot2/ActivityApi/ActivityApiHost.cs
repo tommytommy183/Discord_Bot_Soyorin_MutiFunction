@@ -38,7 +38,11 @@ public static class ActivityApiHost
 
             var clientId     = Environment.GetEnvironmentVariable("DISCORD_CLIENT_ID")     ?? "";
             var clientSecret = Environment.GetEnvironmentVariable("DISCORD_CLIENT_SECRET") ?? "";
-            var redirectUri  = Environment.GetEnvironmentVariable("DISCORD_REDIRECT_URI")  ?? "https://discord.com/api/oauth2/authorize";
+            // 優先用前端傳來的 redirectUri（需與 Discord Portal 完全一致）
+            // fallback 到環境變數
+            var redirectUri  = req.RedirectUri
+                ?? Environment.GetEnvironmentVariable("DISCORD_REDIRECT_URI")
+                ?? "https://poketower-activity.pages.dev";
 
             using var http = new HttpClient();
             var form = new Dictionary<string, string>
@@ -69,5 +73,5 @@ public static class ActivityApiHost
         _ = app.RunAsync();
     }
 
-    private record TokenRequest(string Code);
+    private record TokenRequest(string Code, string? RedirectUri);
 }

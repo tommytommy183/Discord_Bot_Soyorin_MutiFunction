@@ -1,9 +1,7 @@
-import { DiscordSDK } from '@discord/embedded-app-sdk';
+// 標準 Discord OAuth2 helper（不使用 Embedded App SDK）
 
-// 這個 CLIENT_ID 要填你的 Discord Application ID
 export const CLIENT_ID = import.meta.env.VITE_DISCORD_CLIENT_ID ?? '';
-
-export const discordSdk = new DiscordSDK(CLIENT_ID);
+export const REDIRECT_URI = import.meta.env.VITE_REDIRECT_URI ?? window.location.origin;
 
 export interface DiscordUser {
   id: string;
@@ -13,34 +11,34 @@ export interface DiscordUser {
   global_name?: string;
 }
 
-export async function initDiscord(): Promise<{ user: DiscordUser; channelId: string }> {
-  await discordSdk.ready();
-
-  // OAuth2 認證
-  const { code } = await discordSdk.commands.authorize({
-    client_id: CLIENT_ID,
+/** 建立 Discord OAuth2 授權 URL */
+export function buildAuthUrl(channelId: string): string {
+  const params = new URLSearchParams({
+    client_id:     CLIENT_ID,
+    redirect_uri:  REDIRECT_URI,
     response_type: 'code',
-    state: '',
-    prompt: 'none',
-    scope: ['identify', 'guilds'],
+    scope:         'identify',
+    state:         channelId,
   });
+  return `https://discord.com/oauth2/authorize?${params}`;
+}
 
-  // 把 code 換 token（需要你的後端 /api/auth/token 端點）
-  const tokenRes = await fetch('/api/auth/token', {
-    method: 'POST',
+/** 用 code 換 access_token（呼叫 bot API） */
+export async function exchangeCode(code: string): Promise<string> {
+  const res = await fetch('/api/auth/token', {
+    method:  'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ code }),
+    body:    JSON.stringify({ code, redirectUri: REDIRECT_URI }),
   });
-  const { access_token } = await tokenRes.json();
+  if (!res.ok) throw new Error(`token exchange failed: ${await res.text()}`);
+  const { access_token } = await res.json();
+  return access_token as string;
+}
 
-  await discordSdk.commands.authenticate({ access_token });
-
-  // 取得目前使用者
-  const userRes = await fetch('https://discord.com/api/users/@me', {
-    headers: { Authorization: `Bearer ${access_token}` },
+/** 取得目前 Discord 使用者 */
+export async function fetchUser(accessToken: string): Promise<DiscordUser> {
+  const res = await fetch('https://discord.com/api/users/@me', {
+    headers: { Authorization: `Bearer ${accessToken}` },
   });
-  const user: DiscordUser = await userRes.json();
-
-  const channelId = discordSdk.channelId ?? '';
-  return { user, channelId };
+  return res.json();
 }

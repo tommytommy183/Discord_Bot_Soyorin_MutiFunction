@@ -1,58 +1,68 @@
-# Pokemon 爬塔 Discord Activity — 設定說明
+# Pokemon 爬塔 Web App — 設定說明
 
 ## 1. Discord Developer Portal 設定
 
 1. 前往 https://discord.com/developers/applications → 選你的 Application
-2. 左側 **Activities** → 開啟 **Activities Enabled**
-3. **URL Mappings** 加入：
-   - Prefix: `/`  →  Target: `你的前端 URL`（e.g. `https://poketower.pages.dev`）
-   - Prefix: `/api`  →  Target: `你的 C# bot URL:5000`（e.g. `https://你的railway域名:5000`）
+2. 左側 **OAuth2** → **Redirects** → 加入：
+   ```
+   https://poketower-activity.pages.dev
+   ```
+3. **不需要**開 Activities，這是普通 OAuth2 Web App
 
-## 2. 前端部署（Cloudflare Pages 免費）
+---
+
+## 2. 前端部署（Cloudflare Pages）
 
 ```bash
 cd activity
-npm run build
-# 把 dist/ 資料夾上傳到 Cloudflare Pages
+npx wrangler pages deploy dist --project-name=poketower-activity
 ```
 
-或連結 GitHub repo，Cloudflare 自動 CI/CD。
-
-設定 Build command: `npm run build`，Output directory: `dist`
-
-**環境變數（Cloudflare Pages Settings）：**
+**Cloudflare Pages 環境變數（Settings → Environment variables）：**
 ```
-VITE_DISCORD_CLIENT_ID=你的_Discord_Application_ID
+VITE_DISCORD_CLIENT_ID = 你的_Application_ID
+VITE_REDIRECT_URI      = https://poketower-activity.pages.dev
 ```
 
-## 3. C# Bot 環境變數
+> 加完環境變數後要 redeploy 一次才會生效：重新 push 或手動在 CF Pages trigger deploy。
 
-在 Railway（或 appsettings.json）加：
+---
+
+## 3. Bot（Northflank）環境變數
+
 ```
-DISCORD_CLIENT_ID=你的Application_ID
-DISCORD_CLIENT_SECRET=你的Application_Secret
-DISCORD_REDIRECT_URI=https://discord.com/api/oauth2/authorize
-ACTIVITY_API_PORT=5000
+DISCORD_CLIENT_ID     = 你的_Application_ID
+DISCORD_CLIENT_SECRET = 你的_Application_Secret
+DISCORD_REDIRECT_URI  = https://poketower-activity.pages.dev
+ACTIVITY_API_PORT     = 5000
 ```
+
+> `DISCORD_REDIRECT_URI` 必須和 Discord Portal 填的完全相同。
+
+---
 
 ## 4. 遊戲流程
 
-1. 玩家先在 Discord 頻道輸入 `/pokemon爬塔` → Bot 顯示隊伍選擇
-2. 玩家選好隊伍 → 進入語音頻道
-3. 點頻道旁邊的 **🚀 活動** → 選 **Pokemon 爬塔**
-4. Activity 載入 → 自動連到已經開始的爬塔 run
-5. 在遊戲視窗裡點按鈕進行遊戲（不需要再打 Discord 指令）
+1. 玩家在 Discord 頻道輸入 `/pokemon爬塔`
+2. Bot 顯示隊伍選擇按鈕
+3. 玩家選完隊伍 → Bot 送出 Embed，附上「▶️ 開始遊戲」按鈕
+4. 點連結 → 瀏覽器打開 `https://poketower-activity.pages.dev?channel=CHANNEL_ID`
+5. 頁面顯示「用 Discord 登入」按鈕 → 點下去 → Discord OAuth 彈窗
+6. 授權 → 回到遊戲頁，可以開始遊戲 🎮
+
+---
 
 ## 5. 本地開發
 
 ```bash
-# 啟動 C# bot（含 API）
+# 啟動 C# bot（含 API on port 5000）
 dotnet run --project MusicBot2/MusicBot2.csproj
 
-# 啟動前端 dev server（另一個終端）
+# 啟動前端 dev server（另開終端）
 cd activity && npm run dev
-# 前端在 http://localhost:3000
-```
+# http://localhost:3000?channel=你的測試頻道ID
 
-> 本地開發時 Discord SDK 無法正常 OAuth（需要 HTTPS + Discord proxy），
-> 建議用 ngrok 或 cloudflare tunnel 做 HTTPS tunnel。
+# 本地 OAuth 測試需要 HTTPS，用 ngrok：
+# ngrok http 3000
+# 把 ngrok URL 加到 Discord Portal OAuth2 Redirects
+```

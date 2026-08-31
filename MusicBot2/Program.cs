@@ -1262,6 +1262,19 @@ public class Program
                         ulong ch = ulong.Parse(rest[..under]);
                         int pi = int.Parse(rest[(under + 1)..]);
                         (tEmbed, tCb) = await towerSvc.HandlePassiveChoiceAsync(ch, pi);
+
+                        // 遊戲開始後，額外送出 Web App 連結
+                        var webUrl = Environment.GetEnvironmentVariable("POKE_TOWER_WEB_URL") ?? "https://poketower-activity.pages.dev";
+                        var gameUrl = $"{webUrl}?channel={ch}";
+                        var linkEmbed = new EmbedBuilder()
+                            .WithTitle("🗼 Pokemon 爬塔 — Web 遊戲介面")
+                            .WithDescription($"點下方按鈕在瀏覽器中操作爬塔，更直觀！\n（也可以繼續在 Discord 用按鈕操作）")
+                            .WithColor(new Color(0x5865F2))
+                            .Build();
+                        var linkCb = new ComponentBuilder()
+                            .WithButton("▶️ 在瀏覽器中開始遊戲", style: ButtonStyle.Link, url: gameUrl, emote: new Emoji("🌐"))
+                            .Build();
+                        await component.Channel.SendMessageAsync(embed: linkEmbed, components: linkCb);
                     }
                     // tower_casino_{channelId}_{action}  (action 本身可能含 _ 如 bet_50)
                     else if (id.StartsWith("tower_casino_"))
