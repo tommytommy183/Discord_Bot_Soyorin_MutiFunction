@@ -812,17 +812,25 @@ namespace MusicBot2.SlahCommands
         [SlashCommand("pokemon爬塔", "用你的Pokemon挑戰爬塔")]
         public async Task PokeTowerAsync()
         {
-            // LAUNCH_ACTIVITY (Discord interaction response type 12)
-            // 直接在 Discord 內開啟 Activity，不需要點按鈕、不需要進語音頻道
-            var botToken = Environment.GetEnvironmentVariable("Discord__Token")
-                        ?? Environment.GetEnvironmentVariable("DISCORD_TOKEN")
-                        ?? "";
-            using var http = new System.Net.Http.HttpClient();
-            http.DefaultRequestHeaders.Add("Authorization", $"Bot {botToken}");
-            var json = "{\"type\":12}";
-            await http.PostAsync(
-                $"https://discord.com/api/v10/interactions/{Context.Interaction.Id}/{Context.Interaction.Token}/callback",
-                new System.Net.Http.StringContent(json, System.Text.Encoding.UTF8, "application/json"));
+            // LAUNCH_ACTIVITY (type 12)：Discord.NET 不支援此 type，使用 REST 直接送
+            // 必須在 Discord.NET framework 搶先處理前回覆，所以不呼叫任何 Discord.NET 的 Respond/Defer
+            var interactionId = Context.Interaction.Id;
+            var interactionToken = Context.Interaction.Token;
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    using var http = new System.Net.Http.HttpClient();
+                    var json = "{\"type\":12}";
+                    await http.PostAsync(
+                        $"https://discord.com/api/v10/interactions/{interactionId}/{interactionToken}/callback",
+                        new System.Net.Http.StringContent(json, System.Text.Encoding.UTF8, "application/json"));
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[PokeTower] LAUNCH_ACTIVITY failed: {ex.Message}");
+                }
+            });
         }
 
         [SlashCommand("爬塔狀態", "把目前爬塔的操作介面重新發到最下方（找不到按鈕時使用）")]
