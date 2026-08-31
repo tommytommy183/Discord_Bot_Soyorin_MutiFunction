@@ -814,14 +814,15 @@ namespace MusicBot2.SlahCommands
         {
             // LAUNCH_ACTIVITY (Discord interaction response type 12)
             // 直接在 Discord 內開啟 Activity，不需要點按鈕、不需要進語音頻道
-            var token = Context.Interaction.Token;
-            var appId = Context.Client.CurrentUser.Id;
+            var botToken = Environment.GetEnvironmentVariable("Discord__Token")
+                        ?? Environment.GetEnvironmentVariable("DISCORD_TOKEN")
+                        ?? "";
             using var http = new System.Net.Http.HttpClient();
-            http.DefaultRequestHeaders.Add("Authorization", $"Bot {Environment.GetEnvironmentVariable("Discord__Token") ?? Environment.GetEnvironmentVariable("DISCORD_TOKEN")}");
-            var payload = new System.Text.Json.JsonObject { ["type"] = 12 };
+            http.DefaultRequestHeaders.Add("Authorization", $"Bot {botToken}");
+            var json = "{\"type\":12}";
             await http.PostAsync(
-                $"https://discord.com/api/v10/interactions/{Context.Interaction.Id}/{token}/callback",
-                new System.Net.Http.StringContent(payload.ToJsonString(), System.Text.Encoding.UTF8, "application/json"));
+                $"https://discord.com/api/v10/interactions/{Context.Interaction.Id}/{Context.Interaction.Token}/callback",
+                new System.Net.Http.StringContent(json, System.Text.Encoding.UTF8, "application/json"));
         }
 
         [SlashCommand("爬塔狀態", "把目前爬塔的操作介面重新發到最下方（找不到按鈕時使用）")]
