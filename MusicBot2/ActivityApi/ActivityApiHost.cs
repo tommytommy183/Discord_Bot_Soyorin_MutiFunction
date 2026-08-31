@@ -62,6 +62,28 @@ public static class ActivityApiHost
             return Results.Text(json, "application/json");
         });
 
+        // ── /sprite/{kind}/{pokeId}  （Pokemon sprite proxy，繞過 Discord Activity CSP） ──
+        app.MapGet("/sprite/{kind}/{pokeId}", async (string kind, int pokeId) =>
+        {
+            var url = kind switch
+            {
+                "back"  => $"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/back/{pokeId}.png",
+                "shiny" => $"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/shiny/{pokeId}.png",
+                _       => $"https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/{pokeId}.png",
+            };
+            try
+            {
+                using var httpClient = new HttpClient();
+                httpClient.DefaultRequestHeaders.Add("User-Agent", "PokeTower/1.0");
+                var bytes = await httpClient.GetByteArrayAsync(url);
+                return Results.Bytes(bytes, "image/png");
+            }
+            catch
+            {
+                return Results.NotFound();
+            }
+        });
+
         TowerApiRoutes.Map(app);
 
         app.Urls.Add($"http://0.0.0.0:{port}");

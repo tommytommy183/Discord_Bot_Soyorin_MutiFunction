@@ -1,10 +1,55 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-TW">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>activity</title>
+    <title>Pokemon 爬塔</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Noto+Sans+TC:wght@400;700;900&display=swap" rel="stylesheet" />
+    <style>
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+      html, body, #root { width: 100%; height: 100%; overflow: hidden; }
+      body {
+        background: #0a0e1a;
+        color: #e2e8f0;
+        font-family: 'Noto Sans TC', sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      /* ── Animations ── */
+      @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+      @keyframes slideInLeft { from { opacity: 0; transform: translateX(-20px); } to { opacity: 1; transform: none; } }
+      @keyframes slideInRight { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: none; } }
+      @keyframes bounce { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+      @keyframes shake { 0%,100% { transform: translateX(0); } 20% { transform: translateX(-8px); } 40% { transform: translateX(8px); } 60% { transform: translateX(-5px); } 80% { transform: translateX(5px); } }
+      @keyframes flash { 0%,100% { opacity: 1; } 50% { opacity: 0.2; } }
+      @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      @keyframes glow { 0%,100% { box-shadow: 0 0 8px #6366f1; } 50% { box-shadow: 0 0 20px #818cf8, 0 0 40px #6366f1; } }
+      @keyframes floatUp { from { opacity:1; transform: translateY(0) scale(1); } to { opacity:0; transform: translateY(-40px) scale(1.3); } }
+      @keyframes bossGlow { 0%,100% { border-color: #ef4444; box-shadow: 0 0 12px #ef4444; } 50% { border-color: #f97316; box-shadow: 0 0 24px #f97316; } }
+
+      .anim-fade-in { animation: fadeIn 0.35s ease both; }
+      .anim-slide-left { animation: slideInLeft 0.35s ease both; }
+      .anim-slide-right { animation: slideInRight 0.35s ease both; }
+      .anim-bounce { animation: bounce 1.8s ease-in-out infinite; }
+      .anim-pulse { animation: pulse 2s ease-in-out infinite; }
+      .anim-boss-glow { animation: bossGlow 1.5s ease-in-out infinite; }
+
+      .btn-hover:hover:not(:disabled) { filter: brightness(1.15); transform: translateY(-2px); transition: all 0.12s; }
+      .btn-hover:active:not(:disabled) { transform: translateY(0) scale(0.97); }
+      button { transition: all 0.12s; }
+
+      /* Scrollbar */
+      ::-webkit-scrollbar { width: 6px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+
+      /* HP bar animation */
+      .hp-fill { transition: width 0.5s ease, background-color 0.5s ease; }
+    </style>
   </head>
   <body>
     <div id="root"></div>

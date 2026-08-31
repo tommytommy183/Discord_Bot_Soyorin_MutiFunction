@@ -1,21 +1,26 @@
-const STATUS_MAP: Record<string, { label: string; color: string }> = {
-  burn:    { label: '🔥 BRN', color: '#ef4444' },
-  para:    { label: '⚡ PAR', color: '#eab308' },
-  freeze:  { label: '❄️ FRZ', color: '#38bdf8' },
-  sleep:   { label: '💤 SLP', color: '#a78bfa' },
-  poison:  { label: '☠️ PSN', color: '#a855f7' },
-  flinch:  { label: '😨 FLN', color: '#fb923c' },
+const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
+  burn:      { label: '🔥灼傷', color: '#f97316', bg: '#f9731622' },
+  poison:    { label: '☠️毒',   color: '#a855f7', bg: '#a855f722' },
+  paralysis: { label: '⚡麻痺', color: '#eab308', bg: '#eab30822' },
+  sleep:     { label: '💤睡眠', color: '#94a3b8', bg: '#94a3b822' },
+  freeze:    { label: '🧊冰凍', color: '#38bdf8', bg: '#38bdf822' },
+  confusion: { label: '💫混亂', color: '#ec4899', bg: '#ec489922' },
 };
 
 export function StatusBadge({ status }: { status: string }) {
-  const s = STATUS_MAP[status?.toLowerCase()];
-  if (!s) return null;
+  const cfg = STATUS_CONFIG[status?.toLowerCase()] ?? { label: status, color: '#94a3b8', bg: '#94a3b822' };
   return (
     <span style={{
-      background: s.color, color: '#fff', fontSize: 11, fontWeight: 700,
-      padding: '2px 6px', borderRadius: 4, letterSpacing: 0.5,
+      background: cfg.bg,
+      color: cfg.color,
+      border: `1px solid ${cfg.color}55`,
+      borderRadius: 4,
+      padding: '2px 6px',
+      fontSize: 10,
+      fontWeight: 700,
+      animation: 'pulse 2s ease-in-out infinite',
     }}>
-      {s.label}
+      {cfg.label}
     </span>
   );
 }
