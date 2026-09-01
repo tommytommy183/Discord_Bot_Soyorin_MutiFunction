@@ -1749,6 +1749,12 @@ namespace MusicBot2.Service
                 floorHistory  = run.FloorHistory,
                 currentNodeId = run.CurrentNodeId,
                 balls         = run.Balls,
+                eventTitle    = (run.State == TowerRunState.SelectingEvent && run.PendingEventIdx >= 0 && run.PendingEventIdx < _events.Count)
+                    ? _events[run.PendingEventIdx].Title : null,
+                eventEmoji    = (run.State == TowerRunState.SelectingEvent && run.PendingEventIdx >= 0 && run.PendingEventIdx < _events.Count)
+                    ? _events[run.PendingEventIdx].Emoji : null,
+                eventDesc     = (run.State == TowerRunState.SelectingEvent && run.PendingEventIdx >= 0 && run.PendingEventIdx < _events.Count)
+                    ? (run.MathProblemText != "" && _events[run.PendingEventIdx].Title == "神秘數學題" ? run.MathProblemText : _events[run.PendingEventIdx].Desc) : null,
                 mapNodes      = run.MapNodes?.Select(n => new
                 {
                     id             = n.Id,
@@ -2769,6 +2775,10 @@ namespace MusicBot2.Service
                 {
                     run.ActivePokemon = alive;
                     run.ActivePokemonIndex = run.Party.IndexOf(alive);
+                    // 新怪上場：重置戰鬥狀態
+                    alive.AtkStage = 0; alive.DefStage = 0; alive.SpdStage = 0;
+                    alive.SpAtkStage = 0; alive.SpDefStage = 0;
+                    alive.BattleStatus = ""; alive.SleepTurns = 0;
                     run.CurrentBattleLog += $"\n💀 **{poke.DisplayName}** 倒下了！換上 **{alive.DisplayName}**！\n";
                     await SaveAsync(run);
                     return BuildBattleEmbed(run);

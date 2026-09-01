@@ -3,13 +3,15 @@ import { HpBar } from './HpBar';
 import { StatusBadge } from './StatusBadge';
 import { TypeBadge } from './TypeBadge';
 import { spriteUrl, typeColor } from '../utils';
-import type { TowerRun, TowerMove, TowerEnemy } from '../types';
+import type { TowerRun, TowerMove } from '../types';
 
 interface Props {
   run: TowerRun;
   onAction: (customId: string) => void;
   busy: boolean;
 }
+
+type AttackAnim = 'idle' | 'lunge' | 'projectile' | 'status';
 
 function StageLabel({ stage }: { stage: number }) {
   if (stage === 0) return null;
@@ -23,7 +25,7 @@ function StageLabel({ stage }: { stage: number }) {
 function MoveBtn({ move, idx, channelId, onAction, busy, onAttack }: {
   move: TowerMove; idx: number; channelId: string;
   onAction: (id: string) => void; busy: boolean;
-  onAttack: () => void;
+  onAttack: (category: string) => void;
 }) {
   const color = typeColor(move.type);
   const empty = move.currentPP === 0;
@@ -35,7 +37,7 @@ function MoveBtn({ move, idx, channelId, onAction, busy, onAttack }: {
     <button
       className="btn-hover"
       disabled={busy || empty}
-      onClick={() => { if (!busy && !empty) { onAttack(); onAction(customId); } }}
+      onClick={() => { if (!busy && !empty) { onAttack(move.category); onAction(customId); } }}
       style={{
         background: empty
           ? '#1a1f2e'
@@ -56,7 +58,6 @@ function MoveBtn({ move, idx, channelId, onAction, busy, onAttack }: {
         overflow: 'hidden',
       }}
     >
-      {/* Type color bar */}
       {!empty && (
         <div style={{
           position: 'absolute', top: 0, left: 0, right: 0, height: 3,
@@ -90,8 +91,8 @@ function BattleLog({ logs }: { logs: string[] }) {
     <div ref={ref} style={{
       background: '#07090f', borderRadius: 8,
       padding: '8px 12px', fontSize: 11, color: '#94a3b8',
-      height: 72, overflowY: 'auto',
-      border: '1px solid #1e293b', lineHeight: 1.5,
+      height: 96, overflowY: 'auto',
+      border: '1px solid #1e293b', lineHeight: 1.6, flexShrink: 0,
     }}>
       {logs.slice(-10).map((log, i, arr) => (
         <div key={i} style={{
@@ -111,18 +112,32 @@ export function BattleScene({ run, onAction, busy }: Props) {
   const enemy = run.currentEnemy;
   const isBoss = enemy?.isBoss ?? false;
   const [shake, setShake] = useState(false);
+  const [attackAnim, setAttackAnim] = useState<AttackAnim>('idle');
 
-  function handleAttack() {
+  function handleAttack(category: string) {
     setShake(true);
     setTimeout(() => setShake(false), 500);
+    if (category === 'physical') {
+      setAttackAnim('lunge');
+      setTimeout(() => setAttackAnim('idle'), 450);
+    } else if (category === 'special') {
+      setAttackAnim('projectile');
+      setTimeout(() => setAttackAnim('idle'), 520);
+    } else {
+      setAttackAnim('status');
+      setTimeout(() => setAttackAnim('idle'), 600);
+    }
   }
 
   const bgGradient = isBoss
     ? 'radial-gradient(ellipse at 60% 40%, #2d0a0a 0%, #0a0e1a 100%)'
     : 'radial-gradient(ellipse at 60% 40%, #0d1e30 0%, #0a0e1a 100%)';
 
+  // All moves empty?
+  const allMovesEmpty = activePoke ? activePoke.moves.every(m => m.currentPP === 0) : false;
+
   return (
-    <div className="anim-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 8, height: '100%' }}>
+    <div className="anim-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       {/* Floor / Boss title */}
       <div style={{ textAlign: 'center', paddingTop: 2 }}>
         {isBoss && (
@@ -137,96 +152,114 @@ export function BattleScene({ run, onAction, busy }: Props) {
         </div>
       </div>
 
-      {/* ── Battle Arena: classic Pokemon layout ─────────────────────── */}
+      {/* ── Battle Arena ─────────────────────── */}
       <div style={{
         position: 'relative',
         background: bgGradient,
-        borderRadius: 14, padding: '10px 12px',
+        borderRadius: 14,
         border: isBoss ? '1px solid #7f1d1d' : '1px solid #1e2d45',
-        minHeight: 170, overflow: 'hidden',
+        height: 220, overflow: 'visible',
       }}>
-        {/* Enemy: top-right */}
+        {/* Enemy info box: top-right */}
         {enemy && (
-          <div style={{ position: 'absolute', top: 8, right: 10, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
-            {/* Enemy info box */}
-            <div style={{
-              background: 'rgba(0,0,0,0.55)', borderRadius: 8, padding: '5px 10px',
-              border: isBoss ? '1px solid #ef444455' : '1px solid #1e293b',
-              minWidth: 140, backdropFilter: 'blur(4px)',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 2 }}>
-                {isBoss && <span style={{ color: '#ef4444', fontSize: 9, fontWeight: 700, fontFamily: "'Press Start 2P', monospace" }}>BOSS</span>}
-                <span style={{ fontWeight: 900, fontSize: 13, color: '#fff' }}>{enemy.name}</span>
-                {enemy.battleStatus && <StatusBadge status={enemy.battleStatus} />}
-              </div>
-              <div style={{ display: 'flex', gap: 3, marginBottom: 4 }}>
-                {enemy.types.map(t => <TypeBadge key={t} type={t} />)}
-              </div>
-              <HpBar current={enemy.currentHP} max={enemy.maxHP} label="HP" />
-              <div style={{ fontSize: 9, color: '#475569', marginTop: 3, display: 'flex', gap: 6 }}>
-                <span>ATK<StageLabel stage={enemy.atkStage} /></span>
-                <span>DEF<StageLabel stage={enemy.defStage} /></span>
-                <span>SPD<StageLabel stage={enemy.spdStage} /></span>
-                {enemy.goldReward > 0 && <span style={{ color: '#fbbf24' }}>💰{enemy.goldReward}</span>}
-              </div>
+          <div style={{
+            position: 'absolute', top: 8, right: 8,
+            background: 'rgba(0,0,0,0.6)', borderRadius: 8, padding: '5px 10px',
+            border: isBoss ? '1px solid #ef444455' : '1px solid #1e293b',
+            minWidth: 130, maxWidth: 170, backdropFilter: 'blur(4px)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 2 }}>
+              {isBoss && <span style={{ color: '#ef4444', fontSize: 9, fontWeight: 700, fontFamily: "'Press Start 2P', monospace" }}>BOSS</span>}
+              <span style={{ fontWeight: 900, fontSize: 12, color: '#fff' }}>{enemy.name}</span>
+              {enemy.battleStatus && <StatusBadge status={enemy.battleStatus} />}
             </div>
-            {/* Enemy sprite */}
+            <div style={{ display: 'flex', gap: 3, marginBottom: 4 }}>
+              {enemy.types.map(t => <TypeBadge key={t} type={t} />)}
+            </div>
+            <HpBar current={enemy.currentHP} max={enemy.maxHP} label="HP" />
+            <div style={{ fontSize: 9, color: '#475569', marginTop: 3, display: 'flex', gap: 5 }}>
+              <span>ATK<StageLabel stage={enemy.atkStage} /></span>
+              <span>DEF<StageLabel stage={enemy.defStage} /></span>
+              <span>SPD<StageLabel stage={enemy.spdStage} /></span>
+              {enemy.goldReward > 0 && <span style={{ color: '#fbbf24' }}>💰{enemy.goldReward}</span>}
+            </div>
+          </div>
+        )}
+
+        {/* Enemy sprite: middle-right */}
+        {enemy && (
+          <img
+            src={spriteUrl(enemy.pokeId, 'front')}
+            alt={enemy.name}
+            style={{
+              position: 'absolute', top: 90, right: 16,
+              imageRendering: 'pixelated', width: 90, height: 90,
+              filter: enemy.currentHP === 0
+                ? 'grayscale(1) opacity(0.3)'
+                : isBoss ? 'drop-shadow(0 0 12px #ef4444)' : 'drop-shadow(0 4px 10px rgba(0,0,0,0.7))',
+              animation: enemy.currentHP > 0
+                ? (shake ? 'shake 0.4s ease-in-out' : isBoss ? 'bossGlow 1.5s ease-in-out infinite' : 'bounce 2s ease-in-out infinite')
+                : undefined,
+            }}
+          />
+        )}
+
+        {/* Projectile animation */}
+        {attackAnim === 'projectile' && (
+          <div style={{
+            position: 'absolute', bottom: 110, left: 90,
+            fontSize: 22, zIndex: 10, pointerEvents: 'none',
+            animation: 'projectileFly 0.5s ease-in forwards',
+          }}>💫</div>
+        )}
+
+        {/* Player sprite: middle-left (with lunge wrapper) */}
+        {activePoke && (
+          <div style={{
+            position: 'absolute', bottom: 88, left: 8,
+            animation: attackAnim === 'lunge' ? 'lunge 0.4s ease-in-out' : undefined,
+          }}>
             <img
-              src={spriteUrl(enemy.pokeId, 'front')}
-              alt={enemy.name}
+              src={activePoke.isShiny ? spriteUrl(activePoke.pokeId, 'shiny') : spriteUrl(activePoke.pokeId, 'back')}
+              alt={activePoke.name}
               style={{
-                imageRendering: 'pixelated', width: 88, height: 88,
-                filter: enemy.currentHP === 0
+                imageRendering: 'pixelated', width: 104, height: 104,
+                filter: activePoke.currentHP === 0
                   ? 'grayscale(1) opacity(0.3)'
-                  : isBoss ? 'drop-shadow(0 0 12px #ef4444)' : 'drop-shadow(0 4px 10px rgba(0,0,0,0.7))',
-                animation: enemy.currentHP > 0
-                  ? (shake ? 'shake 0.4s ease-in-out' : isBoss ? 'bossGlow 1.5s ease-in-out infinite' : 'bounce 2s ease-in-out infinite')
-                  : undefined,
+                  : attackAnim === 'status'
+                  ? 'brightness(2) saturate(2)'
+                  : 'drop-shadow(0 4px 12px rgba(99,102,241,0.5))',
+                transform: 'scaleX(-1)',
+                animation: activePoke.currentHP > 0 && attackAnim === 'idle' ? 'bounce 2.2s ease-in-out infinite' : undefined,
+                transition: 'filter 0.2s',
               }}
             />
           </div>
         )}
 
-        {/* Player: bottom-left */}
+        {/* Player info box: bottom-left */}
         {activePoke && (
-          <div style={{ position: 'absolute', bottom: 8, left: 10, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 3 }}>
-            {/* Player sprite */}
-            <img
-              src={activePoke.isShiny ? spriteUrl(activePoke.pokeId, 'shiny') : spriteUrl(activePoke.pokeId, 'back')}
-              alt={activePoke.name}
-              style={{
-                imageRendering: 'pixelated', width: 100, height: 100,
-                filter: activePoke.currentHP === 0
-                  ? 'grayscale(1) opacity(0.3)'
-                  : 'drop-shadow(0 4px 12px rgba(99,102,241,0.5))',
-                transform: 'scaleX(-1)',
-                animation: activePoke.currentHP > 0 ? 'bounce 2.2s ease-in-out infinite' : undefined,
-              }}
-            />
-            {/* Player info box */}
-            <div style={{
-              background: 'rgba(0,0,0,0.55)', borderRadius: 8, padding: '5px 10px',
-              border: '1px solid #1e3a5f', minWidth: 140, backdropFilter: 'blur(4px)',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 2 }}>
-                <span style={{ fontWeight: 900, fontSize: 13, color: '#fff' }}>{activePoke.displayName}</span>
-                {activePoke.isShiny && <span>✨</span>}
-                {activePoke.battleStatus && <StatusBadge status={activePoke.battleStatus} />}
-              </div>
-              <div style={{ display: 'flex', gap: 3, marginBottom: 4 }}>
-                {activePoke.types.map(t => <TypeBadge key={t} type={t} />)}
-              </div>
-              <HpBar current={activePoke.currentHP} max={activePoke.maxHP} label="HP" />
-              <div style={{ fontSize: 9, color: '#475569', marginTop: 3, display: 'flex', gap: 6 }}>
-                <span>ATK<StageLabel stage={activePoke.atkStage} /></span>
-                <span>DEF<StageLabel stage={activePoke.defStage} /></span>
-                <span>SPD<StageLabel stage={activePoke.spdStage} /></span>
-              </div>
+          <div style={{
+            position: 'absolute', bottom: 8, left: 8,
+            background: 'rgba(0,0,0,0.6)', borderRadius: 8, padding: '5px 10px',
+            border: '1px solid #1e3a5f', minWidth: 130, maxWidth: 170, backdropFilter: 'blur(4px)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 2 }}>
+              <span style={{ fontWeight: 900, fontSize: 12, color: '#fff' }}>{activePoke.displayName}</span>
+              {activePoke.isShiny && <span>✨</span>}
+              {activePoke.battleStatus && <StatusBadge status={activePoke.battleStatus} />}
+            </div>
+            <div style={{ display: 'flex', gap: 3, marginBottom: 4 }}>
+              {activePoke.types.map(t => <TypeBadge key={t} type={t} />)}
+            </div>
+            <HpBar current={activePoke.currentHP} max={activePoke.maxHP} label="HP" />
+            <div style={{ fontSize: 9, color: '#475569', marginTop: 3, display: 'flex', gap: 5 }}>
+              <span>ATK<StageLabel stage={activePoke.atkStage} /></span>
+              <span>DEF<StageLabel stage={activePoke.defStage} /></span>
+              <span>SPD<StageLabel stage={activePoke.spdStage} /></span>
             </div>
           </div>
         )}
-        {/* Invisible spacer so the div has height */}
-        <div style={{ height: 185 }} />
       </div>
 
       {/* Move buttons */}
@@ -242,6 +275,27 @@ export function BattleScene({ run, onAction, busy }: Props) {
             onAttack={handleAttack}
           />
         ))}
+        {/* 普通攻擊 fallback when all PP = 0 */}
+        {allMovesEmpty && activePoke && (
+          <button
+            className="btn-hover"
+            disabled={busy}
+            onClick={() => { if (!busy) { handleAttack('physical'); onAction(`tower_move_${run.channelId}_99`); } }}
+            style={{
+              background: 'linear-gradient(135deg, #ef444433, #ef444411)',
+              color: '#fca5a5',
+              border: '1px solid #ef444466',
+              borderRadius: 10, padding: '8px 10px',
+              cursor: busy ? 'not-allowed' : 'pointer',
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+              flex: '1 1 100%',
+            }}
+          >
+            <span style={{ fontSize: 18 }}>👊</span>
+            <span style={{ fontWeight: 700, fontSize: 11 }}>普通攻擊</span>
+            <span style={{ fontSize: 9, color: '#94a3b8' }}>PP歸零時的緊急手段</span>
+          </button>
+        )}
       </div>
 
       {/* Battle log */}

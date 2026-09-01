@@ -127,6 +127,9 @@ export interface TowerRun {
   currentNodeId?: string;
   mapNodes?: MapNode[];
   balls?: Record<string, number>;
+  eventTitle?: string;
+  eventEmoji?: string;
+  eventDesc?: string;
 }
 
 export interface ActionRequest {

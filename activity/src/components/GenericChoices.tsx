@@ -42,9 +42,23 @@ export function GenericChoices({ run, onAction, busy }: Props) {
           fontSize: 22, fontWeight: 900, color: cfg.color,
           marginBottom: 4,
         }}>
-          {cfg.title}
+          {/* Event: show actual event title with emoji */}
+          {run.state === 'SelectingEvent' && run.eventTitle
+            ? `${run.eventEmoji ?? '🎉'} ${run.eventTitle}`
+            : cfg.title}
         </div>
-        {cfg.hint && <div style={{ fontSize: 12, color: '#64748b' }}>{cfg.hint}</div>}
+        {/* Event narrative description */}
+        {run.state === 'SelectingEvent' && run.eventDesc && (
+          <div style={{
+            fontSize: 12, color: '#cbd5e1', lineHeight: 1.7,
+            background: 'rgba(0,0,0,0.3)', borderRadius: 8,
+            padding: '10px 12px', margin: '8px 0', textAlign: 'left',
+            border: '1px solid #1e293b',
+          }}>
+            {run.eventDesc}
+          </div>
+        )}
+        {cfg.hint && run.state !== 'SelectingEvent' && <div style={{ fontSize: 12, color: '#64748b' }}>{cfg.hint}</div>}
         <div style={{
           display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 8,
           background: '#1a1400', borderRadius: 6, padding: '4px 12px',

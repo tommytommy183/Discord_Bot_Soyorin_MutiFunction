@@ -24,7 +24,7 @@ function cfg(type: string) { return NODE_CFG[type] ?? { emoji: '❓', color: '#4
 
 // ── Layout constants ───────────────────────────────────────────────────────
 const W = 300;          // SVG width
-const FLOOR_H = 54;     // height per floor
+const FLOOR_H = 62;     // height per floor (taller to fit Pokemon sprites)
 const NODE_R = 16;      // node circle radius
 const PAD_X = 28;       // left/right padding
 
@@ -71,7 +71,7 @@ export function StsMap({ run, onSelectNode, busy }: Props) {
     return svgH - floor * FLOOR_H - FLOOR_H * 0.2;
   }
 
-  // Build edges
+  // Build edges (straight lines for cleaner look)
   const edges = useMemo(() => {
     const result: { x1: number; y1: number; x2: number; y2: number; isVisited: boolean }[] = [];
     nodes.forEach(n => {
@@ -95,6 +95,7 @@ export function StsMap({ run, onSelectNode, busy }: Props) {
     return result;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodes, byFloor, svgH]);
+
 
   // Auto-scroll to current floor (SVG origin = top-left, floor 1 is near bottom of SVG)
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -135,19 +136,16 @@ export function StsMap({ run, onSelectNode, busy }: Props) {
             />
           ))}
 
-          {/* Edges */}
-          {edges.map((e, i) => {
-            const cy = (e.y1 + e.y2) / 2;
-            const d = `M ${e.x1} ${e.y1} C ${e.x1} ${cy}, ${e.x2} ${cy}, ${e.x2} ${e.y2}`;
-            return (
-              <path key={i} d={d} fill="none"
-                stroke={e.isVisited ? '#6366f1' : '#1e293b'}
-                strokeWidth={e.isVisited ? 3 : 1.5}
-                strokeLinecap="round"
-                opacity={e.isVisited ? 1 : 0.6}
-              />
-            );
-          })}
+          {/* Edges (straight lines) */}
+          {edges.map((e, i) => (
+            <line key={i}
+              x1={e.x1} y1={e.y1} x2={e.x2} y2={e.y2}
+              stroke={e.isVisited ? '#6366f1' : '#1e293b'}
+              strokeWidth={e.isVisited ? 2.5 : 1.5}
+              strokeLinecap="round"
+              opacity={e.isVisited ? 1 : 0.6}
+            />
+          ))}
 
           {/* Nodes */}
           {nodes.map(n => {
@@ -187,6 +185,17 @@ export function StsMap({ run, onSelectNode, busy }: Props) {
                   if (opt) onSelectNode(opt.customId);
                 }}
               >
+                {/* Preview Pokemon sprite above battle/boss/miniboss nodes */}
+                {(n.type === 'battle' || n.type === 'boss' || n.type === 'miniboss') && n.previewPokeId && n.previewPokeId > 0 && (
+                  <image
+                    href={spriteUrl(n.previewPokeId, 'front')}
+                    x={x - 16} y={y - NODE_R - 34}
+                    width={32} height={32}
+                    style={{ imageRendering: 'pixelated' }}
+                    opacity={isFuture ? 0.25 : isAvail ? 1 : 0.5}
+                  />
+                )}
+
                 {/* Glow ring for available nodes */}
                 {isAvail && (
                   <circle cx={x} cy={y} r={NODE_R + 6}
