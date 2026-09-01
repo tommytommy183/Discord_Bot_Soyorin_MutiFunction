@@ -22,22 +22,23 @@ function StageLabel({ stage }: { stage: number }) {
   );
 }
 
-function MoveBtn({ move, idx, channelId, onAction, busy, onAttack }: {
+function MoveBtn({ move, idx, channelId, busy, locked, onAttack }: {
   move: TowerMove; idx: number; channelId: string;
-  onAction: (id: string) => void; busy: boolean;
-  onAttack: (category: string, moveType: string) => void;
+  busy: boolean; locked: boolean;
+  onAttack: (category: string, moveType: string, customId: string) => void;
 }) {
   const color = typeColor(move.type);
   const empty = move.currentPP === 0;
   const customId = `tower_move_${channelId}_${idx}`;
   const ppRatio = move.maxPP > 0 ? move.currentPP / move.maxPP : 0;
   const ppColor = ppRatio === 0 ? '#ef4444' : ppRatio <= 0.25 ? '#facc15' : '#94a3b8';
+  const isDisabled = busy || empty || locked;
 
   return (
     <button
       className="btn-hover"
-      disabled={busy || empty}
-      onClick={() => { if (!busy && !empty) { onAttack(move.category, move.type); onAction(customId); } }}
+      disabled={isDisabled}
+      onClick={() => { if (!isDisabled) { onAttack(move.category, move.type, customId); } }}
       style={{
         background: empty
           ? '#1a1f2e'
@@ -46,8 +47,8 @@ function MoveBtn({ move, idx, channelId, onAction, busy, onAttack }: {
         border: `1px solid ${empty ? '#334155' : color + '66'}`,
         borderRadius: 10,
         padding: '8px 10px',
-        cursor: busy || empty ? 'not-allowed' : 'pointer',
-        opacity: busy || empty ? 0.55 : 1,
+        cursor: isDisabled ? 'not-allowed' : 'pointer',
+        opacity: isDisabled ? 0.55 : 1,
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
@@ -111,16 +112,16 @@ export function BattleScene({ run, onAction, busy }: Props) {
   const activePoke = run.team[run.activeIndex];
   const enemy = run.currentEnemy;
   const isBoss = enemy?.isBoss ?? false;
-  const [shake, setShake] = useState(false);           // enemy shakes
-  const [playerShake, setPlayerShake] = useState(false); // player shakes (enemy attack)
+  const [shake, setShake] = useState(false);            // enemy shakes when player hits
+  const [playerShake, setPlayerShake] = useState(false); // player shakes when enemy hits
   const [attackAnim, setAttackAnim] = useState<AttackAnim>('idle');
   const [enemyAnim, setEnemyAnim] = useState<AttackAnim>('idle');
   const [currentMoveType, setCurrentMoveType] = useState<string>('normal');
   const [enemyMoveType, setEnemyMoveType] = useState<string>('normal');
-  // Track last log length to detect enemy attacks
+  const [attackLocked, setAttackLocked] = useState(false); // locked during player+enemy animation sequence
   const prevLogLen = useRef(0);
 
-  // Detect enemy action from new battle log entries
+  // Detect enemy action from new battle log entries → play enemy animation → unlock
   useEffect(() => {
     const logs = run.battleLog;
     if (logs.length > prevLogLen.current) {
@@ -129,22 +130,33 @@ export function BattleScene({ run, onAction, busy }: Props) {
       const enemyName = enemy?.name ?? '';
       const enemyAttacked = newLogs.some(l => l.includes(enemyName) && (l.includes('使用') || l.includes('造成')));
       if (enemyAttacked) {
-        // Trigger enemy attack animation
         setPlayerShake(true);
         setTimeout(() => setPlayerShake(false), 600);
         const moveLine = newLogs.find(l => l.includes(enemyName) && l.includes('使用'));
-        // Pick a random enemy move type for visual
         const etype = enemy?.moves?.[0]?.type ?? '一般';
         setEnemyMoveType(etype);
-        const isPhys = moveLine?.includes('物攻') ?? Math.random() > 0.5;
+        const isPhys = moveLine?.includes('物攻') ?? false;
         setEnemyAnim(isPhys ? 'lunge' : 'projectile');
-        setTimeout(() => setEnemyAnim('idle'), 700);
+        setTimeout(() => { setEnemyAnim('idle'); setAttackLocked(false); }, 750);
+      } else {
+        // No enemy attack in this update (e.g. status move, or miss) → still unlock
+        setAttackLocked(false);
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [run.battleLog.length]);
 
-  function handleAttack(category: string, moveType?: string) {
+  // Safety unlock when busy clears (covers cases where log didn't change)
+  useEffect(() => {
+    if (!busy) {
+      const t = setTimeout(() => setAttackLocked(false), 900);
+      return () => clearTimeout(t);
+    }
+  }, [busy]);
+
+  // handleAttack: triggers player animation, THEN calls API after animation completes
+  function handleAttack(category: string, moveType?: string, customId?: string) {
+    setAttackLocked(true);
     setShake(true);
     setTimeout(() => setShake(false), 650);
     setCurrentMoveType(moveType ?? '一般');
@@ -157,6 +169,10 @@ export function BattleScene({ run, onAction, busy }: Props) {
     } else {
       setAttackAnim('status');
       setTimeout(() => setAttackAnim('idle'), 750);
+    }
+    // Schedule API call AFTER player animation (~750ms) for sequential feel
+    if (customId) {
+      setTimeout(() => onAction(customId), 750);
     }
   }
 
@@ -183,54 +199,35 @@ export function BattleScene({ run, onAction, busy }: Props) {
         </div>
       </div>
 
-      {/* ── Battle Arena ─────────────────────── */}
+      {/* ── Battle Arena (sprites only, overflow hidden so boss sprite stays inside) ─── */}
       <div style={{
         position: 'relative',
         background: bgGradient,
         borderRadius: 14,
         border: isBoss ? '1px solid #7f1d1d' : '1px solid #1e2d45',
-        height: 220, overflow: 'visible',
+        height: 200, overflow: 'hidden',
       }}>
-        {/* Enemy info box: top-right */}
+        {/* Ground line */}
+        <div style={{
+          position: 'absolute', bottom: 42, left: 0, right: 0,
+          height: 2, background: 'linear-gradient(90deg, transparent, #1e293b 25%, #1e293b 75%, transparent)',
+        }} />
+
+        {/* Enemy sprite: top-right corner, sized to fit */}
         {enemy && (
           <div style={{
             position: 'absolute', top: 8, right: 8,
-            background: 'rgba(0,0,0,0.6)', borderRadius: 8, padding: '5px 10px',
-            border: isBoss ? '1px solid #ef444455' : '1px solid #1e293b',
-            minWidth: 130, maxWidth: 170, backdropFilter: 'blur(4px)',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 2 }}>
-              {isBoss && <span style={{ color: '#ef4444', fontSize: 9, fontWeight: 700, fontFamily: "'Press Start 2P', monospace" }}>BOSS</span>}
-              <span style={{ fontWeight: 900, fontSize: 12, color: '#fff' }}>{enemy.name}</span>
-              {enemy.battleStatus && <StatusBadge status={enemy.battleStatus} />}
-            </div>
-            <div style={{ display: 'flex', gap: 3, marginBottom: 4 }}>
-              {enemy.types.map(t => <TypeBadge key={t} type={t} />)}
-            </div>
-            <HpBar current={enemy.currentHP} max={enemy.maxHP} label="HP" />
-            <div style={{ fontSize: 9, color: '#475569', marginTop: 3, display: 'flex', gap: 5 }}>
-              <span>ATK<StageLabel stage={enemy.atkStage} /></span>
-              <span>DEF<StageLabel stage={enemy.defStage} /></span>
-              <span>SPD<StageLabel stage={enemy.spdStage} /></span>
-              {enemy.goldReward > 0 && <span style={{ color: '#fbbf24' }}>💰{enemy.goldReward}</span>}
-            </div>
-          </div>
-        )}
-
-        {/* Enemy sprite: middle-right — moves left on lunge */}
-        {enemy && (
-          <div style={{
-            position: 'absolute', top: 78, right: 12,
             animation: enemyAnim === 'lunge' ? 'enemyLunge 0.7s ease-in-out' : undefined,
           }}>
             <img
               src={spriteUrl(enemy.pokeId, 'front')}
               alt={enemy.name}
               style={{
-                imageRendering: 'pixelated', width: 98, height: 98,
+                imageRendering: 'pixelated',
+                width: isBoss ? 110 : 96, height: isBoss ? 110 : 96,
                 filter: enemy.currentHP === 0
                   ? 'grayscale(1) opacity(0.3)'
-                  : isBoss ? 'drop-shadow(0 0 14px #ef4444)' : 'drop-shadow(0 4px 10px rgba(0,0,0,0.7))',
+                  : isBoss ? 'drop-shadow(0 0 16px #ef4444)' : 'drop-shadow(0 4px 10px rgba(0,0,0,0.7))',
                 animation: enemy.currentHP > 0 && enemyAnim === 'idle'
                   ? (shake ? 'shake 0.45s ease-in-out' : isBoss ? 'bossGlow 1.5s ease-in-out infinite' : 'bounce 2s ease-in-out infinite')
                   : undefined,
@@ -243,7 +240,7 @@ export function BattleScene({ run, onAction, busy }: Props) {
         {attackAnim === 'beam' && (
           <div style={{
             position: 'absolute',
-            bottom: 135, left: 110,
+            bottom: 95, left: 100,
             height: 8, borderRadius: 4, zIndex: 10, pointerEvents: 'none',
             background: `linear-gradient(90deg, ${typeColor(currentMoveType)}, #ffffff88)`,
             boxShadow: `0 0 16px 6px ${typeColor(currentMoveType)}`,
@@ -255,7 +252,7 @@ export function BattleScene({ run, onAction, busy }: Props) {
         {enemyAnim === 'projectile' && (
           <div style={{
             position: 'absolute',
-            bottom: 135, right: 110,
+            bottom: 95, right: 100,
             height: 8, borderRadius: 4, zIndex: 10, pointerEvents: 'none',
             background: `linear-gradient(270deg, ${typeColor(enemyMoveType)}, #ffffff88)`,
             boxShadow: `0 0 16px 6px ${typeColor(enemyMoveType)}`,
@@ -266,9 +263,9 @@ export function BattleScene({ run, onAction, busy }: Props) {
 
         {/* Player projectile — flies toward enemy */}
         {attackAnim === 'projectile' && (
-          <div key={Date.now() + 'proj'} style={{
+          <div key={`proj_${run.battleLog.length}`} style={{
             position: 'absolute',
-            bottom: 132, left: 112,
+            bottom: 100, left: 105,
             width: 20, height: 20, borderRadius: '50%', zIndex: 10, pointerEvents: 'none',
             background: typeColor(currentMoveType),
             boxShadow: `0 0 18px 8px ${typeColor(currentMoveType)}`,
@@ -276,10 +273,10 @@ export function BattleScene({ run, onAction, busy }: Props) {
           }} />
         )}
 
-        {/* Player sprite: middle-left (with lunge wrapper — moves right toward enemy) */}
+        {/* Player sprite: bottom-left — lunges right toward enemy */}
         {activePoke && (
           <div style={{
-            position: 'absolute', bottom: 86, left: 6,
+            position: 'absolute', bottom: 40, left: 6,
             animation: attackAnim === 'lunge' ? 'lungeFull 0.7s ease-in-out' : undefined,
           }}>
             <img
@@ -301,20 +298,23 @@ export function BattleScene({ run, onAction, busy }: Props) {
             />
           </div>
         )}
+      </div>
 
-        {/* Player info box: bottom-left */}
+      {/* ── Info panels below arena: player left, enemy right ─────────── */}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
+        {/* Player info */}
         {activePoke && (
           <div style={{
-            position: 'absolute', bottom: 8, left: 8,
-            background: 'rgba(0,0,0,0.6)', borderRadius: 8, padding: '5px 10px',
-            border: '1px solid #1e3a5f', minWidth: 130, maxWidth: 170, backdropFilter: 'blur(4px)',
+            flex: 1,
+            background: 'rgba(10,14,30,0.9)', borderRadius: 10, padding: '8px 10px',
+            border: '1px solid #1e3a5f',
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 2 }}>
-              <span style={{ fontWeight: 900, fontSize: 12, color: '#fff' }}>{activePoke.displayName}</span>
-              {activePoke.isShiny && <span>✨</span>}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 3 }}>
+              <span style={{ fontWeight: 900, fontSize: 12, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{activePoke.displayName}</span>
+              {activePoke.isShiny && <span style={{ fontSize: 12 }}>✨</span>}
               {activePoke.battleStatus && <StatusBadge status={activePoke.battleStatus} />}
             </div>
-            <div style={{ display: 'flex', gap: 3, marginBottom: 4 }}>
+            <div style={{ display: 'flex', gap: 3, marginBottom: 5, flexWrap: 'wrap' }}>
               {activePoke.types.map(t => <TypeBadge key={t} type={t} />)}
             </div>
             <HpBar current={activePoke.currentHP} max={activePoke.maxHP} label="HP" />
@@ -322,6 +322,31 @@ export function BattleScene({ run, onAction, busy }: Props) {
               <span>ATK<StageLabel stage={activePoke.atkStage} /></span>
               <span>DEF<StageLabel stage={activePoke.defStage} /></span>
               <span>SPD<StageLabel stage={activePoke.spdStage} /></span>
+            </div>
+          </div>
+        )}
+
+        {/* Enemy info */}
+        {enemy && (
+          <div style={{
+            flex: 1,
+            background: 'rgba(10,14,30,0.9)', borderRadius: 10, padding: '8px 10px',
+            border: isBoss ? '1px solid #ef444455' : '1px solid #1e293b',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 3 }}>
+              {isBoss && <span style={{ color: '#ef4444', fontSize: 9, fontWeight: 700, fontFamily: "'Press Start 2P', monospace", flexShrink: 0 }}>BOSS</span>}
+              <span style={{ fontWeight: 900, fontSize: 12, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{enemy.name}</span>
+              {enemy.battleStatus && <StatusBadge status={enemy.battleStatus} />}
+            </div>
+            <div style={{ display: 'flex', gap: 3, marginBottom: 5, flexWrap: 'wrap' }}>
+              {enemy.types.map(t => <TypeBadge key={t} type={t} />)}
+            </div>
+            <HpBar current={enemy.currentHP} max={enemy.maxHP} label="HP" />
+            <div style={{ fontSize: 9, color: '#475569', marginTop: 3, display: 'flex', gap: 5 }}>
+              <span>ATK<StageLabel stage={enemy.atkStage} /></span>
+              <span>DEF<StageLabel stage={enemy.defStage} /></span>
+              <span>SPD<StageLabel stage={enemy.spdStage} /></span>
+              {enemy.goldReward > 0 && <span style={{ color: '#fbbf24' }}>💰{enemy.goldReward}</span>}
             </div>
           </div>
         )}
@@ -335,8 +360,8 @@ export function BattleScene({ run, onAction, busy }: Props) {
             move={m}
             idx={i}
             channelId={run.channelId}
-            onAction={onAction}
             busy={busy}
+            locked={attackLocked}
             onAttack={handleAttack}
           />
         ))}
@@ -344,8 +369,8 @@ export function BattleScene({ run, onAction, busy }: Props) {
         {allMovesEmpty && activePoke && (
           <button
             className="btn-hover"
-            disabled={busy}
-            onClick={() => { if (!busy) { handleAttack('Physical', 'normal'); onAction(`tower_move_${run.channelId}_99`); } }}
+            disabled={busy || attackLocked}
+            onClick={() => { if (!busy && !attackLocked) { handleAttack('Physical', 'normal', `tower_move_${run.channelId}_99`); } }}
             style={{
               background: 'linear-gradient(135deg, #ef444433, #ef444411)',
               color: '#fca5a5',

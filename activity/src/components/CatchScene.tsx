@@ -27,9 +27,9 @@ export function CatchScene({ run, onAction, busy, catchFailed }: Props) {
   useEffect(() => {
     if (catchFailed && enemy) {
       setEscapeText(`${enemy.name}掙扎著逃了出來，真是囂張的傢伙！`);
-      setPhase('escape');
+      setPhase('escape');       // immediately clears wobbling glow
       throwing.current = false;
-      setTimeout(() => { setEscapeText(''); setPhase('ready'); }, 2500);
+      setTimeout(() => { setEscapeText(''); setPhase('ready'); }, 1200);  // shortened from 2500ms
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [catchFailed]);
@@ -44,14 +44,14 @@ export function CatchScene({ run, onAction, busy, catchFailed }: Props) {
     setPhase('throwing');
 
     // throwing → wobbling after ball arrives
-    setTimeout(() => setPhase('wobbling'), 800);
+    setTimeout(() => setPhase('wobbling'), 700);
 
-    // wobbling → API call
+    // wobbling → API call (shorter delay so failure result arrives faster)
     setTimeout(() => {
       onAction(`tower_catch_${run.channelId}_${ballKey}`);
       throwing.current = false;
       setPhase('done');
-    }, 2000);
+    }, 1400);
   }
 
   function handlePass() {

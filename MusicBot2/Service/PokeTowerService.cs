@@ -2788,7 +2788,9 @@ namespace MusicBot2.Service
                 if (run.CurrentFloor >= run.MaxFloor)
                 {
                     run.State = TowerRunState.Victory;
-                    await RemoveAsync(channelId);
+                    // 注意：不立即 RemoveAsync，保留在 _activeRuns 讓前端能讀取 Victory 狀態
+                    // 下次該玩家開新局時 StartRunAsync 會覆蓋
+                    await SaveAsync(run);
                     // Grant shiny reward for the player's next catch
                     PendingShinyUserIds.Add(run.PlayerId);
                     if (_useRedis)
@@ -2844,7 +2846,9 @@ namespace MusicBot2.Service
                     return BuildBattleEmbed(run);
                 }
                 run.State = TowerRunState.Defeated;
-                await RemoveAsync(channelId);
+                // 注意：不立即 RemoveAsync，保留在 _activeRuns 讓前端能讀取 Defeated 狀態
+                // 下次該玩家開新局時 StartRunAsync 會覆蓋
+                await SaveAsync(run);
                 return BuildDefeatEmbed(run);
             }
 
