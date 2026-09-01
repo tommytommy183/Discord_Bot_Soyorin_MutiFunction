@@ -1,9 +1,79 @@
 import type { TowerRun } from '../types';
+import { spriteUrl } from '../utils';
 
 interface Props {
   run: TowerRun;
   onAction: (customId: string) => void;
   busy: boolean;
+}
+
+// States where we show the compact team panel + swap lead option
+const SHOW_TEAM_PANEL_STATES = new Set([
+  'Shopping', 'Resting', 'SelectingPowerUpgrade', 'SelectingRelic', 'SelectingCursedRelic',
+]);
+
+function CompactTeamPanel({ run, onAction, busy }: Props) {
+  return (
+    <div style={{
+      background: '#07090f',
+      borderRadius: 10,
+      border: '1px solid #1e293b',
+      padding: '8px 10px',
+    }}>
+      <div style={{ fontSize: 10, color: '#475569', fontWeight: 700, marginBottom: 6, letterSpacing: '0.05em' }}>
+        👥 當前隊伍
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+        {run.team.map((p, i) => {
+          const fainted = p.currentHP === 0;
+          const isLead = i === 0;
+          const hpPct = Math.max(0, Math.round(p.currentHP / p.maxHP * 100));
+          const hpColor = hpPct > 50 ? '#22c55e' : hpPct > 25 ? '#f59e0b' : '#ef4444';
+          return (
+            <div key={i} style={{
+              display: 'flex', alignItems: 'center', gap: 7,
+              opacity: fainted ? 0.45 : 1,
+            }}>
+              <img
+                src={spriteUrl(p.pokeId)}
+                alt={p.name}
+                style={{ width: 30, height: 30, imageRendering: 'pixelated', flexShrink: 0,
+                  filter: fainted ? 'grayscale(1)' : isLead ? 'drop-shadow(0 0 4px #6366f1)' : undefined }}
+              />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 2 }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: isLead ? '#a5b4fc' : '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {isLead && '⭐ '}{p.displayName}
+                  </span>
+                  <span style={{ fontSize: 9, color: hpColor, flexShrink: 0 }}>
+                    {fainted ? 'FNT' : `${p.currentHP}/${p.maxHP}`}
+                  </span>
+                </div>
+                <div style={{ height: 4, borderRadius: 2, background: '#1e293b', overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${hpPct}%`, background: hpColor, transition: 'width 0.3s' }} />
+                </div>
+              </div>
+              {/* Swap lead button — only for alive non-lead */}
+              {!isLead && !fainted && (
+                <button
+                  disabled={busy}
+                  onClick={() => onAction(`tower_setlead_${run.channelId}_${i}`)}
+                  title="設為首發"
+                  style={{
+                    background: 'none', border: '1px solid #6366f155', borderRadius: 5,
+                    color: '#6366f1', fontSize: 10, padding: '2px 6px',
+                    cursor: busy ? 'not-allowed' : 'pointer', flexShrink: 0, fontWeight: 700,
+                  }}
+                >
+                  首發
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 const STATE_CONFIG: Record<string, { title: string; color: string; bg: string; hint: string }> = {
@@ -80,6 +150,11 @@ export function GenericChoices({ run, onAction, busy }: Props) {
           <span style={{ fontWeight: 700, color: '#fbbf24', fontSize: 14 }}>{run.gold}</span>
         </div>
       </div>
+
+      {/* Compact team panel for non-battle screens */}
+      {SHOW_TEAM_PANEL_STATES.has(run.state) && (
+        <CompactTeamPanel run={run} onAction={onAction} busy={busy} />
+      )}
 
       {/* Options */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

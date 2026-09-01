@@ -195,8 +195,10 @@ namespace MusicBot2.Service
         public HashSet<string> SeenRelicIds { get; set; } = new();
         public List<string> PendingRelicChoices { get; set; } = new();
         public bool ShieldActive { get; set; } = false;
+        public bool MirrorCoatActive { get; set; } = false; // relic_mirror_coat: 每場戰鬥一次完全反射
         public int PhoenixUseCount { get; set; } = 0;
         public int AvengeStacks { get; set; } = 0;
+        public int RevengeStored { get; set; } = 0; // relic_revenge: 蓄積受傷量，下次攻擊釋放
         public bool WillUsed { get; set; } = false;
         public float ChainBonus { get; set; } = 0f;
         // Casino
@@ -480,19 +482,22 @@ namespace MusicBot2.Service
             new("relic_will",      "意志結晶",  "✨", "每場戰鬥若全技能PP歸零則自動回復一次"),
             new("relic_chain",     "連鎖爆發",  "⛓️", "每擊倒一個敵人累積+5%傷害加成"),
             new("relic_time_warp",    "時光扭曲",   "⏰", "每場戰鬥開始時全部PP回復3點"),
-            new("relic_executioner",  "劊子手",     "🪓", "敵人HP低於25%時傷害×2"),
-            new("relic_mirror_coat",  "鏡面反射",   "🪞", "每場戰鬥有一次完全反射傷害機會"),
-            new("relic_parasite",     "寄生種子",   "🌱", "每擊倒一隻敵人永久+5最大HP"),
-            new("relic_feast",        "盛宴",       "🍖", "每場戰鬥勝利後回復50HP"),
-            new("relic_double_edge",  "捨身衝撞",   "💨", "攻擊傷害+40%但每次攻擊自損傷害的15%"),
-            new("relic_lucky_charm",  "幸運符",     "🍀", "所有隨機判定（暴擊/閃避/特效）機率+15%"),
-            new("relic_exp_boost",    "學習加速器", "🎓", "每場戰鬥獲得的EXP×1.5"),
-            new("relic_gold_mine",    "金礦脈",     "⛏️", "每場戰鬥勝利額外獲得20💰"),
+            new("relic_executioner",  "處刑者",     "🪓", "敵人HP低於25%時傷害×2"),
+            new("relic_mirror_coat",  "神聖彗星反射力量",   "🪞", "每場戰鬥有一次完全反射傷害機會"),
+            new("relic_parasite",     "心之鋼",   "🌱", "每擊倒一隻敵人永久+5最大HP"),
+            new("relic_feast",        "戰鬥續行A+",       "🍖", "每場戰鬥勝利後回復50HP"),
+            new("relic_double_edge",  "蹦蹦",   "💨", "攻擊傷害+40%但每次攻擊自損傷害的15%"),
+            new("relic_lucky_charm",  "雜燴兔肉塊",     "🍀", "所有隨機判定（暴擊/閃避/特效）機率+15%"),
+            new("relic_exp_boost",    "原住民考試加成", "🎓", "每場戰鬥獲得的EXP×1.35"),
+            new("relic_gold_mine",    "賺麻瞜",     "⛏️", "每場戰鬥勝利額外獲得20💰"),
             new("relic_berserker_r",  "狂暴之心",   "❤️‍🔥", "HP低於50%時傷害+40%（疊加enrage）"),
             new("relic_swift",        "迅捷之羽",   "🪽",  "速度+30%（疊加被動）"),
             new("relic_scholar",      "學者之冠",   "🎩", "每升一級額外獲得所有技能+5PP"),
-            new("relic_comeback",     "逆轉勝負",   "🔄", "HP低於10%時下一次攻擊傷害×3"),
-            new("relic_shared_pain",  "共苦盟約",   "🤝", "受到傷害時對敵人反彈30%傷害（疊加thorns）"),
+            new("relic_comeback",     "反擊的號角",   "🔄", "HP低於10%時下一次攻擊傷害×3"),
+            new("relic_shared_pain",  "荊棘之甲",   "🤝", "受到傷害時對敵人反彈30%傷害（疊加thorns）"),
+            new("relic_revenge",      "死亡印記",   "🗡️", "每次受傷時蓄積傷害，下次攻擊釋放蓄積量×50%額外傷害"),
+            new("relic_multi_hit",    "暗影打兩下",   "👊", "攻擊有30%機率再追加一擊（60%傷害）"),
+            new("relic_gold_power",   "財神戰隊",   "💸", "每擁有100金幣增加8%攻擊傷害（上限+40%）"),
         };
 
         private static readonly List<PassiveDef> _passives = new()
@@ -519,24 +524,27 @@ namespace MusicBot2.Service
             new("curse_gold_tax",    "貪婪詛咒",   "🪙", "每層結束扣除 10💰（扣到0為止）"),
             new("curse_slow",        "重力詛咒",   "🔩", "全隊速度 -40%"),
             new("curse_weak_atk",    "腐蝕之力",   "⚗️", "全隊攻擊力 -25%"),
-            new("curse_bleed",       "流血詛咒",   "🩸", "每回合強制扣 MaxHP×5%（疊加）"),
+            new("curse_bleed",       "血源詛咒",   "🩸", "每回合強制扣 MaxHP×5%（疊加）"),
             new("curse_fragile",     "玻璃心",     "💔", "全隊防禦力 -30%"),
             new("curse_blind",       "蒙眼詛咒",   "👁️‍🗨️", "無法看到敵人下一招（預告消失）"),
             new("curse_expensive",   "奸商詛咒",   "🏪", "商店所有價格×1.5"),
-            new("curse_exp_drain",   "知識吸取",   "📖", "獲得 EXP 減少 50%"),
+            new("curse_exp_drain",   "我是傻逼你問我",   "📖", "獲得 EXP 減少 50%"),
             new("curse_no_catch",    "鐵籠詛咒",   "🔒", "無法捕獲任何 Pokemon（球全部失效）"),
             new("curse_hp_cap",      "生命封印",   "❤️‍🔥", "全隊最大 HP -20%"),
             new("curse_move_random", "混亂咒語",   "🌀", "每回合 20% 機率隨機使用技能"),
-            new("curse_forget",      "遺忘詛咒",   "🧠", "每過一層隨機忘掉一個技能，換成隨機技能"),
+            new("curse_forget",      "我給忘了",   "🧠", "每過一層隨機忘掉一個技能，換成隨機技能"),
             new("curse_weaken",      "虛弱加身",   "⚠️", "已強化過的技能威力減半"),
-            new("curse_gold_drain",  "黃金枷鎖",   "🔗", "擊倒敵人時不給金幣，改扣現有金幣10%"),
+            new("curse_gold_drain",  "天之鎖",   "🔗", "擊倒敵人時不給金幣，改扣現有金幣10%"),
             new("curse_mirror",      "角色互換",   "🔀", "每奇數回合玩家隨機使用技能（無法控制）"),
-            new("curse_fragile2",    "紙糊護甲",   "📄", "每次受傷後防禦永久-3（下限1）"),
+            new("curse_fragile2",    "保鮮膜護盾",   "📄", "每次受傷後防禦永久-3（下限1）"),
             new("curse_hungry",      "飢餓詛咒",   "🍽️", "每回合技能PP額外消耗1點"),
             new("curse_unlucky",     "厄運纏身",   "🎭", "所有暴擊/捕獲等機率減少30%"),
-            new("curse_decay",       "腐敗詛咒",   "🦠", "神器效果減弱50%（攻擊類加成減半）"),
-            new("curse_paranoia",    "妄想症",     "👻", "無法使用商店（商店路徑強制跳過）"),
-            new("curse_silence",     "沉默詛咒",   "🔇", "威力最高的技能PP上限變為1"),
+            new("curse_decay",       "腐敗箭雨",   "🦠", "神器效果減弱50%（攻擊類加成減半）"),
+            new("curse_paranoia",    "妄想症噁男",     "👻", "無法使用商店（商店路徑強制跳過）"),
+            new("curse_silence",     "Q是沉默",   "🔇", "威力最高的技能PP上限變為1"),
+            new("curse_brittle",     "原住民血統",   "🪨", "受到的所有傷害增加35%"),
+            new("curse_backfire",    "瘋狂打臉",   "💢", "攻擊後20%機率受到自身攻擊傷害25%的反傷"),
+            new("curse_one_move",    "啊我只會這招阿",   "🧠", "每回合強制只能使用第一個技能（PP>0）"),
         };
 
         // pending starts keyed by channelId (before passive is chosen)
@@ -2143,7 +2151,9 @@ namespace MusicBot2.Service
                 {
                     var r = GetRun(ch);
                     if (r != null && si > 0 && si < r.Party.Count && r.Party[si].CurrentHP > 0
-                        && r.State == TowerRunState.SelectingPath)
+                        && (r.State == TowerRunState.SelectingPath
+                            || r.State == TowerRunState.Shopping
+                            || r.State == TowerRunState.Resting))
                     {
                         (r.Party[0], r.Party[si]) = (r.Party[si], r.Party[0]);
                         r.ActivePokemonIndex = 0;
@@ -2411,8 +2421,10 @@ namespace MusicBot2.Service
                 run.State = TowerRunState.InBattle;
                 run.RunLog.Add($"👹 第{run.CurrentFloor}層：遭遇小頭目 {run.CurrentEnemy.Name}！");
                 run.ShieldActive = HasRelic(run, "relic_shield");
+                run.MirrorCoatActive = HasRelic(run, "relic_mirror_coat");
                 run.WillUsed = false;
                 run.AvengeStacks = 0;
+                run.RevengeStored = 0;
                 foreach (var pk in run.Party)
                 {
                     pk.BattleStatus = ""; pk.SleepTurns = 0;
@@ -2437,8 +2449,10 @@ namespace MusicBot2.Service
                 run.RunLog.Add($"⚔️ 第{run.CurrentFloor}層：遭遇 {run.CurrentEnemy.Name}！");
                 // Reset per-battle relic flags
                 run.ShieldActive = HasRelic(run, "relic_shield");
+                run.MirrorCoatActive = HasRelic(run, "relic_mirror_coat");
                 run.WillUsed = false;
                 run.AvengeStacks = 0;
+                run.RevengeStored = 0;
                 // 重置戰鬥狀態（每場戰鬥清空）
                 foreach (var pk in run.Party)
                 {
@@ -2587,6 +2601,12 @@ namespace MusicBot2.Service
                 int randomSlot = _rng.Next(poke.Moves.Count);
                 playerMove = poke.Moves[randomSlot];
             }
+            // curse_one_move: 強制使用第一個PP>0的技能（忽略玩家選擇）
+            if (run.CursedRelicIds.Contains("curse_one_move"))
+            {
+                var firstAvail = poke.Moves.FirstOrDefault(m => m.CurrentPP > 0);
+                if (firstAvail != null) playerMove = firstAvail;
+            }
 
             var enemyMove = enemy.Moves[enemy.NextMoveIdx % enemy.Moves.Count];
 
@@ -2632,6 +2652,7 @@ namespace MusicBot2.Service
                 int noDefThreshold = 20 + (HasRelic(run, "relic_lucky_charm") ? 15 : 0);
                 if (HasRelic(run, "relic_no_def") && _rng.Next(100) < noDefThreshold)
                     d = Math.Max(d, (int)(playerMove.Power * (playerMove.Category == "Physical" ? effAtk : effSpAtk) / 5.0f));
+                int dBase = d; // 記錄神器加成前的基礎傷害（用於 curse_decay）
                 if (HasRelic(run, "relic_boss_dmg") && enemy.IsBoss) d = (int)(d * 1.5f);
                 if (HasRelic(run, "relic_fullhp") && poke.CurrentHP == poke.MaxHP) d = (int)(d * 1.3f);
                 if (HasRelic(run, "relic_amplify")) d = (int)(d * 1.3f);
@@ -2645,12 +2666,38 @@ namespace MusicBot2.Service
                 if (HasRelic(run, "relic_chain") && run.ChainBonus > 0) d = (int)(d * (1f + run.ChainBonus));
                 bool avengeProc = HasRelic(run, "relic_avenge") && run.AvengeStacks >= 3;
                 if (avengeProc) { d = d * 2; run.AvengeStacks = 0; }
+                // relic_gold_power: +8% per 100 gold, cap +40%
+                if (HasRelic(run, "relic_gold_power") && run.Gold > 0)
+                    d = (int)(d * (1f + Math.Min(0.4f, (run.Gold / 100) * 0.08f)));
+                // relic_revenge: release stored damage (50% bonus)
+                if (HasRelic(run, "relic_revenge") && run.RevengeStored > 0)
+                {
+                    int rvBonus = (int)(run.RevengeStored * 0.5f);
+                    if (rvBonus > 0) { d += rvBonus; sb.AppendLine($"  🗡️ 復仇釋放！額外 {rvBonus} 傷害！"); }
+                    run.RevengeStored = 0;
+                }
+                // curse_decay: 神器攻擊類加成減半（神器增加的部分打折50%）
+                if (run.CursedRelicIds.Contains("curse_decay") && d > dBase)
+                    d = dBase + (d - dBase) / 2;
 
                 enemy.CurrentHP = Math.Max(0, enemy.CurrentHP - d);
                 if (HasRelic(run, "relic_double_edge")) poke.CurrentHP = Math.Max(1, poke.CurrentHP - Math.Max(1, (int)(d * 0.15f)));
                 run.TotalDamageDealt += d;
                 AppendHit(sb, poke.DisplayName, enemy.Name, playerMove, d, enemy.Types, true);
 
+                // relic_multi_hit: 30% chance to hit again for 60% damage
+                if (HasRelic(run, "relic_multi_hit") && enemy.CurrentHP > 0 && _rng.Next(100) < 30)
+                {
+                    int d2 = (int)(d * 0.6f);
+                    if (d2 > 0) { enemy.CurrentHP = Math.Max(0, enemy.CurrentHP - d2); sb.AppendLine($"  👊 連擊！追加 {d2} 傷害！"); }
+                }
+                // curse_backfire: 20% chance player takes 25% self-damage
+                if (run.CursedRelicIds.Contains("curse_backfire") && d > 0 && _rng.Next(100) < 20)
+                {
+                    int bf = Math.Max(1, (int)(d * 0.25f));
+                    poke.CurrentHP = Math.Max(1, poke.CurrentHP - bf);
+                    sb.AppendLine($"  💢 反噬！{poke.DisplayName} 受到 {bf} 反傷！");
+                }
                 // Post-attack relics
                 if (HasRelic(run, "relic_lifesteal")) { int ls = Math.Max(1, (int)(d * 0.20f)); poke.CurrentHP = Math.Min(poke.MaxHP, poke.CurrentHP + ls); sb.AppendLine($"  🩸 生命吸取 +{ls}HP"); }
                 if (HasPassive(run, "passive_vampire") && !HasRelic(run, "relic_lifesteal")) { int ls = Math.Max(1, (int)(d * 0.30f)); poke.CurrentHP = Math.Min(poke.MaxHP, poke.CurrentHP + ls); sb.AppendLine($"  🧛 吸血鬼 +{ls}HP"); }
@@ -2693,10 +2740,19 @@ namespace MusicBot2.Service
                 if (HasRelic(run, "relic_last_stand") && poke.CurrentHP * 100 / Math.Max(1, poke.MaxHP) < 20) ed = ed / 2;
                 // passive_ironwall: -20% damage taken
                 if (HasPassive(run, "passive_ironwall")) ed = (int)(ed * 0.8f);
+                // curse_brittle: take 35% more damage
+                if (run.CursedRelicIds.Contains("curse_brittle") && ed > 0) ed = (int)(ed * 1.35f);
 
                 poke.CurrentHP = Math.Max(0, poke.CurrentHP - ed);
                 AppendHit(sb, enemy.Name, poke.DisplayName, enemyMove, ed, poke.Types, false);
 
+                // relic_mirror_coat: 每場戰鬥第一次被攻擊時完全反射傷害
+                if (HasRelic(run, "relic_mirror_coat") && run.MirrorCoatActive && ed > 0)
+                {
+                    enemy.CurrentHP = Math.Max(0, enemy.CurrentHP - ed);
+                    run.MirrorCoatActive = false;
+                    sb.AppendLine($"  🪞 鏡面反射！{enemy.Name} 受到 {ed} 點反射傷害！");
+                }
                 // Thorns / shared_pain
                 if (HasRelic(run, "relic_thorns") && ed > 0) enemy.CurrentHP = Math.Max(0, enemy.CurrentHP - Math.Min(25, (int)(ed * 0.25f)));
                 if (HasRelic(run, "relic_shared_pain") && ed > 0) enemy.CurrentHP = Math.Max(0, enemy.CurrentHP - Math.Max(1, (int)(ed * 0.3f)));
@@ -2707,6 +2763,8 @@ namespace MusicBot2.Service
                     foreach (var mv in poke.Moves) mv.CurrentPP = Math.Max(0, mv.CurrentPP - 1);
                 // Avenge
                 if (HasRelic(run, "relic_avenge") && ed > 0) run.AvengeStacks++;
+                // relic_revenge: accumulate incoming damage
+                if (HasRelic(run, "relic_revenge") && ed > 0) run.RevengeStored += ed;
 
                 // 敵方技能效果（可對玩家造成狀態）
                 if (poke.CurrentHP > 0 || enemyMove.DrainPercent > 0)
@@ -3589,6 +3647,15 @@ namespace MusicBot2.Service
             }
             run.PendingRelicChoices.Clear();
 
+            // 詛咒補償流程：選完補償神器後直接回到地圖，不進入強化選擇
+            if (run.PowerUpgradeReturn == "curse_comp")
+            {
+                run.PowerUpgradeReturn = "";
+                run.State = TowerRunState.SelectingPath;
+                await SaveAsync(run);
+                return BuildPathEmbed(run);
+            }
+
             // Proceed to power upgrade (battle chain)
             run.PowerUpgradeReturn = "battle";
             run.State = TowerRunState.SelectingPowerUpgrade;
@@ -4119,9 +4186,15 @@ namespace MusicBot2.Service
                 run.RunLog.Add($"💀 承受詛咒【{curse?.Name}】！");
             }
             run.PendingCursedRelicChoices.Clear();
-            run.State = TowerRunState.SelectingPath;
+
+            // 詛咒補償：選完詛咒後，提供3選1神器作為補償
+            var compRelics = _relics.Where(r => !run.RelicIds.Contains(r.Id)).ToList();
+            if (compRelics.Count < 3) compRelics = _relics.ToList();
+            run.PendingRelicChoices = compRelics.OrderBy(_ => _rng.Next()).Take(3).Select(r => r.Id).ToList();
+            run.PowerUpgradeReturn = "curse_comp"; // HandleRelicChoiceAsync 看到此值會直接回到地圖
+            run.State = TowerRunState.SelectingRelic;
             await SaveAsync(run);
-            return BuildPathEmbed(run);
+            return BuildRelicEmbed(run, "⚖️ 作為詛咒的補償，選擇一個神器！");
         }
 
         private void ApplyCursedRelicOnPickup(TowerRun run, string curseId)
@@ -4155,10 +4228,10 @@ namespace MusicBot2.Service
             }
         }
 
-        private (Embed embed, ComponentBuilder component) BuildRelicEmbed(TowerRun run)
+        private (Embed embed, ComponentBuilder component) BuildRelicEmbed(TowerRun run, string? headerMsg = null)
         {
             var desc = new StringBuilder();
-            desc.AppendLine("✨ 爬塔獎勵！從以下 **3 件神器**中選擇一件：");
+            desc.AppendLine(headerMsg ?? "✨ 爬塔獎勵！從以下 **3 件神器**中選擇一件：");
             desc.AppendLine();
             for (int i = 0; i < run.PendingRelicChoices.Count; i++)
             {
