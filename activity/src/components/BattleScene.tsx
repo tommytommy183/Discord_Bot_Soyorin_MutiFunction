@@ -40,43 +40,31 @@ function MoveBtn({ move, idx, channelId, busy, locked, onAttack }: {
       disabled={isDisabled}
       onClick={() => { if (!isDisabled) { onAttack(move.category, move.type, customId); } }}
       style={{
-        background: empty
-          ? '#1a1f2e'
-          : `linear-gradient(135deg, ${color}44 0%, ${color}22 100%)`,
+        background: empty ? '#1a1f2e' : `linear-gradient(135deg, ${color}33 0%, ${color}18 100%)`,
         color: empty ? '#475569' : '#fff',
-        border: `1px solid ${empty ? '#334155' : color + '66'}`,
-        borderRadius: 10,
-        padding: '8px 10px',
+        border: `1px solid ${empty ? '#334155' : color + '55'}`,
+        borderRadius: 8,
+        padding: '6px 8px',
         cursor: isDisabled ? 'not-allowed' : 'pointer',
         opacity: isDisabled ? 0.55 : 1,
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        gap: 2,
+        display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 6,
         flex: '1 1 calc(50% - 4px)',
-        minWidth: 0,
-        position: 'relative',
-        overflow: 'hidden',
+        minWidth: 0, position: 'relative', overflow: 'hidden',
       }}
     >
       {!empty && (
         <div style={{
-          position: 'absolute', top: 0, left: 0, right: 0, height: 3,
-          background: color, borderRadius: '10px 10px 0 0',
+          position: 'absolute', top: 0, left: 0, bottom: 0, width: 3,
+          background: color, borderRadius: '8px 0 0 8px',
         }} />
       )}
-      <span style={{ fontSize: 18, lineHeight: 1, marginTop: 2 }}>{move.emoji}</span>
-      <span style={{ fontWeight: 700, fontSize: 11, textAlign: 'center', lineHeight: 1.2 }}>{move.name}</span>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 9 }}>
-        <span style={{ color: '#64748b' }}>
-          {['physical','Physical'].includes(move.category) ? '物攻' : ['special','Special'].includes(move.category) ? '特攻' : '變化'}
-          {move.power > 0 && ` ${move.power}`}
-        </span>
-      </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 9, color: ppColor }}>
-        <span>PP</span>
-        <span style={{ fontWeight: 700 }}>{move.currentPP}</span>
-        <span style={{ opacity: 0.5 }}>/{move.maxPP}</span>
+      <span style={{ fontSize: 18, lineHeight: 1, flexShrink: 0, marginLeft: 4 }}>{move.emoji}</span>
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
+        <div style={{ fontWeight: 700, fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{move.name}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 9, color: '#64748b' }}>
+          <span>{['physical','Physical'].includes(move.category) ? '物' : ['special','Special'].includes(move.category) ? '特' : '變'}{move.power > 0 ? ` ${move.power}` : ''}</span>
+          <span style={{ color: ppColor }}>PP {move.currentPP}/{move.maxPP}</span>
+        </div>
       </div>
     </button>
   );

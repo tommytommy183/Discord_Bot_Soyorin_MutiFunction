@@ -1881,6 +1881,7 @@ namespace MusicBot2.Service
                     int cS  = ShopCost(run, 15, "buy_super");
                     int cU  = ShopCost(run, 25, "buy_ultra");
                     int cPU = ShopCost(run, 20, "powerup");
+                    opts.Add(new { customId = $"tower_shop_{channelId}_leave",      label = "離開商店",   emoji = "🚪", description = "結帳離開，繼續爬塔" }); // 排第一保證可見
                     opts.Add(new { customId = $"tower_shop_{channelId}_heal_full",  label = "全回復",     emoji = "💊", description = $"HP完全恢復・{cHF}💰" });
                     opts.Add(new { customId = $"tower_shop_{channelId}_heal_half",  label = "超級樹果",   emoji = "🧃", description = $"恢復50%HP・{cHH}💰" });
                     opts.Add(new { customId = $"tower_shop_{channelId}_pp_restore", label = "PP全回復",   emoji = "🔋", description = $"所有技能PP滿・{cPP}💰" });
@@ -1889,7 +1890,6 @@ namespace MusicBot2.Service
                     opts.Add(new { customId = $"tower_shop_{channelId}_buy_super",  label = "超級球×2",   emoji = "🔵", description = $"55%捕獲率・{cS}💰" });
                     opts.Add(new { customId = $"tower_shop_{channelId}_buy_ultra",  label = "高級球×1",   emoji = "🟡", description = $"75%捕獲率・{cU}💰" });
                     opts.Add(new { customId = $"tower_powerup_{channelId}_shop",    label = "強化招式",   emoji = "⚡", description = $"選一招威力+20・{cPU}💰" });
-                    opts.Add(new { customId = $"tower_shop_{channelId}_leave",      label = "離開商店",   emoji = "🚪", description = (string?)null });
                     return opts;
                 }
                 case TowerRunState.SelectingEvent:
@@ -4751,7 +4751,7 @@ namespace MusicBot2.Service
             if (floor == 9  || floor == 19) return new() { "shop", "rest" };
             if (floor == 7  || floor == 17) return new() { "cursed_relic", "cursed_relic" };
             if (floor == 1  || floor == 11) return new() { "battle", "battle", "battle" }; // 3 choices at start
-            var extras = new List<string> { "rest", "shop", "event", "casino", "relic" };
+            var extras = new List<string> { "rest", "shop", "event", "event", "casino" }; // relic 改為通關每5層獎勵，不放在地圖上
             int count = _rng.Next(2, 4);   // 2 or 3 nodes
             var pool = new List<string> { "battle" };
             pool.AddRange(extras.OrderBy(_ => _rng.Next()).Take(count - 1));

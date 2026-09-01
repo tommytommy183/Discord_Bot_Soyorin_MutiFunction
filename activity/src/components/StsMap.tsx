@@ -117,6 +117,7 @@ export function StsMap({ run, onSelectNode, busy }: Props) {
   if (nodes.length === 0) return null;
 
   return (
+    <div style={{ position: 'relative' }}>
     <div ref={scrollRef} style={{
       background: '#07090f',
       border: '1px solid #1e293b',
@@ -252,59 +253,6 @@ export function StsMap({ run, onSelectNode, busy }: Props) {
         </svg>
       </div>
 
-      {/* Hover preview panel — large image + types on left side */}
-      {(() => {
-        const hn = hoveredId ? nodes.find(n => n.id === hoveredId) : null;
-        if (!hn) return null;
-        const c = cfg(hn.type);
-        const isBattle = hn.type === 'battle' || hn.type === 'boss' || hn.type === 'miniboss';
-        return (
-          <div style={{
-            position: 'sticky', top: 4, left: 6,
-            zIndex: 20, pointerEvents: 'none',
-            display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 4,
-            background: 'rgba(7,9,15,0.96)',
-            border: `1px solid ${c.color}66`,
-            borderRadius: 12,
-            padding: '10px 12px',
-            minWidth: 110,
-            boxShadow: `0 0 20px ${c.color}33`,
-            backdropFilter: 'blur(8px)',
-          }}>
-            {/* Big sprite */}
-            {isBattle && hn.previewPokeId && hn.previewPokeId > 0 ? (
-              <>
-                <img
-                  src={spriteUrl(hn.previewPokeId, 'front')}
-                  alt={hn.previewPokeName}
-                  style={{ width: 72, height: 72, imageRendering: 'pixelated', animation: 'bounce 2s ease-in-out infinite' }}
-                />
-                <div style={{ fontWeight: 900, fontSize: 12, color: '#fff', textAlign: 'center', lineHeight: 1.3 }}>
-                  {hn.previewPokeName || '???'}
-                </div>
-                <div style={{
-                  fontSize: 11, fontWeight: 700, color: c.color,
-                  background: `${c.color}22`, borderRadius: 6, padding: '2px 8px',
-                }}>
-                  {c.emoji} {c.label}
-                </div>
-                {hn.type === 'boss' && (
-                  <div style={{ fontSize: 9, color: '#ef4444', fontFamily: "'Press Start 2P', monospace", animation: 'pulse 1s ease-in-out infinite' }}>
-                    BOSS
-                  </div>
-                )}
-              </>
-            ) : (
-              <>
-                <div style={{ fontSize: 36 }}>{c.emoji}</div>
-                <div style={{ fontWeight: 700, fontSize: 12, color: c.color }}>{c.label}</div>
-              </>
-            )}
-            <div style={{ fontSize: 9, color: '#475569' }}>第 {hn.floor} 層</div>
-          </div>
-        );
-      })()}
-
       {/* Available nodes tooltip bar at bottom */}
       {onSelectNode && availableIds.size > 0 && (
         <div style={{
@@ -341,6 +289,51 @@ export function StsMap({ run, onSelectNode, busy }: Props) {
           })}
         </div>
       )}
+    </div>
+
+    {/* Hover preview panel — absolute overlay in top-left corner of outer wrapper */}
+    {(() => {
+      const hn = hoveredId ? nodes.find(n => n.id === hoveredId) : null;
+      if (!hn) return null;
+      const c = cfg(hn.type);
+      const isBattle = hn.type === 'battle' || hn.type === 'boss' || hn.type === 'miniboss';
+      return (
+        <div style={{
+          position: 'absolute', top: 8, left: 8,
+          zIndex: 30, pointerEvents: 'none',
+          display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+          background: 'rgba(7,9,15,0.97)',
+          border: `1px solid ${c.color}66`,
+          borderRadius: 12, padding: '10px 12px', minWidth: 110,
+          boxShadow: `0 0 20px ${c.color}44`,
+          backdropFilter: 'blur(8px)',
+        }}>
+          {isBattle && hn.previewPokeId && hn.previewPokeId > 0 ? (
+            <>
+              <img src={spriteUrl(hn.previewPokeId, 'front')} alt={hn.previewPokeName}
+                style={{ width: 72, height: 72, imageRendering: 'pixelated', animation: 'bounce 2s ease-in-out infinite' }} />
+              <div style={{ fontWeight: 900, fontSize: 12, color: '#fff', textAlign: 'center', lineHeight: 1.3 }}>
+                {hn.previewPokeName || '???'}
+              </div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: c.color, background: `${c.color}22`, borderRadius: 6, padding: '2px 8px' }}>
+                {c.emoji} {c.label}
+              </div>
+              {hn.type === 'boss' && (
+                <div style={{ fontSize: 9, color: '#ef4444', fontFamily: "'Press Start 2P', monospace", animation: 'pulse 1s ease-in-out infinite' }}>
+                  BOSS
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <div style={{ fontSize: 36 }}>{c.emoji}</div>
+              <div style={{ fontWeight: 700, fontSize: 12, color: c.color }}>{c.label}</div>
+            </>
+          )}
+          <div style={{ fontSize: 9, color: '#475569' }}>第 {hn.floor} 層</div>
+        </div>
+      );
+    })()}
     </div>
   );
 }

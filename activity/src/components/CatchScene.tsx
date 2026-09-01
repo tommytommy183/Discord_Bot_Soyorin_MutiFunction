@@ -7,15 +7,17 @@ interface Props {
   onAction: (customId: string) => void;
   busy: boolean;
   catchFailed?: boolean;
+  catchSuccess?: boolean;
+  onConfirmSuccess?: () => void;
 }
 
-type CatchPhase = 'ready' | 'throwing' | 'wobbling' | 'escape' | 'done';
+type CatchPhase = 'ready' | 'throwing' | 'wobbling' | 'escape' | 'success' | 'done';
 
 const BALL_EMOJI: Record<string, string> = { normal:'⚽', super:'🔵', ultra:'🟡', master:'🟣' };
 const BALL_NAME: Record<string, string>  = { normal:'普通球', super:'超級球', ultra:'高級球', master:'大師球' };
 const BALL_RATE: Record<string, number>  = { normal:30, super:55, ultra:75, master:100 };
 
-export function CatchScene({ run, onAction, busy, catchFailed }: Props) {
+export function CatchScene({ run, onAction, busy, catchFailed, catchSuccess, onConfirmSuccess }: Props) {
   const enemy = run.currentEnemy;
   const balls = run.balls ?? {};
   const [phase, setPhase] = useState<CatchPhase>('ready');
@@ -27,15 +29,60 @@ export function CatchScene({ run, onAction, busy, catchFailed }: Props) {
   useEffect(() => {
     if (catchFailed && enemy) {
       setEscapeText(`${enemy.name}掙扎著逃了出來，真是囂張的傢伙！`);
-      setPhase('escape');       // immediately clears wobbling glow
+      setPhase('escape');
       throwing.current = false;
-      setTimeout(() => { setEscapeText(''); setPhase('ready'); }, 1200);  // shortened from 2500ms
+      setTimeout(() => { setEscapeText(''); setPhase('ready'); }, 1200);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [catchFailed]);
 
+  // When parent signals catch success
+  useEffect(() => {
+    if (catchSuccess) {
+      setPhase('success');
+      throwing.current = false;
+    }
+  }, [catchSuccess]);
+
   const availableBalls = Object.entries(balls).filter(([, cnt]) => cnt > 0);
-  const isAnimating = phase !== 'ready' && phase !== 'done';
+  const isAnimating = phase !== 'ready' && phase !== 'done' && phase !== 'success';
+
+  // Success screen
+  if (phase === 'success' && enemy) {
+    return (
+      <div className="anim-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 16, alignItems: 'center', padding: '20px 0' }}>
+        <div style={{ fontSize: 48, animation: 'bounce 0.6s ease-in-out infinite' }}>⚾</div>
+        <div style={{
+          fontSize: 20, fontWeight: 900, color: '#fbbf24',
+          textShadow: '0 0 20px #fbbf24',
+          animation: 'pulse 0.8s ease-in-out infinite', textAlign: 'center',
+        }}>
+          🎉 捕捉成功！🎉
+        </div>
+        <div style={{ textAlign: 'center' }}>
+          <img src={`/api/sprite/front/${enemy.pokeId}`} alt={enemy.name}
+            style={{ width: 96, height: 96, imageRendering: 'pixelated',
+              filter: 'drop-shadow(0 0 20px #fbbf24) brightness(1.2)',
+              animation: 'bounce 1s ease-in-out infinite' }} />
+          <div style={{ fontWeight: 900, fontSize: 18, color: '#fff', marginTop: 8 }}>{enemy.name}</div>
+          <div style={{ color: '#94a3b8', fontSize: 13, marginTop: 4 }}>已加入隊伍！</div>
+        </div>
+        <button
+          className="btn-hover"
+          onClick={() => onConfirmSuccess?.()}
+          style={{
+            background: 'linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%)',
+            border: 'none', borderRadius: 12, padding: '14px 40px',
+            color: '#000', fontWeight: 900, fontSize: 16,
+            cursor: 'pointer', marginTop: 8,
+            boxShadow: '0 0 24px #fbbf2466',
+          }}
+        >
+          ✅ 確認
+        </button>
+      </div>
+    );
+  }
 
   function handleThrow(ballKey: string) {
     if (isAnimating || busy || throwing.current) return;

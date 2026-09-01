@@ -318,6 +318,8 @@ export default function App() {
   }
 
   const [catchFailed, setCatchFailed] = useState(false);
+  const [catchSuccess, setCatchSuccess] = useState(false);
+  const [pendingRun, setPendingRun] = useState<TowerRun | null>(null);
 
   async function handleAction(customId: string) {
     if (!channelId || busy) return;
@@ -326,15 +328,30 @@ export default function App() {
     const res = await api.action({ channelId, customId });
     if (res.ok && res.data) {
       const newRun = res.data as TowerRun;
-      // Detect failed catch: state is still SelectingCatch after a throw
       if (wasCatch && newRun.state === 'SelectingCatch') {
+        // Catch failed — show escape animation
         setCatchFailed(true);
         setTimeout(() => setCatchFailed(false), 2500);
+        setRun(newRun);
+      } else if (wasCatch && newRun.state !== 'SelectingCatch') {
+        // Catch succeeded — show success screen, delay state transition
+        setCatchSuccess(true);
+        setPendingRun(newRun);
+        // Don't update run yet — CatchScene stays visible with success screen
+      } else {
+        setRun(newRun);
       }
-      setRun(newRun);
     }
     else { setError(res.error ?? '操作失敗'); }
     setBusy(false);
+  }
+
+  function handleCatchSuccessConfirm() {
+    if (pendingRun) {
+      setRun(pendingRun);
+      setPendingRun(null);
+    }
+    setCatchSuccess(false);
   }
 
   // ── Render ──────────────────────────────────────────────────────────────
@@ -389,8 +406,9 @@ export default function App() {
         {run.state === 'SelectingPath' && (
           <PathSelector run={run} onAction={handleAction} busy={busy} />
         )}
-        {run.state === 'SelectingCatch' && (
-          <CatchScene run={run} onAction={handleAction} busy={busy} catchFailed={catchFailed} />
+        {(run.state === 'SelectingCatch' || catchSuccess) && (
+          <CatchScene run={run} onAction={handleAction} busy={busy} catchFailed={catchFailed}
+            catchSuccess={catchSuccess} onConfirmSuccess={handleCatchSuccessConfirm} />
         )}
         {!['InBattle', 'SelectingPath', 'SelectingCatch', 'Victory', 'Defeated'].includes(run.state) && (
           <GenericChoices run={run} onAction={handleAction} busy={busy} />
