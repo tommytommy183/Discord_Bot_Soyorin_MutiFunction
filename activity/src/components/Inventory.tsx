@@ -23,9 +23,10 @@ interface Props {
   run: TowerRun;
   isOpen: boolean;
   onClose: () => void;
+  onAction?: (customId: string) => void;
 }
 
-export function Inventory({ run, isOpen, onClose }: Props) {
+export function Inventory({ run, isOpen, onClose, onAction }: Props) {
   const [tab, setTab] = useState<Tab>('team');
 
   if (!isOpen) return null;
@@ -136,6 +137,22 @@ export function Inventory({ run, isOpen, onClose }: Props) {
                         </span>
                       ))}
                     </div>
+                    {/* Set as lead — only outside battle and not already first */}
+                    {onAction && run.state === 'SelectingPath' && i !== 0 && p.currentHP > 0 && (
+                      <button
+                        className="btn-hover"
+                        onClick={() => { onAction(`tower_setlead_${run.channelId}_${i}`); onClose(); }}
+                        style={{
+                          marginTop: 8, background: 'linear-gradient(135deg, #1e1b4b, #312e81)',
+                          border: '1px solid #6366f155', borderRadius: 7,
+                          padding: '5px 12px', color: '#a5b4fc',
+                          fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                          display: 'flex', alignItems: 'center', gap: 5,
+                        }}
+                      >
+                        ⭐ 設為首發
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}

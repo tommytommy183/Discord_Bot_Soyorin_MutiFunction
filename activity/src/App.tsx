@@ -416,7 +416,7 @@ export default function App() {
       </div>
 
       {/* Inventory overlay */}
-      {run && <Inventory run={run} isOpen={inventoryOpen} onClose={() => setInventoryOpen(false)} />}
+      {run && <Inventory run={run} isOpen={inventoryOpen} onClose={() => setInventoryOpen(false)} onAction={handleAction} />}
 
       {/* Busy overlay */}
       {busy && (

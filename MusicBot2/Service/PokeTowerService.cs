@@ -2135,6 +2135,23 @@ namespace MusicBot2.Service
                 if (ulong.TryParse(customId[$"tower_swap_cancel_".Length..], out var ch))
                     HandleSwapCancel(ch);
             }
+            // tower_setlead_{channelId}_{index}  (背包設為首發：把 party[i] 和 party[0] 互換)
+            else if (customId.StartsWith("tower_setlead_"))
+            {
+                var p = customId.Split('_');
+                if (p.Length >= 4 && ulong.TryParse(p[2], out var ch) && int.TryParse(p[3], out var si))
+                {
+                    var r = GetRun(ch);
+                    if (r != null && si > 0 && si < r.Party.Count && r.Party[si].CurrentHP > 0
+                        && r.State == TowerRunState.SelectingPath)
+                    {
+                        (r.Party[0], r.Party[si]) = (r.Party[si], r.Party[0]);
+                        r.ActivePokemonIndex = 0;
+                        r.RunLog.Add($"⭐ {r.Party[0].DisplayName} 設為首發！");
+                        await SaveAsync(r);
+                    }
+                }
+            }
 
             return GetFrontendState(channelId);
         }

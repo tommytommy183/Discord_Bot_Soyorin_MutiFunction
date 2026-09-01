@@ -108,27 +108,35 @@ export function BattleScene({ run, onAction, busy }: Props) {
   const [enemyMoveType, setEnemyMoveType] = useState<string>('normal');
   const [attackLocked, setAttackLocked] = useState(false); // locked during player+enemy animation sequence
   const prevLogLen = useRef(0);
+  const attackLockedRef = useRef(false); // mirror ref so useEffect reads fresh value
 
-  // Detect enemy action from new battle log entries → play enemy animation → unlock
+  // Detect enemy action → play enemy animation → unlock
+  // Use attackLockedRef (not state) so the effect always sees the current locked status
   useEffect(() => {
     const logs = run.battleLog;
     if (logs.length > prevLogLen.current) {
       const newLogs = logs.slice(prevLogLen.current);
       prevLogLen.current = logs.length;
-      const enemyName = enemy?.name ?? '';
-      const enemyAttacked = newLogs.some(l => l.includes(enemyName) && (l.includes('使用') || l.includes('造成')));
-      if (enemyAttacked) {
+      const currentEnemy = run.currentEnemy;
+
+      if (attackLockedRef.current) {
+        // Player just attacked → enemy turn: always play animation
+        const moveLine = newLogs.find(l => currentEnemy && l.includes(currentEnemy.name) && l.includes('使用'));
+        const etype = currentEnemy?.moves?.[0]?.type ?? '一般';
+        setEnemyMoveType(etype);
+        // Detect physical: log mentions '物' or '衝' or no keyword → default projectile
+        const isPhys = !!(moveLine?.includes('物') || moveLine?.includes('衝') || moveLine?.includes('撞'));
         setPlayerShake(true);
         setTimeout(() => setPlayerShake(false), 600);
-        const moveLine = newLogs.find(l => l.includes(enemyName) && l.includes('使用'));
-        const etype = enemy?.moves?.[0]?.type ?? '一般';
-        setEnemyMoveType(etype);
-        const isPhys = moveLine?.includes('物攻') ?? false;
         setEnemyAnim(isPhys ? 'lunge' : 'projectile');
-        setTimeout(() => { setEnemyAnim('idle'); setAttackLocked(false); }, 750);
+        setTimeout(() => {
+          setEnemyAnim('idle');
+          setAttackLocked(false);
+          attackLockedRef.current = false;
+        }, 750);
       } else {
-        // No enemy attack in this update (e.g. status move, or miss) → still unlock
         setAttackLocked(false);
+        attackLockedRef.current = false;
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -145,6 +153,7 @@ export function BattleScene({ run, onAction, busy }: Props) {
   // handleAttack: triggers player animation, THEN calls API after animation completes
   function handleAttack(category: string, moveType?: string, customId?: string) {
     setAttackLocked(true);
+    attackLockedRef.current = true;
     setShake(true);
     setTimeout(() => setShake(false), 650);
     setCurrentMoveType(moveType ?? '一般');
@@ -192,8 +201,8 @@ export function BattleScene({ run, onAction, busy }: Props) {
         position: 'relative',
         background: bgGradient,
         borderRadius: 14,
-        border: isBoss ? '1px solid #7f1d1d' : '1px solid #1e2d45',
-        height: 200, overflow: 'hidden',
+        border: isBoss ? '2px solid #7f1d1d' : '1px solid #1e2d45',
+        height: isBoss ? 220 : 200, overflow: 'hidden',
       }}>
         {/* Ground line */}
         <div style={{
@@ -204,7 +213,9 @@ export function BattleScene({ run, onAction, busy }: Props) {
         {/* Enemy sprite: top-right corner, sized to fit */}
         {enemy && (
           <div style={{
-            position: 'absolute', top: 8, right: 8,
+            position: 'absolute',
+            top: isBoss ? 4 : 8,
+            right: isBoss ? 4 : 8,
             animation: enemyAnim === 'lunge' ? 'enemyLunge 0.7s ease-in-out' : undefined,
           }}>
             <img
@@ -212,12 +223,16 @@ export function BattleScene({ run, onAction, busy }: Props) {
               alt={enemy.name}
               style={{
                 imageRendering: 'pixelated',
-                width: isBoss ? 110 : 96, height: isBoss ? 110 : 96,
+                width: isBoss ? 130 : 96,
+                height: isBoss ? 130 : 96,
+                // Use drop-shadow (shape-aware) not box-shadow to avoid rectangular glow box
                 filter: enemy.currentHP === 0
                   ? 'grayscale(1) opacity(0.3)'
-                  : isBoss ? 'drop-shadow(0 0 16px #ef4444)' : 'drop-shadow(0 4px 10px rgba(0,0,0,0.7))',
+                  : isBoss
+                  ? 'drop-shadow(0 0 14px #ef4444) drop-shadow(0 0 6px #f97316) brightness(1.05)'
+                  : 'drop-shadow(0 4px 10px rgba(0,0,0,0.7))',
                 animation: enemy.currentHP > 0 && enemyAnim === 'idle'
-                  ? (shake ? 'shake 0.45s ease-in-out' : isBoss ? 'bossGlow 1.5s ease-in-out infinite' : 'bounce 2s ease-in-out infinite')
+                  ? (shake ? 'shake 0.45s ease-in-out' : 'bounce 2s ease-in-out infinite')
                   : undefined,
               }}
             />

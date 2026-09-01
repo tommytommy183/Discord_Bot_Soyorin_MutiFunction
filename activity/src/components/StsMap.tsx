@@ -71,9 +71,12 @@ export function StsMap({ run, onSelectNode, busy }: Props) {
     return svgH - floor * FLOOR_H - FLOOR_H * 0.2;
   }
 
-  // Build edges (straight lines for cleaner look)
+  // Build edges with bezier curves + availability flag
   const edges = useMemo(() => {
-    const result: { x1: number; y1: number; x2: number; y2: number; isVisited: boolean }[] = [];
+    const result: {
+      x1: number; y1: number; x2: number; y2: number;
+      isVisited: boolean; isAvailable: boolean; targetType: string;
+    }[] = [];
     nodes.forEach(n => {
       const flN = byFloor.get(n.floor) ?? [];
       const ni = flN.indexOf(n);
@@ -89,12 +92,20 @@ export function StsMap({ run, onSelectNode, busy }: Props) {
         const x2 = tCount === 1 ? W / 2 : PAD_X + (ti * (W - 2 * PAD_X)) / (tCount - 1);
         const y2 = svgH - target.floor * FLOOR_H - FLOOR_H * 0.2;
         const isVisited = n.visited && target.visited;
-        result.push({ x1, y1, x2, y2, isVisited });
+        // Edge is "available" if it leads FROM current node TO a selectable node
+        const isAvailable = (n.id === currentId || n.visited) && availableIds.has(nid);
+        result.push({ x1, y1, x2, y2, isVisited, isAvailable, targetType: target.type });
       });
     });
     return result;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodes, byFloor, svgH]);
+  }, [nodes, byFloor, svgH, currentId, availableIds]);
+
+  // Bezier path: S-curve between two floors (control points at mid-Y)
+  function bezierPath(x1: number, y1: number, x2: number, y2: number): string {
+    const midY = (y1 + y2) / 2;
+    return `M ${x1} ${y1} C ${x1} ${midY} ${x2} ${midY} ${x2} ${y2}`;
+  }
 
 
   // Auto-scroll to current floor (SVG origin = top-left, floor 1 is near bottom of SVG)
@@ -137,16 +148,45 @@ export function StsMap({ run, onSelectNode, busy }: Props) {
             />
           ))}
 
-          {/* Edges (straight lines) */}
-          {edges.map((e, i) => (
-            <line key={i}
-              x1={e.x1} y1={e.y1} x2={e.x2} y2={e.y2}
-              stroke={e.isVisited ? '#6366f1' : '#1e293b'}
-              strokeWidth={e.isVisited ? 2.5 : 1.5}
-              strokeLinecap="round"
-              opacity={e.isVisited ? 1 : 0.6}
+          {/* Edges — bezier curves, drawn in layers: future → visited → available (top) */}
+          {/* Layer 1: far-future (very faint) */}
+          {edges.filter(e => !e.isVisited && !e.isAvailable).map((e, i) => (
+            <path key={`bg_${i}`}
+              d={bezierPath(e.x1, e.y1, e.x2, e.y2)}
+              stroke="#1e293b" strokeWidth={1} fill="none"
+              strokeLinecap="round" opacity={0.35}
             />
           ))}
+          {/* Layer 2: visited path (purple trail) */}
+          {edges.filter(e => e.isVisited).map((e, i) => (
+            <path key={`vis_${i}`}
+              d={bezierPath(e.x1, e.y1, e.x2, e.y2)}
+              stroke="#6366f1" strokeWidth={2.5} fill="none"
+              strokeLinecap="round" opacity={0.7}
+            />
+          ))}
+          {/* Layer 3: available routes — bright, thick, color-coded by destination */}
+          {edges.filter(e => e.isAvailable).map((e, i) => {
+            const c = cfg(e.targetType).color;
+            return (
+              <g key={`av_${i}`}>
+                {/* Glow halo behind the path */}
+                <path
+                  d={bezierPath(e.x1, e.y1, e.x2, e.y2)}
+                  stroke={c} strokeWidth={7} fill="none"
+                  strokeLinecap="round" opacity={0.18}
+                />
+                {/* Main path */}
+                <path
+                  d={bezierPath(e.x1, e.y1, e.x2, e.y2)}
+                  stroke={c} strokeWidth={2.5} fill="none"
+                  strokeLinecap="round" opacity={0.9}
+                  strokeDasharray="6 3"
+                  style={{ animation: 'pulse 1.8s ease-in-out infinite' }}
+                />
+              </g>
+            );
+          })}
 
           {/* Nodes */}
           {nodes.map(n => {
