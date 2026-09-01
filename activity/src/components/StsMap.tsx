@@ -71,11 +71,11 @@ export function StsMap({ run, onSelectNode, busy }: Props) {
     return svgH - floor * FLOOR_H - FLOOR_H * 0.2;
   }
 
-  // Build edges with bezier curves + availability flag
+  // Build edges with bezier curves + availability + hover flag
   const edges = useMemo(() => {
     const result: {
       x1: number; y1: number; x2: number; y2: number;
-      isVisited: boolean; isAvailable: boolean; targetType: string;
+      isVisited: boolean; isAvailable: boolean; targetType: string; targetId: string;
     }[] = [];
     nodes.forEach(n => {
       const flN = byFloor.get(n.floor) ?? [];
@@ -92,9 +92,8 @@ export function StsMap({ run, onSelectNode, busy }: Props) {
         const x2 = tCount === 1 ? W / 2 : PAD_X + (ti * (W - 2 * PAD_X)) / (tCount - 1);
         const y2 = svgH - target.floor * FLOOR_H - FLOOR_H * 0.2;
         const isVisited = n.visited && target.visited;
-        // Edge is "available" if it leads FROM current node TO a selectable node
         const isAvailable = (n.id === currentId || n.visited) && availableIds.has(nid);
-        result.push({ x1, y1, x2, y2, isVisited, isAvailable, targetType: target.type });
+        result.push({ x1, y1, x2, y2, isVisited, isAvailable, targetType: target.type, targetId: target.id });
       });
     });
     return result;
@@ -168,22 +167,30 @@ export function StsMap({ run, onSelectNode, busy }: Props) {
           {/* Layer 3: available routes — bright, thick, color-coded by destination */}
           {edges.filter(e => e.isAvailable).map((e, i) => {
             const c = cfg(e.targetType).color;
+            const isHov = hoveredId === e.targetId;
             return (
               <g key={`av_${i}`}>
-                {/* Glow halo behind the path */}
+                {/* Wide glow halo — extra bright on hover */}
                 <path
                   d={bezierPath(e.x1, e.y1, e.x2, e.y2)}
-                  stroke={c} strokeWidth={7} fill="none"
-                  strokeLinecap="round" opacity={0.18}
+                  stroke={c} strokeWidth={isHov ? 18 : 7} fill="none"
+                  strokeLinecap="round" opacity={isHov ? 0.35 : 0.18}
                 />
-                {/* Main path */}
+                {/* Main path — solid on hover, dashed normally */}
                 <path
                   d={bezierPath(e.x1, e.y1, e.x2, e.y2)}
-                  stroke={c} strokeWidth={2.5} fill="none"
-                  strokeLinecap="round" opacity={0.9}
-                  strokeDasharray="6 3"
-                  style={{ animation: 'pulse 1.8s ease-in-out infinite' }}
+                  stroke={c} strokeWidth={isHov ? 4 : 2.5} fill="none"
+                  strokeLinecap="round" opacity={isHov ? 1 : 0.85}
+                  strokeDasharray={isHov ? undefined : '6 3'}
+                  style={isHov ? undefined : { animation: 'pulse 1.8s ease-in-out infinite' }}
                 />
+                {/* Arrow dot at destination on hover */}
+                {isHov && (
+                  <circle cx={e.x2} cy={e.y2} r={5}
+                    fill={c} opacity={0.9}
+                    style={{ animation: 'pulse 0.8s ease-in-out infinite' }}
+                  />
+                )}
               </g>
             );
           })}

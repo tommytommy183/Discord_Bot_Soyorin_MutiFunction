@@ -2147,6 +2147,7 @@ namespace MusicBot2.Service
                     {
                         (r.Party[0], r.Party[si]) = (r.Party[si], r.Party[0]);
                         r.ActivePokemonIndex = 0;
+                        r.ActivePokemon = r.Party[0]; // 必須同步，否則 SyncActivePokemonToParty 會把舊的覆蓋回去
                         r.RunLog.Add($"⭐ {r.Party[0].DisplayName} 設為首發！");
                         await SaveAsync(r);
                     }
