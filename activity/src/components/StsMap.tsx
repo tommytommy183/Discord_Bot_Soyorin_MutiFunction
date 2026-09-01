@@ -1,5 +1,6 @@
-import { useRef, useEffect, useMemo } from 'react';
+import { useRef, useEffect, useMemo, useState } from 'react';
 import type { TowerRun, MapNode } from '../types';
+import { spriteUrl } from '../utils';
 
 interface Props {
   run: TowerRun;
@@ -10,6 +11,7 @@ interface Props {
 // ── Node type config ──────────────────────────────────────────────────────
 const NODE_CFG: Record<string, { emoji: string; color: string; label: string }> = {
   battle:       { emoji: '⚔️', color: '#ef4444', label: '戰鬥' },
+  miniboss:     { emoji: '👹', color: '#f97316', label: '小頭目' },
   boss:         { emoji: '💀', color: '#7c3aed', label: 'BOSS' },
   shop:         { emoji: '🛍️', color: '#3b82f6', label: '商店' },
   rest:         { emoji: '🏕️', color: '#22c55e', label: '休息' },
@@ -31,6 +33,7 @@ export function StsMap({ run, onSelectNode, busy }: Props) {
   const maxFloor = run.maxFloor;
   const currentId = run.currentNodeId ?? '';
   const svgH = (maxFloor + 0.5) * FLOOR_H;
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
 
   // Group by floor
   const byFloor = useMemo(() => {
@@ -176,6 +179,8 @@ export function StsMap({ run, onSelectNode, busy }: Props) {
             return (
               <g key={n.id}
                 style={{ cursor: isAvail && onSelectNode && !busy ? 'pointer' : 'default' }}
+                onMouseEnter={() => setHoveredId(n.id)}
+                onMouseLeave={() => setHoveredId(null)}
                 onClick={() => {
                   if (!isAvail || !onSelectNode || busy) return;
                   const opt = run.pathOptions.find(o => o.customId.endsWith(`_${n.id}`));
@@ -237,6 +242,45 @@ export function StsMap({ run, onSelectNode, busy }: Props) {
           ))}
         </svg>
       </div>
+
+      {/* Hover tooltip */}
+      {(() => {
+        const hn = hoveredId ? nodes.find(n => n.id === hoveredId) : null;
+        if (!hn) return null;
+        const c = cfg(hn.type);
+        const isBattle = hn.type === 'battle' || hn.type === 'boss' || hn.type === 'miniboss';
+        return (
+          <div style={{
+            position: 'sticky', top: 4, left: 8,
+            zIndex: 10, pointerEvents: 'none',
+            display: 'inline-flex', alignItems: 'center', gap: 8,
+            background: 'rgba(7,9,15,0.92)',
+            border: `1px solid ${c.color}55`,
+            borderRadius: 8,
+            padding: '6px 10px',
+            fontSize: 11,
+            color: '#e2e8f0',
+            backdropFilter: 'blur(4px)',
+            maxWidth: 200,
+          }}>
+            {isBattle && hn.previewPokeId && hn.previewPokeId > 0 ? (
+              <>
+                <img
+                  src={spriteUrl(hn.previewPokeId, 'front')}
+                  alt={hn.previewPokeName}
+                  style={{ width: 32, height: 32, imageRendering: 'pixelated', flexShrink: 0 }}
+                />
+                <div>
+                  <div style={{ fontWeight: 700, color: c.color }}>{c.emoji} {c.label}</div>
+                  <div style={{ color: '#94a3b8', fontSize: 10 }}>{hn.previewPokeName}</div>
+                </div>
+              </>
+            ) : (
+              <div style={{ fontWeight: 700, color: c.color }}>{c.emoji} {c.label}</div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Available nodes tooltip bar at bottom */}
       {onSelectNode && availableIds.size > 0 && (

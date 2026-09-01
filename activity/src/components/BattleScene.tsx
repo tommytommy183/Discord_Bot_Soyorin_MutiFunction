@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react';
 import { HpBar } from './HpBar';
 import { StatusBadge } from './StatusBadge';
 import { TypeBadge } from './TypeBadge';
-import { StsMap } from './StsMap';
 import { spriteUrl, typeColor } from '../utils';
 import type { TowerRun, TowerMove, TowerEnemy } from '../types';
 
@@ -247,9 +246,6 @@ export function BattleScene({ run, onAction, busy }: Props) {
 
       {/* Battle log */}
       <BattleLog logs={run.battleLog} />
-
-      {/* Tower map (view-only mini) */}
-      {(run.mapNodes?.length ?? 0) > 0 && <StsMap run={run} />}
     </div>
   );
 }

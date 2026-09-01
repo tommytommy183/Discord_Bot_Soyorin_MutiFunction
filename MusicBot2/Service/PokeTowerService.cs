@@ -140,6 +140,8 @@ namespace MusicBot2.Service
         public string Type { get; set; }         // battle/boss/shop/rest/event/casino/cursed_relic
         public List<string> NextIds { get; set; } = new();  // connected node IDs on next floor
         public bool Visited { get; set; } = false;
+        public int PreviewPokeId { get; set; } = 0;
+        public string PreviewPokeName { get; set; } = "";
     }
 
     public class TowerRun
@@ -1746,13 +1748,16 @@ namespace MusicBot2.Service
                 cursedRelicIds = run.CursedRelicIds,
                 floorHistory  = run.FloorHistory,
                 currentNodeId = run.CurrentNodeId,
+                balls         = run.Balls,
                 mapNodes      = run.MapNodes?.Select(n => new
                 {
-                    id      = n.Id,
-                    floor   = n.Floor,
-                    type    = n.Type,
-                    nextIds = n.NextIds,
-                    visited = n.Visited,
+                    id             = n.Id,
+                    floor          = n.Floor,
+                    type           = n.Type,
+                    nextIds        = n.NextIds,
+                    visited        = n.Visited,
+                    previewPokeId  = n.PreviewPokeId,
+                    previewPokeName= n.PreviewPokeName,
                 }).ToList(),
             };
         }
@@ -1919,6 +1924,8 @@ namespace MusicBot2.Service
         private static readonly Dictionary<string, (string label, string emoji)> _pathLabels = new()
         {
             ["battle"]         = ("戰鬥", "⚔️"),
+            ["miniboss"]       = ("小頭目", "👹"),
+            ["boss"]           = ("BOSS", "💀"),
             ["rest"]           = ("休息", "🏕️"),
             ["shop"]           = ("商店", "🛍️"),
             ["event"]          = ("隨機事件", "🎉"),
@@ -2189,6 +2196,14 @@ namespace MusicBot2.Service
             return BuildPathEmbed(run, blessingExtra);
         }
 
+        /// <summary>回傳 3 個隨機被動技能（Activity 前端用）</summary>
+        public List<object> GetRandomPassives()
+        {
+            return _passives.OrderBy(_ => _rng.Next()).Take(3)
+                .Select(p => (object)new { id = p.Id, name = p.Name, emoji = p.Emoji, desc = p.Desc })
+                .ToList();
+        }
+
         /// <summary>顯示被動技能選擇畫面（爬塔前呼叫）</summary>
         public (Embed embed, ComponentBuilder component) ShowPassiveSelectionAsync(
             ulong channelId, ulong playerId, string playerName, PokeGamePokemon src)
@@ -2269,7 +2284,7 @@ namespace MusicBot2.Service
                 // 預先設好下一層可走節點（在清空前設定）
                 if (mapNode.NextIds?.Count > 0)
                     run.CurrentPaths = mapNode.NextIds.ToList();
-                choice = mapNode.Type == "boss" ? "battle" : mapNode.Type;
+                choice = mapNode.Type == "boss" ? "battle" : mapNode.Type == "miniboss" ? "miniboss" : mapNode.Type;
             }
 
             run.FloorHistory.Add(choice);   // 記錄地圖歷史
@@ -2300,6 +2315,36 @@ namespace MusicBot2.Service
                 run.RunLog.Add($"💀 遺忘詛咒：{cpoke.DisplayName} 忘掉了【{oldName}】，學會了【{newMove.Name}】！");
             }
 
+            if (choice == "miniboss")
+            {
+                // miniboss: stronger than regular battle but not a boss
+                run.CurrentEnemy = GenEnemy(run.CurrentFloor, false);
+                // Scale up miniboss stats slightly
+                run.CurrentEnemy.MaxHP         = (int)(run.CurrentEnemy.MaxHP * 1.3f);
+                run.CurrentEnemy.CurrentHP     = run.CurrentEnemy.MaxHP;
+                run.CurrentEnemy.Attack        = (int)(run.CurrentEnemy.Attack * 1.2f);
+                run.CurrentEnemy.SpecialAttack = (int)(run.CurrentEnemy.SpecialAttack * 1.2f);
+                run.CurrentEnemy.GoldReward   += 10;
+                run.CurrentBattleLog = "";
+                run.State = TowerRunState.InBattle;
+                run.RunLog.Add($"👹 第{run.CurrentFloor}層：遭遇小頭目 {run.CurrentEnemy.Name}！");
+                run.ShieldActive = HasRelic(run, "relic_shield");
+                run.WillUsed = false;
+                run.AvengeStacks = 0;
+                foreach (var pk in run.Party)
+                {
+                    pk.BattleStatus = ""; pk.SleepTurns = 0;
+                    pk.AtkStage = pk.DefStage = pk.SpdStage = pk.SpAtkStage = pk.SpDefStage = 0;
+                }
+                run.CurrentEnemy.BattleStatus = ""; run.CurrentEnemy.SleepTurns = 0;
+                run.CurrentEnemy.AtkStage = run.CurrentEnemy.DefStage = run.CurrentEnemy.SpdStage =
+                run.CurrentEnemy.SpAtkStage = run.CurrentEnemy.SpDefStage = 0;
+                run.CurrentEnemy.Flinched = false;
+                if (HasRelic(run, "relic_time_warp"))
+                    foreach (var mv in run.ActivePokemon.Moves) mv.CurrentPP = Math.Min(mv.MaxPP, mv.CurrentPP + 3);
+                await SaveAsync(run);
+                return BuildBattleEmbed(run);
+            }
             if (choice == "battle" || isBoss)
             {
                 run.CurrentEnemy = GenEnemy(run.CurrentFloor, isBoss);
@@ -4539,12 +4584,32 @@ namespace MusicBot2.Service
             for (int fi = 0; fi < floorLists.Count - 1; fi++)
                 ConnectStsFloors(floorLists[fi], floorLists[fi + 1]);
 
+            // Step 3: pre-assign preview enemies to battle/boss/miniboss nodes
+            foreach (var node in allNodes)
+            {
+                if (node.Type == "battle" || node.Type == "boss" || node.Type == "miniboss")
+                {
+                    bool isBoss = node.Type == "boss";
+                    IEnumerable<(string Name, string[] Types, int StatTotal, int PokeId)> tier;
+                    if (isBoss)               tier = _enemyPool.Where(e => e.StatTotal >= 590);
+                    else if (node.Floor <= 3) tier = _enemyPool.Where(e => e.StatTotal < 430);
+                    else if (node.Floor <= 6) tier = _enemyPool.Where(e => e.StatTotal >= 430 && e.StatTotal < 545);
+                    else                      tier = _enemyPool.Where(e => e.StatTotal >= 480 && e.StatTotal < 590);
+                    var choices = tier.ToList();
+                    if (choices.Count == 0) choices = _enemyPool;
+                    var pick = choices[_rng.Next(choices.Count)];
+                    node.PreviewPokeId = pick.PokeId;
+                    node.PreviewPokeName = pick.Name;
+                }
+            }
+
             return allNodes;
         }
 
         private List<string> GenStsFloorTypes(int floor, int maxFloor)
         {
             if (floor % 10 == 0) return new() { "boss" };
+            if (floor % 5  == 0) return new() { "miniboss" };  // floor 5, 15 = mini-boss
             if (floor == 9  || floor == 19) return new() { "shop", "rest" };
             if (floor == 7  || floor == 17) return new() { "cursed_relic", "cursed_relic" };
             if (floor == 1  || floor == 11) return new() { "battle", "battle", "battle" }; // 3 choices at start

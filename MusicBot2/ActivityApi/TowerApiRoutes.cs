@@ -47,6 +47,10 @@ public static class TowerApiRoutes
             return Results.Json(new { userId = info.UserId.ToString(), userName = info.UserName }, _json);
         });
 
+        // ── GET /api/tower/passives ────────────────────────────────────
+        app.MapGet("/tower/passives", (PokeTowerService towerSvc) =>
+            Results.Json(towerSvc.GetRandomPassives(), _json));
+
         // ── GET /api/tower/run/{channelId} ─────────────────────────────
         app.MapGet("/tower/run/{channelId}", (string channelId, PokeTowerService svc) =>
         {
@@ -100,7 +104,7 @@ public static class TowerApiRoutes
                 return Results.BadRequest("invalid pokemonIndex");
 
             var src = player.CaughtPokemon[idx];
-            await towerSvc.StartRunAsync(channelId, userId, req.UserName ?? player.UserName ?? "Player", src);
+            await towerSvc.StartRunAsync(channelId, userId, req.UserName ?? player.UserName ?? "Player", src, req.PassiveId ?? "");
 
             var state = towerSvc.GetFrontendState(channelId);
             return Results.Json(state, _json);
@@ -134,5 +138,5 @@ public static class TowerApiRoutes
     }
 
     private record ActionRequest(string ChannelId, string CustomId);
-    private record StartRequest(string ChannelId, string UserId, string? UserName, int PokemonIndex);
+    private record StartRequest(string ChannelId, string UserId, string? UserName, int PokemonIndex, string? PassiveId);
 }

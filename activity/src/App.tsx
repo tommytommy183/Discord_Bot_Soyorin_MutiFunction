@@ -2,15 +2,17 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { initDiscord, type DiscordUser } from './discord';
 import { api, type PokeListItem } from './api';
 import { spriteUrl } from './utils';
-import type { TowerRun } from './types';
+import type { TowerRun, PassiveOption } from './types';
 import { BattleScene } from './components/BattleScene';
 import { PathSelector } from './components/PathSelector';
 import { GenericChoices } from './components/GenericChoices';
 import { GameOver } from './components/GameOver';
 import { HpBar } from './components/HpBar';
 import { TypeBadge } from './components/TypeBadge';
+import { PassiveSelector } from './components/PassiveSelector';
+import { Inventory } from './components/Inventory';
 
-type Phase = 'loading' | 'select-pokemon' | 'game' | 'error';
+type Phase = 'loading' | 'select-pokemon' | 'select-passive' | 'game' | 'error';
 
 // ── Loading Screen ──────────────────────────────────────────────────────────
 function LoadingScreen({ message }: { message: string }) {
@@ -170,7 +172,7 @@ function PokemonSelector({ pokemons, onSelect, busy }: {
 }
 
 // ── Header bar ─────────────────────────────────────────────────────────────
-function GameHeader({ run }: { run: TowerRun }) {
+function GameHeader({ run, onOpenInventory }: { run: TowerRun; onOpenInventory: () => void }) {
   const progress = run.currentFloor / run.maxFloor;
   return (
     <div style={{
@@ -204,20 +206,34 @@ function GameHeader({ run }: { run: TowerRun }) {
         <span style={{ fontSize: 12 }}>💰</span>
         <span style={{ fontWeight: 700, color: '#fbbf24', fontSize: 12 }}>{run.gold}</span>
       </div>
+      {/* Inventory button */}
+      <button
+        className="btn-hover"
+        onClick={onOpenInventory}
+        style={{
+          background: '#0f172a', border: '1px solid #1e293b',
+          borderRadius: 6, padding: '4px 8px',
+          fontSize: 14, cursor: 'pointer', flexShrink: 0,
+        }}
+        title="背包"
+      >🎒</button>
     </div>
   );
 }
 
 // ── Main App ───────────────────────────────────────────────────────────────
 export default function App() {
-  const [phase, setPhase]         = useState<Phase>('loading');
-  const [loadMsg, setLoadMsg]     = useState('初始化中…');
-  const [run, setRun]             = useState<TowerRun | null>(null);
-  const [busy, setBusy]           = useState(false);
-  const [error, setError]         = useState('');
-  const [channelId, setChannelId] = useState('');
-  const [user, setUser]           = useState<DiscordUser | null>(null);
-  const [pokemons, setPokemons]   = useState<PokeListItem[]>([]);
+  const [phase, setPhase]               = useState<Phase>('loading');
+  const [loadMsg, setLoadMsg]           = useState('初始化中…');
+  const [run, setRun]                   = useState<TowerRun | null>(null);
+  const [busy, setBusy]                 = useState(false);
+  const [error, setError]               = useState('');
+  const [channelId, setChannelId]       = useState('');
+  const [user, setUser]                 = useState<DiscordUser | null>(null);
+  const [pokemons, setPokemons]         = useState<PokeListItem[]>([]);
+  const [passives, setPassives]         = useState<PassiveOption[]>([]);
+  const [selectedPokemonIdx, setSelectedPokemonIdx] = useState<number>(0);
+  const [inventoryOpen, setInventoryOpen] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const startPolling = useCallback((cId: string) => {
@@ -263,11 +279,27 @@ export default function App() {
   async function handleSelectPokemon(pokemonIndex: number) {
     if (!user || !channelId) return;
     setBusy(true);
+    setSelectedPokemonIdx(pokemonIndex);
+    const res = await api.getPassives();
+    if (res.ok && res.data) {
+      setPassives(res.data);
+      setPhase('select-passive');
+    } else {
+      // Fallback: start without passive
+      await doStartRun(pokemonIndex, '');
+    }
+    setBusy(false);
+  }
+
+  async function doStartRun(pokemonIndex: number, passiveId: string) {
+    if (!user || !channelId) return;
+    setBusy(true);
     const res = await api.startRun({
       channelId,
       userId: user.id,
       userName: user.global_name ?? user.username,
       pokemonIndex,
+      passiveId,
     });
     if (res.ok && res.data) {
       setRun(res.data);
@@ -278,6 +310,10 @@ export default function App() {
       setPhase('error');
     }
     setBusy(false);
+  }
+
+  async function handleSelectPassive(passiveId: string) {
+    await doStartRun(selectedPokemonIdx, passiveId);
   }
 
   async function handleAction(customId: string) {
@@ -317,6 +353,12 @@ export default function App() {
     </div>
   );
 
+  if (phase === 'select-passive') return (
+    <div style={shell}>
+      <PassiveSelector passives={passives} onSelect={handleSelectPassive} busy={busy} />
+    </div>
+  );
+
   if (!run) return null;
 
   if (run.state === 'Victory' || run.state === 'Defeated') return (
@@ -327,7 +369,7 @@ export default function App() {
 
   return (
     <div style={shell}>
-      <GameHeader run={run} />
+      <GameHeader run={run} onOpenInventory={() => setInventoryOpen(true)} />
       <div style={{ flex: 1, overflow: 'auto', padding: '10px 12px' }}>
         {run.state === 'InBattle' && (
           <BattleScene run={run} onAction={handleAction} busy={busy} />
@@ -339,6 +381,9 @@ export default function App() {
           <GenericChoices run={run} onAction={handleAction} busy={busy} />
         )}
       </div>
+
+      {/* Inventory overlay */}
+      {run && <Inventory run={run} isOpen={inventoryOpen} onClose={() => setInventoryOpen(false)} />}
 
       {/* Busy overlay */}
       {busy && (

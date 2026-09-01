@@ -85,9 +85,18 @@ export interface PathOption {
 export interface MapNode {
   id: string;
   floor: number;
-  type: string;   // battle/boss/shop/rest/event/casino/cursed_relic/relic
+  type: string;   // battle/boss/miniboss/shop/rest/event/casino/cursed_relic/relic
   nextIds: string[];
   visited: boolean;
+  previewPokeId?: number;
+  previewPokeName?: string;
+}
+
+export interface PassiveOption {
+  id: string;
+  name: string;
+  emoji: string;
+  desc: string;
 }
 
 export interface ShopItem {
@@ -117,6 +126,7 @@ export interface TowerRun {
   floorHistory: string[];  // 每層走過的路徑選擇（battle/shop/rest/casino/event...）
   currentNodeId?: string;
   mapNodes?: MapNode[];
+  balls?: Record<string, number>;
 }
 
 export interface ActionRequest {
