@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { spriteUrl } from '../utils';
 import type { TowerRun } from '../types';
 
@@ -6,51 +6,52 @@ interface Props {
   run: TowerRun;
   onAction: (customId: string) => void;
   busy: boolean;
+  catchFailed?: boolean;
 }
 
-type CatchPhase = 'ready' | 'throwing' | 'wobbling' | 'success' | 'fail';
+type CatchPhase = 'ready' | 'throwing' | 'wobbling' | 'escape' | 'done';
 
-const BALL_EMOJI: Record<string, string> = {
-  normal: '⚽',
-  super: '🔵',
-  ultra: '🟡',
-  master: '🟣',
-};
-const BALL_NAME: Record<string, string> = {
-  normal: '普通球',
-  super: '超級球',
-  ultra: '高級球',
-  master: '大師球',
-};
-const BALL_RATE: Record<string, number> = {
-  normal: 30,
-  super: 55,
-  ultra: 75,
-  master: 100,
-};
+const BALL_EMOJI: Record<string, string> = { normal:'⚽', super:'🔵', ultra:'🟡', master:'🟣' };
+const BALL_NAME: Record<string, string>  = { normal:'普通球', super:'超級球', ultra:'高級球', master:'大師球' };
+const BALL_RATE: Record<string, number>  = { normal:30, super:55, ultra:75, master:100 };
 
-export function CatchScene({ run, onAction, busy }: Props) {
+export function CatchScene({ run, onAction, busy, catchFailed }: Props) {
   const enemy = run.currentEnemy;
   const balls = run.balls ?? {};
   const [phase, setPhase] = useState<CatchPhase>('ready');
-  const [selectedBall, setSelectedBall] = useState<string | null>(null);
+  const [ballEmoji, setBallEmoji] = useState('⚽');
+  const [escapeText, setEscapeText] = useState('');
+  const throwing = useRef(false);
+
+  // When parent signals catch failed, show escape text
+  useEffect(() => {
+    if (catchFailed && enemy) {
+      setEscapeText(`${enemy.name}掙扎著逃了出來，真是囂張的傢伙！`);
+      setPhase('escape');
+      throwing.current = false;
+      setTimeout(() => { setEscapeText(''); setPhase('ready'); }, 2500);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [catchFailed]);
 
   const availableBalls = Object.entries(balls).filter(([, cnt]) => cnt > 0);
-  const isAnimating = phase !== 'ready';
+  const isAnimating = phase !== 'ready' && phase !== 'done';
 
   function handleThrow(ballKey: string) {
-    if (isAnimating || busy) return;
-    setSelectedBall(ballKey);
+    if (isAnimating || busy || throwing.current) return;
+    throwing.current = true;
+    setBallEmoji(BALL_EMOJI[ballKey] ?? '⚾');
     setPhase('throwing');
 
-    // Simulate ball animation phases then call API
-    setTimeout(() => setPhase('wobbling'), 600);
+    // throwing → wobbling after ball arrives
+    setTimeout(() => setPhase('wobbling'), 800);
+
+    // wobbling → API call
     setTimeout(() => {
-      // Actually send the action — result determines success/fail visually
-      // We'll just transition to calling the server; the busy overlay will take over
       onAction(`tower_catch_${run.channelId}_${ballKey}`);
-      setPhase('ready');
-    }, 1800);
+      throwing.current = false;
+      setPhase('done');
+    }, 2000);
   }
 
   function handlePass() {
@@ -60,14 +61,28 @@ export function CatchScene({ run, onAction, busy }: Props) {
 
   if (!enemy) return null;
 
+  // Determine if throwing phase ball x position (CSS animation handles y arc)
+  const ballStyle: React.CSSProperties = {
+    position: 'absolute',
+    fontSize: 26,
+    zIndex: 20,
+    pointerEvents: 'none',
+    ...(phase === 'throwing' ? {
+      animation: 'ballArc 0.8s cubic-bezier(.2,.9,.7,.9) forwards',
+    } : phase === 'wobbling' ? {
+      left: 'calc(58% + 10px)',
+      bottom: 100,
+      animation: 'shake 0.35s ease-in-out 4',
+    } : { display: 'none' }),
+  };
+
   return (
     <div className="anim-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       {/* Title */}
       <div style={{ textAlign: 'center', padding: '4px 0' }}>
-        <div style={{
-          fontSize: 18, fontWeight: 900, color: '#ec4899',
-          textShadow: '0 0 12px #ec489966',
-        }}>⚾ 野生 {enemy.name} 出現了！</div>
+        <div style={{ fontSize: 18, fontWeight: 900, color: '#ec4899', textShadow: '0 0 12px #ec489966' }}>
+          ⚾ 野生 {enemy.name} 出現了！
+        </div>
         <div style={{ fontSize: 11, color: '#64748b', marginTop: 3 }}>
           HP: {enemy.currentHP}/{enemy.maxHP}
         </div>
@@ -79,13 +94,13 @@ export function CatchScene({ run, onAction, busy }: Props) {
         background: 'radial-gradient(ellipse at 50% 40%, #1a0a2e 0%, #0a0e1a 100%)',
         borderRadius: 14,
         border: '1px solid #ec489933',
-        height: 200,
+        height: 210,
         overflow: 'hidden',
       }}>
-        {/* Ground line */}
+        {/* Ground */}
         <div style={{
-          position: 'absolute', bottom: 60, left: 0, right: 0,
-          height: 2, background: 'linear-gradient(90deg, transparent, #1e293b, transparent)',
+          position: 'absolute', bottom: 58, left: 0, right: 0,
+          height: 2, background: 'linear-gradient(90deg, transparent, #1e293b 30%, #1e293b 70%, transparent)',
         }} />
 
         {/* Enemy Pokemon */}
@@ -93,41 +108,48 @@ export function CatchScene({ run, onAction, busy }: Props) {
           src={spriteUrl(enemy.pokeId, 'front')}
           alt={enemy.name}
           style={{
-            position: 'absolute', top: 24, right: 36,
+            position: 'absolute', top: 20, right: 28,
             imageRendering: 'pixelated',
-            width: 112, height: 112,
+            width: 120, height: 120,
             filter: phase === 'wobbling'
-              ? 'drop-shadow(0 0 18px #ec4899) brightness(1.3)'
-              : 'drop-shadow(0 4px 12px rgba(0,0,0,0.6))',
+              ? 'drop-shadow(0 0 20px #ec4899) brightness(1.4)'
+              : phase === 'escape'
+              ? 'drop-shadow(0 0 8px #fff) brightness(1.2)'
+              : 'drop-shadow(0 4px 12px rgba(0,0,0,0.7))',
             animation: phase === 'wobbling'
-              ? 'shake 0.4s ease-in-out 3'
-              : phase === 'success'
-              ? 'flash 0.3s ease-in-out 4'
-              : 'bounce 2s ease-in-out infinite',
-            transition: 'filter 0.2s',
-            opacity: phase === 'success' ? 0.2 : 1,
+              ? 'shake 0.3s ease-in-out 5'
+              : phase === 'escape'
+              ? 'bounce 0.3s ease-in-out 3'
+              : 'bounce 2.5s ease-in-out infinite',
+            transition: 'filter 0.3s',
           }}
         />
 
-        {/* Pokéball — only visible during throw */}
-        {(phase === 'throwing' || phase === 'wobbling') && selectedBall && (
-          <div style={{
-            position: 'absolute',
-            bottom: 68,
-            left: phase === 'throwing' ? 24 : 'calc(60% - 16px)',
-            fontSize: 28,
-            transition: phase === 'throwing' ? 'left 0.5s ease-in, bottom 0.5s ease-in' : undefined,
-            animation: phase === 'wobbling' ? 'shake 0.35s ease-in-out 2' : 'none',
-            zIndex: 10,
-          }}>
-            {BALL_EMOJI[selectedBall] ?? '⚾'}
+        {/* Pokéball — arc animation from left to enemy */}
+        {(phase === 'throwing' || phase === 'wobbling') && (
+          <div style={ballStyle}>
+            {ballEmoji}
           </div>
         )}
 
-        {/* HP bar overlay */}
-        <div style={{
-          position: 'absolute', bottom: 8, left: 12, right: 12,
-        }}>
+        {/* Escape floating text */}
+        {phase === 'escape' && escapeText && (
+          <div style={{
+            position: 'absolute',
+            top: 20, left: 8, right: 8,
+            textAlign: 'center',
+            fontSize: 12, fontWeight: 900, color: '#fbbf24',
+            textShadow: '0 0 8px #f59e0b',
+            animation: 'floatText 2.2s ease-out forwards',
+            zIndex: 20,
+            lineHeight: 1.5,
+          }}>
+            {escapeText}
+          </div>
+        )}
+
+        {/* HP bar */}
+        <div style={{ position: 'absolute', bottom: 8, left: 12, right: 12 }}>
           <div style={{ height: 6, borderRadius: 3, background: '#1e293b', overflow: 'hidden' }}>
             <div style={{
               height: '100%', borderRadius: 3,
@@ -158,11 +180,9 @@ export function CatchScene({ run, onAction, busy }: Props) {
               opacity: isAnimating || busy ? 0.55 : 1,
             }}
           >
-            <span style={{ fontSize: 22 }}>{BALL_EMOJI[key]}</span>
+            <span style={{ fontSize: 24 }}>{BALL_EMOJI[key]}</span>
             <span style={{ fontWeight: 700, fontSize: 12 }}>{BALL_NAME[key]}</span>
-            <span style={{ fontSize: 10, color: '#94a3b8' }}>
-              剩餘×{cnt}・捕獲率 {BALL_RATE[key]}%
-            </span>
+            <span style={{ fontSize: 10, color: '#94a3b8' }}>剩餘×{cnt}・捕獲率 {BALL_RATE[key]}%</span>
           </button>
         ))}
         <button
@@ -182,9 +202,9 @@ export function CatchScene({ run, onAction, busy }: Props) {
         </button>
       </div>
 
-      {/* Animation hint */}
+      {/* Status hint */}
       {phase === 'throwing' && (
-        <div style={{ textAlign: 'center', color: '#ec4899', fontSize: 12, fontWeight: 700, animation: 'pulse 0.6s ease-in-out infinite' }}>
+        <div style={{ textAlign: 'center', color: '#ec4899', fontSize: 12, fontWeight: 700, animation: 'pulse 0.5s ease-in-out infinite' }}>
           球飛出去了！
         </div>
       )}

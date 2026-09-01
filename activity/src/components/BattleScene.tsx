@@ -111,23 +111,52 @@ export function BattleScene({ run, onAction, busy }: Props) {
   const activePoke = run.team[run.activeIndex];
   const enemy = run.currentEnemy;
   const isBoss = enemy?.isBoss ?? false;
-  const [shake, setShake] = useState(false);
+  const [shake, setShake] = useState(false);           // enemy shakes
+  const [playerShake, setPlayerShake] = useState(false); // player shakes (enemy attack)
   const [attackAnim, setAttackAnim] = useState<AttackAnim>('idle');
+  const [enemyAnim, setEnemyAnim] = useState<AttackAnim>('idle');
   const [currentMoveType, setCurrentMoveType] = useState<string>('normal');
+  const [enemyMoveType, setEnemyMoveType] = useState<string>('normal');
+  // Track last log length to detect enemy attacks
+  const prevLogLen = useRef(0);
+
+  // Detect enemy action from new battle log entries
+  useEffect(() => {
+    const logs = run.battleLog;
+    if (logs.length > prevLogLen.current) {
+      const newLogs = logs.slice(prevLogLen.current);
+      prevLogLen.current = logs.length;
+      const enemyName = enemy?.name ?? '';
+      const enemyAttacked = newLogs.some(l => l.includes(enemyName) && (l.includes('使用') || l.includes('造成')));
+      if (enemyAttacked) {
+        // Trigger enemy attack animation
+        setPlayerShake(true);
+        setTimeout(() => setPlayerShake(false), 600);
+        const moveLine = newLogs.find(l => l.includes(enemyName) && l.includes('使用'));
+        // Pick a random enemy move type for visual
+        const etype = enemy?.moves?.[0]?.type ?? '一般';
+        setEnemyMoveType(etype);
+        const isPhys = moveLine?.includes('物攻') ?? Math.random() > 0.5;
+        setEnemyAnim(isPhys ? 'lunge' : 'projectile');
+        setTimeout(() => setEnemyAnim('idle'), 700);
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [run.battleLog.length]);
 
   function handleAttack(category: string, moveType?: string) {
     setShake(true);
     setTimeout(() => setShake(false), 650);
-    setCurrentMoveType(moveType ?? 'normal');
+    setCurrentMoveType(moveType ?? '一般');
     if (category === 'Physical' || category === 'physical') {
       setAttackAnim('lunge');
-      setTimeout(() => setAttackAnim('idle'), 700);
+      setTimeout(() => setAttackAnim('idle'), 750);
     } else if (category === 'Special' || category === 'special') {
       setAttackAnim('projectile');
-      setTimeout(() => setAttackAnim('idle'), 700);
+      setTimeout(() => setAttackAnim('idle'), 750);
     } else {
       setAttackAnim('status');
-      setTimeout(() => setAttackAnim('idle'), 700);
+      setTimeout(() => setAttackAnim('idle'), 750);
     }
   }
 
@@ -188,65 +217,85 @@ export function BattleScene({ run, onAction, busy }: Props) {
           </div>
         )}
 
-        {/* Enemy sprite: middle-right */}
+        {/* Enemy sprite: middle-right — moves left on lunge */}
         {enemy && (
-          <img
-            src={spriteUrl(enemy.pokeId, 'front')}
-            alt={enemy.name}
-            style={{
-              position: 'absolute', top: 90, right: 16,
-              imageRendering: 'pixelated', width: 90, height: 90,
-              filter: enemy.currentHP === 0
-                ? 'grayscale(1) opacity(0.3)'
-                : isBoss ? 'drop-shadow(0 0 12px #ef4444)' : 'drop-shadow(0 4px 10px rgba(0,0,0,0.7))',
-              animation: enemy.currentHP > 0
-                ? (shake ? 'shake 0.4s ease-in-out' : isBoss ? 'bossGlow 1.5s ease-in-out infinite' : 'bounce 2s ease-in-out infinite')
-                : undefined,
-            }}
-          />
+          <div style={{
+            position: 'absolute', top: 78, right: 12,
+            animation: enemyAnim === 'lunge' ? 'enemyLunge 0.7s ease-in-out' : undefined,
+          }}>
+            <img
+              src={spriteUrl(enemy.pokeId, 'front')}
+              alt={enemy.name}
+              style={{
+                imageRendering: 'pixelated', width: 98, height: 98,
+                filter: enemy.currentHP === 0
+                  ? 'grayscale(1) opacity(0.3)'
+                  : isBoss ? 'drop-shadow(0 0 14px #ef4444)' : 'drop-shadow(0 4px 10px rgba(0,0,0,0.7))',
+                animation: enemy.currentHP > 0 && enemyAnim === 'idle'
+                  ? (shake ? 'shake 0.45s ease-in-out' : isBoss ? 'bossGlow 1.5s ease-in-out infinite' : 'bounce 2s ease-in-out infinite')
+                  : undefined,
+              }}
+            />
+          </div>
         )}
 
-        {/* Beam animation — spans from player to enemy */}
+        {/* Player beam — from player toward enemy */}
         {attackAnim === 'beam' && (
           <div style={{
             position: 'absolute',
-            bottom: 130, left: 110, right: 20,
+            bottom: 135, left: 110,
             height: 8, borderRadius: 4, zIndex: 10, pointerEvents: 'none',
-            background: 'linear-gradient(90deg, #6366f1, #a78bfa, #ffffff)',
-            boxShadow: '0 0 16px 4px #818cf8',
-            animation: 'beamExpand 0.6s ease-out forwards',
+            background: `linear-gradient(90deg, ${typeColor(currentMoveType)}, #ffffff88)`,
+            boxShadow: `0 0 16px 6px ${typeColor(currentMoveType)}`,
+            animation: 'beamExpand 0.65s ease-out forwards',
           }} />
         )}
 
-        {/* Projectile animation */}
-        {attackAnim === 'projectile' && (
+        {/* Enemy beam — from enemy toward player */}
+        {enemyAnim === 'projectile' && (
           <div style={{
-            position: 'absolute', bottom: 120, left: 110,
-            width: 18, height: 18, borderRadius: '50%', zIndex: 10, pointerEvents: 'none',
-            background: typeColor(currentMoveType) || '#6366f1',
-            boxShadow: `0 0 16px 6px ${typeColor(currentMoveType) || '#6366f1'}`,
-            animation: 'projectileFly 0.6s ease-in forwards',
+            position: 'absolute',
+            bottom: 135, right: 110,
+            height: 8, borderRadius: 4, zIndex: 10, pointerEvents: 'none',
+            background: `linear-gradient(270deg, ${typeColor(enemyMoveType)}, #ffffff88)`,
+            boxShadow: `0 0 16px 6px ${typeColor(enemyMoveType)}`,
+            animation: 'beamExpand 0.65s ease-out forwards',
+            transformOrigin: 'right',
+          }} />
+        )}
+
+        {/* Player projectile — flies toward enemy */}
+        {attackAnim === 'projectile' && (
+          <div key={Date.now() + 'proj'} style={{
+            position: 'absolute',
+            bottom: 132, left: 112,
+            width: 20, height: 20, borderRadius: '50%', zIndex: 10, pointerEvents: 'none',
+            background: typeColor(currentMoveType),
+            boxShadow: `0 0 18px 8px ${typeColor(currentMoveType)}`,
+            animation: 'projectileFly 0.65s ease-in forwards',
           }} />
         )}
 
         {/* Player sprite: middle-left (with lunge wrapper — moves right toward enemy) */}
         {activePoke && (
           <div style={{
-            position: 'absolute', bottom: 88, left: 8,
-            animation: attackAnim === 'lunge' ? 'lungeFull 0.65s ease-in-out' : undefined,
+            position: 'absolute', bottom: 86, left: 6,
+            animation: attackAnim === 'lunge' ? 'lungeFull 0.7s ease-in-out' : undefined,
           }}>
             <img
               src={activePoke.isShiny ? spriteUrl(activePoke.pokeId, 'shiny') : spriteUrl(activePoke.pokeId, 'back')}
               alt={activePoke.name}
               style={{
-                imageRendering: 'pixelated', width: 104, height: 104,
+                imageRendering: 'pixelated', width: 110, height: 110,
                 filter: activePoke.currentHP === 0
                   ? 'grayscale(1) opacity(0.3)'
                   : attackAnim === 'status'
-                  ? 'brightness(2) saturate(2)'
+                  ? 'brightness(2.5) saturate(3) hue-rotate(30deg)'
                   : 'drop-shadow(0 4px 12px rgba(99,102,241,0.5))',
                 transform: 'scaleX(-1)',
-                animation: activePoke.currentHP > 0 && attackAnim === 'idle' ? 'bounce 2.2s ease-in-out infinite' : undefined,
+                animation: activePoke.currentHP > 0 && attackAnim === 'idle'
+                  ? (playerShake ? 'shake 0.45s ease-in-out' : 'bounce 2.2s ease-in-out infinite')
+                  : undefined,
                 transition: 'filter 0.2s',
               }}
             />

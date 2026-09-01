@@ -2027,6 +2027,11 @@ namespace MusicBot2.Service
                 if (under > 0 && ulong.TryParse(rest[..under], out var ch) && int.TryParse(rest[(under + 1)..], out var ri))
                     await HandleRelicChoiceAsync(ch, ri);
             }
+            else if (customId.StartsWith("tower_event_confirm_"))
+            {
+                if (ulong.TryParse(customId[$"tower_event_confirm_".Length..], out var ch))
+                    await HandleEventConfirmAsync(ch);
+            }
             else if (customId.StartsWith("tower_event_"))
             {
                 var p = customId.Split('_');
@@ -2110,12 +2115,6 @@ namespace MusicBot2.Service
                     int mi = int.TryParse(rest2[(under2 + 1)..], out var mv) ? mv : 4;
                     await HandlePowerUpgradeAsync(ch, mi);
                 }
-            }
-            // tower_event_confirm_{channelId}  (確認事件結果，回到地圖)
-            else if (customId.StartsWith("tower_event_confirm_"))
-            {
-                if (ulong.TryParse(customId[$"tower_event_confirm_".Length..], out var ch))
-                    await HandleEventConfirmAsync(ch);
             }
             // tower_swap_request_{channelId}  (開啟換隊員介面)
             else if (customId.StartsWith("tower_swap_request_"))

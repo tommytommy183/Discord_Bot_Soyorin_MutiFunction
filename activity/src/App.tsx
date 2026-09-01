@@ -317,11 +317,22 @@ export default function App() {
     await doStartRun(selectedPokemonIdx, passiveId);
   }
 
+  const [catchFailed, setCatchFailed] = useState(false);
+
   async function handleAction(customId: string) {
     if (!channelId || busy) return;
+    const wasCatch = customId.startsWith('tower_catch_') && !customId.endsWith('_pass');
     setBusy(true);
     const res = await api.action({ channelId, customId });
-    if (res.ok && res.data) setRun(res.data);
+    if (res.ok && res.data) {
+      const newRun = res.data as TowerRun;
+      // Detect failed catch: state is still SelectingCatch after a throw
+      if (wasCatch && newRun.state === 'SelectingCatch') {
+        setCatchFailed(true);
+        setTimeout(() => setCatchFailed(false), 2500);
+      }
+      setRun(newRun);
+    }
     else { setError(res.error ?? '操作失敗'); }
     setBusy(false);
   }
@@ -379,7 +390,7 @@ export default function App() {
           <PathSelector run={run} onAction={handleAction} busy={busy} />
         )}
         {run.state === 'SelectingCatch' && (
-          <CatchScene run={run} onAction={handleAction} busy={busy} />
+          <CatchScene run={run} onAction={handleAction} busy={busy} catchFailed={catchFailed} />
         )}
         {!['InBattle', 'SelectingPath', 'SelectingCatch', 'Victory', 'Defeated'].includes(run.state) && (
           <GenericChoices run={run} onAction={handleAction} busy={busy} />
