@@ -1676,7 +1676,7 @@ namespace MusicBot2.Service
             var run = GetRun(channelId);
             if (run == null) return null;
 
-            var pathOpts = run.CurrentPaths.Select(p => BuildPathOption(p, channelId, run)).ToList();
+            var pathOpts = BuildStateOptions(run, channelId);
             var battleLogLines = (run.CurrentBattleLog ?? "")
                 .Split('\n', StringSplitOptions.RemoveEmptyEntries)
                 .ToList();
@@ -1755,6 +1755,165 @@ namespace MusicBot2.Service
                     visited = n.Visited,
                 }).ToList(),
             };
+        }
+
+        /// <summary>依目前狀態回傳對應的選項清單（Activity 前端用）</summary>
+        private List<object> BuildStateOptions(TowerRun run, ulong channelId)
+        {
+            var opts = new List<object>();
+            switch (run.State)
+            {
+                case TowerRunState.SelectingPowerUpgrade:
+                {
+                    int upLimit = HasPassive(run, "passive_techgeek") ? 8 : 5;
+                    for (int i = 0; i < run.ActivePokemon.Moves.Count; i++)
+                    {
+                        var m = run.ActivePokemon.Moves[i];
+                        bool maxed = m.UpgradeCount >= upLimit;
+                        opts.Add(new { customId = $"tower_powerup_select_{channelId}_{i}",
+                            label = maxed ? $"{m.Name}（上限）" : $"強化【{m.Name}】",
+                            emoji = m.Emoji,
+                            description = maxed ? "已達強化上限" : $"已強化{m.UpgradeCount}次・威力 {m.Power}→{m.Power + 20}" });
+                    }
+                    opts.Add(new { customId = $"tower_powerup_select_{channelId}_4", label = "跳過強化", emoji = "⏭️", description = (string?)null });
+                    if (run.PowerUpgradeReturn == "battle")
+                        opts.Add(new { customId = $"tower_powerup_switch_{channelId}", label = "換技能代替", emoji = "📀", description = (string?)null });
+                    return opts;
+                }
+                case TowerRunState.SelectingMoveReward:
+                {
+                    for (int i = 0; i < run.PendingMoveRewards.Count; i++)
+                    {
+                        var m = run.PendingMoveRewards[i];
+                        string cat = m.Category == "Physical" ? "物攻" : m.Category == "Special" ? "特攻" : "變化";
+                        opts.Add(new { customId = $"tower_movereward_{channelId}_{i}",
+                            label = m.Name, emoji = m.Emoji,
+                            description = $"{m.Type}・{cat}・威力{m.Power}・PP{m.MaxPP}" });
+                    }
+                    opts.Add(new { customId = $"tower_movereward_{channelId}_3", label = "跳過", emoji = "⏭️", description = (string?)null });
+                    return opts;
+                }
+                case TowerRunState.SelectingMoveSlot:
+                {
+                    for (int i = 0; i < run.ActivePokemon.Moves.Count; i++)
+                    {
+                        var m = run.ActivePokemon.Moves[i];
+                        opts.Add(new { customId = $"tower_moveslot_{channelId}_{i}",
+                            label = $"替換【{m.Name}】", emoji = m.Emoji,
+                            description = $"{m.Type}・威力{m.Power}・PP{m.CurrentPP}/{m.MaxPP}" });
+                    }
+                    opts.Add(new { customId = $"tower_moveslot_{channelId}_4", label = "取消", emoji = "❌", description = (string?)null });
+                    return opts;
+                }
+                case TowerRunState.SelectingRelic:
+                {
+                    for (int i = 0; i < run.PendingRelicChoices.Count; i++)
+                    {
+                        var r = _relics.FirstOrDefault(x => x.Id == run.PendingRelicChoices[i]);
+                        opts.Add(new { customId = $"tower_relic_{channelId}_{i}",
+                            label = r?.Name ?? "遺物", emoji = r?.Emoji ?? "🔮", description = r?.Desc });
+                    }
+                    opts.Add(new { customId = $"tower_relic_{channelId}_3", label = "跳過", emoji = "⏭️", description = (string?)null });
+                    return opts;
+                }
+                case TowerRunState.SelectingCursedRelic:
+                {
+                    for (int i = 0; i < run.PendingCursedRelicChoices.Count; i++)
+                    {
+                        var r = _cursedRelics.FirstOrDefault(x => x.Id == run.PendingCursedRelicChoices[i]);
+                        opts.Add(new { customId = $"tower_cursed_{channelId}_{i}",
+                            label = r?.Name ?? "詛咒遺物", emoji = r?.Emoji ?? "💀", description = r?.Desc });
+                    }
+                    return opts;
+                }
+                case TowerRunState.SelectingCatch:
+                {
+                    foreach (var (ballKey, bDef) in _balls)
+                    {
+                        if (run.Balls.TryGetValue(ballKey, out int cnt) && cnt > 0)
+                            opts.Add(new { customId = $"tower_catch_{channelId}_{ballKey}",
+                                label = $"{bDef.DisplayName}（×{cnt}）", emoji = bDef.Emoji,
+                                description = $"捕獲率 {(int)(bDef.Rate * 100)}%" });
+                    }
+                    opts.Add(new { customId = $"tower_catch_{channelId}_pass", label = "放過", emoji = "🚫", description = (string?)null });
+                    return opts;
+                }
+                case TowerRunState.SelectingCatchSwap:
+                {
+                    for (int i = 0; i < run.Party.Count; i++)
+                    {
+                        if (i == run.ActivePokemonIndex) continue;
+                        var pk = run.Party[i];
+                        opts.Add(new { customId = $"tower_catchswap_{channelId}_{i}",
+                            label = $"換下【{pk.DisplayName}】", emoji = "🔄",
+                            description = $"HP {pk.CurrentHP}/{pk.MaxHP}" });
+                    }
+                    opts.Add(new { customId = $"tower_catch_{channelId}_pass", label = "不換，放棄捕獲", emoji = "🚫", description = (string?)null });
+                    return opts;
+                }
+                case TowerRunState.Shopping:
+                {
+                    int cHF = ShopCost(run, 30, "heal_full");
+                    int cHH = ShopCost(run, 15, "heal_half");
+                    int cPP = ShopCost(run, 20, "pp_restore");
+                    int cNM = ShopCost(run, 25, "new_move");
+                    int cN  = ShopCost(run, 8,  "buy_normal");
+                    int cS  = ShopCost(run, 15, "buy_super");
+                    int cU  = ShopCost(run, 25, "buy_ultra");
+                    int cPU = ShopCost(run, 20, "powerup");
+                    opts.Add(new { customId = $"tower_shop_{channelId}_heal_full",  label = "全回復",     emoji = "💊", description = $"HP完全恢復・{cHF}💰" });
+                    opts.Add(new { customId = $"tower_shop_{channelId}_heal_half",  label = "超級樹果",   emoji = "🧃", description = $"恢復50%HP・{cHH}💰" });
+                    opts.Add(new { customId = $"tower_shop_{channelId}_pp_restore", label = "PP全回復",   emoji = "🔋", description = $"所有技能PP滿・{cPP}💰" });
+                    opts.Add(new { customId = $"tower_shop_{channelId}_new_move",   label = "技能學習器", emoji = "📀", description = $"三選一學習技能・{cNM}💰" });
+                    opts.Add(new { customId = $"tower_shop_{channelId}_buy_normal", label = "普通球×3",   emoji = "⚽", description = $"30%捕獲率・{cN}💰" });
+                    opts.Add(new { customId = $"tower_shop_{channelId}_buy_super",  label = "超級球×2",   emoji = "🔵", description = $"55%捕獲率・{cS}💰" });
+                    opts.Add(new { customId = $"tower_shop_{channelId}_buy_ultra",  label = "高級球×1",   emoji = "🟡", description = $"75%捕獲率・{cU}💰" });
+                    opts.Add(new { customId = $"tower_powerup_{channelId}_shop",    label = "強化招式",   emoji = "⚡", description = $"選一招威力+20・{cPU}💰" });
+                    opts.Add(new { customId = $"tower_shop_{channelId}_leave",      label = "離開商店",   emoji = "🚪", description = (string?)null });
+                    return opts;
+                }
+                case TowerRunState.SelectingEvent:
+                {
+                    if (run.PendingEventIdx >= 0 && run.PendingEventIdx < _events.Count)
+                    {
+                        var ev = _events[run.PendingEventIdx];
+                        bool isMath = ev.Title == "神秘數學題" && run.MathChoiceLabels.Count >= ev.Choices.Count;
+                        for (int i = 0; i < ev.Choices.Count; i++)
+                        {
+                            string lbl = isMath ? run.MathChoiceLabels[i] : ev.Choices[i].Label;
+                            opts.Add(new { customId = $"tower_event_{channelId}_{i}",
+                                label = lbl, emoji = ev.Choices[i].Emoji, description = (string?)null });
+                        }
+                    }
+                    return opts;
+                }
+                case TowerRunState.InCasino:
+                {
+                    if (run.CasinoBet == 0)
+                    {
+                        foreach (var amt in new[] { 10, 25, 50 })
+                            opts.Add(new { customId = $"tower_casino_{channelId}_bet_{amt}",
+                                label = $"下注{amt}💰", emoji = "🎲", description = $"贏+{amt}💰" });
+                        opts.Add(new { customId = $"tower_casino_{channelId}_leave", label = "離開賭場", emoji = "🚪", description = (string?)null });
+                    }
+                    else
+                    {
+                        opts.Add(new { customId = $"tower_casino_{channelId}_high",   label = "猜大（4~6）", emoji = "🔼", description = (string?)null });
+                        opts.Add(new { customId = $"tower_casino_{channelId}_low",    label = "猜小（1~3）", emoji = "🔽", description = (string?)null });
+                        opts.Add(new { customId = $"tower_casino_{channelId}_cancel", label = "反悔不賭了",  emoji = "😅", description = (string?)null });
+                    }
+                    return opts;
+                }
+                case TowerRunState.Resting:
+                {
+                    opts.Add(new { customId = $"tower_rest_swap_{channelId}",     label = "換技能",   emoji = "🔃", description = "學習新技能替換現有技能" });
+                    opts.Add(new { customId = $"tower_powerup_{channelId}_rest",  label = "強化招式", emoji = "⚡", description = "強化現有技能威力+20" });
+                    opts.Add(new { customId = $"tower_rest_continue_{channelId}", label = "繼續前進", emoji = "▶️", description = (string?)null });
+                    return opts;
+                }
+                default: // SelectingPath, InBattle, Victory, Defeated
+                    return run.CurrentPaths.Select(p => BuildPathOption(p, channelId, run)).Cast<object>().ToList();
+            }
         }
 
         private static readonly Dictionary<string, (string label, string emoji)> _pathLabels = new()
@@ -1877,6 +2036,36 @@ namespace MusicBot2.Service
             {
                 if (ulong.TryParse(customId[$"tower_rest_continue_".Length..], out var ch))
                     await HandleRestContinueAsync(ch);
+            }
+            else if (customId.StartsWith("tower_rest_swap_"))
+            {
+                if (ulong.TryParse(customId[$"tower_rest_swap_".Length..], out var ch))
+                    await HandleRestMoveSwapAsync(ch);
+            }
+            // tower_powerup_{channelId}_{rest|shop}  (進入強化介面)
+            else if (customId.StartsWith("tower_powerup_") && !customId.StartsWith("tower_powerup_select_") && !customId.StartsWith("tower_powerup_switch_"))
+            {
+                var rest2 = customId[$"tower_powerup_".Length..];
+                int under2 = rest2.LastIndexOf('_');
+                if (under2 > 0 && ulong.TryParse(rest2[..under2], out var ch))
+                    await EnterPowerUpgradeAsync(ch, rest2[(under2 + 1)..]);
+            }
+            // tower_powerup_switch_{channelId}  (切換到技能獎勵)
+            else if (customId.StartsWith("tower_powerup_switch_"))
+            {
+                if (ulong.TryParse(customId[$"tower_powerup_switch_".Length..], out var ch))
+                    await SwitchToMoveRewardAsync(ch);
+            }
+            // tower_powerup_select_{channelId}_{moveIndex|4(skip)}
+            else if (customId.StartsWith("tower_powerup_select_"))
+            {
+                var rest2 = customId[$"tower_powerup_select_".Length..];
+                int under2 = rest2.LastIndexOf('_');
+                if (under2 > 0 && ulong.TryParse(rest2[..under2], out var ch))
+                {
+                    int mi = int.TryParse(rest2[(under2 + 1)..], out var mv) ? mv : 4;
+                    await HandlePowerUpgradeAsync(ch, mi);
+                }
             }
 
             return GetFrontendState(channelId);

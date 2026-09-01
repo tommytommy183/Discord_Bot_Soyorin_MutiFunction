@@ -79,6 +79,7 @@ export interface PathOption {
   emoji: string;
   customId: string;
   description?: string;
+  disabled?: boolean;
 }
 
 export interface MapNode {

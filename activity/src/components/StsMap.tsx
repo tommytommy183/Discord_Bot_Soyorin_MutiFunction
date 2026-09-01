@@ -93,16 +93,22 @@ export function StsMap({ run, onSelectNode, busy }: Props) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodes, byFloor, svgH]);
 
-  // Auto-scroll to current floor
+  // Auto-scroll to current floor (SVG origin = top-left, floor 1 is near bottom of SVG)
   const scrollRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (!scrollRef.current || !currentId) return;
-    const currentNode = nodes.find(n => n.id === currentId);
-    if (!currentNode) return;
-    const y = nodeY(currentNode.floor);
+    if (!scrollRef.current) return;
+    const currentNode = currentId ? nodes.find(n => n.id === currentId) : null;
     const containerH = scrollRef.current.clientHeight;
-    scrollRef.current.scrollTop = y - containerH / 2 + NODE_R;
-  }, [currentId, nodes]);
+    if (currentNode) {
+      // y in SVG coords → scroll so the current floor is vertically centered
+      const y = nodeY(currentNode.floor);
+      scrollRef.current.scrollTop = y - containerH / 2;
+    } else {
+      // No current node yet → show bottom of map (floor 1)
+      scrollRef.current.scrollTop = svgH;
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentId]);
 
   if (nodes.length === 0) return null;
 
@@ -117,7 +123,7 @@ export function StsMap({ run, onSelectNode, busy }: Props) {
     }}>
       {/* Floor labels overlay */}
       <div style={{ position: 'relative' }}>
-        <svg width={W} height={svgH} style={{ display: 'block' }}>
+        <svg width="100%" viewBox={`0 0 ${W} ${svgH}`} height={svgH} style={{ display: 'block', minWidth: W }}>
           {/* Background grid lines (subtle) */}
           {Array.from({ length: maxFloor }, (_, i) => i + 1).map(f => (
             <line key={f}

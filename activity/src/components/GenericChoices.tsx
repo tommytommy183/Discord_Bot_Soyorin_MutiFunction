@@ -61,8 +61,8 @@ export function GenericChoices({ run, onAction, busy }: Props) {
           <button
             key={opt.customId}
             className="btn-hover"
-            disabled={busy}
-            onClick={() => onAction(opt.customId)}
+            disabled={busy || !!opt.disabled}
+            onClick={() => !opt.disabled && onAction(opt.customId)}
             style={{
               background: '#0f172a',
               border: `1px solid ${cfg.color}33`,
