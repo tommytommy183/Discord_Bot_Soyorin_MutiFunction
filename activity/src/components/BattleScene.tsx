@@ -11,7 +11,7 @@ interface Props {
   busy: boolean;
 }
 
-type AttackAnim = 'idle' | 'lunge' | 'projectile' | 'status';
+type AttackAnim = 'idle' | 'lunge' | 'beam' | 'projectile' | 'status';
 
 function StageLabel({ stage }: { stage: number }) {
   if (stage === 0) return null;
@@ -25,7 +25,7 @@ function StageLabel({ stage }: { stage: number }) {
 function MoveBtn({ move, idx, channelId, onAction, busy, onAttack }: {
   move: TowerMove; idx: number; channelId: string;
   onAction: (id: string) => void; busy: boolean;
-  onAttack: (category: string) => void;
+  onAttack: (category: string, moveType: string) => void;
 }) {
   const color = typeColor(move.type);
   const empty = move.currentPP === 0;
@@ -37,7 +37,7 @@ function MoveBtn({ move, idx, channelId, onAction, busy, onAttack }: {
     <button
       className="btn-hover"
       disabled={busy || empty}
-      onClick={() => { if (!busy && !empty) { onAttack(move.category); onAction(customId); } }}
+      onClick={() => { if (!busy && !empty) { onAttack(move.category, move.type); onAction(customId); } }}
       style={{
         background: empty
           ? '#1a1f2e'
@@ -68,7 +68,7 @@ function MoveBtn({ move, idx, channelId, onAction, busy, onAttack }: {
       <span style={{ fontWeight: 700, fontSize: 11, textAlign: 'center', lineHeight: 1.2 }}>{move.name}</span>
       <div style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 9 }}>
         <span style={{ color: '#64748b' }}>
-          {move.category === 'physical' ? '物攻' : move.category === 'special' ? '特攻' : '變化'}
+          {['physical','Physical'].includes(move.category) ? '物攻' : ['special','Special'].includes(move.category) ? '特攻' : '變化'}
           {move.power > 0 && ` ${move.power}`}
         </span>
       </div>
@@ -113,19 +113,21 @@ export function BattleScene({ run, onAction, busy }: Props) {
   const isBoss = enemy?.isBoss ?? false;
   const [shake, setShake] = useState(false);
   const [attackAnim, setAttackAnim] = useState<AttackAnim>('idle');
+  const [currentMoveType, setCurrentMoveType] = useState<string>('normal');
 
-  function handleAttack(category: string) {
+  function handleAttack(category: string, moveType?: string) {
     setShake(true);
-    setTimeout(() => setShake(false), 500);
-    if (category === 'physical') {
+    setTimeout(() => setShake(false), 650);
+    setCurrentMoveType(moveType ?? 'normal');
+    if (category === 'Physical' || category === 'physical') {
       setAttackAnim('lunge');
-      setTimeout(() => setAttackAnim('idle'), 450);
-    } else if (category === 'special') {
+      setTimeout(() => setAttackAnim('idle'), 700);
+    } else if (category === 'Special' || category === 'special') {
       setAttackAnim('projectile');
-      setTimeout(() => setAttackAnim('idle'), 520);
+      setTimeout(() => setAttackAnim('idle'), 700);
     } else {
       setAttackAnim('status');
-      setTimeout(() => setAttackAnim('idle'), 600);
+      setTimeout(() => setAttackAnim('idle'), 700);
     }
   }
 
@@ -204,20 +206,34 @@ export function BattleScene({ run, onAction, busy }: Props) {
           />
         )}
 
+        {/* Beam animation — spans from player to enemy */}
+        {attackAnim === 'beam' && (
+          <div style={{
+            position: 'absolute',
+            bottom: 130, left: 110, right: 20,
+            height: 8, borderRadius: 4, zIndex: 10, pointerEvents: 'none',
+            background: 'linear-gradient(90deg, #6366f1, #a78bfa, #ffffff)',
+            boxShadow: '0 0 16px 4px #818cf8',
+            animation: 'beamExpand 0.6s ease-out forwards',
+          }} />
+        )}
+
         {/* Projectile animation */}
         {attackAnim === 'projectile' && (
           <div style={{
-            position: 'absolute', bottom: 110, left: 90,
-            fontSize: 22, zIndex: 10, pointerEvents: 'none',
-            animation: 'projectileFly 0.5s ease-in forwards',
-          }}>💫</div>
+            position: 'absolute', bottom: 120, left: 110,
+            width: 18, height: 18, borderRadius: '50%', zIndex: 10, pointerEvents: 'none',
+            background: typeColor(currentMoveType) || '#6366f1',
+            boxShadow: `0 0 16px 6px ${typeColor(currentMoveType) || '#6366f1'}`,
+            animation: 'projectileFly 0.6s ease-in forwards',
+          }} />
         )}
 
-        {/* Player sprite: middle-left (with lunge wrapper) */}
+        {/* Player sprite: middle-left (with lunge wrapper — moves right toward enemy) */}
         {activePoke && (
           <div style={{
             position: 'absolute', bottom: 88, left: 8,
-            animation: attackAnim === 'lunge' ? 'lunge 0.4s ease-in-out' : undefined,
+            animation: attackAnim === 'lunge' ? 'lungeFull 0.65s ease-in-out' : undefined,
           }}>
             <img
               src={activePoke.isShiny ? spriteUrl(activePoke.pokeId, 'shiny') : spriteUrl(activePoke.pokeId, 'back')}
@@ -280,7 +296,7 @@ export function BattleScene({ run, onAction, busy }: Props) {
           <button
             className="btn-hover"
             disabled={busy}
-            onClick={() => { if (!busy) { handleAttack('physical'); onAction(`tower_move_${run.channelId}_99`); } }}
+            onClick={() => { if (!busy) { handleAttack('Physical', 'normal'); onAction(`tower_move_${run.channelId}_99`); } }}
             style={{
               background: 'linear-gradient(135deg, #ef444433, #ef444411)',
               color: '#fca5a5',
@@ -297,6 +313,74 @@ export function BattleScene({ run, onAction, busy }: Props) {
           </button>
         )}
       </div>
+
+      {/* Swap button row */}
+      {run.team.filter(p => p.currentHP > 0).length > 1 && !run.swapPending && (
+        <button
+          className="btn-hover"
+          disabled={busy}
+          onClick={() => onAction(`tower_swap_request_${run.channelId}`)}
+          style={{
+            background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
+            border: '1px solid #33415566',
+            borderRadius: 10, padding: '8px 14px',
+            color: '#94a3b8', cursor: busy ? 'not-allowed' : 'pointer',
+            fontSize: 12, fontWeight: 700,
+            display: 'flex', alignItems: 'center', gap: 6,
+          }}
+        >
+          🔄 換隊員
+        </button>
+      )}
+
+      {/* Team picker overlay (when swapPending) */}
+      {run.swapPending && (
+        <div className="anim-fade-in" style={{
+          background: '#0a1020', border: '1px solid #334155',
+          borderRadius: 12, padding: '12px 14px',
+          display: 'flex', flexDirection: 'column', gap: 8,
+        }}>
+          <div style={{ fontSize: 12, color: '#94a3b8', fontWeight: 700 }}>🔄 選擇換上場的寶可夢：</div>
+          {run.team.map((pk, i) => {
+            if (i === run.activeIndex || pk.currentHP <= 0) return null;
+            return (
+              <button key={i}
+                className="btn-hover"
+                disabled={busy}
+                onClick={() => onAction(`tower_swap_${run.channelId}_${i}`)}
+                style={{
+                  background: '#0f172a', border: '1px solid #6366f133',
+                  borderRadius: 10, padding: '10px 14px',
+                  color: '#fff', cursor: busy ? 'not-allowed' : 'pointer',
+                  display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left',
+                }}
+              >
+                <img src={spriteUrl(pk.pokeId, 'front')} alt={pk.displayName}
+                  style={{ width: 40, height: 40, imageRendering: 'pixelated', flexShrink: 0 }} />
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 13 }}>{pk.displayName}</div>
+                  <div style={{ fontSize: 11, color: '#64748b' }}>
+                    HP {pk.currentHP}/{pk.maxHP}
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+          <button
+            className="btn-hover"
+            disabled={busy}
+            onClick={() => onAction(`tower_swap_cancel_${run.channelId}`)}
+            style={{
+              background: 'transparent', border: '1px solid #334155',
+              borderRadius: 8, padding: '8px',
+              color: '#64748b', cursor: busy ? 'not-allowed' : 'pointer',
+              fontSize: 12,
+            }}
+          >
+            ❌ 取消
+          </button>
+        </div>
+      )}
 
       {/* Battle log */}
       <BattleLog logs={run.battleLog} />

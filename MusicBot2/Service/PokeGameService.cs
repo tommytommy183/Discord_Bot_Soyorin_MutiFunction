@@ -1857,7 +1857,7 @@ HP為0就是真的死亡，不會再有後續動作
                 // 解析 AI 回應，判斷勝者
                 bool player1Wins = aiResponse.Contains($"勝者：{player1Name}") ||
                                    aiResponse.Contains($"勝者: {player1Name}") ||
-
+                                   
                                    aiResponse.Contains($"勝者：玩家1") ||
                                    aiResponse.Contains($"勝者: 玩家1") ||
 

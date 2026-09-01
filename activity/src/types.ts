@@ -4,7 +4,8 @@ export type RunState =
   | 'SelectingCatchSwap' | 'Victory' | 'Defeated' | 'Resting'
   | 'SelectingPowerUpgrade' | 'SelectingRelic' | 'InCasino'
   | 'SelectingPassive' | 'SelectingCursedRelic'
-  | 'InMiniGame2048' | 'InMiniGameMine' | 'InMiniGameQuiz';
+  | 'InMiniGame2048' | 'InMiniGameMine' | 'InMiniGameQuiz'
+  | 'ShowingEventResult';
 
 export interface TowerMove {
   name: string;
@@ -130,6 +131,8 @@ export interface TowerRun {
   eventTitle?: string;
   eventEmoji?: string;
   eventDesc?: string;
+  eventResultText?: string;
+  swapPending?: boolean;
 }
 
 export interface ActionRequest {

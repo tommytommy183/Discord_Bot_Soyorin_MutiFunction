@@ -22,6 +22,7 @@ const STATE_CONFIG: Record<string, { title: string; color: string; bg: string; h
   InMiniGame2048:        { title: '🎮 2048 迷你遊戲', color: '#6366f1', bg: '#1e1b4b', hint: '滑動合併數字！' },
   InMiniGameMine:        { title: '💣 踩地雷', color: '#f97316', bg: '#431407', hint: '小心！' },
   InMiniGameQuiz:        { title: '❓ Pokemon 問答', color: '#38bdf8', bg: '#0c2233', hint: '考驗你的知識！' },
+  ShowingEventResult:    { title: '📋 事件結果', color: '#a855f7', bg: '#2d1b69', hint: '確認後繼續前進' },
 };
 
 export function GenericChoices({ run, onAction, busy }: Props) {
@@ -56,6 +57,17 @@ export function GenericChoices({ run, onAction, busy }: Props) {
             border: '1px solid #1e293b',
           }}>
             {run.eventDesc}
+          </div>
+        )}
+        {/* Event result text (ShowingEventResult state) */}
+        {run.state === 'ShowingEventResult' && run.eventResultText && (
+          <div style={{
+            fontSize: 12, color: '#cbd5e1', lineHeight: 1.8,
+            background: 'rgba(0,0,0,0.35)', borderRadius: 8,
+            padding: '12px 14px', margin: '8px 0', textAlign: 'left',
+            border: '1px solid #3d2069', whiteSpace: 'pre-line',
+          }}>
+            {run.eventResultText}
           </div>
         )}
         {cfg.hint && run.state !== 'SelectingEvent' && <div style={{ fontSize: 12, color: '#64748b' }}>{cfg.hint}</div>}

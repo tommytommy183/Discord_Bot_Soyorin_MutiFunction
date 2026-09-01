@@ -835,21 +835,21 @@ namespace MusicBot2.SlahCommands
             });
         }
 
-        [SlashCommand("爬塔狀態", "把目前爬塔的操作介面重新發到最下方（找不到按鈕時使用）")]
-        public async Task PokeTowerRefreshAsync()
-        {
-            await DeferAsync();
-            var run = _pokeTowerService.GetRun(Context.Channel.Id);
-            if (run == null)
-            {
-                await FollowupAsync(embed: new EmbedBuilder()
-                    .WithTitle("❓ 此頻道目前沒有爬塔")
-                    .WithColor(Color.Orange).Build(), ephemeral: true);
-                return;
-            }
-            var (embed, component) = _pokeTowerService.BuildCurrentStateEmbed(Context.Channel.Id);
-            await FollowupAsync(embed: embed, components: component.Build());
-        }
+        //[SlashCommand("爬塔狀態", "把目前爬塔的操作介面重新發到最下方（找不到按鈕時使用）")]
+        //public async Task PokeTowerRefreshAsync()
+        //{
+        //    await DeferAsync();
+        //    var run = _pokeTowerService.GetRun(Context.Channel.Id);
+        //    if (run == null)
+        //    {
+        //        await FollowupAsync(embed: new EmbedBuilder()
+        //            .WithTitle("❓ 此頻道目前沒有爬塔")
+        //            .WithColor(Color.Orange).Build(), ephemeral: true);
+        //        return;
+        //    }
+        //    var (embed, component) = _pokeTowerService.BuildCurrentStateEmbed(Context.Channel.Id);
+        //    await FollowupAsync(embed: embed, components: component.Build());
+        //}
 
         [SlashCommand("取消pokemon爬塔", "取消此頻道進行中的爬塔（本人才能使用）")]
         public async Task CancelPokeTowerAsync()

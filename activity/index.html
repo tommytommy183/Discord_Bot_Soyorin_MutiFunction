@@ -31,8 +31,10 @@
       @keyframes floatUp { from { opacity:1; transform: translateY(0) scale(1); } to { opacity:0; transform: translateY(-40px) scale(1.3); } }
       @keyframes bossGlow { 0%,100% { border-color: #ef4444; box-shadow: 0 0 12px #ef4444; } 50% { border-color: #f97316; box-shadow: 0 0 24px #f97316; } }
       @keyframes lunge { 0%,100% { transform: translateX(0); } 40% { transform: translateX(55px); } }
+      @keyframes lungeFull { 0% { transform: translateX(0); } 45% { transform: translateX(165px) scaleX(-1.05); } 100% { transform: translateX(0); } }
       @keyframes statusAura { 0%,100% { filter: brightness(1); } 50% { filter: brightness(2) saturate(2); } }
-      @keyframes projectileFly { 0% { transform: translate(0,0) scale(1.2); opacity:1; } 100% { transform: translate(190px,-55px) scale(0.3); opacity:0; } }
+      @keyframes projectileFly { 0% { transform: translate(0,0) scale(1.4); opacity:1; } 100% { transform: translate(160px,-60px) scale(0.3); opacity:0; } }
+      @keyframes beamExpand { 0% { transform: scaleX(0); transform-origin: left; opacity:1; } 70% { transform: scaleX(1); opacity:1; } 100% { transform: scaleX(1); opacity:0; } }
 
       .anim-fade-in { animation: fadeIn 0.35s ease both; }
       .anim-slide-left { animation: slideInLeft 0.35s ease both; }

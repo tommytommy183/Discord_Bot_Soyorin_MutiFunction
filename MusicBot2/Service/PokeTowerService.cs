@@ -33,6 +33,7 @@ namespace MusicBot2.Service
         InMiniGame2048,
         InMiniGameMine,
         InMiniGameQuiz,
+        ShowingEventResult,
     }
 
     public class TowerMove
@@ -221,6 +222,12 @@ namespace MusicBot2.Service
         // Cursed Relics
         public List<string> CursedRelicIds { get; set; } = new();
         public List<string> PendingCursedRelicChoices { get; set; } = new();
+        // Activity multi-player support
+        public ulong ActivityUserId { get; set; } = 0;
+        // Event result (shown before returning to map)
+        public string EventResultText { get; set; } = "";
+        // Battle swap UI state
+        public bool SwapPending { get; set; } = false;
     }
 
     public class PokeTowerService
@@ -1765,6 +1772,8 @@ namespace MusicBot2.Service
                     previewPokeId  = n.PreviewPokeId,
                     previewPokeName= n.PreviewPokeName,
                 }).ToList(),
+                eventResultText = run.EventResultText,
+                swapPending     = run.SwapPending,
             };
         }
 
@@ -1922,7 +1931,29 @@ namespace MusicBot2.Service
                     opts.Add(new { customId = $"tower_rest_continue_{channelId}", label = "繼續前進", emoji = "▶️", description = (string?)null });
                     return opts;
                 }
-                default: // SelectingPath, InBattle, Victory, Defeated
+                case TowerRunState.ShowingEventResult:
+                    opts.Add(new { customId = $"tower_event_confirm_{channelId}", label = "確認，繼續前進", emoji = "✅", description = (string?)null });
+                    return opts;
+                case TowerRunState.InBattle:
+                {
+                    // swap buttons when swapPending
+                    if (run.SwapPending)
+                    {
+                        for (int i = 0; i < run.Party.Count; i++)
+                        {
+                            var pk = run.Party[i];
+                            if (i == run.ActivePokemonIndex || pk.CurrentHP <= 0) continue;
+                            opts.Add(new { customId = $"tower_swap_{channelId}_{i}",
+                                label = $"換上 {pk.DisplayName}", emoji = "🔄",
+                                description = $"HP {pk.CurrentHP}/{pk.MaxHP}" });
+                        }
+                        opts.Add(new { customId = $"tower_swap_cancel_{channelId}", label = "取消換隊員", emoji = "❌", description = (string?)null });
+                        return opts;
+                    }
+                    // Normal battle: move buttons are shown in BattleScene directly
+                    return opts;
+                }
+                default: // SelectingPath, Victory, Defeated
                     return run.CurrentPaths.Select(p => BuildPathOption(p, channelId, run)).Cast<object>().ToList();
             }
         }
@@ -2080,6 +2111,31 @@ namespace MusicBot2.Service
                     await HandlePowerUpgradeAsync(ch, mi);
                 }
             }
+            // tower_event_confirm_{channelId}  (確認事件結果，回到地圖)
+            else if (customId.StartsWith("tower_event_confirm_"))
+            {
+                if (ulong.TryParse(customId[$"tower_event_confirm_".Length..], out var ch))
+                    await HandleEventConfirmAsync(ch);
+            }
+            // tower_swap_request_{channelId}  (開啟換隊員介面)
+            else if (customId.StartsWith("tower_swap_request_"))
+            {
+                if (ulong.TryParse(customId[$"tower_swap_request_".Length..], out var ch))
+                    HandleSwapRequest(ch);
+            }
+            // tower_swap_{channelId}_{index}  (選擇換上場的隊員)
+            else if (customId.StartsWith("tower_swap_") && !customId.StartsWith("tower_swap_request_") && !customId.StartsWith("tower_swap_cancel_"))
+            {
+                var p = customId.Split('_');
+                if (p.Length >= 4 && ulong.TryParse(p[2], out var ch) && int.TryParse(p[3], out var si))
+                    HandleSwapSelect(ch, si);
+            }
+            // tower_swap_cancel_{channelId}  (取消換隊員)
+            else if (customId.StartsWith("tower_swap_cancel_"))
+            {
+                if (ulong.TryParse(customId[$"tower_swap_cancel_".Length..], out var ch))
+                    HandleSwapCancel(ch);
+            }
 
             return GetFrontendState(channelId);
         }
@@ -2131,9 +2187,9 @@ namespace MusicBot2.Service
             return (embed.Build(), cb);
         }
 
-        /// <summary>開始爬塔</summary>
+        /// <summary>開始爬塔（activityUserId > 0 表示 Activity 模式，跳過同頻道限制）</summary>
         public async Task<(Embed embed, ComponentBuilder component)> StartRunAsync(
-            ulong channelId, ulong playerId, string playerName, PokeGamePokemon src, string passiveId = "")
+            ulong channelId, ulong playerId, string playerName, PokeGamePokemon src, string passiveId = "", ulong activityUserId = 0)
         {
             var pokemon = ConvertPokemon(src);
             pokemon.Moves = await FetchMovesFromApiAsync(src.Id, src.Types?.ToList() ?? new());
@@ -2146,6 +2202,7 @@ namespace MusicBot2.Service
                 ActivePokemon = pokemon,
                 State = TowerRunState.SelectingPath,
                 PassiveId = passiveId,
+                ActivityUserId = activityUserId,
             };
             run.Party.Add(pokemon);
             run.RunLog.Add($"🏔️ {playerName} 帶著 {pokemon.DisplayName} 踏入爬塔！");
@@ -2324,7 +2381,9 @@ namespace MusicBot2.Service
             if (choice == "miniboss")
             {
                 // miniboss: stronger than regular battle but not a boss
-                run.CurrentEnemy = GenEnemy(run.CurrentFloor, false);
+                run.CurrentEnemy = mapNode?.PreviewPokeId > 0
+                    ? GenEnemyById(mapNode.PreviewPokeId, run.CurrentFloor, false)
+                    : GenEnemy(run.CurrentFloor, false);
                 // Scale up miniboss stats slightly
                 run.CurrentEnemy.MaxHP         = (int)(run.CurrentEnemy.MaxHP * 1.3f);
                 run.CurrentEnemy.CurrentHP     = run.CurrentEnemy.MaxHP;
@@ -2353,7 +2412,9 @@ namespace MusicBot2.Service
             }
             if (choice == "battle" || isBoss)
             {
-                run.CurrentEnemy = GenEnemy(run.CurrentFloor, isBoss);
+                run.CurrentEnemy = mapNode?.PreviewPokeId > 0
+                    ? GenEnemyById(mapNode.PreviewPokeId, run.CurrentFloor, isBoss)
+                    : GenEnemy(run.CurrentFloor, isBoss);
                 run.CurrentBattleLog = "";
                 run.State = TowerRunState.InBattle;
                 run.RunLog.Add($"⚔️ 第{run.CurrentFloor}層：遭遇 {run.CurrentEnemy.Name}！");
@@ -3090,9 +3151,52 @@ namespace MusicBot2.Service
                 await SaveAsync(run);
                 return BuildMinesweeperEmbed(run, eventHeader);
             }
+            // Show event result confirmation before returning to map
+            run.EventResultText = eventHeader;
+            run.State = TowerRunState.ShowingEventResult;
+            await SaveAsync(run);
+            return (new EmbedBuilder()
+                .WithTitle("📋 事件結果")
+                .WithDescription(eventHeader)
+                .WithColor(new Color(148, 0, 211)).Build(),
+                new ComponentBuilder().WithButton("✅ 確認，繼續前進", $"tower_event_confirm_{run.ChannelId}", ButtonStyle.Success));
+        }
+
+        /// <summary>確認事件結果，回到選路介面</summary>
+        private async Task HandleEventConfirmAsync(ulong channelId)
+        {
+            if (!_activeRuns.TryGetValue(channelId, out var run)) return;
+            run.EventResultText = "";
             run.State = TowerRunState.SelectingPath;
             await SaveAsync(run);
-            return BuildPathEmbed(run, eventHeader);
+        }
+
+        /// <summary>開啟換隊員選擇介面（僅設狀態，不儲存，前端根據 swapPending 顯示）</summary>
+        private void HandleSwapRequest(ulong channelId)
+        {
+            if (!_activeRuns.TryGetValue(channelId, out var run)) return;
+            run.SwapPending = true;
+        }
+
+        /// <summary>選擇換上場的隊員</summary>
+        private void HandleSwapSelect(ulong channelId, int idx)
+        {
+            if (!_activeRuns.TryGetValue(channelId, out var run)) return;
+            if (idx < 0 || idx >= run.Party.Count) return;
+            if (run.Party[idx].CurrentHP <= 0) return; // can't swap to fainted
+            run.ActivePokemon = run.Party[idx];
+            run.ActivePokemonIndex = idx;
+            run.SwapPending = false;
+            // Reset battle stages on swap
+            run.ActivePokemon.AtkStage = run.ActivePokemon.DefStage = run.ActivePokemon.SpdStage =
+            run.ActivePokemon.SpAtkStage = run.ActivePokemon.SpDefStage = 0;
+        }
+
+        /// <summary>取消換隊員</summary>
+        private void HandleSwapCancel(ulong channelId)
+        {
+            if (!_activeRuns.TryGetValue(channelId, out var run)) return;
+            run.SwapPending = false;
         }
 
         #endregion
@@ -4251,6 +4355,27 @@ namespace MusicBot2.Service
             int b = Math.Max(25, (int)(t.StatTotal * scale / 8));
             int gold = isBoss ? (floor == 20 ? 120 : 80) : _rng.Next(20, 40);
 
+            return new TowerEnemy
+            {
+                Name = isBoss ? $"👑 {t.Name}" : t.Name,
+                PokeId = t.PokeId,
+                Types = t.Types.ToList(),
+                MaxHP = (int)(b * 1.5), CurrentHP = (int)(b * 1.5),
+                Attack = b, Defense = (int)(b * 0.80),
+                SpecialAttack = b, SpecialDefense = (int)(b * 0.80),
+                Speed = b, IsBoss = isBoss, GoldReward = gold,
+                Moves = PickMovesStatic(t.Types.ToList()),
+            };
+        }
+
+        /// <summary>用指定 PokeId 生成敵人（保留地圖預覽一致性）</summary>
+        private TowerEnemy GenEnemyById(int pokeId, int floor, bool isBoss)
+        {
+            var t = _enemyPool.FirstOrDefault(e => e.PokeId == pokeId);
+            if (t.Name == null) return GenEnemy(floor, isBoss); // fallback if not in pool
+            float scale = isBoss ? 1.0f + (floor - 1) * 0.07f : 1.0f + (floor - 1) * 0.045f;
+            int b = Math.Max(25, (int)(t.StatTotal * scale / 8));
+            int gold = isBoss ? (floor == 20 ? 120 : 80) : _rng.Next(20, 40);
             return new TowerEnemy
             {
                 Name = isBoss ? $"👑 {t.Name}" : t.Name,

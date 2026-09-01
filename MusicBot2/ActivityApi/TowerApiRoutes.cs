@@ -51,8 +51,8 @@ public static class TowerApiRoutes
         app.MapGet("/tower/passives", (PokeTowerService towerSvc) =>
             Results.Json(towerSvc.GetRandomPassives(), _json));
 
-        // ── GET /api/tower/run/{channelId} ─────────────────────────────
-        app.MapGet("/tower/run/{channelId}", (string channelId, PokeTowerService svc) =>
+        // ── GET /api/tower/run/{channelId}?userId={userId} ─────────────────────────────
+        app.MapGet("/tower/run/{channelId}", (string channelId, string? userId, PokeTowerService svc) =>
         {
             if (!ulong.TryParse(channelId, out var cid))
                 return Results.BadRequest("invalid channelId");
@@ -104,7 +104,8 @@ public static class TowerApiRoutes
                 return Results.BadRequest("invalid pokemonIndex");
 
             var src = player.CaughtPokemon[idx];
-            await towerSvc.StartRunAsync(channelId, userId, req.UserName ?? player.UserName ?? "Player", src, req.PassiveId ?? "");
+            // Activity mode: pass userId so multiple players can start in the same channel
+            await towerSvc.StartRunAsync(channelId, userId, req.UserName ?? player.UserName ?? "Player", src, req.PassiveId ?? "", activityUserId: userId);
 
             var state = towerSvc.GetFrontendState(channelId);
             return Results.Json(state, _json);

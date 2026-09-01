@@ -6,6 +6,7 @@ import type { TowerRun, PassiveOption } from './types';
 import { BattleScene } from './components/BattleScene';
 import { PathSelector } from './components/PathSelector';
 import { GenericChoices } from './components/GenericChoices';
+import { CatchScene } from './components/CatchScene';
 import { GameOver } from './components/GameOver';
 import { HpBar } from './components/HpBar';
 import { TypeBadge } from './components/TypeBadge';
@@ -377,7 +378,10 @@ export default function App() {
         {run.state === 'SelectingPath' && (
           <PathSelector run={run} onAction={handleAction} busy={busy} />
         )}
-        {!['InBattle', 'SelectingPath', 'Victory', 'Defeated'].includes(run.state) && (
+        {run.state === 'SelectingCatch' && (
+          <CatchScene run={run} onAction={handleAction} busy={busy} />
+        )}
+        {!['InBattle', 'SelectingPath', 'SelectingCatch', 'Victory', 'Defeated'].includes(run.state) && (
           <GenericChoices run={run} onAction={handleAction} busy={busy} />
         )}
       </div>
