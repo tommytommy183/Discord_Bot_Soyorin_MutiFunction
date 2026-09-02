@@ -243,7 +243,8 @@ export default function App() {
       const res = await api.getRun(cId);
       if (res.ok && res.data) {
         setRun(res.data);
-        if (res.data.state === 'Victory' || res.data.state === 'Defeated')
+        // AwaitingBossChallenge 還需要繼續 poll（等玩家選擇）
+        if ((res.data.state === 'Victory' || res.data.state === 'Defeated') && res.data.state !== 'AwaitingBossChallenge')
           clearInterval(pollRef.current!);
       }
     }, 3000);
@@ -390,7 +391,7 @@ export default function App() {
 
   if (!run) return null;
 
-  if (run.state === 'Victory' || run.state === 'Defeated') return (
+  if ((run.state === 'Victory' || run.state === 'Defeated') && run.state !== 'AwaitingBossChallenge') return (
     <div style={{ ...shell, overflow: 'auto' }}>
       <GameOver run={run} onRestart={async () => {
         // 主動清除 Redis 紀錄，不等 2h auto-expire
@@ -416,7 +417,7 @@ export default function App() {
           <CatchScene run={run} onAction={handleAction} busy={busy} catchFailed={catchFailed}
             catchSuccess={catchSuccess} onConfirmSuccess={handleCatchSuccessConfirm} />
         )}
-        {!['InBattle', 'SelectingPath', 'SelectingCatch', 'Victory', 'Defeated'].includes(run.state) && (
+        {!['InBattle', 'SelectingPath', 'SelectingCatch', 'Victory', 'Defeated'].includes(run.state) && (  // AwaitingBossChallenge 走 GenericChoices
           <GenericChoices run={run} onAction={handleAction} busy={busy} />
         )}
       </div>

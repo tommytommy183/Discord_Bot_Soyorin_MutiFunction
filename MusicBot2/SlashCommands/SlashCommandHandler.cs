@@ -851,6 +851,81 @@ namespace MusicBot2.SlahCommands
         //    await FollowupAsync(embed: embed, components: component.Build());
         //}
 
+        [SlashCommand("pokemon爬塔排行", "查看爬塔通關排行榜")]
+        public async Task PokeTowerLeaderboardAsync(
+            [Summary("類型", "全部/一般通關/神話通關（打贏ARCEUS）")] string 類型 = "全部")
+        {
+            await DeferAsync();
+            bool? filter = 類型 switch {
+                "神話" or "神話通關" or "arceus" or "ARCEUS" => true,
+                "一般" or "一般通關" => false,
+                _ => null
+            };
+
+            var records = await _pokeTowerService.GetClearLeaderboardAsync(filter);
+
+            if (records.Count == 0)
+            {
+                await FollowupAsync(embed: new EmbedBuilder()
+                    .WithTitle("🏆 爬塔排行榜")
+                    .WithDescription(filter == true
+                        ? "目前還沒有人擊敗過終極神獸 ARCEUS……"
+                        : "目前還沒有任何通關紀錄！")
+                    .WithColor(Color.Gold).Build());
+                return;
+            }
+
+            var sb = new System.Text.StringBuilder();
+            // 分成兩組：神話通關優先展示
+            var ultimate = records.Where(r => r.BeatenUltimateBoss).ToList();
+            var normal   = records.Where(r => !r.BeatenUltimateBoss).ToList();
+
+            if (ultimate.Count > 0 && filter != false)
+            {
+                sb.AppendLine("## 🌌 神話通關（擊敗 ARCEUS）");
+                for (int i = 0; i < Math.Min(ultimate.Count, 10); i++)
+                {
+                    var r = ultimate[i];
+                    var medal = i == 0 ? "🥇" : i == 1 ? "🥈" : i == 2 ? "🥉" : $"#{i + 1}";
+                    sb.AppendLine($"{medal} **{r.PlayerName}** — {r.ClearedAt:MM/dd HH:mm}");
+                    var aliveParty = r.Party.Where(p => p.CurrentHP > 0).ToList();
+                    if (aliveParty.Any())
+                        sb.AppendLine($"   🐾 {string.Join("  ", aliveParty.Select(p => $"{p.Name} {p.CurrentHP}/{p.MaxHP}HP"))}");
+                    sb.AppendLine($"   ⚔️ 累積傷害 **{r.TotalDamageDealt:N0}** | ⏱️{r.ElapsedMinutes}分 | 💰{r.Gold} | Lv.{r.Level}");
+                    if (!string.IsNullOrEmpty(r.PassiveName)) sb.AppendLine($"   🎖️ 被動：{r.PassiveName}");
+                    if (r.RelicNames.Count > 0) sb.AppendLine($"   🔮 神器：{string.Join(" ", r.RelicNames.Take(5))}{(r.RelicNames.Count > 5 ? $"…+{r.RelicNames.Count - 5}" : "")}");
+                    sb.AppendLine();
+                }
+            }
+
+            if (normal.Count > 0 && filter != true)
+            {
+                sb.AppendLine("## 🏆 一般通關（20層）");
+                // 排序：先依傷害量降序
+                var sortedNormal = normal.OrderByDescending(r => r.TotalDamageDealt).ToList();
+                for (int i = 0; i < Math.Min(sortedNormal.Count, 10); i++)
+                {
+                    var r = sortedNormal[i];
+                    var medal = i == 0 ? "🥇" : i == 1 ? "🥈" : i == 2 ? "🥉" : $"#{i + 1}";
+                    sb.AppendLine($"{medal} **{r.PlayerName}** — {r.ClearedAt:MM/dd HH:mm}");
+                    var aliveParty = r.Party.Where(p => p.CurrentHP > 0).ToList();
+                    if (aliveParty.Any())
+                        sb.AppendLine($"   🐾 {string.Join("  ", aliveParty.Select(p => $"{p.Name} {p.CurrentHP}/{p.MaxHP}HP"))}");
+                    sb.AppendLine($"   ⚔️ 累積傷害 **{r.TotalDamageDealt:N0}** | ⏱️{r.ElapsedMinutes}分 | 💰{r.Gold} | Lv.{r.Level}");
+                    if (!string.IsNullOrEmpty(r.PassiveName)) sb.AppendLine($"   🎖️ 被動：{r.PassiveName}");
+                    if (r.CurseNames.Count > 0) sb.AppendLine($"   💀 詛咒：{string.Join(" ", r.CurseNames)}");
+                    sb.AppendLine();
+                }
+            }
+
+            await FollowupAsync(embed: new EmbedBuilder()
+                .WithTitle("🏆 Pokemon 爬塔排行榜")
+                .WithDescription(sb.ToString().TrimEnd())
+                .WithColor(Color.Gold)
+                .WithFooter($"共 {ultimate.Count} 人神話通關・{normal.Count} 人一般通關 | 排名依累積傷害排序")
+                .Build());
+        }
+
         [SlashCommand("取消pokemon爬塔", "取消此頻道進行中的爬塔（本人才能使用）")]
         public async Task CancelPokeTowerAsync()
         {

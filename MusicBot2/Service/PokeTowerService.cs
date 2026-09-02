@@ -24,6 +24,7 @@ namespace MusicBot2.Service
         SelectingCatchSwap,
         Victory,
         Defeated,
+        AwaitingBossChallenge, // 20層通關後，詢問是否挑戰終極神獸
         Resting,
         SelectingPowerUpgrade,
         SelectingRelic,
@@ -232,6 +233,39 @@ namespace MusicBot2.Service
         public bool SwapPending { get; set; } = false;
     }
 
+    /// <summary>爬塔通關 / 終極神獸擊敗紀錄，存入 Redis SortedSet</summary>
+    public class TowerClearRecord
+    {
+        public ulong PlayerId { get; set; }
+        public string PlayerName { get; set; } = "";
+        public DateTime ClearedAt { get; set; }
+        public bool BeatenUltimateBoss { get; set; } = false;
+        public int TotalDamageDealt { get; set; }
+        public int ElapsedMinutes { get; set; }
+        public int Gold { get; set; }
+        public int Level { get; set; }
+        // 全隊存活寶可夢快照（至多3）
+        public List<ClearPokemonSnapshot> Party { get; set; } = new();
+        // 神器清單
+        public List<string> RelicNames { get; set; } = new();
+        // 詛咒清單
+        public List<string> CurseNames { get; set; } = new();
+        // 通關時被動能力
+        public string PassiveName { get; set; } = "";
+    }
+
+    public class ClearPokemonSnapshot
+    {
+        public string Name { get; set; } = "";
+        public int CurrentHP { get; set; }
+        public int MaxHP { get; set; }
+        public int Attack { get; set; }
+        public int Defense { get; set; }
+        public int Speed { get; set; }
+        public bool IsShiny { get; set; }
+        public List<string> MoveNames { get; set; } = new();
+    }
+
     public class PokeTowerService
     {
         private readonly IDatabase _redisDb;
@@ -239,6 +273,8 @@ namespace MusicBot2.Service
         private readonly Dictionary<ulong, TowerRun> _activeRuns = new();
         private const string REDIS_PREFIX = "tower:run:";
         private const string SHINY_KEY_PREFIX = "tower:shiny:";
+        private const string CLEARS_KEY = "tower:clears"; // SortedSet: score=unix timestamp, member=JSON
+        private static readonly List<TowerClearRecord> _clearsFallback = new(); // memory fallback
         // in-memory fallback for shiny reward (also written to Redis for persistence)
         internal static readonly HashSet<ulong> PendingShinyUserIds = new();
         private static readonly Random _rng = new();
@@ -443,6 +479,80 @@ namespace MusicBot2.Service
             new() { Name="毒素衝擊",   Type="毒",     Power=120, Category="Physical", Emoji="💀", MaxPP=5  },
             new() { Name="酸液",       Type="毒",     Power=40,  Category="Special",  Emoji="🧪", MaxPP=20 },
             new() { Name="污泥炸彈",   Type="毒",     Power=90,  Category="Special",  Emoji="💚", MaxPP=10 },
+            // ── Round 10 新增技能 ──────────────────────────────────────────
+            // 一般
+            new() { Name="爆裂拳",     Type="一般",   Power=75,  Category="Physical", Emoji="💥", MaxPP=15, HighCrit=true },
+            new() { Name="雙刃刀",     Type="一般",   Power=120, Category="Physical", Emoji="⚔️", MaxPP=10, DrainPercent=-33 },
+            new() { Name="圓頭槌",     Type="一般",   Power=70,  Category="Physical", Emoji="🔨", MaxPP=10 },
+            new() { Name="切割",       Type="一般",   Power=50,  Category="Physical", Emoji="✂️", MaxPP=20, HighCrit=true },
+            // 火
+            new() { Name="噴射火焰",   Type="火",     Power=100, Category="Special",  Emoji="🌋", MaxPP=5,  EffectAilment="burn", EffectChance=10 },
+            new() { Name="火焰衝擊",   Type="火",     Power=65,  Category="Physical", Emoji="🔥", MaxPP=15, EffectAilment="burn", EffectChance=10 },
+            new() { Name="聖焰",       Type="火",     Power=100, Category="Special",  Emoji="🌟", MaxPP=5  },
+            // 水
+            new() { Name="水流裂破",   Type="水",     Power=85,  Category="Physical", Emoji="💧", MaxPP=10 },
+            new() { Name="激流",       Type="水",     Power=65,  Category="Special",  Emoji="🌊", MaxPP=15 },
+            new() { Name="神秘水",     Type="水",     Power=90,  Category="Special",  Emoji="🔵", MaxPP=10 },
+            // 電
+            new() { Name="超音速拳",   Type="電",     Power=85,  Category="Physical", Emoji="⚡", MaxPP=15 },
+            new() { Name="閃電射線",   Type="電",     Power=100, Category="Special",  Emoji="🌩️", MaxPP=10 },
+            new() { Name="極電速攻",   Type="電",     Power=110, Category="Physical", Emoji="⚡", MaxPP=5  },
+            // 草
+            new() { Name="木質槌",     Type="草",     Power=80,  Category="Physical", Emoji="🪵", MaxPP=10 },
+            new() { Name="光合爆炸",   Type="草",     Power=100, Category="Special",  Emoji="🌞", MaxPP=5  },
+            new() { Name="蔓藤鞭",     Type="草",     Power=55,  Category="Physical", Emoji="🌿", MaxPP=20 },
+            // 冰
+            new() { Name="冰刃",       Type="冰",     Power=70,  Category="Physical", Emoji="🗡️", MaxPP=15, HighCrit=true },
+            new() { Name="冰雹",       Type="冰",     Power=60,  Category="Special",  Emoji="🧊", MaxPP=10 },
+            new() { Name="絕對零度",   Type="冰",     Power=140, Category="Special",  Emoji="🌨️", MaxPP=5  },
+            // 格鬥
+            new() { Name="飛膝踢",     Type="格鬥",   Power=130, Category="Physical", Emoji="🦵", MaxPP=10 },
+            new() { Name="腳刀踢",     Type="格鬥",   Power=90,  Category="Physical", Emoji="🦵", MaxPP=15 },
+            new() { Name="格鬥射線",   Type="格鬥",   Power=120, Category="Special",  Emoji="🥊", MaxPP=5  },
+            // 超能力
+            new() { Name="超級光束",   Type="超能力", Power=150, Category="Special",  Emoji="☀️", MaxPP=5  },
+            new() { Name="神通力",     Type="超能力", Power=80,  Category="Special",  Emoji="🌀", MaxPP=10 },
+            new() { Name="量子切斷",   Type="超能力", Power=90,  Category="Physical", Emoji="🔮", MaxPP=10, HighCrit=true },
+            // 龍
+            new() { Name="逆鱗爆發",   Type="龍",     Power=150, Category="Physical", Emoji="🐉", MaxPP=5  },
+            new() { Name="龍尾掃",     Type="龍",     Power=65,  Category="Physical", Emoji="🦖", MaxPP=15 },
+            new() { Name="神龍衝擊",   Type="龍",     Power=100, Category="Special",  Emoji="🌌", MaxPP=10 },
+            // 惡
+            new() { Name="黑暗脈衝",   Type="惡",     Power=80,  Category="Special",  Emoji="🌑", MaxPP=10 },
+            new() { Name="翻雲覆雨",   Type="惡",     Power=60,  Category="Physical", Emoji="🌪️", MaxPP=20 },
+            new() { Name="闇夜爪",     Type="惡",     Power=80,  Category="Physical", Emoji="🌙", MaxPP=15, HighCrit=true },
+            // 幽靈
+            new() { Name="詛咒之光",   Type="幽靈",   Power=100, Category="Special",  Emoji="💀", MaxPP=10 },
+            new() { Name="幻象衝擊",   Type="幽靈",   Power=85,  Category="Physical", Emoji="👻", MaxPP=15 },
+            new() { Name="月影球",     Type="幽靈",   Power=80,  Category="Special",  Emoji="🌑", MaxPP=10 },
+            // 岩石
+            new() { Name="爆炸岩石",   Type="岩石",   Power=75,  Category="Physical", Emoji="💣", MaxPP=10 },
+            new() { Name="石化砲",     Type="岩石",   Power=80,  Category="Special",  Emoji="🪨", MaxPP=10 },
+            new() { Name="岩石裂爆",   Type="岩石",   Power=100, Category="Physical", Emoji="⛰️", MaxPP=5  },
+            // 地面
+            new() { Name="骨棒擊",     Type="地面",   Power=65,  Category="Physical", Emoji="🦴", MaxPP=15 },
+            new() { Name="沙暴衝",     Type="地面",   Power=35,  Category="Physical", Emoji="🌪️", MaxPP=15, MinHits=2, MaxHits=5 },
+            new() { Name="深淵穿刺",   Type="地面",   Power=120, Category="Physical", Emoji="🌍", MaxPP=5  },
+            // 飛行
+            new() { Name="神速",       Type="飛行",   Power=80,  Category="Physical", Emoji="💨", MaxPP=20 },
+            new() { Name="天翔龍衝",   Type="飛行",   Power=100, Category="Physical", Emoji="🦅", MaxPP=10 },
+            new() { Name="真空音波",   Type="飛行",   Power=55,  Category="Special",  Emoji="🌬️", MaxPP=20 },
+            // 蟲
+            new() { Name="蟲鳴尖嘯",   Type="蟲",     Power=60,  Category="Special",  Emoji="🐛", MaxPP=15 },
+            new() { Name="蜂刺撕裂",   Type="蟲",     Power=90,  Category="Physical", Emoji="🐝", MaxPP=10 },
+            new() { Name="蟲洞穿透",   Type="蟲",     Power=100, Category="Physical", Emoji="🕷️", MaxPP=5  },
+            // 毒
+            new() { Name="腐蝕毒液",   Type="毒",     Power=60,  Category="Special",  Emoji="☠️", MaxPP=15, EffectAilment="poison", EffectChance=30 },
+            new() { Name="毒牙",       Type="毒",     Power=50,  Category="Physical", Emoji="🐍", MaxPP=15, EffectAilment="poison", EffectChance=30 },
+            new() { Name="爛泥炸彈",   Type="毒",     Power=80,  Category="Special",  Emoji="💚", MaxPP=10 },
+            // 鋼
+            new() { Name="鐵壁突刺",   Type="鋼",     Power=100, Category="Physical", Emoji="⚙️", MaxPP=5  },
+            new() { Name="金屬光線",   Type="鋼",     Power=90,  Category="Special",  Emoji="🔧", MaxPP=10 },
+            new() { Name="超鋼翼",     Type="鋼",     Power=85,  Category="Physical", Emoji="🪽", MaxPP=10 },
+            // 妖精
+            new() { Name="月光炮",     Type="妖精",   Power=110, Category="Special",  Emoji="🌙", MaxPP=5  },
+            new() { Name="星光波動",   Type="妖精",   Power=75,  Category="Special",  Emoji="⭐", MaxPP=15 },
+            new() { Name="妖精爪",     Type="妖精",   Power=70,  Category="Physical", Emoji="✨", MaxPP=15 },
         };
 
         private static readonly List<RelicDef> _relics = new()
@@ -583,6 +693,22 @@ namespace MusicBot2.Service
             ("毛毛蟲",   new[]{"蟲"},           195, 10),
             ("鐵甲蛹",   new[]{"蟲"},           205, 11),
             ("鴿子",     new[]{"一般","飛行"},  251, 16),
+            ("尼多蘭",   new[]{"毒"},           273, 29),
+            ("波波",     new[]{"一般","飛行"},  268, 16),
+            ("小拉達",   new[]{"一般"},         253, 19),
+            ("鬆果草",   new[]{"草"},           245, 191),
+            ("小鋸鱷",   new[]{"水"},           330, 158),
+            ("火球鼠",   new[]{"火"},           309, 155),
+            ("菊草葉",   new[]{"草"},           318, 152),
+            ("阿柏蛇",   new[]{"毒"},           288, 23),
+            ("電鰭噴水鱉",new[]{"水"},          268, 7),
+            ("毛球",     new[]{"一般"},         323, 39),
+            ("懶人菌",   new[]{"草","毒"},      275, 43),
+            ("皮皮",     new[]{"妖精"},         323, 35),
+            ("嘟嘟鳥",   new[]{"飛行"},         275, 83),
+            ("搞搞蛙",   new[]{"水"},           300, 60),
+            ("人人葫蘆娃",new[]{"草"},           298, 191),
+            ("砂土蛇",   new[]{"地面"},         289, 27),
             // 中階 (floor 4-6)  430 <= StatTotal < 545
             ("暴鯉龍",   new[]{"水","飛行"},    540, 130),
             ("拉普拉斯", new[]{"水","冰"},      535, 131),
@@ -615,6 +741,25 @@ namespace MusicBot2.Service
             ("颶風雲",   new[]{"電","飛行"},    580, 641),
             ("鐵甲弄蝶", new[]{"蟲","鋼"},      575, 205),
             ("泥偶巨人", new[]{"地面"},         580, 260),
+            ("烈雀",     new[]{"火","飛行"},    500, 257),
+            ("水躍魚",   new[]{"水"},           480, 272),
+            ("立木枝",   new[]{"草"},           430, 254),
+            ("電擊怪",   new[]{"電"},           490, 125),
+            ("腕力",     new[]{"格鬥"},         505, 67),
+            ("大嘴鶻",   new[]{"飛行","一般"},  490, 84),
+            ("大王燕",   new[]{"飛行","一般"},  500, 277),
+            ("夜蛾",     new[]{"蟲","飛行"},    490, 278),
+            ("惡魔刺",   new[]{"黑暗","蟲"},    480, 291),
+            ("螢火蟲怪", new[]{"蟲","飛行"},    430, 49),
+            ("大肚花",   new[]{"草"},           460, 45),
+            ("機械龍",   new[]{"電","龍"},      500, 135),
+            ("皮拉",     new[]{"毒","地面"},    495, 34),
+            ("鐵蛇",     new[]{"鋼"},           465, 208),
+            ("毒刺水母", new[]{"水","毒"},      430, 73),
+            ("蠟燭魂",   new[]{"幽靈"},         520, 607),
+            ("岩石蛇",   new[]{"岩石","地面"},  465, 208),
+            ("冰角牛",   new[]{"冰"},           475, 473),
+            ("幸運草",   new[]{"草"},           430, 470),
             // 高階 (floor 7-9)  545 <= StatTotal < 590
             ("怪力",     new[]{"格鬥"},         505, 68),
             ("耿鬼",     new[]{"幽靈","毒"},    500, 94),
@@ -631,6 +776,16 @@ namespace MusicBot2.Service
             ("鋼甲蛹",   new[]{"鋼","超能力"},  540, 376),
             ("格鬥公雞", new[]{"格鬥"},         530, 256),
             ("水晶雯",   new[]{"水"},           535, 350),
+            ("長角岩蟲", new[]{"蟲","岩石"},   545, 127),
+            ("骨牌恐龍", new[]{"岩石","地面"}, 555, 247),
+            ("音浪蜥",   new[]{"一般"},         480, 234),
+            ("大嘴鱷",   new[]{"水"},           530, 160),
+            ("神奇花束", new[]{"草","飛行"},    480, 189),
+            ("暗夜魔鹿", new[]{"惡","超能力"},  530, 248),
+            ("閃焰鳥",   new[]{"火"},           555, 257),
+            ("超力炸彈", new[]{"格鬥"},         535, 297),
+            ("巨岩蟲",   new[]{"蟲","岩石"},   495, 213),
+            ("電氣龜",   new[]{"水","電"},      485, 186),
             ("鐵甲弄蝶", new[]{"蟲","鋼"},      575, 205),
             ("泥偶巨人", new[]{"地面"},         580, 260),
             // Boss (floor 10, 20)  StatTotal >= 590
@@ -2170,8 +2325,59 @@ namespace MusicBot2.Service
                 if (ulong.TryParse(customId["tower_endrun_".Length..], out var endCh))
                 {
                     var er = GetRun(endCh);
-                    if (er != null && (er.State == TowerRunState.Victory || er.State == TowerRunState.Defeated))
+                    if (er != null && (er.State == TowerRunState.Victory || er.State == TowerRunState.Defeated
+                            || er.State == TowerRunState.AwaitingBossChallenge))
                         await RemoveAsync(endCh);
+                }
+            }
+            // tower_bossChallenge_{channelId}_{accept|decline}
+            else if (customId.StartsWith("tower_bossChallenge_"))
+            {
+                var parts = customId.Split('_');
+                // Format: tower_bossChallenge_{channelId}_{choice}
+                if (parts.Length >= 4 && ulong.TryParse(parts[2], out var bCh))
+                {
+                    var run = GetRun(bCh);
+                    if (run != null && run.State == TowerRunState.AwaitingBossChallenge)
+                    {
+                        string choice = parts[3];
+                        if (choice == "decline")
+                        {
+                            run.State = TowerRunState.Victory;
+                            await SaveAsync(run);
+                            // 記錄一般通關
+                            _ = SaveClearRecordAsync(run, beatenUltimate: false);
+                        }
+                        else if (choice == "accept")
+                        {
+                            // 直接進入對戰，HP 不補滿，沿用現有狀態
+                            var boss = new TowerEnemy
+                            {
+                                Name        = _ultimateBoss.Name,
+                                PokeId      = _ultimateBoss.PokeId,
+                                Types       = new List<string>(_ultimateBoss.Types),
+                                MaxHP       = _ultimateBoss.MaxHP,
+                                CurrentHP   = _ultimateBoss.CurrentHP,
+                                Attack      = _ultimateBoss.Attack,
+                                Defense     = _ultimateBoss.Defense,
+                                Speed       = _ultimateBoss.Speed,
+                                IsBoss      = true,
+                                GoldReward  = 0,
+                                Moves       = _ultimateBoss.Moves.Select(m => new TowerMove
+                                {
+                                    Name=m.Name, Type=m.Type, Power=m.Power, Category=m.Category,
+                                    Emoji=m.Emoji, MaxPP=m.MaxPP, CurrentPP=m.CurrentPP
+                                }).ToList(),
+                            };
+                            run.CurrentEnemy = boss;
+                            run.State = TowerRunState.InBattle;
+                            run.CurrentBattleLog = $"🌌 **始祖神獸 ARCEUS** 降臨！這是一場沒有獎勵的試煉……";
+                            run.AvengeStacks = 0;
+                            run.RevengeStored = 0;
+                            run.ShieldActive = false;
+                            await SaveAsync(run);
+                        }
+                    }
                 }
             }
 
@@ -2872,17 +3078,37 @@ namespace MusicBot2.Service
                 run.CurrentBattleLog += $"\n❤️ {poke.DisplayName} 恢復 {heal} HP | ✨ 獲得 {expGain} EXP{levelUpMsg}";
                 run.RunLog.Add($"✅ 第{run.CurrentFloor}層：擊倒 {enemy.Name}，獲得 {enemy.GoldReward}💰，+{expGain} EXP");
 
-                if (run.CurrentFloor >= run.MaxFloor)
+                // 終極神獸 ARCEUS 被擊倒：特別勝利結算（無額外獎勵）
+                if (enemy.Name.Contains("ARCEUS") || enemy.Name.Contains("始祖神獸"))
                 {
                     run.State = TowerRunState.Victory;
-                    // 注意：不立即 RemoveAsync，保留在 _activeRuns 讓前端能讀取 Victory 狀態
-                    // 下次該玩家開新局時 StartRunAsync 會覆蓋
+                    run.RunLog.Add($"🌌 史無前例！擊敗了 {enemy.Name}！");
+                    run.CurrentBattleLog += "\n\n🌌 **你做到了……從未有人辦到的事。**";
                     await SaveAsync(run);
-                    // Grant shiny reward for the player's next catch
+                    // 記錄終極通關（永遠保存）
+                    _ = SaveClearRecordAsync(run, beatenUltimate: true);
+                    var victorySb = new StringBuilder();
+                    victorySb.AppendLine($"**{run.PlayerName}** 做到了史無前例的壯舉——擊敗了 **始祖神獸 ARCEUS**！");
+                    victorySb.AppendLine();
+                    victorySb.AppendLine("就如約定所說，沒有任何獎勵。");
+                    victorySb.AppendLine("但你知道，也我知道，你真的辦到了。");
+                    victorySb.AppendLine();
+                    victorySb.AppendLine($"最終剩餘 HP：{run.ActivePokemon.CurrentHP}/{run.ActivePokemon.MaxHP}");
+                    return (new EmbedBuilder()
+                        .WithTitle("🌌 神話誕生")
+                        .WithDescription(victorySb.ToString())
+                        .WithColor(new Color(148, 0, 211)).Build(), new ComponentBuilder());
+                }
+
+                if (run.CurrentFloor >= run.MaxFloor)
+                {
+                    // 先給完通關獎勵，再詢問是否挑戰終極神獸
                     PendingShinyUserIds.Add(run.PlayerId);
                     if (_useRedis)
                         _ = _redisDb.StringSetAsync($"{SHINY_KEY_PREFIX}{run.PlayerId}", "1", TimeSpan.FromDays(30));
-                    return BuildVictoryEmbed(run);
+                    run.State = TowerRunState.AwaitingBossChallenge;
+                    await SaveAsync(run);
+                    return BuildBossChallengePromptEmbed(run);
                 }
 
                 // 可以捕獲（無論有沒有神器獎勵，先保存敵人資訊）
@@ -3092,9 +3318,12 @@ namespace MusicBot2.Service
                 return BuildCatchEmbed(run, "🔒 **鐵籠詛咒**：無法捕獲任何 Pokemon！");
 
             float catchRate = ballInfo.Rate;
-            if (HasRelic(run, "relic_hunter")) catchRate = Math.Min(1.0f, catchRate + 0.30f);
-            if (HasPassive(run, "passive_catchmaster")) catchRate = Math.Min(1.0f, catchRate + 0.40f);
-            if (run.CursedRelicIds.Contains("curse_unlucky")) catchRate = Math.Max(0.02f, catchRate - 0.30f);
+            // Boss 捕捉率大幅降低：base rate × 0.25（約普通球7.5%、高級球20%）
+            bool isBossCatch = run.PendingCatch?.IsBoss == true;
+            if (isBossCatch) catchRate *= 0.25f;
+            if (HasRelic(run, "relic_hunter")) catchRate = Math.Min(isBossCatch ? 0.40f : 1.0f, catchRate + 0.30f);
+            if (HasPassive(run, "passive_catchmaster")) catchRate = Math.Min(isBossCatch ? 0.55f : 1.0f, catchRate + 0.40f);
+            if (run.CursedRelicIds.Contains("curse_unlucky")) catchRate = Math.Max(0.01f, catchRate - 0.30f);
             bool caught = (float)_rng.NextDouble() < catchRate;
             if (caught)
             {
@@ -3320,12 +3549,13 @@ namespace MusicBot2.Service
                         run.Gold -= cost;
                         run.ShopBuyCounts ??= new();
                         run.ShopBuyCounts["new_move"] = run.ShopBuyCounts.GetValueOrDefault("new_move", 0) + 1;
-                        var movePool = PickMoves(run.ActivePokemon.Types);
-                        run.PendingMoveRewards = movePool.OrderBy(_ => _rng.Next()).Take(3).ToList();
+                        // 技能學習器：只提供寶可夢自身屬性技能（嚴格過濾，不含一般以外的雜技）
+                        var tmPool = PickMovesTypeStrict(run.ActivePokemon.Types);
+                        run.PendingMoveRewards = tmPool.OrderBy(_ => _rng.Next()).Take(3).ToList();
                         run.ShopMoveRewardPending = true;
                         run.State = TowerRunState.SelectingMoveReward;
                         await SaveAsync(run);
-                        return BuildMoveRewardEmbed(run, $"📀 **技能學習器**（-{cost}💰）\n請選擇一個技能讓你的寶可夢學習！");
+                        return BuildMoveRewardEmbed(run, $"📀 **技能學習器**（-{cost}💰）\n只包含 {string.Join("・", run.ActivePokemon.Types)} 屬性技能，請選擇學習！");
                     }
                 case "buy_normal":
                     if (HasPassive(run, "passive_catchmaster")) return BuildShopEmbed(run, "🎯 **捕獲大師**：不需要購買球！");
@@ -4361,6 +4591,26 @@ namespace MusicBot2.Service
 
         private List<TowerMove> PickMoves(List<string> types) => PickMovesStatic(types);
 
+        /// <summary>技能學習器專用：嚴格只取自身屬性（包含一般），不補足隨機技能</summary>
+        private static List<TowerMove> PickMovesTypeStrict(List<string> types)
+        {
+            var relevant = (types ?? new()).Concat(new[] { "一般" }).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            var pool = _movePool
+                .Where(m => relevant.Any(t => t.Equals(m.Type, StringComparison.OrdinalIgnoreCase)))
+                .OrderBy(_ => _rng.Next()).ToList();
+            // 不夠 3 個才補（極少情況）
+            if (pool.Count < 3)
+                pool.AddRange(_movePool.Where(m => !pool.Contains(m)).OrderBy(_ => _rng.Next()).Take(3 - pool.Count));
+            return pool.Take(3).Select(m => new TowerMove
+            {
+                Name=m.Name, Type=m.Type, Power=m.Power, Category=m.Category, Emoji=m.Emoji,
+                MaxPP=m.MaxPP, CurrentPP=m.MaxPP,
+                EffectAilment=m.EffectAilment, EffectChance=m.EffectChance,
+                DrainPercent=m.DrainPercent, StatTarget=m.StatTarget, StatStageChange=m.StatStageChange,
+                HighCrit=m.HighCrit, MinHits=m.MinHits, MaxHits=m.MaxHits
+            }).ToList();
+        }
+
         private static List<TowerMove> PickMovesStatic(List<string> types)
         {
             var relevant = (types ?? new()).Concat(new[] { "一般" }).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
@@ -5309,6 +5559,64 @@ namespace MusicBot2.Service
                         : $"{b.Key}×{b.Value}"))
                 : "（無）";
 
+        // ── 終極神獸挑戰 ─────────────────────────────────────────────────────
+        // 玩家目前通關20層時的大約狀態：隊伍 ATK~160-220, DEF~100-140, MaxHP~220-350, Speed~110-160
+        // 終極神獸要設計成幾乎不可能打贏，單純給硬核玩家嘗試
+        private static readonly TowerEnemy _ultimateBoss = new()
+        {
+            Name        = "★ 始祖神獸 ARCEUS ★",
+            PokeId      = 493,
+            Types       = new List<string> { "一般" }, // Arceus 原始形態
+            MaxHP       = 1800,
+            CurrentHP   = 1800,
+            Attack      = 380,
+            Defense     = 260,
+            Speed       = 220,
+            IsBoss      = true,
+            GoldReward  = 0,
+            Moves       = new List<TowerMove>
+            {
+                new() { Name="極·創世破壞",  Type="一般",   Power=200, Category="Special",  Emoji="✨",  MaxPP=3, CurrentPP=3 },
+                new() { Name="時空断裂斬",   Type="龍",     Power=160, Category="Physical", Emoji="🐉",  MaxPP=5, CurrentPP=5 },
+                new() { Name="聖域清算",     Type="妖精",   Power=150, Category="Special",  Emoji="🌸",  MaxPP=5, CurrentPP=5 },
+                new() { Name="神罰制裁",     Type="超能力", Power=140, Category="Special",  Emoji="🔮",  MaxPP=5, CurrentPP=5 },
+            },
+        };
+
+        private (Embed embed, ComponentBuilder component) BuildBossChallengePromptEmbed(TowerRun run)
+        {
+            var poke = run.ActivePokemon;
+            var sb = new StringBuilder();
+            sb.AppendLine($"**{run.PlayerName}** 帶著 **{poke.DisplayName}** 征服了全 **{run.MaxFloor}** 層！");
+            sb.AppendLine();
+            sb.AppendLine("✨ **塔頂限定獎勵**：下一次使用 /抓pokemon 保證閃光！（已記錄）");
+            sb.AppendLine();
+            sb.AppendLine("──────────────────────────────");
+            sb.AppendLine("🌌 **神祕的力量從塔頂湧出……**");
+            sb.AppendLine();
+            sb.AppendLine($"傳說塔頂之上還隱藏著一個 **始祖神獸**。");
+            sb.AppendLine($"祂已等待了無數年，從未被任何人擊敗過。");
+            sb.AppendLine();
+            sb.AppendLine("⚠️ **注意：擊敗或失敗都不會有任何額外獎勵。**");
+            sb.AppendLine("這是一場純粹的試煉，單純是為了——**能說自己打過**。");
+            sb.AppendLine();
+            sb.AppendLine($"**你目前的狀態：**");
+            sb.AppendLine($"• {poke.DisplayName}：{poke.CurrentHP}/{poke.MaxHP} HP");
+            sb.AppendLine($"• ATK {poke.Attack}  DEF {poke.Defense}  SPD {poke.Speed}");
+            sb.AppendLine();
+            sb.AppendLine($"**對手：★ 始祖神獸 ARCEUS ★**");
+            sb.AppendLine($"• HP：1800 ／ ATK：380 ／ DEF：260");
+
+            var cb = new ComponentBuilder();
+            cb.WithButton("⚔️ 接受挑戰（我知道沒獎勵）", $"tower_bossChallenge_{run.ChannelId}_accept", ButtonStyle.Danger,   row: 0);
+            cb.WithButton("🏠 領獎離開",                  $"tower_bossChallenge_{run.ChannelId}_decline", ButtonStyle.Success,  row: 0);
+
+            return (new EmbedBuilder()
+                .WithTitle("🏆 TOWER CLEARED！")
+                .WithDescription(sb.ToString())
+                .WithColor(Color.Gold).Build(), cb);
+        }
+
         private (Embed embed, ComponentBuilder component) BuildVictoryEmbed(TowerRun run)
         {
             var elapsed = (int)(DateTime.UtcNow - run.StartedAt).TotalMinutes;
@@ -5455,6 +5763,107 @@ namespace MusicBot2.Service
             _activeRuns.Remove(channelId);
             if (!_useRedis) return;
             try { await _redisDb.KeyDeleteAsync($"{REDIS_PREFIX}{channelId}"); } catch { }
+        }
+
+        // ── 通關紀錄存取 ─────────────────────────────────────────────────────
+        private async Task SaveClearRecordAsync(TowerRun run, bool beatenUltimate)
+        {
+            var passiveDef = _passives.FirstOrDefault(p => run.PassiveId == p.Id);
+            var record = new TowerClearRecord
+            {
+                PlayerId         = run.PlayerId,
+                PlayerName       = run.PlayerName,
+                ClearedAt        = DateTime.UtcNow,
+                BeatenUltimateBoss = beatenUltimate,
+                TotalDamageDealt = run.TotalDamageDealt,
+                ElapsedMinutes   = (int)(DateTime.UtcNow - run.StartedAt).TotalMinutes,
+                Gold             = run.Gold,
+                Level            = run.Level,
+                PassiveName      = passiveDef != null ? $"{passiveDef.Emoji}{passiveDef.Name}" : "",
+                RelicNames       = run.RelicIds.Select(id => {
+                    var r = _relics.FirstOrDefault(x => x.Id == id);
+                    return r != null ? $"{r.Emoji}{r.Name}" : id;
+                }).ToList(),
+                CurseNames       = run.CursedRelicIds.Select(id => {
+                    var c = _cursedRelics.FirstOrDefault(x => x.Id == id);
+                    return c != null ? $"{c.Emoji}{c.Name}" : id;
+                }).ToList(),
+                Party = run.Party.Where(p => p.CurrentHP > 0).Select(p => new ClearPokemonSnapshot
+                {
+                    Name      = p.DisplayName,
+                    CurrentHP = p.CurrentHP,
+                    MaxHP     = p.MaxHP,
+                    Attack    = p.Attack,
+                    Defense   = p.Defense,
+                    Speed     = p.Speed,
+                    IsShiny   = p.IsShiny,
+                    MoveNames = p.Moves.Select(m => m.Name).ToList(),
+                }).ToList(),
+            };
+
+            string json = JsonSerializer.Serialize(record);
+            double score = ((DateTimeOffset)record.ClearedAt).ToUnixTimeSeconds();
+
+            if (_useRedis)
+            {
+                try
+                {
+                    // 以 PlayerId+beatenUltimate 為 key 去重（同一人多次通關只保留最新）
+                    // 先刪舊紀錄，再加新的（SortedSet member 唯一靠 json，用固定 member key）
+                    string memberKey = $"{run.PlayerId}:{(beatenUltimate ? "ultimate" : "normal")}";
+                    // 用 Hash 存詳細資料，SortedSet 做排序
+                    await _redisDb.HashSetAsync($"{CLEARS_KEY}:data", memberKey, json);
+                    await _redisDb.SortedSetAddAsync($"{CLEARS_KEY}:rank", memberKey, score);
+                }
+                catch (Exception ex) { Console.WriteLine($"[Tower] SaveClearRecord Redis: {ex.Message}"); }
+            }
+
+            // Memory fallback：移除同一玩家同類型舊紀錄
+            lock (_clearsFallback)
+            {
+                _clearsFallback.RemoveAll(r => r.PlayerId == run.PlayerId && r.BeatenUltimateBoss == beatenUltimate);
+                _clearsFallback.Add(record);
+            }
+        }
+
+        /// <summary>取得排行榜（最新通關在前），beatenUltimate=null 表示全部</summary>
+        public async Task<List<TowerClearRecord>> GetClearLeaderboardAsync(bool? beatenUltimate = null)
+        {
+            if (_useRedis)
+            {
+                try
+                {
+                    // 取 SortedSet 全部 member，按 score 降序（最近通關最前）
+                    var members = await _redisDb.SortedSetRangeByRankAsync($"{CLEARS_KEY}:rank", 0, -1, Order.Descending);
+                    var result = new List<TowerClearRecord>();
+                    foreach (var m in members)
+                    {
+                        string key = m.ToString();
+                        // filter by type if needed
+                        if (beatenUltimate.HasValue)
+                        {
+                            bool isUltimate = key.EndsWith(":ultimate");
+                            if (beatenUltimate.Value != isUltimate) continue;
+                        }
+                        var json = await _redisDb.HashGetAsync($"{CLEARS_KEY}:data", key);
+                        if (!json.HasValue) continue;
+                        var rec = JsonSerializer.Deserialize<TowerClearRecord>(json.ToString());
+                        if (rec != null) result.Add(rec);
+                    }
+                    return result;
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[Tower] GetClearLeaderboard Redis: {ex.Message}");
+                }
+            }
+            // fallback
+            lock (_clearsFallback)
+            {
+                var q = _clearsFallback.AsEnumerable();
+                if (beatenUltimate.HasValue) q = q.Where(r => r.BeatenUltimateBoss == beatenUltimate.Value);
+                return q.OrderByDescending(r => r.ClearedAt).ToList();
+            }
         }
 
         private async Task LoadRunsAsync()
