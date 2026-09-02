@@ -133,15 +133,20 @@ export function BattleScene({ run, onAction, busy }: Props) {
   // ── Animation states ──────────────────────────────────────────────────
   const [shake, setShake] = useState(false);
   const [playerShake, setPlayerShake] = useState(false);
+  const [arenaShake, setArenaShake] = useState(false);
   const [attackAnim, setAttackAnim] = useState<AttackAnim>('idle');
   const [enemyAnim, setEnemyAnim] = useState<AttackAnim>('idle');
   const [currentMoveType, setCurrentMoveType] = useState<string>('normal');
   const [enemyMoveType, setEnemyMoveType] = useState<string>('normal');
   const [attackLocked, setAttackLocked] = useState(false);
   const [showImpact, setShowImpact] = useState(false);
-  const [screenFlash, setScreenFlash] = useState(false);
+  // flashColor: '' = off, 'white' = white flash, or a hex/rgba color
+  const [flashColor, setFlashColor] = useState('');
+  const [flashAnim, setFlashAnim] = useState('screenFlash');
   const [critAnim, setCritAnim] = useState(false);
   const [floatTexts, setFloatTexts] = useState<{id: number; text: string; color: string; x: number}[]>([]);
+  // extra FX layer key (separate from fxKey so we can trigger secondary bursts)
+  const [impactRings, setImpactRings] = useState(0); // count of rings to show
 
   const floatIdRef = useRef(0);
   const prevLogLen = useRef(0);
@@ -201,31 +206,93 @@ export function BattleScene({ run, onAction, busy }: Props) {
   // Safety unlock
   useEffect(() => {
     if (!busy) {
-      const t = setTimeout(() => { setAttackLocked(false); attackLockedRef.current = false; }, 900);
+      const t = setTimeout(() => { setAttackLocked(false); attackLockedRef.current = false; }, 1100);
       return () => clearTimeout(t);
     }
   }, [busy]);
 
-  // ── handleAttack: trigger animation then call API ─────────────────────
+  // ── flash helper ──────────────────────────────────────────────────────
+  function doFlash(color: string, dur: number, anim = 'screenFlash') {
+    setFlashColor(color); setFlashAnim(anim);
+    setTimeout(() => setFlashColor(''), dur);
+  }
+
+  // ── handleAttack: each type has its own dramatic sequence ─────────────
   function handleAttack(category: string, moveType?: string, customId?: string, moveName?: string) {
     const animType = getMoveAnimType(moveName ?? '', category);
     setAttackLocked(true);
     attackLockedRef.current = true;
     setCurrentMoveType(moveType ?? '一般');
     fxKey.current++;
+    setImpactRings(0);
     setAttackAnim(animType);
 
-    // Impact timing: physical/tail/rock hit peak earlier
-    const impactDelay =
-      ['lunge','tail','rock','slam','claw','cross'].includes(animType) ? 360
-      : ['beam','wave'].includes(animType) ? 280
-      : 420;
+    let apiDelay = 850;
 
-    setTimeout(() => { setShake(true); setShowImpact(true); }, impactDelay);
-    setTimeout(() => { setShake(false); setShowImpact(false); }, impactDelay + 350);
-    setTimeout(() => setAttackAnim('idle'), 780);
+    if (animType === 'thunder') {
+      // ① 立刻：全白閃光
+      doFlash('rgba(255,255,220,0.92)', 220, 'screenFlashHard');
+      // ② 60ms：閃電落下（已在 render，此時 anim 已設好）
+      // ③ 200ms：場地震動
+      setTimeout(() => { setArenaShake(true); }, 200);
+      setTimeout(() => { setArenaShake(false); }, 520);
+      // ④ 280ms：黃色二次閃光 + 敵方搖
+      setTimeout(() => {
+        doFlash('rgba(250,204,21,0.55)', 300);
+        setShake(true); setShowImpact(true); setImpactRings(3);
+      }, 280);
+      setTimeout(() => { setShake(false); setShowImpact(false); setImpactRings(0); }, 580);
+      apiDelay = 820;
+    } else if (animType === 'flame') {
+      // ① 立刻：橘紅閃光
+      doFlash('rgba(251,146,60,0.55)', 220);
+      // ② 250ms：火焰碰到敵方，搖晃
+      setTimeout(() => { setShake(true); setShowImpact(true); setImpactRings(2); }, 250);
+      setTimeout(() => { setShake(false); setShowImpact(false); setImpactRings(0); }, 560);
+      apiDelay = 820;
+    } else if (animType === 'ice') {
+      // ① 180ms：藍白閃光 + 冰晶碎散
+      setTimeout(() => doFlash('rgba(147,197,253,0.52)', 300), 180);
+      setTimeout(() => { setShake(true); setShowImpact(true); setImpactRings(2); }, 240);
+      setTimeout(() => { setShake(false); setShowImpact(false); setImpactRings(0); }, 560);
+      apiDelay = 820;
+    } else if (animType === 'slam' || animType === 'rock') {
+      // ① 落下期間：緩慢加速
+      // ② 380ms：衝擊，全場震
+      setTimeout(() => {
+        doFlash('rgba(180,140,80,0.45)', 300);
+        setArenaShake(true); setShake(true); setShowImpact(true); setImpactRings(3);
+      }, 380);
+      setTimeout(() => { setArenaShake(false); setShake(false); setShowImpact(false); setImpactRings(0); }, 680);
+      apiDelay = 900;
+    } else if (animType === 'shadow') {
+      // ① 80ms：畫面變暗紫
+      setTimeout(() => doFlash('rgba(109,40,217,0.4)', 500), 80);
+      setTimeout(() => { setShake(true); setShowImpact(true); setImpactRings(1); }, 350);
+      setTimeout(() => { setShake(false); setShowImpact(false); setImpactRings(0); }, 650);
+      apiDelay = 900;
+    } else if (animType === 'lunge' || animType === 'tail') {
+      // ① 300ms：接觸瞬間小白閃
+      setTimeout(() => { doFlash('rgba(255,255,255,0.35)', 180); setShake(true); setShowImpact(true); setImpactRings(1); }, 330);
+      setTimeout(() => { setShake(false); setShowImpact(false); setImpactRings(0); }, 620);
+      apiDelay = 820;
+    } else if (animType === 'claw' || animType === 'cross') {
+      setTimeout(() => { doFlash('rgba(255,255,255,0.4)', 200); setShake(true); setShowImpact(true); setImpactRings(2); }, 280);
+      setTimeout(() => { setShake(false); setShowImpact(false); setImpactRings(0); }, 560);
+      apiDelay = 800;
+    } else if (animType === 'beam' || animType === 'wave') {
+      setTimeout(() => { doFlash(typeColor(moveType ?? '一般') + '66', 350); setShake(true); setShowImpact(true); setImpactRings(2); }, 300);
+      setTimeout(() => { setShake(false); setShowImpact(false); setImpactRings(0); }, 620);
+      apiDelay = 820;
+    } else {
+      // Default / projectile / leaf / poison / wind / status
+      const delay = animType === 'projectile' ? 380 : 360;
+      setTimeout(() => { setShake(true); setShowImpact(true); setImpactRings(1); }, delay);
+      setTimeout(() => { setShake(false); setShowImpact(false); setImpactRings(0); }, delay + 320);
+    }
 
-    if (customId) setTimeout(() => onAction(customId), 780);
+    setTimeout(() => setAttackAnim('idle'), apiDelay - 20);
+    if (customId) setTimeout(() => onAction(customId), apiDelay);
   }
 
   // ── FX element renderer ───────────────────────────────────────────────
@@ -321,22 +388,65 @@ export function BattleScene({ run, onAction, busy }: Props) {
 
       case 'thunder':
         return (
-          <svg key={k} style={{
-            position: 'absolute', inset: 0, width: '100%', height: '100%',
-            zIndex: 12, pointerEvents: 'none',
-            animation: 'thunderZap 0.52s ease forwards',
-          }}>
-            <polyline
-              points="66%,2% 52%,28% 68%,44% 45%,70% 60%,84% 50%,100%"
-              fill="none" stroke={c} strokeWidth="5" strokeLinecap="round"
-              style={{ filter: `drop-shadow(0 0 5px ${c}) drop-shadow(0 0 14px ${c})` }}
-            />
-            <polyline
-              points="62%,8% 74%,30% 56%,48% 70%,68%"
-              fill="none" stroke="white" strokeWidth="2" strokeLinecap="round"
-              strokeOpacity="0.5"
-            />
-          </svg>
+          <>
+            {/* Main lightning bolt — drawn with dashoffset so it "strikes down" */}
+            <svg key={k} style={{
+              position: 'absolute', inset: 0, width: '100%', height: '100%',
+              zIndex: 14, pointerEvents: 'none',
+              animation: 'thunderZap 0.55s ease forwards',
+            }}>
+              {/* glow layer */}
+              <polyline
+                points={isBoss ? '62%,0% 50%,22% 67%,36% 46%,58% 61%,74% 52%,100%' : '68%,0% 55%,24% 71%,40% 48%,62% 63%,78% 54%,100%'}
+                fill="none" stroke="white" strokeWidth="14" strokeLinecap="round"
+                strokeOpacity="0.3"
+                style={{ filter: 'blur(6px)' }}
+              />
+              {/* main bolt */}
+              <polyline
+                points={isBoss ? '62%,0% 50%,22% 67%,36% 46%,58% 61%,74% 52%,100%' : '68%,0% 55%,24% 71%,40% 48%,62% 63%,78% 54%,100%'}
+                fill="none" stroke={c} strokeWidth="6" strokeLinecap="round"
+                strokeDasharray="600" strokeDashoffset="0"
+                style={{
+                  filter: `drop-shadow(0 0 4px #fff) drop-shadow(0 0 14px ${c}) drop-shadow(0 0 30px ${c})`,
+                  animation: 'thunderZapLine 0.55s ease-out forwards',
+                }}
+              />
+              {/* bright core */}
+              <polyline
+                points={isBoss ? '62%,0% 50%,22% 67%,36% 46%,58% 61%,74% 52%,100%' : '68%,0% 55%,24% 71%,40% 48%,62% 63%,78% 54%,100%'}
+                fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round"
+                strokeDasharray="600" strokeDashoffset="0"
+                style={{ animation: 'thunderZapLine 0.55s ease-out forwards', opacity: 0.8 }}
+              />
+              {/* branch bolt */}
+              <polyline
+                points={isBoss ? '62%,24% 72%,36% 65%,50%' : '68%,26% 78%,38% 70%,54%'}
+                fill="none" stroke={c} strokeWidth="3" strokeLinecap="round" strokeOpacity="0.7"
+                style={{ filter: `drop-shadow(0 0 6px ${c})`, animation: 'thunderZapLine 0.45s 0.06s ease-out forwards' }}
+              />
+            </svg>
+            {/* Impact spark cluster at bottom */}
+            {[0,1,2,3,4,5,6,7].map(i => {
+              const angle = (i / 8) * Math.PI * 2;
+              const len = 18 + (i % 3) * 10;
+              return (
+                <div key={i} style={{
+                  position: 'absolute',
+                  bottom: isBoss ? '22%' : '26%',
+                  left: isBoss ? '44%' : '49%',
+                  width: 3, height: len,
+                  background: `linear-gradient(180deg, white, ${c}00)`,
+                  borderRadius: 2,
+                  zIndex: 15, pointerEvents: 'none',
+                  transformOrigin: 'top center',
+                  transform: `rotate(${angle}rad)`,
+                  animation: `thunderZapLine 0.35s ${0.22 + i * 0.02}s ease-out forwards`,
+                  boxShadow: `0 0 4px 2px ${c}`,
+                }} />
+              );
+            })}
+          </>
         );
 
       case 'flame':
@@ -587,12 +697,21 @@ export function BattleScene({ run, onAction, busy }: Props) {
         borderRadius: 14,
         border: isBoss ? '2px solid #7f1d1d' : '1px solid #1e2d45',
         height: isBoss ? 220 : 200, overflow: 'hidden',
+        animation: arenaShake ? 'shake 0.35s ease-in-out' : undefined,
       }}>
         {/* ── Flash overlays ────────────────────────────────────── */}
+        {flashColor && (
+          <div style={{
+            position: 'absolute', inset: 0, borderRadius: 14, zIndex: 22, pointerEvents: 'none',
+            background: flashColor,
+            animation: `${flashAnim} 0.28s ease forwards`,
+          }} />
+        )}
+        {/* enemy turn red flash */}
         {screenFlash && (
           <div style={{
             position: 'absolute', inset: 0, borderRadius: 14, zIndex: 22, pointerEvents: 'none',
-            background: 'rgba(239,68,68,0.28)',
+            background: 'rgba(239,68,68,0.32)',
             animation: 'screenFlash 0.32s ease forwards',
           }} />
         )}
@@ -619,18 +738,21 @@ export function BattleScene({ run, onAction, busy }: Props) {
         {/* ── Attack FX (keyword-based) ─────────────────────────── */}
         {attackAnim !== 'idle' && renderAttackFX()}
 
-        {/* ── Impact burst ring at enemy on hit ────────────────── */}
-        {showImpact && (
-          <div style={{
+        {/* ── Multi-ring impact at enemy on hit ────────────────── */}
+        {showImpact && impactRings > 0 && Array.from({length: impactRings}).map((_, ri) => (
+          <div key={ri} style={{
             position: 'absolute',
             top: isBoss ? '22%' : '25%', right: isBoss ? '8%' : '10%',
-            width: 72, height: 72, borderRadius: '50%',
-            border: `3px solid ${typeColor(currentMoveType)}`,
-            boxShadow: `0 0 20px 5px ${typeColor(currentMoveType)}99`,
+            width: isBoss ? 90 : 72, height: isBoss ? 90 : 72,
+            borderRadius: '50%',
+            border: `${ri === 0 ? 3 : 2}px solid ${typeColor(currentMoveType)}`,
+            boxShadow: ri === 0
+              ? `0 0 24px 8px ${typeColor(currentMoveType)}bb, inset 0 0 18px ${typeColor(currentMoveType)}44`
+              : `0 0 8px 3px ${typeColor(currentMoveType)}66`,
             zIndex: 18, pointerEvents: 'none',
-            animation: 'impactBurst 0.5s ease forwards',
+            animation: `impactBurst${ri === 0 ? '' : ''} 0.${ri === 0 ? 48 : 58 + ri * 8}s ${ri * 0.07}s ease forwards`,
           }} />
-        )}
+        ))}
 
         {/* ── Enemy beam (when enemy attacks special) ──────────── */}
         {enemyAnim === 'projectile' && (
