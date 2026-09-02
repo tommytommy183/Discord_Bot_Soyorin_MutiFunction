@@ -68,8 +68,10 @@ namespace MusicBot2.Models
 
     public class TowerRun
     {
+        [JsonNumberHandling(JsonNumberHandling.WriteAsString | JsonNumberHandling.AllowReadingFromString)]
         public ulong PlayerId { get; set; }
         public string PlayerName { get; set; }
+        [JsonNumberHandling(JsonNumberHandling.WriteAsString | JsonNumberHandling.AllowReadingFromString)]
         public ulong ChannelId { get; set; }
         public int CurrentFloor { get; set; } = 0;
         public int MaxFloor { get; set; } = 10;

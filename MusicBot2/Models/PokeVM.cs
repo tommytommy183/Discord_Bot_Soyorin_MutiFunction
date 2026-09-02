@@ -1,4 +1,5 @@
 ﻿using Newtonsoft.Json;
+using MusicBot2.Helpers;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -140,6 +141,7 @@ namespace MusicBot2.Models
     #region 客製化遊戲相關
     public class PokeGamePlayer
     {
+        [JsonConverter(typeof(UlongStringConverter))]
         public ulong UserId { get; set; }
         public string UserName { get; set; }
         public List<PokeGamePokemon> CaughtPokemon { get; set; } = new List<PokeGamePokemon>();
@@ -178,29 +180,34 @@ namespace MusicBot2.Models
 
     public class BattleMatchmaking
     {
+        [JsonConverter(typeof(UlongStringConverter))]
         public ulong UserId { get; set; }
         public string UserName { get; set; }
         public PokeGamePokemon Pokemon { get; set; }
+        [JsonConverter(typeof(UlongStringConverter))]
         public ulong ChannelId { get; set; }
         public DateTime SearchStartTime { get; set; }
     }
 
     public class BattleMatchmaking2V2
     {
+        [JsonConverter(typeof(UlongStringConverter))]
         public ulong UserId { get; set; }
         public string UserName { get; set; }
         public PokeGamePokemon Pokemon1 { get; set; }
         public PokeGamePokemon Pokemon2 { get; set; }
+        [JsonConverter(typeof(UlongStringConverter))]
         public ulong ChannelId { get; set; }
-
         public DateTime SearchStartTime { get; set; }
     }
 
     public class BattleResult
     {
+        [JsonConverter(typeof(UlongStringConverter))]
         public ulong WinnerId { get; set; }
         public string WinnerName { get; set; }
         public PokeGamePokemon WinnerPokemon { get; set; }
+        [JsonConverter(typeof(UlongStringConverter))]
         public ulong LoserId { get; set; }
         public string LoserName { get; set; }
         public PokeGamePokemon LoserPokemon { get; set; }
@@ -214,6 +221,7 @@ namespace MusicBot2.Models
         public int MaxHP { get; set; }
         public List<TeamFightParticipant> Participants { get; set; } = new List<TeamFightParticipant>();
         public DateTime StartTime { get; set; }
+        [JsonConverter(typeof(UlongStringConverter))]
         public ulong ChannelId { get; set; }
         public bool IsActive { get; set; }
         public bool IsFighting { get; set; }
@@ -221,6 +229,7 @@ namespace MusicBot2.Models
 
     public class TeamFightParticipant
     {
+        [JsonConverter(typeof(UlongStringConverter))]
         public ulong UserId { get; set; }
         public string UserName { get; set; }
         public PokeGamePokemon Pokemon { get; set; }
@@ -230,16 +239,20 @@ namespace MusicBot2.Models
 
     public class PokemonExchangeRequest
     {
+        [JsonConverter(typeof(UlongStringConverter))]
         public ulong RequesterId { get; set; }
         public string RequesterName { get; set; }
         public int RequesterPokemonIndex { get; set; }
         public PokeGamePokemon RequesterPokemon { get; set; }
+        [JsonConverter(typeof(UlongStringConverter))]
         public ulong TargetId { get; set; }
         public string TargetName { get; set; }
         public int? TargetPokemonIndex { get; set; }  // 對方選擇的 Pokemon 編號
         public PokeGamePokemon TargetPokemon { get; set; }  // 對方選擇的 Pokemon
         public bool TargetSelected { get; set; }  // 對方是否已選擇
+        [JsonConverter(typeof(UlongStringConverter))]
         public ulong ChannelId { get; set; }
+        [JsonConverter(typeof(UlongStringConverter))]
         public ulong MessageId { get; set; }
         public DateTime RequestTime { get; set; }
     }
