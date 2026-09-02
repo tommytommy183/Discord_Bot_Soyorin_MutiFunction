@@ -185,8 +185,8 @@ export function BattleScene({ run, onAction, busy }: Props) {
         const etype = currentEnemy?.moves?.[0]?.type ?? '一般';
         setEnemyMoveType(etype);
         const isPhys = !!(moveLine?.includes('物') || moveLine?.includes('衝') || moveLine?.includes('撞'));
-        setScreenFlash(true);
-        setTimeout(() => setScreenFlash(false), 320);
+        setFlashColor('rgba(239,68,68,0.32)'); setFlashAnim('screenFlash');
+        setTimeout(() => setFlashColor(''), 320);
         setPlayerShake(true);
         setTimeout(() => setPlayerShake(false), 600);
         setEnemyAnim(isPhys ? 'lunge' : 'projectile');
@@ -707,14 +707,7 @@ export function BattleScene({ run, onAction, busy }: Props) {
             animation: `${flashAnim} 0.28s ease forwards`,
           }} />
         )}
-        {/* enemy turn red flash */}
-        {screenFlash && (
-          <div style={{
-            position: 'absolute', inset: 0, borderRadius: 14, zIndex: 22, pointerEvents: 'none',
-            background: 'rgba(239,68,68,0.32)',
-            animation: 'screenFlash 0.32s ease forwards',
-          }} />
-        )}
+        {/* enemy turn red flash → now handled by flashColor system above */}
         {critAnim && (
           <div style={{
             position: 'absolute', inset: 0, borderRadius: 14, zIndex: 23, pointerEvents: 'none',
