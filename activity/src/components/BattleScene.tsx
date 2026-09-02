@@ -14,7 +14,8 @@ interface Props {
 type AttackAnim =
   | 'idle' | 'lunge' | 'beam' | 'projectile' | 'status'
   | 'tail' | 'claw' | 'thunder' | 'flame' | 'ice' | 'shadow'
-  | 'cross' | 'leaf' | 'wave' | 'slam' | 'poison' | 'wind' | 'rock';
+  | 'cross' | 'leaf' | 'wave' | 'slam' | 'poison' | 'wind' | 'rock'
+  | 'struggle';
 
 /** Map move name keywords → animation type */
 function getMoveAnimType(name: string, category: string): AttackAnim {
@@ -59,6 +60,8 @@ function getMoveAnimType(name: string, category: string): AttackAnim {
   if (/風|颱|龍捲|旋|吹/.test(n)) return 'wind';
   // ── 物理拳擊/衝擊類不讓「彈」字導向projectile ──
   if (/子彈拳|磁鐵炸彈/.test(n)) return 'lunge';
+  // ── 掙扎/PP歸零保底 ──
+  if (/掙扎|普通一拳/.test(n)) return 'struggle';
   // Fallback by category
   return category === 'Physical' ? 'lunge'
     : category === 'Special' ? 'projectile'
@@ -123,26 +126,79 @@ function MoveBtn({ move, idx, channelId, busy, locked, onAttack }: {
   );
 }
 
+/** Color-code a battle log line into React spans */
+function colorLogLine(log: string): React.ReactNode {
+  // Critical hit → whole line gold
+  if (log.includes('暴擊')) {
+    return <span style={{ color: '#fbbf24', fontWeight: 700 }}>{log}</span>;
+  }
+  // Player attack lines (▶) → damage number in red, ★超效 in orange, ×無效 in grey
+  if (log.startsWith('▶')) {
+    return <span style={{ color: '#f1f5f9' }}>
+      {log.replace(/-(\d+)HP/, (_, d) => `💥-${d}HP`)
+          .split(/(💥-\d+HP|★超效|▼不佳|×無效)/g)
+          .map((part, i) => {
+            if (/💥-\d+HP/.test(part)) return <span key={i} style={{ color: '#f87171', fontWeight: 800 }}>{part}</span>;
+            if (part === '★超效') return <span key={i} style={{ color: '#f97316', fontWeight: 800 }}> {part}</span>;
+            if (part === '▼不佳') return <span key={i} style={{ color: '#94a3b8' }}> {part}</span>;
+            if (part === '×無效') return <span key={i} style={{ color: '#475569' }}> {part}</span>;
+            return part;
+          })}
+    </span>;
+  }
+  // Enemy attack lines (◀) → damage number in orange
+  if (log.startsWith('◀')) {
+    return <span style={{ color: '#fca5a5' }}>
+      {log.replace(/-(\d+)HP/, (_, d) => `💢-${d}HP`)
+          .split(/(💢-\d+HP|★超效|▼不佳|×無效)/g)
+          .map((part, i) => {
+            if (/💢-\d+HP/.test(part)) return <span key={i} style={{ color: '#fb923c', fontWeight: 800 }}>{part}</span>;
+            if (part === '★超效') return <span key={i} style={{ color: '#ef4444', fontWeight: 700 }}> {part}</span>;
+            if (part === '▼不佳') return <span key={i} style={{ color: '#94a3b8' }}> {part}</span>;
+            if (part === '×無效') return <span key={i} style={{ color: '#475569' }}> {part}</span>;
+            return part;
+          })}
+    </span>;
+  }
+  // Heal / recover lines
+  if (log.includes('恢復') || log.includes('再生') || log.includes('吸血')) {
+    return <span style={{ color: '#4ade80' }}>{log}</span>;
+  }
+  // Status effect lines (睡眠/中毒/燒傷/麻痺/混亂/冰凍)
+  if (/睡眠|中毒|燒傷|麻痺|混亂|冰凍|異常|狀態/.test(log)) {
+    return <span style={{ color: '#c084fc' }}>{log}</span>;
+  }
+  // Capture / evolution / gold
+  if (log.includes('捕獲') || log.includes('進化') || log.includes('💰')) {
+    return <span style={{ color: '#facc15' }}>{log}</span>;
+  }
+  // Faint
+  if (log.includes('倒下') || log.includes('昏厥') || log.includes('KO') || log.includes('瀕死')) {
+    return <span style={{ color: '#ef4444', fontWeight: 700 }}>{log}</span>;
+  }
+  return <span>{log}</span>;
+}
+
 function BattleLog({ logs }: { logs: string[] }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (ref.current) ref.current.scrollTop = ref.current.scrollHeight;
   }, [logs]);
 
+  const recent = logs.slice(-12);
   return (
     <div ref={ref} style={{
       background: '#07090f', borderRadius: 8,
-      padding: '8px 12px', fontSize: 11, color: '#94a3b8',
-      height: 96, overflowY: 'auto',
-      border: '1px solid #1e293b', lineHeight: 1.6, flexShrink: 0,
+      padding: '8px 12px', fontSize: 12, color: '#94a3b8',
+      height: 152, overflowY: 'auto',
+      border: '1px solid #1e293b', lineHeight: 1.7, flexShrink: 0,
     }}>
-      {logs.slice(-10).map((log, i, arr) => (
+      {recent.map((log, i) => (
         <div key={i} style={{
-          opacity: 0.4 + (i / arr.length) * 0.6,
-          color: i === arr.length - 1 ? '#e2e8f0' : '#94a3b8',
-          fontWeight: i === arr.length - 1 ? 600 : 400,
+          opacity: 0.35 + (i / recent.length) * 0.65,
+          fontWeight: i === recent.length - 1 ? 600 : 400,
         }}>
-          {log}
+          {colorLogLine(log)}
         </div>
       ))}
     </div>
@@ -343,6 +399,19 @@ export function BattleScene({ run, onAction, busy }: Props) {
       case 'lunge':
         // Speed lines handled separately
         return null;
+
+      case 'struggle':
+        // A pitiful, dim, slow punch
+        return (
+          <div key={k} style={{
+            position: 'absolute', bottom: 90, left: 108,
+            fontSize: 28, zIndex: 12, pointerEvents: 'none',
+            animation: 'weakPunchFly 0.9s ease-out forwards',
+            filter: 'grayscale(0.7) opacity(0.75)',
+          }}>
+            👊
+          </div>
+        );
 
       case 'beam':
         return (
@@ -858,6 +927,7 @@ export function BattleScene({ run, onAction, busy }: Props) {
               : attackAnim === 'cross' ? 'lungeFull 0.60s ease-in-out'
               : attackAnim === 'slam' ? 'jumpSlam 0.82s cubic-bezier(0.25,0.46,0.45,0.94)'
               : attackAnim === 'rock' ? 'jumpSlam 0.80s cubic-bezier(0.25,0.46,0.45,0.94)'
+              : attackAnim === 'struggle' ? 'weakLunge 0.95s ease-in-out'
               : undefined,
           } as React.CSSProperties}>
             <img

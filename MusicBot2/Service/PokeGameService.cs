@@ -42,7 +42,7 @@ namespace MusicBot2.Service
         // 有計數的 flavor text：key = Redis key, value = (基礎文字, 計數後綴格式 {0}=計數)
         private static readonly Dictionary<string, (string baseText, string suffix)> _countedFlavorTexts = new()
         {
-            [MANGO_BAND_COUNT_KEY]           = ("他最後加入了芒果醬樂團",             "目前該樂團已經有 **{0}** 之寶可夢"),
+            [MANGO_BAND_COUNT_KEY]           = ("他最後加入了芒果醬樂團",             "目前已經有 **{0}** 隻寶可夢耳朵流產"),
             ["pokegame:dinwang_count"]        = ("被放生後他被抓去鼎王煮掉了，這都是你害的", "牠是鼎王的第 **{0}** 個火鍋料"),
             ["pokegame:release_assoc_count"]  = ("牠已加入『被放生者互助會』",           "牠成為了互助會的第 **{0}** 位參加者"),
             ["pokegame:rocket_count"]         = ("牠加入了火箭隊。這都是你的錯",         "火箭隊目前已有 **{0}** 隻被背叛的pokemon"),

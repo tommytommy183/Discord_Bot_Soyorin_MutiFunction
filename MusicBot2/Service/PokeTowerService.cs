@@ -2055,14 +2055,14 @@ namespace MusicBot2.Service
                 }
                 case TowerRunState.Shopping:
                 {
-                    int cHF = ShopCost(run, 30, "heal_full");
-                    int cHH = ShopCost(run, 15, "heal_half");
-                    int cPP = ShopCost(run, 20, "pp_restore");
-                    int cNM = ShopCost(run, 25, "new_move");
-                    int cN  = ShopCost(run, 8,  "buy_normal");
-                    int cS  = ShopCost(run, 15, "buy_super");
-                    int cU  = ShopCost(run, 25, "buy_ultra");
-                    int cPU = ShopCost(run, 20, "powerup");
+                    int cHF = ShopCost(run, 55, "heal_full");
+                    int cHH = ShopCost(run, 30, "heal_half");
+                    int cPP = ShopCost(run, 40, "pp_restore");
+                    int cNM = ShopCost(run, 50, "new_move");
+                    int cN  = ShopCost(run, 15, "buy_normal");
+                    int cS  = ShopCost(run, 28, "buy_super");
+                    int cU  = ShopCost(run, 48, "buy_ultra");
+                    int cPU = ShopCost(run, 38, "powerup");
                     opts.Add(new { customId = $"tower_shop_{channelId}_leave",      label = "離開商店",   emoji = "🚪", description = "結帳離開，繼續爬塔" }); // 排第一保證可見
                     opts.Add(new { customId = $"tower_shop_{channelId}_heal_full",  label = "全回復",     emoji = "💊", description = $"HP完全恢復・{cHF}💰" });
                     opts.Add(new { customId = $"tower_shop_{channelId}_heal_half",  label = "超級樹果",   emoji = "🧃", description = $"恢復50%HP・{cHH}💰" });
@@ -3567,14 +3567,14 @@ namespace MusicBot2.Service
             switch (itemKey)
             {
                 case "heal_full":
-                    { int cost = ShopCost(run, 30, "heal_full"); if (run.Gold < cost) return BuildShopEmbed(run, $"💸 金幣不足！需要 {cost} 金幣。"); run.Gold -= cost; foreach (var pk in run.Party) pk.CurrentHP = pk.MaxHP; run.ActivePokemon.CurrentHP = run.ActivePokemon.MaxHP; msg = $"💊 使用「全回復」— 全隊 HP 完全恢復！（-{cost}💰）"; break; }
+                    { int cost = ShopCost(run, 55, "heal_full"); if (run.Gold < cost) return BuildShopEmbed(run, $"💸 金幣不足！需要 {cost} 金幣。"); run.Gold -= cost; foreach (var pk in run.Party) pk.CurrentHP = pk.MaxHP; run.ActivePokemon.CurrentHP = run.ActivePokemon.MaxHP; msg = $"💊 使用「全回復」— 全隊 HP 完全恢復！（-{cost}💰）"; break; }
                 case "heal_half":
-                    { int cost = ShopCost(run, 15, "heal_half"); if (run.Gold < cost) return BuildShopEmbed(run, $"💸 金幣不足！需要 {cost} 金幣。"); run.Gold -= cost; foreach (var pk in run.Party) { int h = Math.Max(1, pk.MaxHP / 2); pk.CurrentHP = Math.Min(pk.MaxHP, pk.CurrentHP + h); } run.ActivePokemon.CurrentHP = Math.Min(run.ActivePokemon.MaxHP, run.ActivePokemon.CurrentHP + Math.Max(1, run.ActivePokemon.MaxHP / 2)); msg = $"🧃 使用「超級樹果」— 全隊恢復 50% HP！（-{cost}💰）"; break; }
+                    { int cost = ShopCost(run, 30, "heal_half"); if (run.Gold < cost) return BuildShopEmbed(run, $"💸 金幣不足！需要 {cost} 金幣。"); run.Gold -= cost; foreach (var pk in run.Party) { int h = Math.Max(1, pk.MaxHP / 2); pk.CurrentHP = Math.Min(pk.MaxHP, pk.CurrentHP + h); } run.ActivePokemon.CurrentHP = Math.Min(run.ActivePokemon.MaxHP, run.ActivePokemon.CurrentHP + Math.Max(1, run.ActivePokemon.MaxHP / 2)); msg = $"🧃 使用「超級樹果」— 全隊恢復 50% HP！（-{cost}💰）"; break; }
                 case "pp_restore":
-                    { int cost = ShopCost(run, 20, "pp_restore"); if (run.Gold < cost) return BuildShopEmbed(run, $"💸 金幣不足！需要 {cost} 金幣。"); run.Gold -= cost; foreach (var pk in run.Party) foreach (var m in pk.Moves) m.CurrentPP = m.MaxPP; foreach (var m in run.ActivePokemon.Moves) m.CurrentPP = m.MaxPP; msg = $"🔋 全隊技能 PP 完全恢復！（-{cost}💰）"; break; }
+                    { int cost = ShopCost(run, 40, "pp_restore"); if (run.Gold < cost) return BuildShopEmbed(run, $"💸 金幣不足！需要 {cost} 金幣。"); run.Gold -= cost; foreach (var pk in run.Party) foreach (var m in pk.Moves) m.CurrentPP = m.MaxPP; foreach (var m in run.ActivePokemon.Moves) m.CurrentPP = m.MaxPP; msg = $"🔋 全隊技能 PP 完全恢復！（-{cost}💰）"; break; }
                 case "new_move":
                     {
-                        int cost = ShopCost(run, 25, "new_move");
+                        int cost = ShopCost(run, 50, "new_move");
                         if (run.Gold < cost) return BuildShopEmbed(run, $"💸 金幣不足！需要 {cost} 金幣。");
                         run.Gold -= cost;
                         run.ShopBuyCounts ??= new();
@@ -3589,13 +3589,13 @@ namespace MusicBot2.Service
                     }
                 case "buy_normal":
                     if (HasPassive(run, "passive_catchmaster")) return BuildShopEmbed(run, "🎯 **捕獲大師**：不需要購買球！");
-                    { int cost = ShopCost(run, 8, "buy_normal"); if (run.Gold < cost) return BuildShopEmbed(run, $"💸 金幣不足！需要 {cost} 金幣。"); run.Gold -= cost; run.Balls["normal"] = run.Balls.GetValueOrDefault("normal") + 3; msg = $"⚽ 購入 **普通球×3**！（-{cost}💰）"; break; }
+                    { int cost = ShopCost(run, 15, "buy_normal"); if (run.Gold < cost) return BuildShopEmbed(run, $"💸 金幣不足！需要 {cost} 金幣。"); run.Gold -= cost; run.Balls["normal"] = run.Balls.GetValueOrDefault("normal") + 3; msg = $"⚽ 購入 **普通球×3**！（-{cost}💰）"; break; }
                 case "buy_super":
                     if (HasPassive(run, "passive_catchmaster")) return BuildShopEmbed(run, "🎯 **捕獲大師**：不需要購買球！");
-                    { int cost = ShopCost(run, 15, "buy_super"); if (run.Gold < cost) return BuildShopEmbed(run, $"💸 金幣不足！需要 {cost} 金幣。"); run.Gold -= cost; run.Balls["super"] = run.Balls.GetValueOrDefault("super") + 2; msg = $"🔵 購入 **超級球×2**！（-{cost}💰）"; break; }
+                    { int cost = ShopCost(run, 28, "buy_super"); if (run.Gold < cost) return BuildShopEmbed(run, $"💸 金幣不足！需要 {cost} 金幣。"); run.Gold -= cost; run.Balls["super"] = run.Balls.GetValueOrDefault("super") + 2; msg = $"🔵 購入 **超級球×2**！（-{cost}💰）"; break; }
                 case "buy_ultra":
                     if (HasPassive(run, "passive_catchmaster")) return BuildShopEmbed(run, "🎯 **捕獲大師**：不需要購買球！");
-                    { int cost = ShopCost(run, 25, "buy_ultra"); if (run.Gold < cost) return BuildShopEmbed(run, $"💸 金幣不足！需要 {cost} 金幣。"); run.Gold -= cost; run.Balls["ultra"] = run.Balls.GetValueOrDefault("ultra") + 1; msg = $"🟡 購入 **高級球×1**！（-{cost}💰）"; break; }
+                    { int cost = ShopCost(run, 48, "buy_ultra"); if (run.Gold < cost) return BuildShopEmbed(run, $"💸 金幣不足！需要 {cost} 金幣。"); run.Gold -= cost; run.Balls["ultra"] = run.Balls.GetValueOrDefault("ultra") + 1; msg = $"🟡 購入 **高級球×1**！（-{cost}💰）"; break; }
                 case "leave":
                     run.ShopBuyCounts = new();  // 離開商店時重置，下次進來恢復原價
                     msg = "👋 離開商店，繼續爬塔！";
@@ -3731,7 +3731,7 @@ namespace MusicBot2.Service
                 }
                 if (ret == "shop")
                 {
-                    int cost = ShopCost(run, 20, "powerup");
+                    int cost = ShopCost(run, 38, "powerup");
                     if (run.Gold < cost)
                     {
                         run.State = TowerRunState.SelectingPowerUpgrade;
@@ -5536,14 +5536,14 @@ namespace MusicBot2.Service
             desc.AppendLine($"技能: {MovesDisplay(p)}");
             desc.AppendLine($"💰 金幣: **{run.Gold}**");
             desc.AppendLine();
-            int cHealFull   = ShopCost(run, 30, "heal_full");
-            int cHealHalf   = ShopCost(run, 15, "heal_half");
-            int cPpRestore  = ShopCost(run, 20, "pp_restore");
-            int cNewMove    = ShopCost(run, 25, "new_move");
-            int cNormal     = ShopCost(run, 8,  "buy_normal");
-            int cSuper      = ShopCost(run, 15, "buy_super");
-            int cUltra      = ShopCost(run, 25, "buy_ultra");
-            int cPowerUp    = ShopCost(run, 20, "powerup");
+            int cHealFull   = ShopCost(run, 55, "heal_full");
+            int cHealHalf   = ShopCost(run, 30, "heal_half");
+            int cPpRestore  = ShopCost(run, 40, "pp_restore");
+            int cNewMove    = ShopCost(run, 50, "new_move");
+            int cNormal     = ShopCost(run, 15, "buy_normal");
+            int cSuper      = ShopCost(run, 28, "buy_super");
+            int cUltra      = ShopCost(run, 48, "buy_ultra");
+            int cPowerUp    = ShopCost(run, 38, "powerup");
             desc.AppendLine("**商品：**");
             desc.AppendLine($"💊 **全回復** — HP完全恢復 ({cHealFull}💰)");
             desc.AppendLine($"🧃 **超級樹果** — 恢復50% HP ({cHealHalf}💰)");

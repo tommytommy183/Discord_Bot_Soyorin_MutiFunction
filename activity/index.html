@@ -90,6 +90,24 @@
         100% { transform: translateX(0) translateY(0) scaleX(1) scaleY(1); }
       }
       @keyframes tailSwing { 0% { transform:scaleX(0) scaleY(0.3); opacity:0; } 40% { transform:scaleX(1.15) scaleY(1.1); opacity:1; } 100% { transform:scaleX(1.1) scaleY(1); opacity:0; } }
+      /* weakLunge: 虛弱地蹣跚向前，只走到一半，軟趴趴地回來 */
+      @keyframes weakLunge {
+        0%   { transform: translateX(0) scaleY(1); }
+        15%  { transform: translateX(12px) scaleY(0.92); }
+        38%  { transform: translateX(calc(var(--lunge-x,175px)*0.42)) scaleY(0.95); }
+        52%  { transform: translateX(calc(var(--lunge-x,175px)*0.45)) scaleY(1); }
+        60%  { transform: translateX(calc(var(--lunge-x,175px)*0.38)) rotate(-5deg); }
+        78%  { transform: translateX(18px) rotate(0deg) scaleY(0.97); }
+        100% { transform: translateX(0) scaleY(1); }
+      }
+      /* weakPunchFly: 拳頭無力地滑向敵方，速度緩慢 */
+      @keyframes weakPunchFly {
+        0%   { transform: translateX(0) translateY(0); opacity: 0.5; }
+        40%  { transform: translateX(80px) translateY(8px); opacity: 0.8; }
+        70%  { transform: translateX(145px) translateY(4px); opacity: 0.9; }
+        85%  { transform: translateX(150px) translateY(0); opacity: 0.6; }
+        100% { transform: translateX(155px) translateY(-5px); opacity: 0; }
+      }
       @keyframes lungeSpinFull { 0% { transform:translateX(0) rotate(0deg) scaleX(1); } 35% { transform:translateX(80px) rotate(180deg) scaleX(1.1); } 65% { transform:translateX(160px) rotate(180deg) scaleX(1); } 100% { transform:translateX(0) rotate(0deg) scaleX(1); } }
       @keyframes statusRing { 0%,100% { transform:scale(1); opacity:0; } 50% { transform:scale(1.4); opacity:0.7; } }
       @keyframes poisonDrip { 0% { transform:translateY(0) scale(1); opacity:1; } 100% { transform:translateY(60px) scale(0.5); opacity:0; } }
