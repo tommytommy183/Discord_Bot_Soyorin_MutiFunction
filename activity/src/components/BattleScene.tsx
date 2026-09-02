@@ -562,18 +562,22 @@ export function BattleScene({ run, onAction, busy }: Props) {
 
       case 'leaf': {
         const leafEmojis = ['🍃','🌿','🍀','🌱','🍃','🌿'];
-        const leafDirs: [number, number][] = [[-50,-55], [0,-70], [48,-50], [62,22], [30,54], [-34,40]];
+        // Y 散射：6 片葉子以不同高低角度飛向敵人（負=往上，正=往下）
+        const leafOffY = [-38, -20, -6, 6, 20, 36];
         return (
           <>
             {leafEmojis.map((em, i) => (
               <div key={i} style={{
                 position: 'absolute',
-                top: `${isBoss ? 28 : 35}%`, right: `${isBoss ? 14 : 17}%`,
+                // 起點：玩家身上（左側中間）
+                left: 92, bottom: `${isBoss ? 44 : 36}%`,
                 fontSize: 14 + (i % 2) * 4,
                 zIndex: 12, pointerEvents: 'none',
-                ['--dx' as string]: `${leafDirs[i][0]}px`,
-                ['--dy' as string]: `${leafDirs[i][1]}px`,
-                animation: `leafWhirl 0.72s ${i * 0.06}s ease forwards`,
+                // --lx：水平飛行距離（等同 lunge 距離）
+                // --ly：各片葉子的垂直散射偏移
+                ['--lx' as string]: `${lungeX + 12}px`,
+                ['--ly' as string]: `${leafOffY[i]}px`,
+                animation: `leafFly 0.68s ${i * 0.055}s ease-in forwards`,
               } as React.CSSProperties}>{em}</div>
             ))}
           </>

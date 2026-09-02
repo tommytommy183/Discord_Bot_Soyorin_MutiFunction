@@ -231,6 +231,10 @@ namespace MusicBot2.Service
         public string EventResultText { get; set; } = "";
         // Battle swap UI state
         public bool SwapPending { get; set; } = false;
+        // Power-upgrade screen: show party swap UI
+        public bool PowerUpSwapPending { get; set; } = false;
+        // 備戰區（最多 6 隻）
+        public List<TowerPokemon> Reserve { get; set; } = new();
     }
 
     /// <summary>爬塔通關 / 終極神獸擊敗紀錄，存入 Redis SortedSet</summary>
@@ -1937,6 +1941,21 @@ namespace MusicBot2.Service
                 }).ToList(),
                 eventResultText = run.EventResultText,
                 swapPending     = run.SwapPending,
+                reserve         = run.Reserve.Select(p => new
+                {
+                    pokeId        = p.PokeId,
+                    name          = p.Name,
+                    displayName   = p.DisplayName,
+                    customName    = p.CustomName,
+                    types         = p.Types,
+                    currentHP     = p.CurrentHP,
+                    maxHP         = p.MaxHP,
+                    attack        = p.Attack,
+                    defense       = p.Defense,
+                    speed         = p.Speed,
+                    moves         = p.Moves,
+                    isShiny       = p.IsShiny,
+                }).ToList(),
             };
         }
 
@@ -3339,9 +3358,20 @@ namespace MusicBot2.Service
                     await SaveAsync(run);
                     return BuildPathEmbed(run, $"🎉 成功捕獲 **{newPoke.Name}**！（HP: {newPoke.CurrentHP}/{newPoke.MaxHP}）");
                 }
+                else if (run.Reserve.Count < 6)
+                {
+                    // 備戰區有空位 → 直接放入備戰區
+                    run.Reserve.Add(newPoke);
+                    run.PendingCatch = null;
+                    run.State = TowerRunState.SelectingPath;
+                    run.CurrentEnemy = null;
+                    run.RunLog.Add($"🎉 捕獲了 {newPoke.Name}！（放入備戰區）");
+                    await SaveAsync(run);
+                    return BuildPathEmbed(run, $"🎉 成功捕獲 **{newPoke.Name}**！\n背包已滿，牠被送入🗄️ **備戰區**（開背包可管理）");
+                }
                 else
                 {
-                    // 背包滿 → 進入交換選擇
+                    // 背包滿且備戰區滿 → 進入交換選擇
                     run.State = TowerRunState.SelectingCatchSwap;
                     // PendingCatch 仍保留以便交換
                     await SaveAsync(run);
@@ -5288,7 +5318,43 @@ namespace MusicBot2.Service
             var desc = new StringBuilder();
             int upLimit = HasPassive(run, "passive_techgeek") ? 8 : 5;
             if (!string.IsNullOrEmpty(notice)) desc.AppendLine($"⚠️ {notice}").AppendLine();
-            desc.AppendLine($"選擇想**強化威力的招式**（+20 威力，每招最多強化 {upLimit} 次）：");
+
+            var cb = new ComponentBuilder();
+
+            // ── 換首發選擇模式 ──────────────────────────────────────────────
+            if (run.PowerUpSwapPending)
+            {
+                desc.AppendLine("選擇要換上首發的**隊員**（換完後可強化新首發的技能）：");
+                desc.AppendLine();
+                var swapRow = new ActionRowBuilder();
+                for (int i = 0; i < run.Party.Count; i++)
+                {
+                    var pk = run.Party[i];
+                    bool isActive = i == run.ActivePokemonIndex;
+                    bool fainted  = pk.CurrentHP <= 0;
+                    string label  = isActive ? $"★{pk.DisplayName}" : pk.DisplayName;
+                    string hpTag  = fainted ? "（昏倒）" : $"HP {pk.CurrentHP}/{pk.MaxHP}";
+                    desc.AppendLine($"{(isActive ? "▶" : "　")}**{pk.DisplayName}** — {hpTag}");
+                    swapRow.WithButton(new ButtonBuilder()
+                        .WithLabel(label)
+                        .WithCustomId($"tower_powerup_leadswap_{run.ChannelId}_{i}")
+                        .WithStyle(isActive ? ButtonStyle.Success : ButtonStyle.Primary)
+                        .WithDisabled(isActive || fainted));
+                }
+                cb.AddRow(swapRow);
+                cb.WithButton("取消", $"tower_powerup_leadswap_{run.ChannelId}_cancel", ButtonStyle.Secondary, row: 1);
+
+                var embed2 = new EmbedBuilder()
+                    .WithTitle("🔄 換首發")
+                    .WithDescription(desc.ToString())
+                    .WithColor(new Color(100, 180, 255))
+                    .WithFooter($"{run.PlayerName} • 第 {run.CurrentFloor}/{run.MaxFloor} 層")
+                    .Build();
+                return (embed2, cb);
+            }
+
+            // ── 一般強化模式 ────────────────────────────────────────────────
+            desc.AppendLine($"強化 **{p.DisplayName}** 的招式（+20 威力，每招最多 {upLimit} 次）：");
             desc.AppendLine();
             for (int i = 0; i < p.Moves.Count; i++)
             {
@@ -5305,7 +5371,6 @@ namespace MusicBot2.Service
                 .WithFooter($"{run.PlayerName} • 第 {run.CurrentFloor}/{run.MaxFloor} 層")
                 .Build();
 
-            var cb = new ComponentBuilder();
             var upgradeRow = new ActionRowBuilder();
             for (int i = 0; i < p.Moves.Count; i++)
             {
@@ -5320,9 +5385,110 @@ namespace MusicBot2.Service
             }
             cb.AddRow(upgradeRow);
             cb.WithButton("跳過", $"tower_powerup_select_{run.ChannelId}_4", ButtonStyle.Secondary, row: 1);
+            cb.WithButton("🔄 換首發", $"tower_powerup_leadswap_{run.ChannelId}_open", ButtonStyle.Secondary, row: 1);
             if (run.PowerUpgradeReturn == "battle")
                 cb.WithButton("📀 換技能代替", $"tower_powerup_switch_{run.ChannelId}", ButtonStyle.Secondary, row: 1);
             return (embed, cb);
+        }
+
+        // ── 備戰區管理 ─────────────────────────────────────────────────────
+
+        /// <summary>備戰區 ↔ 上陣隊伍互換（reserveIdx, partyIdx）</summary>
+        public async Task<string> HandleReserveSwapAsync(ulong channelId, int reserveIdx, int partyIdx)
+        {
+            if (!_activeRuns.TryGetValue(channelId, out var run))
+                return "找不到進行中的爬塔";
+            if (reserveIdx < 0 || reserveIdx >= run.Reserve.Count)
+                return "備戰區索引無效";
+            if (partyIdx < 0 || partyIdx >= run.Party.Count)
+                return "隊伍索引無效";
+
+            var reservePoke = run.Reserve[reserveIdx];
+            var partyPoke   = run.Party[partyIdx];
+
+            // 互換
+            run.Party[partyIdx]     = reservePoke;
+            run.Reserve[reserveIdx] = partyPoke;
+
+            // 若換出的是當前上陣 → 更新 ActivePokemon
+            if (partyIdx == run.ActivePokemonIndex)
+            {
+                run.ActivePokemon = reservePoke;
+                // 重置能力階段
+                run.ActivePokemon.AtkStage = run.ActivePokemon.DefStage =
+                run.ActivePokemon.SpdStage = run.ActivePokemon.SpAtkStage =
+                run.ActivePokemon.SpDefStage = 0;
+            }
+
+            run.RunLog.Add($"🔄 {reservePoke.DisplayName} 從備戰區換入隊伍，{partyPoke.DisplayName} 退入備戰區");
+            await SaveAsync(run);
+            return "";
+        }
+
+        private static readonly string[] _dismantleFlavorTexts =
+        {
+            "你把{0}召喚出來，然後笑著抱起了牠，看著牠純真的雙眼，你燦爛地拿出刀肢解了牠。",
+            "「{0}，你辛苦了。」你溫柔地說，手裡的刀隨即一閃，鮮血染紅了你的鞋。",
+            "你拉著{0}的爪子說「我們去一個特別的地方！」牠開心地跟著你走向角落…沒有再走出來。",
+            "{0}信任地仰望著你。你也低頭看著牠。然後你拿出了工具——快樂的事情即將發生。",
+            "今天的{0}特別乖。你蹲下來摸了摸牠的頭，說：「謝謝你的配合。」鮮血在地板上靜靜暈開。",
+            "「{0}，你知道我很喜歡你嗎？」你一邊微笑說著，一邊把刀靠近牠的頸側。牠搖了搖尾巴。",
+            "{0}還在回頭對你笑的時候，一切就都結束了。你低頭整理了一下衣袖上的污漬。",
+            "你遞給{0}一塊餅乾，等牠吃完後說「好孩子」，然後——效率就是一切。",
+            "「{0}，閉上眼睛。我要給你一個驚喜。」牠乖乖照做了。驚喜確實如期而至。",
+        };
+
+        /// <summary>從備戰區肢解一隻 Pokémon，獲得金幣</summary>
+        public async Task<(bool ok, string flavorText, int goldGained, string pokeName)> HandleReservedismantleAsync(
+            ulong channelId, int reserveIdx)
+        {
+            if (!_activeRuns.TryGetValue(channelId, out var run))
+                return (false, "找不到進行中的爬塔", 0, "");
+            if (reserveIdx < 0 || reserveIdx >= run.Reserve.Count)
+                return (false, "備戰區索引無效", 0, "");
+
+            var poke = run.Reserve[reserveIdx];
+            // 金幣：基底30 + 依總數值比例，最多 80
+            int totalStats = poke.Attack + poke.Defense + poke.Speed + poke.MaxHP / 5;
+            int gold = Math.Min(80, 30 + totalStats / 30);
+
+            run.Reserve.RemoveAt(reserveIdx);
+            run.Gold += gold;
+
+            string flavorTemplate = _dismantleFlavorTexts[_rng.Next(_dismantleFlavorTexts.Length)];
+            string flavor = string.Format(flavorTemplate, poke.DisplayName);
+            run.RunLog.Add($"🔪 肢解了 {poke.DisplayName}，獲得 {gold}💰");
+            await SaveAsync(run);
+            return (true, flavor, gold, poke.DisplayName);
+        }
+
+        /// <summary>強化介面換首發：open=開啟選擇、cancel=取消、數字=確認換</summary>
+        public async Task<(Embed embed, ComponentBuilder component)> HandlePowerUpLeadSwapAsync(ulong channelId, string action)
+        {
+            if (!_activeRuns.TryGetValue(channelId, out var run))
+                return ErrEmbed("找不到進行中的爬塔");
+
+            if (action == "open")
+            {
+                run.PowerUpSwapPending = true;
+            }
+            else if (action == "cancel")
+            {
+                run.PowerUpSwapPending = false;
+            }
+            else if (int.TryParse(action, out int idx))
+            {
+                // 換首發
+                if (idx >= 0 && idx < run.Party.Count && run.Party[idx].CurrentHP > 0 && idx != run.ActivePokemonIndex)
+                {
+                    run.ActivePokemon = run.Party[idx];
+                    run.ActivePokemonIndex = idx;
+                }
+                run.PowerUpSwapPending = false;
+            }
+
+            await SaveAsync(run);
+            return BuildPowerUpgradeEmbed(run);
         }
 
         /// <summary>從威力升級切換到技能獎勵（戰鬥後二選一）</summary>

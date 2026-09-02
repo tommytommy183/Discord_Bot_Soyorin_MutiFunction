@@ -133,6 +133,7 @@ export interface TowerRun {
   eventDesc?: string;
   eventResultText?: string;
   swapPending?: boolean;
+  reserve?: TowerPokemon[];
 }
 
 export interface ActionRequest {

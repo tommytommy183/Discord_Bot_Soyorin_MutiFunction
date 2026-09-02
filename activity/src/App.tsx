@@ -173,7 +173,7 @@ function PokemonSelector({ pokemons, onSelect, busy }: {
 }
 
 // ── Header bar ─────────────────────────────────────────────────────────────
-function GameHeader({ run, onOpenInventory }: { run: TowerRun; onOpenInventory: () => void }) {
+function GameHeader({ run, onOpenInventory, onAbandon }: { run: TowerRun; onOpenInventory: () => void; onAbandon: () => void }) {
   const progress = run.currentFloor / run.maxFloor;
   return (
     <div style={{
@@ -218,6 +218,18 @@ function GameHeader({ run, onOpenInventory }: { run: TowerRun; onOpenInventory: 
         }}
         title="背包"
       >🎒</button>
+      {/* Abandon button */}
+      <button
+        className="btn-hover"
+        onClick={onAbandon}
+        style={{
+          background: '#1a0a0a', border: '1px solid #4a1a1a',
+          borderRadius: 6, padding: '4px 8px',
+          fontSize: 12, cursor: 'pointer', flexShrink: 0,
+          color: '#f87171',
+        }}
+        title="放棄爬塔"
+      >🚪</button>
     </div>
   );
 }
@@ -235,6 +247,7 @@ export default function App() {
   const [passives, setPassives]         = useState<PassiveOption[]>([]);
   const [selectedPokemonIdx, setSelectedPokemonIdx] = useState<number>(0);
   const [inventoryOpen, setInventoryOpen] = useState(false);
+  const [abandonConfirm, setAbandonConfirm] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const startPolling = useCallback((cId: string) => {
@@ -405,7 +418,7 @@ export default function App() {
 
   return (
     <div style={shell}>
-      <GameHeader run={run} onOpenInventory={() => setInventoryOpen(true)} />
+      <GameHeader run={run} onOpenInventory={() => setInventoryOpen(true)} onAbandon={() => setAbandonConfirm(true)} />
       <div style={{ flex: 1, overflow: 'auto', padding: '10px 12px' }}>
         {run.state === 'InBattle' && (
           <BattleScene run={run} onAction={handleAction} busy={busy} />
@@ -424,6 +437,67 @@ export default function App() {
 
       {/* Inventory overlay */}
       {run && <Inventory run={run} isOpen={inventoryOpen} onClose={() => setInventoryOpen(false)} onAction={handleAction} />}
+
+      {/* Abandon confirm dialog */}
+      {abandonConfirm && (
+        <div style={{
+          position: 'absolute', inset: 0,
+          background: 'rgba(0,0,0,0.75)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 9999, backdropFilter: 'blur(3px)',
+        }}>
+          <div style={{
+            background: '#0f172a', border: '1px solid #7f1d1d',
+            borderRadius: 16, padding: '24px 28px',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16,
+            maxWidth: 280, textAlign: 'center',
+          }}>
+            <span style={{ fontSize: 36 }}>🚪</span>
+            <div style={{ fontWeight: 700, fontSize: 15, color: '#f87171' }}>放棄這次爬塔？</div>
+            <div style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.6 }}>
+              目前進度與所有寶可夢道具都將消失，<br />無法復原。
+            </div>
+            <div style={{ display: 'flex', gap: 10, width: '100%' }}>
+              <button
+                className="btn-hover"
+                onClick={() => setAbandonConfirm(false)}
+                style={{
+                  flex: 1, background: '#1e293b', border: '1px solid #334155',
+                  borderRadius: 8, padding: '10px 0', color: '#e2e8f0',
+                  fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                }}
+              >繼續挑戰</button>
+              <button
+                className="btn-hover"
+                disabled={busy}
+                onClick={async () => {
+                  setAbandonConfirm(false);
+                  setBusy(true);
+                  try {
+                    if (channelId) {
+                      await fetch(`/api/tower/action`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ customId: `tower_abandon_${channelId}`, channelId }),
+                      });
+                    }
+                  } catch {}
+                  if (pollRef.current) clearInterval(pollRef.current);
+                  setRun(null);
+                  setPhase('select-pokemon');
+                  setBusy(false);
+                }}
+                style={{
+                  flex: 1, background: '#7f1d1d', border: '1px solid #ef4444',
+                  borderRadius: 8, padding: '10px 0', color: '#fca5a5',
+                  fontSize: 13, fontWeight: 700, cursor: busy ? 'not-allowed' : 'pointer',
+                  opacity: busy ? 0.5 : 1,
+                }}
+              >放棄爬塔</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Busy overlay */}
       {busy && (

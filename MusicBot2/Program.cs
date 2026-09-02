@@ -1124,7 +1124,7 @@ public class Program
                         (tEmbed, tCb) = towerSvc.BuildCurrentStateEmbed(ch);
                     }
                     // tower_powerup_{channelId}_{rest|shop}  (觸發強化介面)
-                    else if (id.StartsWith("tower_powerup_") && !id.StartsWith("tower_powerup_select_") && !id.StartsWith("tower_powerup_switch_"))
+                    else if (id.StartsWith("tower_powerup_") && !id.StartsWith("tower_powerup_select_") && !id.StartsWith("tower_powerup_switch_") && !id.StartsWith("tower_powerup_leadswap_"))
                     {
                         var rest2 = id["tower_powerup_".Length..];
                         int under2 = rest2.LastIndexOf('_');
@@ -1137,6 +1137,15 @@ public class Program
                     {
                         ulong ch = ulong.Parse(id["tower_powerup_switch_".Length..]);
                         (tEmbed, tCb) = await towerSvc.SwitchToMoveRewardAsync(ch);
+                    }
+                    // tower_powerup_leadswap_{channelId}_{open|cancel|idx}  (強化時換首發)
+                    else if (id.StartsWith("tower_powerup_leadswap_"))
+                    {
+                        var rest2 = id["tower_powerup_leadswap_".Length..];
+                        int under2 = rest2.LastIndexOf('_');
+                        ulong ch = ulong.Parse(rest2[..under2]);
+                        string action = rest2[(under2 + 1)..];
+                        (tEmbed, tCb) = await towerSvc.HandlePowerUpLeadSwapAsync(ch, action);
                     }
                     // tower_powerup_select_{channelId}_{moveIndex}
                     else if (id.StartsWith("tower_powerup_select_"))
@@ -1322,6 +1331,47 @@ public class Program
                         ulong ch = ulong.Parse(rest[..under]);
                         string action = rest[(under + 1)..];
                         (tEmbed, tCb) = await towerSvc.HandleQuizAsync(ch, action);
+                    }
+                    // tower_reserve_swap_{ch}_{reserveIdx}_{partyIdx}
+                    else if (id.StartsWith("tower_reserve_swap_"))
+                    {
+                        var rest2 = id["tower_reserve_swap_".Length..];
+                        var parts = rest2.Split('_');
+                        if (parts.Length >= 3 && ulong.TryParse(parts[0], out var ch)
+                            && int.TryParse(parts[1], out int ri) && int.TryParse(parts[2], out int pi))
+                        {
+                            var errMsg = await towerSvc.HandleReserveSwapAsync(ch, ri, pi);
+                            if (!string.IsNullOrEmpty(errMsg))
+                                tEmbed = new EmbedBuilder().WithTitle("❌ 失敗").WithDescription(errMsg).WithColor(Color.Red).Build();
+                            // 成功則不更新 Discord 訊息，前端 polling 自動刷新
+                        }
+                    }
+                    // tower_reserve_dismantle_{ch}_{reserveIdx}
+                    else if (id.StartsWith("tower_reserve_dismantle_"))
+                    {
+                        var rest2 = id["tower_reserve_dismantle_".Length..];
+                        var parts = rest2.Split('_');
+                        if (parts.Length >= 2 && ulong.TryParse(parts[0], out var ch) && int.TryParse(parts[1], out int ri))
+                        {
+                            var (ok, flavor, gold, pokeName) = await towerSvc.HandleReservedismantleAsync(ch, ri);
+                            if (!ok)
+                                tEmbed = new EmbedBuilder().WithTitle("❌ 失敗").WithDescription(flavor).WithColor(Color.Red).Build();
+                            // 成功：前端負責顯示動畫與文字，polling 更新金幣
+                        }
+                    }
+                    else if (id.StartsWith("tower_abandon_"))
+                    {
+                        // 玩家在遊戲內主動放棄爬塔
+                        if (ulong.TryParse(id["tower_abandon_".Length..], out var abandonCh))
+                        {
+                            await towerSvc.CancelRunAsync(abandonCh);
+                            // 不需要更新 Discord 訊息，前端自行重置
+                        }
+                    }
+                    else if (id.StartsWith("tower_endrun_"))
+                    {
+                        if (ulong.TryParse(id["tower_endrun_".Length..], out var endCh))
+                            await towerSvc.CancelRunAsync(endCh);
                     }
                 }
                 catch (Exception ex)
