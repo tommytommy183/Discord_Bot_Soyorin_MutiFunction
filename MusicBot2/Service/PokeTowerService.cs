@@ -234,6 +234,7 @@ namespace MusicBot2.Service
         public bool SwapPending { get; set; } = false;
         // Power-upgrade screen: show party swap UI
         public bool PowerUpSwapPending { get; set; } = false;
+        public bool PreBossShopPending { get; set; } = false; // 打完最後層、進終極Boss前的補給商店旗標
         // 備戰區（最多 6 隻）
         public List<TowerPokemon> Reserve { get; set; } = new();
     }
@@ -2121,6 +2122,14 @@ namespace MusicBot2.Service
                 case TowerRunState.ShowingEventResult:
                     opts.Add(new { customId = $"tower_event_confirm_{channelId}", label = "確認，繼續前進", emoji = "✅", description = (string?)null });
                     return opts;
+                case TowerRunState.AwaitingBossChallenge:
+                    opts.Add(new { customId = $"tower_bossChallenge_{channelId}_accept",
+                        label = "⚔️ 接受挑戰",   emoji = "⚔️",
+                        description = "挑戰始祖神獸 ARCEUS（純粹的試煉，無額外獎勵）" });
+                    opts.Add(new { customId = $"tower_bossChallenge_{channelId}_decline",
+                        label = "🏠 功成身退",   emoji = "🏠",
+                        description = "帶著榮耀回家，本次爬塔正式結束" });
+                    return opts;
                 case TowerRunState.InBattle:
                 {
                     // swap buttons when swapPending
@@ -3127,13 +3136,14 @@ namespace MusicBot2.Service
 
                 if (run.CurrentFloor >= run.MaxFloor)
                 {
-                    // 先給完通關獎勵，再詢問是否挑戰終極神獸
+                    // 先給通關獎勵，再開最終補給商店，離開後才詢問是否挑戰終極神獸
                     PendingShinyUserIds.Add(run.PlayerId);
                     if (_useRedis)
                         _ = _redisDb.StringSetAsync($"{SHINY_KEY_PREFIX}{run.PlayerId}", "1", TimeSpan.FromDays(30));
-                    run.State = TowerRunState.AwaitingBossChallenge;
+                    run.PreBossShopPending = true;
+                    run.State = TowerRunState.Shopping;
                     await SaveAsync(run);
-                    return BuildBossChallengePromptEmbed(run);
+                    return BuildShopEmbed(run, "🏆 **恭喜通關 20 層！** 你已獲得閃光保底獎勵！\n最終決戰前，先逛逛補給商店整備一下吧！");
                 }
 
                 // 可以捕獲（無論有沒有神器獎勵，先保存敵人資訊）
@@ -3614,7 +3624,19 @@ namespace MusicBot2.Service
             run.ShopBuyCounts ??= new();
             if (itemKey != "leave" && itemKey != "new_move")
                 run.ShopBuyCounts[itemKey] = run.ShopBuyCounts.GetValueOrDefault(itemKey, 0) + 1;
-            if (itemKey == "leave") run.State = TowerRunState.SelectingPath;
+            if (itemKey == "leave")
+            {
+                // 最終補給商店：離開後進入終極Boss挑戰提示
+                if (run.PreBossShopPending)
+                {
+                    run.PreBossShopPending = false;
+                    run.State = TowerRunState.AwaitingBossChallenge;
+                    run.RunLog.Add(msg);
+                    await SaveAsync(run);
+                    return BuildBossChallengePromptEmbed(run);
+                }
+                run.State = TowerRunState.SelectingPath;
+            }
 
             // 購買給 EXP（離開不給）
             if (itemKey != "leave")

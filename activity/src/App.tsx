@@ -7,6 +7,7 @@ import { BattleScene } from './components/BattleScene';
 import { PathSelector } from './components/PathSelector';
 import { GenericChoices } from './components/GenericChoices';
 import { CasinoScene } from './components/CasinoScene';
+import { BossChallengeScene } from './components/BossChallengeScene';
 import { CatchScene } from './components/CatchScene';
 import { GameOver } from './components/GameOver';
 import { HpBar } from './components/HpBar';
@@ -336,6 +337,18 @@ export default function App() {
   const [catchSuccess, setCatchSuccess] = useState(false);
   const [pendingRun, setPendingRun] = useState<TowerRun | null>(null);
 
+  // Auto-pass catch when no balls available
+  useEffect(() => {
+    if (run?.state === 'SelectingCatch' && !catchSuccess) {
+      const balls = run.balls ?? {};
+      const hasBalls = Object.values(balls).some(c => (c as number) > 0);
+      if (!hasBalls && channelId) {
+        handleAction(`tower_catch_${run.channelId}_pass`);
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [run?.state]);
+
   async function handleAction(customId: string) {
     if (!channelId || busy) return;
     const wasCatch = customId.startsWith('tower_catch_') && !customId.endsWith('_pass');
@@ -434,7 +447,10 @@ export default function App() {
         {run.state === 'InCasino' && (
           <CasinoScene run={run} onAction={handleAction} busy={busy} />
         )}
-        {!['InBattle', 'SelectingPath', 'SelectingCatch', 'Victory', 'Defeated', 'InCasino'].includes(run.state) && (  // AwaitingBossChallenge 走 GenericChoices
+        {run.state === 'AwaitingBossChallenge' && (
+          <BossChallengeScene run={run} onAction={handleAction} busy={busy} />
+        )}
+        {!['InBattle', 'SelectingPath', 'SelectingCatch', 'Victory', 'Defeated', 'InCasino', 'AwaitingBossChallenge'].includes(run.state) && (
           <GenericChoices run={run} onAction={handleAction} busy={busy} />
         )}
       </div>

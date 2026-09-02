@@ -224,7 +224,7 @@ export function BattleScene({ run, onAction, busy }: Props) {
   const [flashColor, setFlashColor] = useState('');
   const [flashAnim, setFlashAnim] = useState('screenFlash');
   const [critAnim, setCritAnim] = useState(false);
-  const [floatTexts, setFloatTexts] = useState<{id: number; text: string; color: string; x: number}[]>([]);
+  const [floatTexts, setFloatTexts] = useState<{id: number; text: string; color: string; x: number; big?: boolean}[]>([]);
   // extra FX layer key (separate from fxKey so we can trigger secondary bursts)
   const [impactRings, setImpactRings] = useState(0); // count of rings to show
 
@@ -236,10 +236,10 @@ export function BattleScene({ run, onAction, busy }: Props) {
   // Dynamic lunge distance so the player sprite actually reaches the enemy
   const [lungeX, setLungeX] = useState(175);
 
-  function addFloat(text: string, color: string, xPct: number) {
+  function addFloat(text: string, color: string, xPct: number, big?: boolean, ms = 1100) {
     const id = ++floatIdRef.current;
-    setFloatTexts(prev => [...prev, { id, text, color, x: xPct }]);
-    setTimeout(() => setFloatTexts(prev => prev.filter(f => f.id !== id)), 1000);
+    setFloatTexts(prev => [...prev, { id, text, color, x: xPct, big }]);
+    setTimeout(() => setFloatTexts(prev => prev.filter(f => f.id !== id)), ms);
   }
 
   // ── Log watcher: enemy animations + proc floats ───────────────────────
@@ -250,17 +250,73 @@ export function BattleScene({ run, onAction, busy }: Props) {
       prevLogLen.current = logs.length;
       const currentEnemy = run.currentEnemy;
 
-      // Proc floating texts
+      // ── 傷害數字 + 效果漂浮字 ─────────────────────────────────
+      for (const line of newLogs) {
+        const isPlayerAttack = line.startsWith('▶'); // 我方攻擊 → 傷害顯示在敵方(右)
+        const isEnemyAttack  = line.startsWith('◀'); // 敵方攻擊 → 傷害顯示在我方(左)
+
+        if (isPlayerAttack || isEnemyAttack) {
+          const dmgMatch = line.match(/-(\d+)HP/);
+          if (dmgMatch) {
+            const dmg = parseInt(dmgMatch[1]);
+            const xPos = isPlayerAttack ? 62 : 12;          // 敵方右側 or 我方左側
+            const col  = isPlayerAttack ? '#f87171' : '#fb923c';
+            addFloat(`-${dmg}`, col, xPos, true, 1400);   // big=true, 顯示 1.4s
+          }
+          // 有效度浮字（緊接在傷害後，偏上一點用 x+4）
+          if (line.includes('★超效')) {
+            const xPos = isPlayerAttack ? 66 : 16;
+            addFloat('超效!', '#f97316', xPos, false, 900);
+          } else if (line.includes('▼不佳')) {
+            const xPos = isPlayerAttack ? 66 : 16;
+            addFloat('不佳', '#94a3b8', xPos, false, 900);
+          } else if (line.includes('×無效')) {
+            const xPos = isPlayerAttack ? 66 : 16;
+            addFloat('無效!', '#475569', xPos, false, 900);
+          }
+        }
+
+        // 異常狀態施加
+        const statusMap: [string, string, string][] = [
+          ['睡眠', '😴睡眠', '#818cf8'],
+          ['中毒', '☠️中毒', '#a855f7'],
+          ['劇毒', '💀劇毒', '#7c3aed'],
+          ['燒傷', '🔥燒傷', '#ef4444'],
+          ['麻痺', '⚡麻痺', '#fbbf24'],
+          ['混亂', '💫混亂', '#ec4899'],
+          ['冰凍', '🧊冰凍', '#7dd3fc'],
+        ];
+        for (const [kw, label, col] of statusMap) {
+          if (line.includes(kw) && !line.includes('已' + kw) && !line.includes('解除')) {
+            // 顯示在被施加的那方
+            const x = line.startsWith('▶') ? 60 : 10;
+            addFloat(label, col, x, false, 1300);
+          }
+        }
+
+        // 回血 / 吸血 / 再生 (永遠顯示在回血方)
+        const healMatch = line.match(/恢復.*?(\d+)\s*HP/);
+        if (healMatch) {
+          const x = line.startsWith('▶') ? 22 : 62; // 吸血方 = 攻擊方回血
+          addFloat(`+${healMatch[1]}HP`, '#4ade80', x, false, 1100);
+        }
+      }
+
+      // 連擊、聖物觸發（不限行首）
       const joined = newLogs.join(' ');
-      if (joined.includes('暴擊'))       { addFloat('暴擊!', '#facc15', 68); setCritAnim(true); setTimeout(() => setCritAnim(false), 500); }
+      if (joined.includes('暴擊'))       { addFloat('暴擊!', '#facc15', 68, false); setCritAnim(true); setTimeout(() => setCritAnim(false), 500); }
       if (joined.includes('連擊'))       addFloat('連擊!', '#f97316', 72);
       if (joined.includes('鏡面反射'))   addFloat('反射!', '#60a5fa', 55);
       if (joined.includes('復仇釋放'))   addFloat('復仇!', '#ef4444', 65);
       if (joined.includes('生命吸取'))   addFloat('+HP', '#4ade80', 28);
       if (joined.includes('吸血鬼'))     addFloat('+HP', '#c084fc', 28);
       if (joined.includes('反噬'))       addFloat('反噬!', '#f87171', 25);
-      if (joined.includes('再生'))       addFloat('+HP', '#34d399', 25);
+      if (joined.includes('再生') && !joined.includes('恢復'))   addFloat('+HP', '#34d399', 25);
       if (joined.includes('寄生'))       addFloat('+5HP', '#86efac', 24);
+      // 聖物觸發關鍵字
+      if (joined.includes('不死鳥羽'))   addFloat('🪶復活!', '#f59e0b', 25, false, 1500);
+      if (joined.includes('鏡面盾'))     addFloat('🛡️反彈!', '#60a5fa', 55);
+      if (joined.includes('JACKPOT') || joined.includes('爆擊')) addFloat('💥BOOM', '#ef4444', 65, true, 1200);
 
       if (attackLockedRef.current) {
         // Enemy turn: animate and detect move type
@@ -876,10 +932,12 @@ export function BattleScene({ run, onAction, busy }: Props) {
           <div key={ft.id} style={{
             position: 'absolute', bottom: '38%', left: `${ft.x}%`,
             pointerEvents: 'none', zIndex: 26,
-            fontWeight: 900, fontSize: 13, letterSpacing: '0.03em',
+            fontWeight: 900, fontSize: ft.big ? 20 : 13, letterSpacing: '0.03em',
             color: ft.color,
-            textShadow: `0 0 8px ${ft.color}, 0 2px 4px rgba(0,0,0,0.8)`,
-            animation: 'floatText2 0.95s ease forwards',
+            textShadow: ft.big
+              ? `0 0 12px ${ft.color}, 0 0 24px ${ft.color}88, 0 2px 6px rgba(0,0,0,0.9)`
+              : `0 0 8px ${ft.color}, 0 2px 4px rgba(0,0,0,0.8)`,
+            animation: `floatText2 ${ft.big ? '1.2s' : '0.95s'} ease forwards`,
           }}>{ft.text}</div>
         ))}
 
