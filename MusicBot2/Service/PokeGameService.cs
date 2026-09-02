@@ -1408,14 +1408,14 @@ namespace MusicBot2.Service
                 string battlePrompt = $@"請模擬一場精彩的pokemon對戰，並判斷勝負。
 
 對戰雙方：
-1. {player1Name} 的 第一隻寶可夢:
+1. 玩家A {player1Name} 的 第一隻寶可夢:
     自訂名稱:{pokemon1.CustomName ?? pokemon1.Name}，真實名稱:{pokemon1.Name}
    - 屬性: {string.Join(", ", pokemon1.Types)}
    - HP: {pokemon1.HP}, 攻擊: {pokemon1.Attack}, 防禦: {pokemon1.Defense}
    - 特攻: {pokemon1.SpecialAttack}, 特防: {pokemon1.SpecialDefense}, 速度: {pokemon1.Speed}
    - 是否為閃光: {(pokemon1.isShiny ? "是" : "否")}
 
-2. {player1Name} 的 第二隻寶可夢:
+2. 玩家A {player1Name} 的 第二隻寶可夢:
     自訂名稱:{pokemon2.CustomName ?? pokemon2.Name}，真實名稱:{pokemon2.Name}
    - 屬性: {string.Join(", ", pokemon2.Types)}
    - HP: {pokemon2.HP}, 攻擊: {pokemon2.Attack}, 防禦: {pokemon2.Defense}
@@ -1424,14 +1424,14 @@ namespace MusicBot2.Service
 
 ========對上========
 
-3. {player2Name} 的第一隻寶可夢:
+3. 玩家B {player2Name} 的第一隻寶可夢:
     自訂名稱:{opponentPokemon1.CustomName ?? opponentPokemon1.Name}，真實名稱:{opponentPokemon1.Name}
    - 屬性: {string.Join(", ", opponentPokemon1.Types)}
    - HP: {opponentPokemon1.HP}, 攻擊: {opponentPokemon1.Attack}, 防禦: {opponentPokemon1.Defense}
    - 特攻: {opponentPokemon1.SpecialAttack}, 特防: {opponentPokemon1.SpecialDefense}, 速度: {opponentPokemon1.Speed}
    - 是否為閃光: {(opponentPokemon1.isShiny ? "是" : "否")}
 
-4. {player2Name} 的第二隻寶可夢:
+4. 玩家B {player2Name} 的第二隻寶可夢:
     自訂名稱:{opponentPokemon2.CustomName ?? opponentPokemon2.Name}，真實名稱:{opponentPokemon2.Name}
    - 屬性: {string.Join(", ", opponentPokemon2.Types)}
    - HP: {opponentPokemon2.HP}, 攻擊: {opponentPokemon2.Attack}, 防禦: {opponentPokemon2.Defense}
@@ -1444,16 +1444,41 @@ namespace MusicBot2.Service
 要以該pokemon真實的技能來敘述，期間有自訂名稱的話就要叫自訂名稱，沒有的話就叫真實名稱。
 如果是閃光的，對話中要提到閃光的特效，但閃光完全不影響戰鬥結果。
 HP為0就是真的死亡，不會再有後續動作
-最後請在描述的最後一行明確說明勝者是誰，格式為「勝者：[玩家名稱]」";
+最後請在描述的最後一行明確說明勝者是誰，格式為「勝者：[玩家A 或 玩家B]」";
 
                 // Phase 1：生成對戰劇情
                 var aiResponse = await _aiService.GenerateSimpleTextAsync(battlePrompt);
 
                 // Phase 2：從劇情萃取勝者
                 bool player1Wins = aiResponse.Contains($"勝者：{player1Name}") ||
-                                   aiResponse.Contains($"勝者: {player1Name}");
+                                   aiResponse.Contains($"勝者: {player1Name}") ||
+
+                                   aiResponse.Contains($"勝者：玩家1") ||
+                                   aiResponse.Contains($"勝者: 玩家1") ||
+
+                                   aiResponse.Contains($"勝者：玩家A") ||
+                                   aiResponse.Contains($"勝者: 玩家A") ||
+
+                                   aiResponse.Contains($"勝者：{pokemon1.Name}") ||
+                                   aiResponse.Contains($"勝者: {pokemon1.Name}") ||
+
+                                   aiResponse.Contains($"勝者：{pokemon1.CustomName}") ||
+                                   aiResponse.Contains($"勝者: {pokemon1.CustomName}");
+
                 bool player2Wins = aiResponse.Contains($"勝者：{player2Name}") ||
-                                   aiResponse.Contains($"勝者: {player2Name}");
+                                   aiResponse.Contains($"勝者: {player2Name}") ||
+
+                                   aiResponse.Contains($"勝者：玩家B") ||
+                                   aiResponse.Contains($"勝者: 玩家B") ||
+
+                                   aiResponse.Contains($"勝者：玩家2") ||
+                                   aiResponse.Contains($"勝者: 玩家2") ||
+
+                                   aiResponse.Contains($"勝者：{pokemon2.Name}") ||
+                                   aiResponse.Contains($"勝者: {pokemon2.Name}") ||
+
+                                   aiResponse.Contains($"勝者：{pokemon2.CustomName}") ||
+                                   aiResponse.Contains($"勝者: {pokemon2.CustomName}");
 
                 if (!player1Wins && !player2Wins)
                 {
@@ -1813,13 +1838,13 @@ HP為0就是真的死亡，不會再有後續動作
                 string battlePrompt = $@"請模擬一場精彩的pokemon對戰，並判斷勝負。
 
 對戰雙方：
-1. {player1Name} 的 自訂名稱:{pokemon1.CustomName ?? pokemon1.Name}，真實名稱:{pokemon1.Name}
+1. 玩家A : {player1Name} 的 自訂名稱:{pokemon1.CustomName ?? pokemon1.Name}，真實名稱:{pokemon1.Name}
    - 屬性: {string.Join(", ", pokemon1.Types)}
    - HP: {pokemon1.HP}, 攻擊: {pokemon1.Attack}, 防禦: {pokemon1.Defense}
    - 特攻: {pokemon1.SpecialAttack}, 特防: {pokemon1.SpecialDefense}, 速度: {pokemon1.Speed}
    - 是否為閃光: {(pokemon1.isShiny ? "是" : "否")}
 
-2. {player2Name} 的 自訂名稱:{pokemon2.CustomName ?? pokemon2.Name}，真實名稱:{pokemon2.Name}
+2. 玩家B : {player2Name} 的 自訂名稱:{pokemon2.CustomName ?? pokemon2.Name}，真實名稱:{pokemon2.Name}
    - 屬性: {string.Join(", ", pokemon2.Types)}
    - HP: {pokemon2.HP}, 攻擊: {pokemon2.Attack}, 防禦: {pokemon2.Defense}
    - 特攻: {pokemon2.SpecialAttack}, 特防: {pokemon2.SpecialDefense}, 速度: {pokemon2.Speed}
@@ -1849,7 +1874,7 @@ HP為0就是真的死亡，不會再有後續動作
 - 如果是閃光的，要提到閃光特效（但不影響戰鬥結果）
 - 必須考慮屬性克制關係！如果某方有明顯的屬性優勢（2x以上），這應該是決定勝負的關鍵因素
 - HP為0就是真的死亡，不會再有後續動作
-- 最後請在描述的最後一行明確說明勝者是誰，格式為「勝者：[玩家名稱]」";
+- 最後請在描述的最後一行明確說明勝者是誰，格式為「勝者：[玩家A 或 玩家B]」，範例：勝者：[玩家A]";
 
                 // 呼叫 AI 判斷對戰結果
                 var aiResponse = await _aiService.GenerateSimpleTextAsync(battlePrompt);
