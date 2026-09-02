@@ -205,7 +205,8 @@ namespace MusicBot2.Service
         // Casino
         public int CasinoRound { get; set; } = 0;
         public int CasinoProfit { get; set; } = 0;
-        public int CasinoBet { get; set; } = 0;   // 本局下注金額（0=未下注）
+        public int CasinoBet { get; set; } = 0;     // 本局下注金額（0=未下注）
+        public int CasinoWinStreak { get; set; } = 0; // 連勝數（決定倍率）
         // Mini-game: 2048 (16 ints, row-major; 0=empty)
         public List<int> MiniGame2048Board { get; set; } = new();
         public int MiniGame2048MovesLeft { get; set; } = 0;
@@ -1939,8 +1940,12 @@ namespace MusicBot2.Service
                     previewPokeId  = n.PreviewPokeId,
                     previewPokeName= n.PreviewPokeName,
                 }).ToList(),
-                eventResultText = run.EventResultText,
-                swapPending     = run.SwapPending,
+                eventResultText  = run.EventResultText,
+                swapPending      = run.SwapPending,
+                casinoBet        = run.CasinoBet,
+                casinoProfit     = run.CasinoProfit,
+                casinoRound      = run.CasinoRound,
+                casinoWinStreak  = run.CasinoWinStreak,
                 reserve         = run.Reserve.Select(p => new
                 {
                     pokeId        = p.PokeId,
@@ -2749,6 +2754,7 @@ namespace MusicBot2.Service
                 run.State = TowerRunState.InCasino;
                 run.CasinoRound = 0;
                 run.CasinoProfit = 0;
+                run.CasinoWinStreak = 0;
                 await SaveAsync(run);
                 return BuildCasinoEmbed(run);
             }
@@ -4010,15 +4016,15 @@ namespace MusicBot2.Service
                 profitMsg += $"\n{leaveExpMsg}";
                 run.CasinoProfit = 0;
                 run.CasinoRound = 0;
+                run.CasinoWinStreak = 0;
                 await SaveAsync(run);
                 return BuildPathEmbed(run, profitMsg);
             }
 
             if (action == "cancel")
             {
-                // 反悔：退回籌碼，回到下注選擇
+                // 反悔：退回籌碼，回到下注選擇（不改動 CasinoProfit，因為還沒有輸贏）
                 run.Gold += run.CasinoBet;
-                run.CasinoProfit += run.CasinoBet; // 補回已扣的
                 run.CasinoBet = 0;
                 await SaveAsync(run);
                 return BuildCasinoEmbed(run, "😅 算了算了，籌碼還你，重新選吧。");
@@ -4048,18 +4054,35 @@ namespace MusicBot2.Service
                 int dice = _rng.Next(1, 7);
                 string diceFace = dice switch { 1 => "⚀", 2 => "⚁", 3 => "⚂", 4 => "⚃", 5 => "⚄", 6 => "⚅", _ => $"{dice}" };
                 bool won = (action == "high" && dice >= 4) || (action == "low" && dice <= 3);
+                // JACKPOT：猜大且骰到6，或猜小且骰到1
+                bool isJackpot = (action == "high" && dice == 6) || (action == "low" && dice == 1);
                 string result;
                 if (won)
                 {
-                    run.Gold += bet * 2;  // 還回本金 + 獎金
-                    run.CasinoProfit += bet;
-                    result = $"🎲 {diceFace} 骰出 **{dice}** — 猜中！**+{bet}💰** 入袋！（現在 {run.Gold}💰）";
+                    // 倍率：連勝0次=×2，連勝1=×2.5，連勝2=×3，連勝3+=×4，JACKPOT=×5
+                    float mult = isJackpot ? 5f
+                        : run.CasinoWinStreak >= 3 ? 4f
+                        : run.CasinoWinStreak >= 2 ? 3f
+                        : run.CasinoWinStreak >= 1 ? 2.5f
+                        : 2f;
+                    int payout = (int)(bet * mult);
+                    int profit = payout - bet; // 淨獲利
+                    run.Gold += payout;  // 還回本金 + 獎金
+                    run.CasinoProfit += profit;
+                    run.CasinoWinStreak++;
+                    string streakTag = run.CasinoWinStreak > 1 ? $" 🔥連勝×{run.CasinoWinStreak}！" : "";
+                    if (isJackpot)
+                        result = $"🎲 {diceFace} 骰出 **{dice}** — 🎰 **JACKPOT！** **+{profit}💰** 大爆發！（現在 {run.Gold}💰）";
+                    else
+                        result = $"🎲 {diceFace} 骰出 **{dice}** — 猜中！×{mult:0.#}倍！**+{profit}💰** 入袋！{streakTag}（現在 {run.Gold}💰）";
                 }
                 else
                 {
-                    // 本金已在下注時扣掉，輸了就什麼都沒了
+                    // 本金已在下注時扣掉，輸了就什麼都沒了；連勝歸零
                     run.CasinoProfit -= bet;
-                    result = $"🎲 {diceFace} 骰出 **{dice}** — 猜錯！**{bet}💰** 被吃掉 💀（現在 {run.Gold}💰）";
+                    string streakLoss = run.CasinoWinStreak > 0 ? $" 連勝 {run.CasinoWinStreak} 中斷！" : "";
+                    run.CasinoWinStreak = 0;
+                    result = $"🎲 {diceFace} 骰出 **{dice}** — 猜錯！💀 **{bet}💰** 被吃掉！{streakLoss}（現在 {run.Gold}💰）";
                 }
                 run.CasinoRound++;
                 int casinoRoundExp = 10 + run.CurrentFloor * 2;

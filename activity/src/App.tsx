@@ -6,6 +6,7 @@ import type { TowerRun, PassiveOption } from './types';
 import { BattleScene } from './components/BattleScene';
 import { PathSelector } from './components/PathSelector';
 import { GenericChoices } from './components/GenericChoices';
+import { CasinoScene } from './components/CasinoScene';
 import { CatchScene } from './components/CatchScene';
 import { GameOver } from './components/GameOver';
 import { HpBar } from './components/HpBar';
@@ -430,7 +431,10 @@ export default function App() {
           <CatchScene run={run} onAction={handleAction} busy={busy} catchFailed={catchFailed}
             catchSuccess={catchSuccess} onConfirmSuccess={handleCatchSuccessConfirm} />
         )}
-        {!['InBattle', 'SelectingPath', 'SelectingCatch', 'Victory', 'Defeated'].includes(run.state) && (  // AwaitingBossChallenge 走 GenericChoices
+        {run.state === 'InCasino' && (
+          <CasinoScene run={run} onAction={handleAction} busy={busy} />
+        )}
+        {!['InBattle', 'SelectingPath', 'SelectingCatch', 'Victory', 'Defeated', 'InCasino'].includes(run.state) && (  // AwaitingBossChallenge 走 GenericChoices
           <GenericChoices run={run} onAction={handleAction} busy={busy} />
         )}
       </div>

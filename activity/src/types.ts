@@ -134,6 +134,10 @@ export interface TowerRun {
   eventResultText?: string;
   swapPending?: boolean;
   reserve?: TowerPokemon[];
+  casinoBet?: number;
+  casinoProfit?: number;
+  casinoRound?: number;
+  casinoWinStreak?: number;
 }
 
 export interface ActionRequest {
