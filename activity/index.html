@@ -31,7 +31,21 @@
       @keyframes floatUp { from { opacity:1; transform: translateY(0) scale(1); } to { opacity:0; transform: translateY(-40px) scale(1.3); } }
       @keyframes bossGlow { 0%,100% { border-color: #ef4444; box-shadow: 0 0 12px #ef4444; } 50% { border-color: #f97316; box-shadow: 0 0 24px #f97316; } }
       @keyframes lunge { 0%,100% { transform: translateX(0); } 40% { transform: translateX(55px); } }
-      @keyframes lungeFull { 0% { transform: translateX(0) scaleX(1); } 40% { transform: translateX(175px) scaleX(1.08); } 75% { transform: translateX(175px) scaleX(1); } 100% { transform: translateX(0) scaleX(1); } }
+      /* lungeFull: --lunge-x is set dynamically per-attack so the sprite reaches the enemy */
+      @keyframes lungeFull {
+        0%   { transform: translateX(0) scaleX(1); }
+        35%  { transform: translateX(calc(var(--lunge-x, 175px) * 0.6)) scaleX(1.12); }
+        52%  { transform: translateX(var(--lunge-x, 175px)) scaleX(1.05); }
+        68%  { transform: translateX(var(--lunge-x, 175px)) scaleX(1); }
+        100% { transform: translateX(0) scaleX(1); }
+      }
+      @keyframes lungeSpinFull {
+        0%   { transform: translateX(0) rotate(0deg) scaleX(1); }
+        30%  { transform: translateX(calc(var(--lunge-x, 175px) * 0.5)) rotate(120deg) scaleX(1.1); }
+        55%  { transform: translateX(var(--lunge-x, 175px)) rotate(180deg) scaleX(1); }
+        72%  { transform: translateX(var(--lunge-x, 175px)) rotate(180deg) scaleX(1); }
+        100% { transform: translateX(0) rotate(0deg) scaleX(1); }
+      }
       @keyframes enemyLunge { 0% { transform: translateX(0); } 40% { transform: translateX(-160px); } 100% { transform: translateX(0); } }
       @keyframes statusAura { 0%,100% { filter: brightness(1); } 50% { filter: brightness(2.5) saturate(3) hue-rotate(30deg); } }
       @keyframes projectileFly { 0% { left:110px; bottom:120px; opacity:1; transform:scale(1.4); } 100% { left:calc(100% - 60px); bottom:115px; opacity:0; transform:scale(0.5); } }
@@ -58,6 +72,16 @@
       @keyframes leafWhirl { 0% { transform:translate(0,0) scale(0) rotate(0deg); opacity:1; } 100% { transform:translate(var(--dx,30px),var(--dy,-60px)) scale(1.2) rotate(540deg); opacity:0; } }
       @keyframes waveSweep { 0% { transform-origin:left; transform:scaleX(0); opacity:1; } 60% { transform:scaleX(1); opacity:1; } 100% { transform:scaleX(1); opacity:0; } }
       @keyframes slamDrop { 0% { transform:translateX(-50%) translateY(-10px) scale(0.4); opacity:0; } 20% { opacity:1; } 70% { transform:translateX(-50%) translateY(130px) scale(1.2); opacity:1; } 100% { transform:translateX(-50%) translateY(130px) scale(1); opacity:0; } }
+      /* jumpSlam: 跳起 → 飛越場地 → 砸在敵方身上 → 彈回 */
+      @keyframes jumpSlam {
+        0%   { transform: translateX(0) translateY(0) scaleX(1) scaleY(1); }
+        22%  { transform: translateX(calc(var(--lunge-x,175px)*0.3)) translateY(-80px) scaleX(0.85) scaleY(1.2); }
+        48%  { transform: translateX(calc(var(--lunge-x,175px)*0.85)) translateY(-110px) scaleX(0.8) scaleY(1.25); }
+        64%  { transform: translateX(var(--lunge-x,175px)) translateY(0px) scaleX(1.3) scaleY(0.7); }
+        72%  { transform: translateX(var(--lunge-x,175px)) translateY(-14px) scaleX(1.1) scaleY(0.95); }
+        82%  { transform: translateX(var(--lunge-x,175px)) translateY(0) scaleX(1) scaleY(1); }
+        100% { transform: translateX(0) translateY(0) scaleX(1) scaleY(1); }
+      }
       @keyframes tailSwing { 0% { transform:scaleX(0) scaleY(0.3); opacity:0; } 40% { transform:scaleX(1.15) scaleY(1.1); opacity:1; } 100% { transform:scaleX(1.1) scaleY(1); opacity:0; } }
       @keyframes lungeSpinFull { 0% { transform:translateX(0) rotate(0deg) scaleX(1); } 35% { transform:translateX(80px) rotate(180deg) scaleX(1.1); } 65% { transform:translateX(160px) rotate(180deg) scaleX(1); } 100% { transform:translateX(0) rotate(0deg) scaleX(1); } }
       @keyframes statusRing { 0%,100% { transform:scale(1); opacity:0; } 50% { transform:scale(1.4); opacity:0.7; } }

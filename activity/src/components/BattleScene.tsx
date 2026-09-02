@@ -19,22 +19,46 @@ type AttackAnim =
 /** Map move name keywords → animation type */
 function getMoveAnimType(name: string, category: string): AttackAnim {
   const n = name ?? '';
-  // Ordered from most-specific to most-general
+  // ── 最高優先：踢/膝 物理動作，避免被刀/旋等關鍵字搶走 ──
+  if (/踢|膝/.test(n)) return 'lunge';
+  // ── 幽靈/暗屬性球形技：讓影字優先於球 ──
+  if (/影子球|月影球/.test(n)) return 'shadow';
+  // ── 尾 ──
   if (/尾/.test(n)) return 'tail';
-  if (/十字|剪刀X|剪刀十/.test(n)) return 'cross';
-  if (/葉|草|木|花|種|藤|豆|植|芽|棉|孢子|楓/.test(n)) return 'leaf';
-  if (/光束|射線|雷射|能量波|氣功|幅射/.test(n)) return 'beam';
+  // ── 十字剪刀 (X剪刀、剪刀十字 都吃到) ──
+  if (/十字|剪刀/.test(n)) return 'cross';
+  // ── 葉草系 ──
+  if (/葉|草|木質槌/.test(n)) return 'leaf';   // 木質槌獨立防止被「木」走一般leaf
+  if (/木|花|種|藤|豆|植|芽|棉|孢子|楓/.test(n)) return 'leaf';
+  // ── 光束/射線 (+光線 → 太陽光線、金屬光線、耀眼魅力全部歸beam) ──
+  if (/光束|射線|雷射|能量波|氣功|幅射|光線/.test(n)) return 'beam';
+  // ── 球彈：排除已在shadow/leaf裡的招式 ──
   if (/球|彈|珠/.test(n)) return 'projectile';
+  // ── 爪刀斬切：排除飛行系的「空中斬/劈空斬/空氣切割」→ 用wind ──
+  if (/空中斬|劈空斬|空氣切割/.test(n)) return 'wind';
   if (/爪|刀|斬|切|利刃|利爪|裂/.test(n)) return 'claw';
-  if (/電|雷|靜電|十萬伏特|落雷|閃電|放電/.test(n)) return 'thunder';
-  if (/火|炎|焰|岩漿|爆炎|大字|噴射(?!水)/.test(n)) return 'flame';
-  if (/冰|雪|霜|凍|冷|冰凍/.test(n)) return 'ice';
-  if (/影|暗|鬼|幽|夜|詛|闇|奪|魅/.test(n)) return 'shadow';
-  if (/毒|酸|腐|汙/.test(n)) return 'poison';
-  if (/波|水|海|潮|漩渦|泡|湧|衝浪|瀑|液|噴水/.test(n)) return 'wave';
-  if (/岩石|石塊|土石|礫|隕石|土壤|岩崩/.test(n)) return 'rock';
-  if (/砸|落|降|踩|震|崩|地震|重力/.test(n)) return 'slam';
+  // ── 電系 ──
+  if (/電|雷|靜電|十萬伏特|落雷|閃電|放電|伏特/.test(n)) return 'thunder';
+  // ── 火系 (+旭日、熱風) ──
+  if (/火|炎|焰|岩漿|爆炎|大字|噴射(?!水)|旭日|熱風/.test(n)) return 'flame';
+  // ── 冰系 (+零度、霧化、極寒) ──
+  if (/冰|雪|霜|凍|冷|冰凍|零度|霧化|極寒/.test(n)) return 'ice';
+  // ── 暗影/幽靈系 (移除「魅」避免耀眼魅力誤判，補幻象/惡魔/波導/惡波) ──
+  if (/影|暗|鬼|幽|夜|詛|闇|奪|幻象|惡魔|惡波/.test(n)) return 'shadow';
+  // ── 毒系 (+污) ──
+  if (/毒|酸|腐|汙|污|骯臟|爛泥/.test(n)) return 'poison';
+  // ── 水波系 (+急流、激流) ──
+  if (/波|水|海|潮|漩渦|泡|湧|衝浪|瀑|液|噴水|急流|激流/.test(n)) return 'wave';
+  // ── 岩石系 (排除龍之隕石→projectile、鋼系隕石衝→slam) ──
+  if (/龍之隕石/.test(n)) return 'projectile';
+  if (/隕石衝/.test(n)) return 'slam';
+  if (/岩石|石塊|土石|礫|土壤|岩崩|尖石|隕石/.test(n)) return 'rock';
+  // ── slam (+大地、爆炸、流沙、木質槌、光合爆) ──
+  if (/砸|落|降|踩|震|崩|地震|重力|大地|爆炸|流沙|光合爆/.test(n)) return 'slam';
+  // ── 風系 (旋風踢已被最頂踢優先攔截) ──
   if (/風|颱|龍捲|旋|吹/.test(n)) return 'wind';
+  // ── 物理拳擊/衝擊類不讓「彈」字導向projectile ──
+  if (/子彈拳|磁鐵炸彈/.test(n)) return 'lunge';
   // Fallback by category
   return category === 'Physical' ? 'lunge'
     : category === 'Special' ? 'projectile'
@@ -151,7 +175,10 @@ export function BattleScene({ run, onAction, busy }: Props) {
   const floatIdRef = useRef(0);
   const prevLogLen = useRef(0);
   const attackLockedRef = useRef(false);
-  const fxKey = useRef(0); // incremented on each attack to force re-mount of FX elements
+  const fxKey = useRef(0);
+  const arenaRef = useRef<HTMLDivElement>(null);
+  // Dynamic lunge distance so the player sprite actually reaches the enemy
+  const [lungeX, setLungeX] = useState(175);
 
   function addFloat(text: string, color: string, xPct: number) {
     const id = ++floatIdRef.current;
@@ -225,6 +252,19 @@ export function BattleScene({ run, onAction, busy }: Props) {
     setCurrentMoveType(moveType ?? '一般');
     fxKey.current++;
     setImpactRings(0);
+
+    // 計算衝刺距離：讓玩家精靈剛好撞上敵方精靈
+    if (arenaRef.current) {
+      const arenaW = arenaRef.current.offsetWidth;
+      // player: left=6, width=110 → right edge = 116
+      // enemy (normal): right=8, width=96 → left edge = arenaW-104
+      // enemy (boss): right=4, width=130 → left edge = arenaW-134
+      const enemyLeftEdge = isBoss ? arenaW - 134 : arenaW - 104;
+      const playerRightEdge = 116;
+      const dist = Math.max(60, enemyLeftEdge - playerRightEdge - 6); // -6 = slight overlap for impact feel
+      setLungeX(dist);
+    }
+
     setAttackAnim(animType);
 
     let apiDelay = 850;
@@ -257,14 +297,13 @@ export function BattleScene({ run, onAction, busy }: Props) {
       setTimeout(() => { setShake(false); setShowImpact(false); setImpactRings(0); }, 560);
       apiDelay = 820;
     } else if (animType === 'slam' || animType === 'rock') {
-      // ① 落下期間：緩慢加速
-      // ② 380ms：衝擊，全場震
+      // 64% of 820ms = ~525ms 是落地瞬間
       setTimeout(() => {
-        doFlash('rgba(180,140,80,0.45)', 300);
+        doFlash('rgba(180,140,80,0.55)', 350, 'screenFlashHard');
         setArenaShake(true); setShake(true); setShowImpact(true); setImpactRings(3);
-      }, 380);
-      setTimeout(() => { setArenaShake(false); setShake(false); setShowImpact(false); setImpactRings(0); }, 680);
-      apiDelay = 900;
+      }, 525);
+      setTimeout(() => { setArenaShake(false); setShake(false); setShowImpact(false); setImpactRings(0); }, 820);
+      apiDelay = 920;
     } else if (animType === 'shadow') {
       // ① 80ms：畫面變暗紫
       setTimeout(() => doFlash('rgba(109,40,217,0.4)', 500), 80);
@@ -691,7 +730,7 @@ export function BattleScene({ run, onAction, busy }: Props) {
       </div>
 
       {/* ── Battle Arena ─────────────────────────────────────────── */}
-      <div style={{
+      <div ref={arenaRef} style={{
         position: 'relative',
         background: bgGradient,
         borderRadius: 14,
@@ -807,11 +846,16 @@ export function BattleScene({ run, onAction, busy }: Props) {
         {activePoke && (
           <div style={{
             position: 'absolute', bottom: 40, left: 6,
+            ['--lunge-x' as string]: `${lungeX}px`,
             animation:
-              attackAnim === 'lunge' ? 'lungeFull 0.75s ease-in-out'
+              attackAnim === 'lunge' ? 'lungeFull 0.72s ease-in-out'
               : attackAnim === 'tail' ? 'lungeSpinFull 0.7s ease-in-out'
+              : attackAnim === 'claw' ? 'lungeFull 0.62s ease-in-out'
+              : attackAnim === 'cross' ? 'lungeFull 0.60s ease-in-out'
+              : attackAnim === 'slam' ? 'jumpSlam 0.82s cubic-bezier(0.25,0.46,0.45,0.94)'
+              : attackAnim === 'rock' ? 'jumpSlam 0.80s cubic-bezier(0.25,0.46,0.45,0.94)'
               : undefined,
-          }}>
+          } as React.CSSProperties}>
             <img
               src={activePoke.isShiny ? spriteUrl(activePoke.pokeId, 'shiny') : spriteUrl(activePoke.pokeId, 'back')}
               alt={activePoke.name}
