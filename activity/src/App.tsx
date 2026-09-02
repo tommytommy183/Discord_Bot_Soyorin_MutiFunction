@@ -392,7 +392,13 @@ export default function App() {
 
   if (run.state === 'Victory' || run.state === 'Defeated') return (
     <div style={{ ...shell, overflow: 'auto' }}>
-      <GameOver run={run} onRestart={() => { setRun(null); setPhase('select-pokemon'); }} />
+      <GameOver run={run} onRestart={async () => {
+        // 主動清除 Redis 紀錄，不等 2h auto-expire
+        if (channelId) {
+          try { await fetch(`/api/tower/action`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ customId: `tower_endrun_${channelId}`, channelId }) }); } catch {}
+        }
+        setRun(null); setPhase('select-pokemon');
+      }} />
     </div>
   );
 

@@ -40,9 +40,10 @@ function MoveBtn({ move, idx, channelId, busy, locked, onAttack }: {
       disabled={isDisabled}
       onClick={() => { if (!isDisabled) { onAttack(move.category, move.type, customId); } }}
       style={{
-        background: empty ? '#1a1f2e' : `linear-gradient(135deg, ${color}33 0%, ${color}18 100%)`,
+        background: empty ? '#1a1f2e' : `linear-gradient(135deg, ${color}44 0%, ${color}22 100%)`,
         color: empty ? '#475569' : '#fff',
-        border: `1px solid ${empty ? '#334155' : color + '55'}`,
+        border: `1px solid ${empty ? '#334155' : color + '88'}`,
+        boxShadow: (!empty && !isDisabled) ? `0 0 6px ${color}33` : 'none',
         borderRadius: 8,
         padding: '6px 8px',
         cursor: isDisabled ? 'not-allowed' : 'pointer',
@@ -107,8 +108,19 @@ export function BattleScene({ run, onAction, busy }: Props) {
   const [currentMoveType, setCurrentMoveType] = useState<string>('normal');
   const [enemyMoveType, setEnemyMoveType] = useState<string>('normal');
   const [attackLocked, setAttackLocked] = useState(false); // locked during player+enemy animation sequence
+  const [showImpact, setShowImpact] = useState(false);    // hit burst ring on enemy
+  const [screenFlash, setScreenFlash] = useState(false);  // red flash when player takes damage
+  const [critAnim, setCritAnim] = useState(false);        // whole-arena crit flash
+  const [floatTexts, setFloatTexts] = useState<{id: number; text: string; color: string; x: number}[]>([]);
+  const floatIdRef = useRef(0);
   const prevLogLen = useRef(0);
   const attackLockedRef = useRef(false); // mirror ref so useEffect reads fresh value
+
+  function addFloat(text: string, color: string, xPct: number) {
+    const id = ++floatIdRef.current;
+    setFloatTexts(prev => [...prev, { id, text, color, x: xPct }]);
+    setTimeout(() => setFloatTexts(prev => prev.filter(f => f.id !== id)), 1000);
+  }
 
   // Detect enemy action → play enemy animation → unlock
   // Use attackLockedRef (not state) so the effect always sees the current locked status
@@ -119,6 +131,15 @@ export function BattleScene({ run, onAction, busy }: Props) {
       prevLogLen.current = logs.length;
       const currentEnemy = run.currentEnemy;
 
+      // ── Parse floating proc texts from log ──────────────────────
+      const allNew = newLogs.join(' ');
+      if (allNew.includes('暴擊')) { addFloat('暴擊!', '#facc15', 68); setCritAnim(true); setTimeout(() => setCritAnim(false), 500); }
+      if (allNew.includes('連擊')) addFloat('連擊!', '#f97316', 72);
+      if (allNew.includes('鏡面反射')) addFloat('反射!', '#60a5fa', 55);
+      if (allNew.includes('復仇釋放')) addFloat('復仇!', '#ef4444', 65);
+      if (allNew.includes('生命吸取')) addFloat(`+HP`, '#4ade80', 30);
+      if (allNew.includes('反噬')) addFloat('反噬!', '#f87171', 25);
+
       if (attackLockedRef.current) {
         // Player just attacked → enemy turn: always play animation
         const moveLine = newLogs.find(l => currentEnemy && l.includes(currentEnemy.name) && l.includes('使用'));
@@ -126,6 +147,9 @@ export function BattleScene({ run, onAction, busy }: Props) {
         setEnemyMoveType(etype);
         // Detect physical: log mentions '物' or '衝' or no keyword → default projectile
         const isPhys = !!(moveLine?.includes('物') || moveLine?.includes('衝') || moveLine?.includes('撞'));
+        // Screen flash when player takes damage
+        setScreenFlash(true);
+        setTimeout(() => setScreenFlash(false), 320);
         setPlayerShake(true);
         setTimeout(() => setPlayerShake(false), 600);
         setEnemyAnim(isPhys ? 'lunge' : 'projectile');
@@ -154,16 +178,23 @@ export function BattleScene({ run, onAction, busy }: Props) {
   function handleAttack(category: string, moveType?: string, customId?: string) {
     setAttackLocked(true);
     attackLockedRef.current = true;
-    setShake(true);
-    setTimeout(() => setShake(false), 650);
     setCurrentMoveType(moveType ?? '一般');
-    if (category === 'Physical' || category === 'physical') {
+    const isPhys = category === 'Physical' || category === 'physical';
+    const isSpec = category === 'Special' || category === 'special';
+    if (isPhys) {
       setAttackAnim('lunge');
+      // Enemy shakes at peak of lunge + impact burst
+      setTimeout(() => { setShake(true); setShowImpact(true); }, 370);
+      setTimeout(() => { setShake(false); setShowImpact(false); }, 700);
       setTimeout(() => setAttackAnim('idle'), 750);
-    } else if (category === 'Special' || category === 'special') {
+    } else if (isSpec) {
       setAttackAnim('projectile');
+      // Enemy shakes when projectile arrives
+      setTimeout(() => { setShake(true); setShowImpact(true); }, 500);
+      setTimeout(() => { setShake(false); setShowImpact(false); }, 750);
       setTimeout(() => setAttackAnim('idle'), 750);
     } else {
+      // Status: aura pulse on player
       setAttackAnim('status');
       setTimeout(() => setAttackAnim('idle'), 750);
     }
@@ -204,6 +235,63 @@ export function BattleScene({ run, onAction, busy }: Props) {
         border: isBoss ? '2px solid #7f1d1d' : '1px solid #1e2d45',
         height: isBoss ? 220 : 200, overflow: 'hidden',
       }}>
+        {/* ── FX layer ──────────────────────────────────────────── */}
+
+        {/* Screen flash (red) when player takes damage */}
+        {screenFlash && (
+          <div style={{
+            position: 'absolute', inset: 0, borderRadius: 14, zIndex: 22, pointerEvents: 'none',
+            background: 'rgba(239,68,68,0.28)',
+            animation: 'screenFlash 0.32s ease forwards',
+          }} />
+        )}
+
+        {/* Crit flash — whole arena brightens */}
+        {critAnim && (
+          <div style={{
+            position: 'absolute', inset: 0, borderRadius: 14, zIndex: 23, pointerEvents: 'none',
+            background: 'rgba(250,204,21,0.18)',
+            animation: 'screenFlash 0.45s ease forwards',
+          }} />
+        )}
+
+        {/* Speed lines for physical lunge */}
+        {attackAnim === 'lunge' && [0, 1, 2, 3].map(i => (
+          <div key={i} style={{
+            position: 'absolute',
+            top: `${46 + i * 9}%`, left: 80, right: 80,
+            height: i === 1 ? 3 : 2, borderRadius: 2,
+            zIndex: 8, pointerEvents: 'none',
+            background: `linear-gradient(90deg, transparent 0%, ${typeColor(currentMoveType)}cc ${30 + i * 5}%, transparent 100%)`,
+            animation: `speedLine 0.38s ${i * 0.045}s ease forwards`,
+          }} />
+        ))}
+
+        {/* Impact burst ring at enemy position */}
+        {showImpact && (
+          <div style={{
+            position: 'absolute',
+            top: isBoss ? '22%' : '25%', right: isBoss ? '8%' : '10%',
+            width: 70, height: 70, borderRadius: '50%',
+            border: `3px solid ${typeColor(currentMoveType)}`,
+            boxShadow: `0 0 20px 4px ${typeColor(currentMoveType)}88`,
+            zIndex: 18, pointerEvents: 'none',
+            animation: 'impactBurst 0.5s ease forwards',
+          }} />
+        )}
+
+        {/* Floating proc texts (crit, lifesteal, proc effects…) */}
+        {floatTexts.map(ft => (
+          <div key={ft.id} style={{
+            position: 'absolute', bottom: '38%', left: `${ft.x}%`,
+            pointerEvents: 'none', zIndex: 26,
+            fontWeight: 900, fontSize: 13, letterSpacing: '0.03em',
+            color: ft.color,
+            textShadow: `0 0 8px ${ft.color}, 0 2px 4px rgba(0,0,0,0.8)`,
+            animation: 'floatText2 0.95s ease forwards',
+          }}>{ft.text}</div>
+        ))}
+
         {/* Ground line */}
         <div style={{
           position: 'absolute', bottom: 42, left: 0, right: 0,

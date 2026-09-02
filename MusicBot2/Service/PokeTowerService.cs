@@ -2164,6 +2164,17 @@ namespace MusicBot2.Service
                 }
             }
 
+            // tower_endrun_{channelId}：玩家在結束畫面按下重新開始，主動清除本局資料
+            else if (customId.StartsWith("tower_endrun_"))
+            {
+                if (ulong.TryParse(customId["tower_endrun_".Length..], out var endCh))
+                {
+                    var er = GetRun(endCh);
+                    if (er != null && (er.State == TowerRunState.Victory || er.State == TowerRunState.Defeated))
+                        await RemoveAsync(endCh);
+                }
+            }
+
             return GetFrontendState(channelId);
         }
 
@@ -5427,10 +5438,14 @@ namespace MusicBot2.Service
             if (!_useRedis) return;
             try
             {
+                // 結束狀態（勝利/失敗）只保留 2 小時讓前端讀取，之後 Redis 自動清除
+                var ttl = (run.State == TowerRunState.Victory || run.State == TowerRunState.Defeated)
+                    ? TimeSpan.FromHours(2)
+                    : TimeSpan.FromDays(30);
                 await _redisDb.StringSetAsync(
                     $"{REDIS_PREFIX}{run.ChannelId}",
                     JsonSerializer.Serialize(run),
-                    TimeSpan.FromDays(30));
+                    ttl);
             }
             catch (Exception ex) { Console.WriteLine($"[Tower] Redis save: {ex.Message}"); }
         }
