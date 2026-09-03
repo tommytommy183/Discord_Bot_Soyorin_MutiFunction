@@ -3844,17 +3844,12 @@ namespace MusicBot2.Service
             };
         }
 
-        /// <summary>取消爬塔（不管是否在記憶體，都嘗試清除 Redis）</summary>
+        /// <summary>取消爬塔</summary>
         public async Task<bool> CancelRunAsync(ulong channelId)
         {
-            bool existed = _activeRuns.ContainsKey(channelId);
-            _activeRuns.Remove(channelId);
-            if (_useRedis)
-            {
-                try { await _redisDb.KeyDeleteAsync($"{REDIS_PREFIX}{channelId}"); }
-                catch { /* ignore */ }
-            }
-            return existed;
+            if (!_activeRuns.ContainsKey(channelId)) return false;
+            await RemoveAsync(channelId);
+            return true;
         }
 
         #endregion
