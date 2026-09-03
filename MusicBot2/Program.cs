@@ -71,7 +71,7 @@ public class Program
         var config = new DiscordSocketConfig
         {
             LogLevel = LogSeverity.Debug,
-            EnableVoiceDaveEncryption = true,
+            EnableVoiceDaveEncryption = false, // Northflank build 環境無法連 GitHub，無法編譯 libdave；此 bot 不需要語音 E2E 加密
             GatewayIntents = GatewayIntents.GuildMessages |
                              GatewayIntents.MessageContent |
                              GatewayIntents.Guilds |
