@@ -28,6 +28,6 @@ export const api = {
   getRun:      (channelId: string)       => call<TowerRun>(`/api/tower/run/${channelId}`),
   getPokemons: (userId: string)          => call<PokeListItem[]>(`/api/tower/pokemon/${userId}`),
   getPassives: ()                        => call<PassiveOption[]>('/api/tower/passives'),
-  startRun:    (req: StartRunRequest)    => call<TowerRun>('/api/tower/start', 'POST', req),
+  startRun:    (req: StartRunRequest)    => call<{ conflict?: boolean; run?: TowerRun } & TowerRun>('/api/tower/start', 'POST', req),
   action:      (req: ActionRequest)      => call<TowerRun>('/api/tower/action', 'POST', req),
 };

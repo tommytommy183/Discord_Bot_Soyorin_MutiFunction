@@ -95,6 +95,13 @@ public static class TowerApiRoutes
                 || !ulong.TryParse(req.UserId, out var userId))
                 return Results.BadRequest("invalid request");
 
+            // 同頻道已有進行中的爬塔 → 拒絕開新局，回傳現有狀態讓前端進入觀戰
+            if (towerSvc.HasActiveRun(channelId))
+            {
+                var existing = towerSvc.GetFrontendState(channelId);
+                return Results.Json(new { conflict = true, run = existing }, _json);
+            }
+
             var player = await pokeSvc.GetPlayerAsync(userId, req.UserName ?? "");
             if (player == null || player.CaughtPokemon.Count == 0)
                 return Results.Problem("你還沒有抓到任何 Pokemon！請先玩 /pokemon 系統。", statusCode: 400);
@@ -104,8 +111,7 @@ public static class TowerApiRoutes
                 return Results.BadRequest("invalid pokemonIndex");
 
             var src = player.CaughtPokemon[idx];
-            // Activity mode: pass userId so multiple players can start in the same channel
-            await towerSvc.StartRunAsync(channelId, userId, req.UserName ?? player.UserName ?? "Player", src, req.PassiveId ?? "", activityUserId: userId);
+            await towerSvc.StartRunAsync(channelId, userId, req.UserName ?? player.UserName ?? "Player", src, req.PassiveId ?? "");
 
             var state = towerSvc.GetFrontendState(channelId);
             return Results.Json(state, _json);

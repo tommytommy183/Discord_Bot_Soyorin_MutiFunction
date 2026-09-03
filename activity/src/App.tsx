@@ -263,6 +263,7 @@ export default function App() {
   const [selectedPokemonIdx, setSelectedPokemonIdx] = useState<number>(0);
   const [inventoryOpen, setInventoryOpen] = useState(false);
   const [abandonConfirm, setAbandonConfirm] = useState(false);
+  const [spectating, setSpectating] = useState(false); // 觀戰模式
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const startPolling = useCallback((cId: string) => {
@@ -291,7 +292,9 @@ export default function App() {
         setLoadMsg('載入遊戲資料…');
         const runRes = await api.getRun(cId);
         if (runRes.ok && runRes.data) {
+          const isOwn = runRes.data.playerId === u.id;
           setRun(runRes.data);
+          setSpectating(!isOwn); // 不是自己的 run → 觀戰
           setPhase('game');
           startPolling(cId);
         } else {
@@ -332,9 +335,19 @@ export default function App() {
       passiveId,
     });
     if (res.ok && res.data) {
-      setRun(res.data);
-      setPhase('game');
-      startPolling(channelId);
+      const data = res.data as any;
+      if (data.conflict && data.run) {
+        // 同頻道已有人在玩 → 進入觀戰模式
+        setRun(data.run);
+        setSpectating(true);
+        setPhase('game');
+        startPolling(channelId);
+      } else {
+        setRun(res.data as any);
+        setSpectating(false);
+        setPhase('game');
+        startPolling(channelId);
+      }
     } else {
       setError(res.error ?? '開始失敗');
       setPhase('error');
@@ -458,26 +471,53 @@ export default function App() {
 
   return (
     <div style={shell}>
-      <GameHeader run={run} onOpenInventory={() => setInventoryOpen(true)} onAbandon={() => setAbandonConfirm(true)} />
-      <div style={{ flex: 1, overflow: 'auto', padding: '10px 12px' }}>
+      <GameHeader run={run} onOpenInventory={() => setInventoryOpen(true)} onAbandon={spectating ? undefined : () => setAbandonConfirm(true)} />
+
+      {/* 觀戰 banner */}
+      {spectating && (
+        <div style={{
+          background: 'linear-gradient(90deg, #1e1b4b, #312e81)',
+          borderBottom: '1px solid #4f46e5',
+          padding: '6px 14px',
+          display: 'flex', alignItems: 'center', gap: 8,
+          flexShrink: 0,
+        }}>
+          <span style={{ fontSize: 16 }}>👁</span>
+          <span style={{ fontSize: 12, color: '#a5b4fc', fontWeight: 700 }}>
+            觀戰模式 — {run.playerName} 正在挑戰第 {run.currentFloor} 層
+          </span>
+          <span style={{ fontSize: 11, color: '#6366f1', marginLeft: 'auto' }}>（你無法操作）</span>
+        </div>
+      )}
+
+      <div style={{ flex: 1, overflow: 'auto', padding: '10px 12px', position: 'relative' }}>
+
+        {/* 觀戰時用透明遮罩擋住所有按鈕 */}
+        {spectating && (
+          <div style={{
+            position: 'absolute', inset: 0, zIndex: 100,
+            background: 'transparent', cursor: 'not-allowed',
+          }} onClick={e => e.stopPropagation()} />
+        )}
+
         {run.state === 'InBattle' && (
-          <BattleScene run={run} onAction={handleAction} busy={busy} />
+          <BattleScene run={run} onAction={handleAction} busy={busy || spectating} />
         )}
         {run.state === 'SelectingPath' && (
-          <PathSelector run={run} onAction={handleAction} busy={busy} />
+          <PathSelector run={run} onAction={handleAction} busy={busy || spectating} />
         )}
         {(run.state === 'SelectingCatch' || catchSuccess) && (
           <CatchScene run={run} onAction={handleAction} busy={busy} catchFailed={catchFailed}
             catchSuccess={catchSuccess} onConfirmSuccess={handleCatchSuccessConfirm} />
         )}
         {run.state === 'InCasino' && (
-          <CasinoScene run={run} onAction={handleAction} busy={busy} />
+          <CasinoScene run={run} onAction={handleAction} busy={busy || spectating} />
         )}
         {run.state === 'AwaitingBossChallenge' && (
-          <BossChallengeScene run={run} onAction={handleAction} busy={busy} />
+          <BossChallengeScene run={run} onAction={handleAction} busy={busy || spectating} />
         )}
         {!['InBattle', 'SelectingPath', 'SelectingCatch', 'Victory', 'Defeated', 'InCasino', 'AwaitingBossChallenge'].includes(run.state) && (
-          <GenericChoices run={run} onAction={handleAction} busy={busy} />
+          <GenericChoices run={run} onAction={handleAction} busy={busy || spectating} />
         )}
       </div>
 
