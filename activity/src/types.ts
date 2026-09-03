@@ -138,6 +138,7 @@ export interface TowerRun {
   casinoProfit?: number;
   casinoRound?: number;
   casinoWinStreak?: number;
+  preBossShopPending?: boolean; // 通關20層後等待玩家選擇是否挑戰終極神獸
 }
 
 export interface ActionRequest {

@@ -4,213 +4,264 @@ import type { TowerRun } from '../types';
 interface Props {
   run: TowerRun;
   onRestart: () => void;
+  onAction?: (customId: string) => void;
 }
 
-// Confetti-like decoration for victory
-function VictoryStars() {
-  const stars = ['⭐','🌟','✨','💫','🎊','🎉','🏅','🎆'];
+function TeamGrid({ run, compact = false }: { run: TowerRun; compact?: boolean }) {
   return (
-    <div style={{
-      display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'center',
-      fontSize: 18, padding: '4px 0',
-    }}>
-      {stars.map((s, i) => (
-        <span key={i} style={{
-          animation: `bounce ${0.8 + i * 0.12}s ease-in-out ${i * 0.08}s infinite`,
-          display: 'inline-block',
-        }}>{s}</span>
-      ))}
+    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'center' }}>
+      {run.team.map((p, i) => {
+        const fainted = p.currentHP === 0;
+        const hpPct = Math.max(0, p.currentHP / p.maxHP);
+        const hpColor = hpPct > 0.5 ? '#22c55e' : hpPct > 0.25 ? '#f59e0b' : '#ef4444';
+        return (
+          <div key={i} style={{
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
+            background: fainted ? '#0a0a12' : 'linear-gradient(135deg, #0f2a18, #0f172a)',
+            borderRadius: 10, padding: compact ? '7px 9px' : '10px 12px',
+            border: `1px solid ${fainted ? '#1e1e2e' : '#22c55e55'}`,
+            opacity: fainted ? 0.45 : 1,
+            minWidth: compact ? 62 : 72,
+            boxShadow: fainted ? 'none' : '0 0 10px #22c55e18',
+          }}>
+            <img src={spriteUrl(p.pokeId)} alt={p.name} style={{
+              width: compact ? 38 : 44, height: compact ? 38 : 44,
+              imageRendering: 'pixelated',
+              filter: fainted ? 'grayscale(1) brightness(0.5)' : 'drop-shadow(0 0 5px #22c55e88)',
+              animation: fainted ? undefined : 'bounce 2.2s ease-in-out infinite',
+            }} />
+            <div style={{ fontSize: 9, color: fainted ? '#475569' : '#94a3b8', textAlign: 'center', maxWidth: 64, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {p.displayName}
+            </div>
+            <div style={{ fontSize: 9, fontWeight: 700, color: fainted ? '#ef444488' : hpColor }}>
+              {fainted ? 'FNT' : `${p.currentHP}/${p.maxHP}`}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
 
-export function GameOver({ run, onRestart }: Props) {
-  const isVictory = run.state === 'Victory';
+function StatChip({ emoji, label, value, color = '#fbbf24' }: { emoji: string; label: string; value: string; color?: string }) {
+  return (
+    <div style={{
+      flex: 1, minWidth: 72,
+      background: '#0b0f1a', border: `1px solid ${color}33`,
+      borderRadius: 10, padding: '9px 6px', textAlign: 'center',
+    }}>
+      <div style={{ fontSize: 18, lineHeight: 1, marginBottom: 3 }}>{emoji}</div>
+      <div style={{ fontSize: 14, fontWeight: 900, color }}>{value}</div>
+      <div style={{ fontSize: 9, color: '#475569', marginTop: 2 }}>{label}</div>
+    </div>
+  );
+}
+
+// ── 20層通關特殊畫面 ──────────────────────────────────────────────────────
+function TowerClearedScene({ run, onAction, busy }: { run: TowerRun; onAction: (id: string) => void; busy?: boolean }) {
   const survivingCount = run.team.filter(p => p.currentHP > 0).length;
-  const teamSize = run.team.length;
 
-  if (isVictory) {
-    return (
-      <div className="anim-fade-in" style={{
-        textAlign: 'center', display: 'flex', flexDirection: 'column',
-        gap: 14, alignItems: 'center', padding: '20px 18px',
-        background: 'linear-gradient(180deg, #0a0e1a 0%, #1a0a2e 60%, #0a0e1a 100%)',
-        minHeight: '100%',
+  return (
+    <div className="anim-fade-in" style={{
+      display: 'flex', flexDirection: 'column', gap: 14,
+      padding: '18px 16px',
+      background: 'linear-gradient(180deg, #050810 0%, #130820 50%, #050810 100%)',
+      minHeight: '100%',
+    }}>
+
+      {/* Header */}
+      <div style={{ textAlign: 'center' }}>
+        <div style={{
+          fontSize: 72, lineHeight: 1,
+          animation: 'bounce 1.2s ease-in-out infinite',
+          filter: 'drop-shadow(0 0 32px #fbbf24)',
+        }}>🏆</div>
+        <div style={{
+          fontFamily: "'Press Start 2P', monospace",
+          fontSize: 11, color: '#fbbf24', marginTop: 12, letterSpacing: '0.1em', lineHeight: 1.8,
+          textShadow: '0 0 20px #fbbf24, 0 0 50px #f59e0b88',
+          animation: 'pulse 2s ease-in-out infinite',
+        }}>TOWER CLEARED!</div>
+        <div style={{ fontSize: 14, color: '#e2e8f0', fontWeight: 900, marginTop: 8 }}>
+          🎉 {run.playerName} 征服了 {run.maxFloor} 層！
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div style={{ display: 'flex', gap: 8 }}>
+        <StatChip emoji="🏔️" label="通關層數" value={`${run.maxFloor} 層`} />
+        <StatChip emoji="💰" label="剩餘金幣" value={`${run.gold}`} color="#4ade80" />
+        <StatChip emoji="💚" label="倖存" value={`${survivingCount}/${run.team.length}`} color="#60a5fa" />
+      </div>
+
+      {/* Team */}
+      <div style={{
+        background: 'linear-gradient(135deg, #0d1f12, #0f172a)',
+        border: '1px solid #22c55e44', borderRadius: 12, padding: '12px',
+        boxShadow: '0 0 16px #22c55e18',
       }}>
+        <div style={{ fontSize: 10, color: '#22c55e', fontWeight: 700, marginBottom: 8, letterSpacing: '0.06em' }}>👥 最終出戰隊伍</div>
+        <TeamGrid run={run} compact />
+      </div>
 
-        {/* Confetti top */}
-        <VictoryStars />
-
-        {/* Trophy */}
-        <div style={{ position: 'relative' }}>
-          <div style={{
-            fontSize: 80,
-            animation: 'bounce 1.2s ease-in-out infinite',
-            filter: 'drop-shadow(0 0 30px #fbbf24)',
-            lineHeight: 1,
-          }}>🏆</div>
-          <div style={{
-            position: 'absolute', top: -6, left: -6, right: -6, bottom: -6,
-            borderRadius: '50%',
-            background: 'radial-gradient(circle, #fbbf2422 0%, transparent 70%)',
-            animation: 'pulse 1.5s ease-in-out infinite',
-          }} />
+      {/* Shiny reward */}
+      <div style={{
+        background: 'linear-gradient(135deg, #1a1400, #0f172a)',
+        border: '1px solid #fbbf2444', borderRadius: 10, padding: '10px 14px',
+        textAlign: 'center',
+      }}>
+        <div style={{ fontSize: 12, color: '#fbbf24', fontWeight: 700 }}>✨ 塔頂獎勵已解鎖</div>
+        <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4, lineHeight: 1.6 }}>
+          下一次 /抓pokemon 保證閃光！
         </div>
+      </div>
 
-        {/* Title */}
-        <div>
-          <div style={{
-            fontFamily: "'Press Start 2P', monospace",
-            fontSize: 13, color: '#fbbf24',
-            letterSpacing: '0.08em', lineHeight: 1.6,
-            textShadow: '0 0 20px #fbbf24, 0 0 40px #f59e0b',
-            animation: 'pulse 2s ease-in-out infinite',
-          }}>
-            TOWER CLEARED!
+      {/* Divider */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ flex: 1, height: 1, background: 'linear-gradient(90deg, transparent, #4f46e5, transparent)' }} />
+        <div style={{ fontSize: 10, color: '#6366f1', fontWeight: 700 }}>接下來呢？</div>
+        <div style={{ flex: 1, height: 1, background: 'linear-gradient(90deg, transparent, #4f46e5, transparent)' }} />
+      </div>
+
+      {/* Choices */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <button
+          className="btn-hover"
+          disabled={busy}
+          onClick={() => onAction(`tower_preBoss_${run.channelId}_continue`)}
+          style={{
+            background: 'linear-gradient(135deg, #1a0a2e, #2d1b69)',
+            border: '2px solid #7c3aed88', borderRadius: 12,
+            padding: '15px 16px', cursor: busy ? 'not-allowed' : 'pointer',
+            display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left',
+            boxShadow: '0 0 20px #7c3aed22',
+          }}
+        >
+          <span style={{ fontSize: 28 }}>🎁</span>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 900, color: '#c4b5fd' }}>最後補給站</div>
+            <div style={{ fontSize: 11, color: '#6d28d9', marginTop: 2 }}>整備完畢再挑戰終極神獸</div>
           </div>
-          <div style={{ color: '#e2e8f0', fontSize: 14, fontWeight: 900, marginTop: 6 }}>
-            🎉 {run.playerName} 征服了爬塔！
-          </div>
-        </div>
-
-        {/* Stats row */}
-        <div style={{
-          display: 'flex', gap: 8, width: '100%', maxWidth: 360,
-        }}>
-          {[
-            { emoji: '🏔️', label: '通關層數', value: `${run.maxFloor} 層` },
-            { emoji: '💰', label: '金幣', value: `${run.gold}` },
-            { emoji: '💚', label: '倖存隊員', value: `${survivingCount}/${teamSize}` },
-          ].map(stat => (
-            <div key={stat.label} style={{
-              flex: 1, background: '#0f172a',
-              border: '1px solid #fbbf2433', borderRadius: 10,
-              padding: '10px 6px', textAlign: 'center',
-            }}>
-              <div style={{ fontSize: 20, marginBottom: 4 }}>{stat.emoji}</div>
-              <div style={{ fontSize: 14, fontWeight: 900, color: '#fbbf24' }}>{stat.value}</div>
-              <div style={{ fontSize: 9, color: '#64748b', marginTop: 2 }}>{stat.label}</div>
-            </div>
-          ))}
-        </div>
-
-        {/* Surviving team */}
-        <div style={{ width: '100%', maxWidth: 360 }}>
-          <div style={{ fontSize: 11, color: '#64748b', fontWeight: 700, marginBottom: 8, letterSpacing: '0.05em' }}>
-            ── 最終隊伍 ──
-          </div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
-            {run.team.map((p, i) => {
-              const fainted = p.currentHP === 0;
-              return (
-                <div key={i} style={{
-                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
-                  background: fainted ? '#0a0a0a' : 'linear-gradient(135deg, #0f2a18, #0f172a)',
-                  borderRadius: 10, padding: '10px 12px',
-                  border: `1px solid ${fainted ? '#1e1e1e' : '#22c55e66'}`,
-                  opacity: fainted ? 0.4 : 1,
-                  minWidth: 72,
-                  boxShadow: fainted ? 'none' : '0 0 12px #22c55e22',
-                }}>
-                  <img src={spriteUrl(p.pokeId)} alt={p.name}
-                    style={{ width: 44, height: 44, imageRendering: 'pixelated',
-                      filter: fainted ? 'grayscale(1)' : 'drop-shadow(0 0 6px #22c55e)',
-                      animation: fainted ? undefined : 'bounce 2s ease-in-out infinite',
-                    }} />
-                  <div style={{ fontSize: 10, color: '#94a3b8' }}>{p.displayName}</div>
-                  <div style={{ fontSize: 10, color: fainted ? '#ef4444' : '#4ade80', fontWeight: 700 }}>
-                    {fainted ? 'FNT' : `${p.currentHP}/${p.maxHP}`}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Run log */}
-        <div style={{
-          background: '#07090f', borderRadius: 8, padding: 10,
-          width: '100%', maxWidth: 360,
-          fontSize: 11, color: '#475569', textAlign: 'left',
-          maxHeight: 100, overflowY: 'auto', lineHeight: 1.7,
-          border: '1px solid #1e293b',
-        }}>
-          {run.runLog.slice(-10).reverse().map((l, i) => (
-            <div key={i} style={{ opacity: 1 - i * 0.08 }}>{l}</div>
-          ))}
-        </div>
-
-        <VictoryStars />
+          <span style={{ marginLeft: 'auto', color: '#7c3aed', fontSize: 18 }}>›</span>
+        </button>
 
         <button
           className="btn-hover"
-          onClick={onRestart}
+          disabled={busy}
+          onClick={() => onAction(`tower_preBoss_${run.channelId}_home`)}
           style={{
-            background: 'linear-gradient(135deg, #fbbf24, #f59e0b, #6366f1)',
-            color: '#000', border: 'none', borderRadius: 14,
-            padding: '16px 40px', fontSize: 16, fontWeight: 900,
-            cursor: 'pointer',
-            boxShadow: '0 4px 24px #fbbf2455, 0 0 40px #6366f133',
-            letterSpacing: '0.03em',
+            background: 'linear-gradient(135deg, #052e16, #0a0e1a)',
+            border: '2px solid #22c55e66', borderRadius: 12,
+            padding: '15px 16px', cursor: busy ? 'not-allowed' : 'pointer',
+            display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left',
           }}
         >
-          🏆 再挑一次！
+          <span style={{ fontSize: 28 }}>🏠</span>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 900, color: '#86efac' }}>帶著榮耀回家</div>
+            <div style={{ fontSize: 11, color: '#166534', marginTop: 2 }}>本次爬塔正式通關結束</div>
+          </div>
+          <span style={{ marginLeft: 'auto', color: '#22c55e', fontSize: 18 }}>›</span>
         </button>
       </div>
-    );
-  }
+    </div>
+  );
+}
 
-  // ── Defeat screen ─────────────────────────────────────────────────────────
+// ── 一般勝利畫面（非20層）────────────────────────────────────────────────
+function VictoryScene({ run, onRestart }: { run: TowerRun; onRestart: () => void }) {
+  const survivingCount = run.team.filter(p => p.currentHP > 0).length;
+
   return (
     <div className="anim-fade-in" style={{
-      textAlign: 'center', display: 'flex', flexDirection: 'column',
-      gap: 16, alignItems: 'center', padding: '24px 20px',
+      display: 'flex', flexDirection: 'column', gap: 14,
+      padding: '18px 16px', alignItems: 'center',
+      background: 'linear-gradient(180deg, #050810 0%, #0e1a08 60%, #050810 100%)',
+      minHeight: '100%',
     }}>
-      <div style={{ fontSize: 72 }}>💀</div>
+      <div style={{ fontSize: 64, animation: 'bounce 1.2s ease-in-out infinite', filter: 'drop-shadow(0 0 24px #22c55e)' }}>🌟</div>
+
+      <div style={{ textAlign: 'center' }}>
+        <div style={{
+          fontFamily: "'Press Start 2P', monospace",
+          fontSize: 10, color: '#4ade80', letterSpacing: '0.08em', lineHeight: 1.8,
+          textShadow: '0 0 16px #22c55e',
+        }}>VICTORY!</div>
+        <div style={{ fontSize: 13, color: '#e2e8f0', fontWeight: 700, marginTop: 6 }}>
+          {run.playerName} 通關了！
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, width: '100%' }}>
+        <StatChip emoji="🏔️" label="層數" value={`${run.currentFloor}`} color="#4ade80" />
+        <StatChip emoji="💰" label="金幣" value={`${run.gold}`} color="#fbbf24" />
+        <StatChip emoji="💚" label="倖存" value={`${survivingCount}/${run.team.length}`} color="#60a5fa" />
+      </div>
 
       <div style={{
-        fontFamily: "'Press Start 2P', monospace",
-        fontSize: 12, color: '#ef4444', letterSpacing: '0.06em', lineHeight: 1.5,
+        background: '#0b1215', border: '1px solid #22c55e33',
+        borderRadius: 12, padding: '12px', width: '100%',
       }}>
-        GAME OVER
+        <div style={{ fontSize: 10, color: '#22c55e', fontWeight: 700, marginBottom: 8 }}>👥 隊伍狀況</div>
+        <TeamGrid run={run} compact />
       </div>
 
-      <div style={{ color: '#94a3b8', fontSize: 13, lineHeight: 1.6 }}>
-        <strong>{run.playerName}</strong> 在第{' '}
-        <strong style={{ color: '#ef4444' }}>{run.currentFloor}</strong> 層倒下了。
+      <button
+        className="btn-hover"
+        onClick={onRestart}
+        style={{
+          background: 'linear-gradient(135deg, #16a34a, #22c55e)',
+          color: '#fff', border: 'none', borderRadius: 12,
+          padding: '14px 40px', fontSize: 15, fontWeight: 900,
+          cursor: 'pointer', width: '100%',
+          boxShadow: '0 4px 20px #22c55e44',
+        }}
+      >🔄 再挑一次！</button>
+    </div>
+  );
+}
+
+// ── 敗北畫面 ──────────────────────────────────────────────────────────────
+function DefeatScene({ run, onRestart }: { run: TowerRun; onRestart: () => void }) {
+  return (
+    <div className="anim-fade-in" style={{
+      display: 'flex', flexDirection: 'column', gap: 14,
+      padding: '20px 16px', alignItems: 'center',
+      background: 'linear-gradient(180deg, #050810 0%, #1a0808 60%, #050810 100%)',
+      minHeight: '100%',
+    }}>
+      <div style={{ fontSize: 64, filter: 'drop-shadow(0 0 20px #ef4444)', animation: 'pulse 1.5s ease-in-out infinite' }}>💀</div>
+
+      <div style={{ textAlign: 'center' }}>
+        <div style={{
+          fontFamily: "'Press Start 2P', monospace",
+          fontSize: 11, color: '#ef4444', letterSpacing: '0.06em', lineHeight: 1.6,
+          textShadow: '0 0 16px #ef4444',
+        }}>GAME OVER</div>
+        <div style={{ fontSize: 13, color: '#94a3b8', marginTop: 8, lineHeight: 1.7 }}>
+          <strong style={{ color: '#f87171' }}>{run.playerName}</strong> 在第{' '}
+          <strong style={{ color: '#ef4444', fontSize: 16 }}>{run.currentFloor}</strong> 層倒下了。
+        </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'center' }}>
-        {run.team.map((p, i) => {
-          const fainted = p.currentHP === 0;
-          return (
-            <div key={i} style={{
-              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
-              background: fainted ? '#0a0a0a' : '#0f172a',
-              borderRadius: 10, padding: '8px 12px',
-              border: `1px solid ${fainted ? '#1e1e1e' : '#22c55e33'}`,
-              opacity: fainted ? 0.4 : 1, minWidth: 70,
-            }}>
-              <img src={spriteUrl(p.pokeId)} alt={p.name}
-                style={{ width: 40, height: 40, imageRendering: 'pixelated', filter: fainted ? 'grayscale(1)' : undefined }} />
-              <div style={{ fontSize: 10, color: '#94a3b8' }}>{p.displayName}</div>
-              <div style={{ fontSize: 10, color: fainted ? '#ef4444' : '#4ade80', fontWeight: 700 }}>
-                {fainted ? 'FNT' : `${p.currentHP}/${p.maxHP}`}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
+      {/* Team */}
       <div style={{
-        background: '#07090f', borderRadius: 8, padding: 12,
-        width: '100%', maxWidth: 400,
-        fontSize: 11, color: '#475569', textAlign: 'left',
-        maxHeight: 130, overflowY: 'auto', lineHeight: 1.7,
+        background: '#0b0a12', border: '1px solid #ef444433',
+        borderRadius: 12, padding: '12px', width: '100%',
+      }}>
+        <div style={{ fontSize: 10, color: '#ef4444', fontWeight: 700, marginBottom: 8 }}>最後的隊伍</div>
+        <TeamGrid run={run} compact />
+      </div>
+
+      {/* Last log */}
+      <div style={{
+        background: '#07090f', borderRadius: 8, padding: '10px 12px',
+        width: '100%', fontSize: 11, color: '#475569',
+        maxHeight: 110, overflowY: 'auto', lineHeight: 1.8,
         border: '1px solid #1e293b',
       }}>
-        {run.runLog.slice(-12).reverse().map((l, i) => (
-          <div key={i} style={{ opacity: 1 - i * 0.07 }}>{l}</div>
+        {run.runLog.slice(-8).reverse().map((l, i) => (
+          <div key={i} style={{ opacity: 1 - i * 0.1 }}>{l}</div>
         ))}
       </div>
 
@@ -218,15 +269,27 @@ export function GameOver({ run, onRestart }: Props) {
         className="btn-hover"
         onClick={onRestart}
         style={{
-          background: 'linear-gradient(135deg, #dc2626, #ef4444)',
+          background: 'linear-gradient(135deg, #7f1d1d, #dc2626)',
           color: '#fff', border: 'none', borderRadius: 12,
-          padding: '14px 36px', fontSize: 15, fontWeight: 700,
-          cursor: 'pointer',
-          boxShadow: '0 4px 20px #ef444455',
+          padding: '14px 40px', fontSize: 15, fontWeight: 900,
+          cursor: 'pointer', width: '100%',
+          boxShadow: '0 4px 20px #ef444433',
         }}
-      >
-        🔄 再來一次
-      </button>
+      >🔄 再來一次</button>
     </div>
   );
+}
+
+// ── 主 export ────────────────────────────────────────────────────────────
+export function GameOver({ run, onRestart, onAction }: Props) {
+  // 打完20層的特殊通關畫面
+  if (run.state === 'Victory' && run.preBossShopPending && onAction) {
+    return <TowerClearedScene run={run} onAction={onAction} />;
+  }
+
+  if (run.state === 'Victory') {
+    return <VictoryScene run={run} onRestart={onRestart} />;
+  }
+
+  return <DefeatScene run={run} onRestart={onRestart} />;
 }

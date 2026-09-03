@@ -2363,6 +2363,33 @@ namespace MusicBot2.Service
                         await RemoveAsync(endCh);
                 }
             }
+            // tower_preBoss_{channelId}_{continue|home}  — 20層通關後的選擇
+            else if (customId.StartsWith("tower_preBoss_"))
+            {
+                var parts = customId.Split('_');
+                // Format: tower_preBoss_{channelId}_{choice}
+                if (parts.Length >= 4 && ulong.TryParse(parts[2], out var pbCh))
+                {
+                    var run = GetRun(pbCh);
+                    if (run != null && run.PreBossShopPending)
+                    {
+                        var choice = parts[3];
+                        if (choice == "continue")
+                        {
+                            // 開最後補給商店
+                            run.State = TowerRunState.Shopping;
+                            await SaveAsync(run);
+                            return BuildShopEmbed(run, "🏆 **恭喜通關 20 層！** 你已獲得閃光保底獎勵！\n終極神獸決戰前，先在補給站整備吧！");
+                        }
+                        else // home
+                        {
+                            // 玩家選擇直接回家 → 結束此局
+                            await RemoveAsync(pbCh);
+                            return null; // 前端偵測到 null run 後自行跳回選擇畫面
+                        }
+                    }
+                }
+            }
             // tower_bossChallenge_{channelId}_{accept|decline}
             else if (customId.StartsWith("tower_bossChallenge_"))
             {
@@ -3136,14 +3163,14 @@ namespace MusicBot2.Service
 
                 if (run.CurrentFloor >= run.MaxFloor)
                 {
-                    // 先給通關獎勵，再開最終補給商店，離開後才詢問是否挑戰終極神獸
+                    // 先給通關獎勵，進入 Victory 畫面讓玩家選擇是否挑戰終極神獸
                     PendingShinyUserIds.Add(run.PlayerId);
                     if (_useRedis)
                         _ = _redisDb.StringSetAsync($"{SHINY_KEY_PREFIX}{run.PlayerId}", "1", TimeSpan.FromDays(30));
-                    run.PreBossShopPending = true;
-                    run.State = TowerRunState.Shopping;
+                    run.PreBossShopPending = true;  // 標記：通關後補給商店待開
+                    run.State = TowerRunState.Victory;
                     await SaveAsync(run);
-                    return BuildShopEmbed(run, "🏆 **恭喜通關 20 層！** 你已獲得閃光保底獎勵！\n最終決戰前，先逛逛補給商店整備一下吧！");
+                    return BuildVictoryEmbed(run);
                 }
 
                 // 可以捕獲（無論有沒有神器獎勵，先保存敵人資訊）
@@ -5778,24 +5805,29 @@ namespace MusicBot2.Service
         // ── 終極神獸挑戰 ─────────────────────────────────────────────────────
         // 玩家目前通關20層時的大約狀態：隊伍 ATK~160-220, DEF~100-140, MaxHP~220-350, Speed~110-160
         // 終極神獸要設計成幾乎不可能打贏，單純給硬核玩家嘗試
+        // 終極神獸：ATK/DEF/HP 大幅提升，讓玩家感受到真正的壓迫
+        // 玩家通關20層時隊伍約 ATK~160-220, DEF~100-140, MaxHP~220-350
+        // ARCEUS 設計為幾乎不可能擊敗的試煉級敵人
         private static readonly TowerEnemy _ultimateBoss = new()
         {
             Name        = "★ 始祖神獸 ARCEUS ★",
             PokeId      = 493,
-            Types       = new List<string> { "一般" }, // Arceus 原始形態
-            MaxHP       = 1800,
-            CurrentHP   = 1800,
-            Attack      = 380,
-            Defense     = 260,
-            Speed       = 220,
+            Types       = new List<string> { "一般" },
+            MaxHP       = 3200,  // 玩家隊伍最強輸出約15-20回合才能打完
+            CurrentHP   = 3200,
+            Attack      = 620,   // 高到足以一擊或兩擊 KO 多數隊員
+            Defense     = 480,   // 玩家ATK~200，打一刀約扣60-80血
+            Speed       = 520,   // 幾乎永遠先手
             IsBoss      = true,
             GoldReward  = 0,
             Moves       = new List<TowerMove>
             {
-                new() { Name="極·創世破壞",  Type="一般",   Power=200, Category="Special",  Emoji="✨",  MaxPP=3, CurrentPP=3 },
-                new() { Name="時空断裂斬",   Type="龍",     Power=160, Category="Physical", Emoji="🐉",  MaxPP=5, CurrentPP=5 },
-                new() { Name="聖域清算",     Type="妖精",   Power=150, Category="Special",  Emoji="🌸",  MaxPP=5, CurrentPP=5 },
-                new() { Name="神罰制裁",     Type="超能力", Power=140, Category="Special",  Emoji="🔮",  MaxPP=5, CurrentPP=5 },
+                new() { Name="極·創世破壞",  Type="一般",   Power=240, Category="Special",  Emoji="✨",  MaxPP=5,  CurrentPP=5  }, // 主打技，無屬性剋制
+                new() { Name="時空断裂斬",   Type="龍",     Power=200, Category="Physical", Emoji="🐉",  MaxPP=8,  CurrentPP=8  },
+                new() { Name="聖域清算",     Type="妖精",   Power=190, Category="Special",  Emoji="🌸",  MaxPP=8,  CurrentPP=8  },
+                new() { Name="神罰制裁",     Type="超能力", Power=180, Category="Special",  Emoji="🔮",  MaxPP=8,  CurrentPP=8  },
+                new() { Name="創世回復",     Type="一般",   Power=0,   Category="Status",   Emoji="💫",  MaxPP=5,  CurrentPP=5  }, // 每回合隨機使用，回血80
+                new() { Name="絕對領域",     Type="一般",   Power=160, Category="Special",  Emoji="🌌",  MaxPP=10, CurrentPP=10 },
             },
         };
 
@@ -5821,7 +5853,8 @@ namespace MusicBot2.Service
             sb.AppendLine($"• ATK {poke.Attack}  DEF {poke.Defense}  SPD {poke.Speed}");
             sb.AppendLine();
             sb.AppendLine($"**對手：★ 始祖神獸 ARCEUS ★**");
-            sb.AppendLine($"• HP：1800 ／ ATK：380 ／ DEF：260");
+            sb.AppendLine($"• HP：**3200** ／ ATK：**620** ／ DEF：**480** ／ SPD：**520**");
+            sb.AppendLine($"• 每回合可能回復 80HP，技能無視屬性剋制");
 
             var cb = new ComponentBuilder();
             cb.WithButton("⚔️ 接受挑戰（我知道沒獎勵）", $"tower_bossChallenge_{run.ChannelId}_accept", ButtonStyle.Danger,   row: 0);

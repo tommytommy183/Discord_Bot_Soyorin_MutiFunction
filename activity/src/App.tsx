@@ -380,7 +380,17 @@ export default function App() {
     const wasCatch = customId.startsWith('tower_catch_') && !customId.endsWith('_pass');
     setBusy(true);
     const res = await api.action({ channelId, customId });
-    if (res.ok && res.data) {
+    if (res.ok) {
+      // null data = run ended (e.g. preBoss_home) → go back to pokemon selection
+      if (!res.data) {
+        setRun(null);
+        if (pollRef.current) clearInterval(pollRef.current);
+        if (user) { try { const pr = await api.getPokemons(user.id); setPokemons(pr.data ?? []); } catch {} }
+        setSpectating(false);
+        setPhase('select-pokemon');
+        setBusy(false);
+        return;
+      }
       const newRun = res.data as TowerRun;
       if (wasCatch && newRun.state === 'SelectingCatch') {
         // Catch failed — show escape animation
@@ -454,7 +464,7 @@ export default function App() {
 
   if ((run.state === 'Victory' || run.state === 'Defeated') && run.state !== 'AwaitingBossChallenge') return (
     <div style={{ ...shell, overflow: 'auto' }}>
-      <GameOver run={run} onRestart={async () => {
+      <GameOver run={run} onAction={handleAction} onRestart={async () => {
         // 主動清除 Redis 紀錄，不等 2h auto-expire
         if (channelId) {
           try { await fetch(`/api/tower/action`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ customId: `tower_endrun_${channelId}`, channelId }) }); } catch {}

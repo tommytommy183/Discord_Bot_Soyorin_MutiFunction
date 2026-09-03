@@ -105,18 +105,25 @@ export function BossChallengeScene({ run, onAction, busy }: Props) {
           }} />
           <div>
             <div style={{ fontSize: 13, fontWeight: 900, color: '#c084fc' }}>★ 始祖神獸 ARCEUS ★</div>
-            <div style={{ fontSize: 11, color: '#64748b', lineHeight: 1.6 }}>
-              HP 1800 ／ ATK 380 ／ DEF 260
+            <div style={{ fontSize: 11, lineHeight: 1.9, marginTop: 3 }}>
+              <span style={{ color: '#ef4444', fontWeight: 700 }}>HP 3200</span>
+              {'  '}
+              <span style={{ color: '#f97316', fontWeight: 700 }}>ATK 620</span>
+              {'  '}
+              <span style={{ color: '#60a5fa', fontWeight: 700 }}>DEF 480</span>
+              {'  '}
+              <span style={{ color: '#facc15', fontWeight: 700 }}>SPD 520</span>
             </div>
-            <div style={{ fontSize: 10, color: '#7c3aed', marginTop: 2, fontWeight: 700 }}>
-              從未被任何人擊敗過
+            <div style={{ fontSize: 10, color: '#a855f7', marginTop: 2, fontWeight: 700 }}>
+              ⚠️ 從未被任何人擊敗過
             </div>
           </div>
         </div>
-        <div style={{ fontSize: 11, color: '#94a3b8', lineHeight: 1.7 }}>
-          🌌 神祕的力量從塔頂湧出……<br />
-          傳說塔頂之上還隱藏著一個始祖神獸，祂已等待了無數年。<br />
-          <span style={{ color: '#f59e0b' }}>⚠️ 擊敗或失敗都不會有任何額外獎勵。這是一場純粹的試煉。</span>
+        <div style={{ fontSize: 11, color: '#94a3b8', lineHeight: 1.8 }}>
+          🌌 塔頂的空間開始扭曲，時間本身在顫抖……<br />
+          <span style={{ color: '#c084fc' }}>祂能操控所有屬性，技能威力無視防禦，每回合恢復 80HP。</span><br />
+          <span style={{ color: '#64748b', fontSize: 10 }}>你的隊伍疲憊不堪，但祂卻如同剛剛甦醒。</span><br />
+          <span style={{ color: '#f59e0b', fontWeight: 700 }}>⚠️ 擊敗或失敗都不會有任何額外獎勵。這是一場純粹的試煉。</span>
         </div>
       </div>
 
