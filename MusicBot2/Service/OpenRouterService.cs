@@ -239,7 +239,7 @@ namespace MusicBot2.Service
             //"gemini-3-pro-preview",         // Gen3 Pro，穩定強力 無回應
 
             // ══ 第二梯：最新 Flash 主力（速度+智慧平衡）══
-            "gemini-3.6-flash",             // 最新 Flash 旗艦
+            //"gemini-3.6-flash",             // 最新 Flash 旗艦
             "gemini-3.5-flash",             // 3.5 Flash，品質優秀
             "gemini-3.1-flash-lite",        // 3.1 Flash-Lite 穩定版
             "gemini-3-flash-preview",       // Gen3 Flash Preview
