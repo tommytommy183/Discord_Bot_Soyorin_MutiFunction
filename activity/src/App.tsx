@@ -41,11 +41,13 @@ function LoadingScreen({ message }: { message: string }) {
 }
 
 // ── Pokemon Selector ─────────────────────────────────────────────────────────
-function PokemonSelector({ pokemons, onSelect, busy }: {
+function PokemonSelector({ pokemons, onSelect, busy, onRefresh }: {
   pokemons: PokeListItem[];
   onSelect: (idx: number) => void;
   busy: boolean;
+  onRefresh?: () => Promise<void>;
 }) {
+  const [refreshing, setRefreshing] = useState(false);
   const [selected, setSelected] = useState<number | null>(null);
   const selPoke = pokemons.find(p => p.index === selected);
 
@@ -71,6 +73,17 @@ function PokemonSelector({ pokemons, onSelect, busy }: {
           <div style={{ color: '#ef4444', fontSize: 13, textAlign: 'center' }}>
             你還沒有 Pokemon！<br />請先玩 /pokemon 系統捕捉寶可夢。
           </div>
+          {onRefresh && (
+            <button
+              onClick={async () => { setRefreshing(true); await onRefresh(); setRefreshing(false); }}
+              disabled={refreshing}
+              style={{
+                marginTop: 8, padding: '8px 20px', borderRadius: 8,
+                background: '#1e293b', border: '1px solid #334155',
+                color: '#94a3b8', fontSize: 12, cursor: 'pointer',
+              }}
+            >{refreshing ? '載入中…' : '🔄 重新載入'}</button>
+          )}
         </div>
       ) : (
         <div style={{ flex: 1, overflow: 'auto', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -406,7 +419,15 @@ export default function App() {
 
   if (phase === 'select-pokemon') return (
     <div style={shell}>
-      <PokemonSelector pokemons={pokemons} onSelect={handleSelectPokemon} busy={busy} />
+      <PokemonSelector
+        pokemons={pokemons}
+        onSelect={handleSelectPokemon}
+        busy={busy}
+        onRefresh={user ? async () => {
+          const res = await api.getPokemons(user.id);
+          setPokemons(res.data ?? []);
+        } : undefined}
+      />
     </div>
   );
 
@@ -425,7 +446,12 @@ export default function App() {
         if (channelId) {
           try { await fetch(`/api/tower/action`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ customId: `tower_endrun_${channelId}`, channelId }) }); } catch {}
         }
-        setRun(null); setPhase('select-pokemon');
+        setRun(null);
+        if (user) {
+          const pokeRes = await api.getPokemons(user.id);
+          setPokemons(pokeRes.data ?? []);
+        }
+        setPhase('select-pokemon');
       }} />
     </div>
   );
@@ -504,6 +530,12 @@ export default function App() {
                   } catch {}
                   if (pollRef.current) clearInterval(pollRef.current);
                   setRun(null);
+                  if (user) {
+                    try {
+                      const pokeRes = await api.getPokemons(user.id);
+                      setPokemons(pokeRes.data ?? []);
+                    } catch {}
+                  }
                   setPhase('select-pokemon');
                   setBusy(false);
                 }}

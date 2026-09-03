@@ -25,7 +25,12 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Clone libdave（含 vcpkg submodule）
-RUN git clone --recurse-submodules --depth=1 \
+# GIT_TERMINAL_PROMPT=0 + credential.helper= + core.askPass=
+# 防止 build server 無 /dev/tty 時 git 嘗試互動輸入憑證而 exit 128
+RUN GIT_TERMINAL_PROMPT=0 git \
+    -c credential.helper= \
+    -c core.askPass= \
+    clone --recurse-submodules --depth=1 \
     https://github.com/discord/libdave.git /libdave
 
 WORKDIR /libdave/cpp
