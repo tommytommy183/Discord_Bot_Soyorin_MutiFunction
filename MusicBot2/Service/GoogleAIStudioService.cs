@@ -431,7 +431,7 @@ namespace MusicBot2.Service
                 Temperature = 0.85f,
                 TopP = 0.9f,
                 TopK = 40,
-                MaxOutputTokens = 256
+                MaxOutputTokens = 1024
             };
 
             return await GenerateTextAsync(request, user, saveToMemory, channelKey);

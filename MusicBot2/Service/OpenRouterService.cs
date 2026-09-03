@@ -239,7 +239,7 @@ namespace MusicBot2.Service
             //"gemini-3-pro-preview",         // Gen3 Pro，穩定強力 無回應
 
             // ══ 第二梯：最新 Flash 主力（速度+智慧平衡）══
-            //"gemini-3.6-flash",             // 最新 Flash 旗艦
+            //"gemini-3.6-flash",             // 最新 Flash 旗艦（暫停，目前打不到）
             "gemini-3.5-flash",             // 3.5 Flash，品質優秀
             "gemini-3.1-flash-lite",        // 3.1 Flash-Lite 穩定版
             "gemini-3-flash-preview",       // Gen3 Flash Preview
@@ -1035,7 +1035,7 @@ namespace MusicBot2.Service
                                     messages,
                                     request.Temperature,
                                     request.TopP,
-                                    request.MaxOutputTokens > 0 ? request.MaxOutputTokens : 512,
+                                    request.MaxOutputTokens > 0 ? request.MaxOutputTokens : 1024,
                                     new[] { "使用者名稱:", "\n使用者名稱" },
                                     model, key, retry: 0);
                                 if (!r.ShouldContinue) break;  // 成功或 ShouldBreak → 不用再試下一個 key
@@ -1054,7 +1054,7 @@ namespace MusicBot2.Service
                                 Messages = messages,
                                 Temperature = request.Temperature,
                                 TopP = request.TopP,
-                                MaxTokens = request.MaxOutputTokens > 0 ? request.MaxOutputTokens : 512,
+                                MaxTokens = request.MaxOutputTokens > 0 ? request.MaxOutputTokens : 1024,
                                 Stop = new[] { "使用者名稱:", "\n使用者名稱" }
                             };
                             Console.WriteLine($"[OpenRouter] ch:{channelKey} model:{model} msgs:{messages.Count}");

@@ -15,7 +15,7 @@ namespace MusicBot2.Models
         public float Temperature { get; set; } = 0.85f;
         public float TopP { get; set; } = 0.9f;
         public int TopK { get; set; } = 40;
-        public int MaxOutputTokens { get; set; } = 256;
+        public int MaxOutputTokens { get; set; } = 1024;
     }
 
     public class GeminiApiRequest
