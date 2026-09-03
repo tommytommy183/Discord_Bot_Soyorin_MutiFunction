@@ -1463,7 +1463,22 @@ HP為0就是真的死亡，不會再有後續動作
                                    aiResponse.Contains($"勝者: {pokemon1.Name}") ||
 
                                    aiResponse.Contains($"勝者：{pokemon1.CustomName}") ||
-                                   aiResponse.Contains($"勝者: {pokemon1.CustomName}");
+                                   aiResponse.Contains($"勝者: {pokemon1.CustomName}") ||
+
+                                   aiResponse.Contains($"勝者：[{player1Name}]") ||
+                                   aiResponse.Contains($"勝者: [{player1Name}]") ||
+
+                                   aiResponse.Contains($"勝者：[玩家1]") ||
+                                   aiResponse.Contains($"勝者: [玩家1]") ||
+
+                                   aiResponse.Contains($"勝者：[玩家A]") ||
+                                   aiResponse.Contains($"勝者: [玩家A]") ||
+
+                                   aiResponse.Contains($"勝者：[{pokemon1.Name}]") ||
+                                   aiResponse.Contains($"勝者: [{pokemon1.Name}]") ||
+
+                                   aiResponse.Contains($"勝者：[{pokemon1.CustomName}]") ||
+                                   aiResponse.Contains($"勝者: [{pokemon1.CustomName}]");
 
                 bool player2Wins = aiResponse.Contains($"勝者：{player2Name}") ||
                                    aiResponse.Contains($"勝者: {player2Name}") ||
@@ -1478,7 +1493,22 @@ HP為0就是真的死亡，不會再有後續動作
                                    aiResponse.Contains($"勝者: {pokemon2.Name}") ||
 
                                    aiResponse.Contains($"勝者：{pokemon2.CustomName}") ||
-                                   aiResponse.Contains($"勝者: {pokemon2.CustomName}");
+                                   aiResponse.Contains($"勝者: {pokemon2.CustomName}") ||
+
+                                   aiResponse.Contains($"勝者：[{player2Name}]") ||
+                                   aiResponse.Contains($"勝者: [{player2Name}]") ||
+
+                                   aiResponse.Contains($"勝者：[玩家B]") ||
+                                   aiResponse.Contains($"勝者: [玩家B]") ||
+
+                                   aiResponse.Contains($"勝者：[玩家2]") ||
+                                   aiResponse.Contains($"勝者: [玩家2]") ||
+
+                                   aiResponse.Contains($"勝者：[{pokemon2.Name}]") ||
+                                   aiResponse.Contains($"勝者: [{pokemon2.Name}]") ||
+
+                                   aiResponse.Contains($"勝者：[{pokemon2.CustomName}]") ||
+                                   aiResponse.Contains($"勝者: [{pokemon2.CustomName}]");
 
                 if (!player1Wins && !player2Wins)
                 {
@@ -1893,7 +1923,22 @@ HP為0就是真的死亡，不會再有後續動作
                                    aiResponse.Contains($"勝者: {pokemon1.Name}") ||
 
                                    aiResponse.Contains($"勝者：{pokemon1.CustomName}") ||
-                                   aiResponse.Contains($"勝者: {pokemon1.CustomName}");
+                                   aiResponse.Contains($"勝者: {pokemon1.CustomName}") ||
+
+                                   aiResponse.Contains($"勝者：[{player1Name}]") ||
+                                   aiResponse.Contains($"勝者: [{player1Name}]") ||
+
+                                   aiResponse.Contains($"勝者：[玩家1]") ||
+                                   aiResponse.Contains($"勝者: [玩家1]") ||
+
+                                   aiResponse.Contains($"勝者：[玩家A]") ||
+                                   aiResponse.Contains($"勝者: [玩家A]") ||
+
+                                   aiResponse.Contains($"勝者：[{pokemon1.Name}]") ||
+                                   aiResponse.Contains($"勝者: [{pokemon1.Name}]") ||
+
+                                   aiResponse.Contains($"勝者：[{pokemon1.CustomName}]") ||
+                                   aiResponse.Contains($"勝者: [{pokemon1.CustomName}]");
 
                 bool player2Wins = aiResponse.Contains($"勝者：{player2Name}") ||
                                    aiResponse.Contains($"勝者: {player2Name}") ||
@@ -1908,7 +1953,22 @@ HP為0就是真的死亡，不會再有後續動作
                                    aiResponse.Contains($"勝者: {pokemon2.Name}") ||
 
                                    aiResponse.Contains($"勝者：{pokemon2.CustomName}") ||
-                                   aiResponse.Contains($"勝者: {pokemon2.CustomName}");
+                                   aiResponse.Contains($"勝者: {pokemon2.CustomName}") ||
+
+                                   aiResponse.Contains($"勝者：[{player2Name}]") ||
+                                   aiResponse.Contains($"勝者: [{player2Name}]") ||
+
+                                   aiResponse.Contains($"勝者：[玩家B]") ||
+                                   aiResponse.Contains($"勝者: [玩家B]") ||
+
+                                   aiResponse.Contains($"勝者：[玩家2]") ||
+                                   aiResponse.Contains($"勝者: [玩家2]") ||
+
+                                   aiResponse.Contains($"勝者：[{pokemon2.Name}]") ||
+                                   aiResponse.Contains($"勝者: [{pokemon2.Name}]") ||
+
+                                   aiResponse.Contains($"勝者：[{pokemon2.CustomName}]") ||
+                                   aiResponse.Contains($"勝者: [{pokemon2.CustomName}]");
 
                 // 如果 AI 沒有明確指出勝者，則根據數值判斷
                 if (!player1Wins && !player2Wins)
