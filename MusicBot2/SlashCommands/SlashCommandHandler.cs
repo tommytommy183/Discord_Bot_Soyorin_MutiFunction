@@ -203,20 +203,20 @@ namespace MusicBot2.SlahCommands
         [SlashCommand("猜單字", "猜單字")]
         public async Task Guess(string word, [Summary("難度", "不選則隨便選一個")][Choice("1~5個字", "easy")][Choice("6~7個字", "normal")][Choice("8~9個字", "hard")][Choice("10個字以上", "發kinghard")] string diff = "")
         {
+            await DeferAsync();
             try
             {
                 var user = Context.User as SocketGuildUser;
-                string res = await _wordService.Guess(Context.Channel as IMessageChannel, word, user,diff);
+                string res = await _wordService.Guess(Context.Channel as IMessageChannel, word, user, diff);
                 if (!string.IsNullOrEmpty(res))
                 {
-                    await RespondAsync(res);
+                    await FollowupAsync(res);
                 }
             }
             catch (Exception ex)
             {
                 Console.WriteLine(ex);
             }
-
         }
 
         [SlashCommand("開始踩地雷遊戲", "開始踩地雷遊戲")]
@@ -482,13 +482,14 @@ namespace MusicBot2.SlahCommands
         public async Task ClearSoyoGameState(
             [Summary("頻道", "要清除的頻道（留空 = 當前頻道）")] string channelKey = null)
         {
+            await DeferAsync(ephemeral: true);
             channelKey ??= Context.Channel.Id.ToString();
             var state = _openRouterService.GetGameState(channelKey);
             await _openRouterService.ClearGameStateAsync(channelKey);
             if (state != null)
-                await RespondAsync($"✅ 已清除遊戲記憶（{state.GameType}：{state.Secret}）", ephemeral: true);
+                await FollowupAsync($"✅ 已清除遊戲記憶（{state.GameType}：{state.Secret}）", ephemeral: true);
             else
-                await RespondAsync("目前沒有進行中的遊戲記憶。", ephemeral: true);
+                await FollowupAsync("目前沒有進行中的遊戲記憶。", ephemeral: true);
         }
 
         [SlashCommand("soyo對話摘要", "查看目前整理出來的對話摘要")]
@@ -567,6 +568,7 @@ namespace MusicBot2.SlahCommands
     [Summary("自訂訊息", "你想要附加的訊息，選填，如果要的話，幫我以/me代表自己，/target代表你要發送的對象")] string message = ""
 )
         {
+            await DeferAsync(ephemeral: true);
             //var channel = Context.Client.GetChannel(592716175461580800) as ISocketMessageChannel;
             var channel = Context.Channel as IMessageChannel;
             if (string.IsNullOrEmpty(message))
@@ -578,7 +580,7 @@ namespace MusicBot2.SlahCommands
                 message = message.Replace("/me", sender).Replace("/target", target.Mention);
                 await channel.SendMessageAsync(message, allowedMentions: AllowedMentions.All);
             }
-            await RespondAsync("發送成功", ephemeral: true);
+            await FollowupAsync("發送成功", ephemeral: true);
         }
 
         [SlashCommand("開啟投票", "開啟投票")]
