@@ -27,6 +27,10 @@ using static System.Net.Mime.MediaTypeNames;
 public class Program
 {
     #region 變數
+    // 配對狀態覆蓋：有人在找對戰時設為 true，阻止正常狀態循環覆蓋
+    public static bool MatchmakingStatusOverride = false;
+    public static string MatchmakingStatusText = "";
+
     private DiscordSocketClient? _client;
     private CommandService? _commands;
     private IAudioClient? _audioClient = null;
@@ -1464,30 +1468,55 @@ public class Program
         return Task.CompletedTask;
     }
 
+    // 等待 ms 毫秒，但若中途 MatchmakingStatusOverride 變 true 就立即返回
+    private static async Task DelayUnlessMatchmakingAsync(int ms)
+    {
+        int elapsed = 0;
+        while (elapsed < ms)
+        {
+            if (MatchmakingStatusOverride) return;
+            await Task.Delay(500);
+            elapsed += 500;
+        }
+    }
+
     public static async Task SetBotStatusAsync(DiscordSocketClient _client)
     {
         while (true)
         {
+            // 有人在配對時，先等它結束再繼續循環
+            while (MatchmakingStatusOverride)
+                await Task.Delay(2000);
+
             await _client.SetGameAsync("搜幽林轉生☆大★爆☆誕★", null, ActivityType.CustomStatus);
-            await Task.Delay(20000);
+            await DelayUnlessMatchmakingAsync(20000);
+            if (MatchmakingStatusOverride) continue;
             await _client.SetGameAsync("老娘soyo上雲端啦 在頻道輸入/可以看到老娘的一堆指令", null, ActivityType.CustomStatus);
-            await Task.Delay(20000);
+            await DelayUnlessMatchmakingAsync(20000);
+            if (MatchmakingStatusOverride) continue;
             await _client.SetGameAsync("傻逼DISCORD加密 不如我苦來溪苦一根", null, ActivityType.CustomStatus);
-            await Task.Delay(20000);
+            await DelayUnlessMatchmakingAsync(20000);
+            if (MatchmakingStatusOverride) continue;
             await _client.SetGameAsync("小祥辛酸打工畫面流出", "https://www.youtube.com/watch?v=_1xcBdtwEE4&ab_channel=supanasu", ActivityType.CustomStatus);
-            await Task.Delay(10000);
+            await DelayUnlessMatchmakingAsync(10000);
+            if (MatchmakingStatusOverride) continue;
             await _client.SetGameAsync("正在重組CRYCHIC", null, ActivityType.CustomStatus);
-            await Task.Delay(10000);
+            await DelayUnlessMatchmakingAsync(10000);
+            if (MatchmakingStatusOverride) continue;
             await _client.SetGameAsync("CRYCHIC新成員演唱", "https://www.youtube.com/watch?v=f9p0HWDQHxs&ab_channel=nlnl", ActivityType.CustomStatus);
-            await Task.Delay(10000);
+            await DelayUnlessMatchmakingAsync(10000);
+            if (MatchmakingStatusOverride) continue;
             await _client.SetGameAsync("有考慮當貝斯手嗎 我當然有考慮當貝斯手啊，那是我的夢想耶。我跟你說：當貝斯手比當工程師……我當……我當貝斯手，是……最想當的", null, ActivityType.CustomStatus);
-            await Task.Delay(10000);
+            await DelayUnlessMatchmakingAsync(10000);
+            if (MatchmakingStatusOverride) continue;
             await _client.SetGameAsync("寫程式真的很莫名其妙", null, ActivityType.CustomStatus);
-            await Task.Delay(10000);
+            await DelayUnlessMatchmakingAsync(10000);
+            if (MatchmakingStatusOverride) continue;
             await _client.SetGameAsync("那大家得多注意健康才行了", null, ActivityType.CustomStatus);
-            await Task.Delay(10000);
+            await DelayUnlessMatchmakingAsync(10000);
+            if (MatchmakingStatusOverride) continue;
             await _client.SetGameAsync("知ってたら止めたし😭セトリはもう終わってたのに急に演奏しだして😭みんなを止められなくてごめんね😭祥ちゃん、怒ってるよね😭怒るのも当然だと思う😭でも信じて欲しいの。春日影、本当に演奏する予定じゃなかったの😭本当にごめんね😭もう勝手に演奏したりしないって約束するよ😭ほかの子たちにも絶対にしないって約束させるから😭少しだけ話せないかな😭私、CRYCHICのこと本当に大切に思ってる😭だから、勝手に春日影演奏されたの祥ちゃんと同じくらい辛くて😭私の気持ちわかってほしいの😭お願い。どこても行くから😭バンドやらなきゃいけなかった理由もちゃんと話すから😭会って話せたら、きっとわかってもらえると思う😭私は祥ちゃんの味方だから😭会いたいの😭", null, ActivityType.CustomStatus);
-            await Task.Delay(10000);
+            await DelayUnlessMatchmakingAsync(10000);
         }
     }
     #endregion

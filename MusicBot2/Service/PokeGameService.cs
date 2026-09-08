@@ -2696,6 +2696,34 @@ HP為0就是真的死亡，不會再有後續動作
             }
         }
 
+        // 更新 bot 配對狀態：有人在等待時顯示提示，全部離開後恢復正常循環
+        private void RefreshMatchmakingStatus()
+        {
+            var searching1v1 = _useRedis ? _memoryMatchmaking.Values.ToList() : _memoryMatchmaking.Values.ToList();
+            var searching2v2 = _memoryMatchmaking2V2.Values.ToList();
+
+            // 合併所有正在搜尋的玩家名稱
+            var names = searching1v1.Select(m => m.UserName)
+                .Concat(searching2v2.Select(m => m.UserName))
+                .Distinct().ToList();
+
+            if (names.Count == 0)
+            {
+                Program.MatchmakingStatusOverride = false;
+                Program.MatchmakingStatusText = "";
+            }
+            else
+            {
+                string nameStr = string.Join("、", names);
+                string statusText = names.Count == 1
+                    ? $"🔞 {nameStr} 說妳不敢單挑，她正在尋求命中注定的宿敵來進行 Pokémon 對戰"
+                    : $"🔞 {nameStr} 等 {names.Count} 人正在尋求對戰";
+                Program.MatchmakingStatusOverride = true;
+                Program.MatchmakingStatusText = statusText;
+                _ = _client.SetGameAsync(statusText, null, ActivityType.CustomStatus);
+            }
+        }
+
         private async Task AddToMatchmakingAsync(ulong userId, string userName, PokeGamePokemon pokemon, ulong channelId)
         {
             var matchmaking = new BattleMatchmaking
@@ -2707,29 +2735,23 @@ HP為0就是真的死亡，不會再有後續動作
                 SearchStartTime = DateTime.UtcNow
             };
 
+            // 記憶體永遠同步（供 RefreshMatchmakingStatus 讀取）
+            _memoryMatchmaking[userId] = matchmaking;
+
             if (_useRedis)
             {
                 try
                 {
                     var data = JsonConvert.SerializeObject(matchmaking);
                     await _redisDb.HashSetAsync(MATCHMAKING_KEY, userId.ToString(), data);
-
-                    // 設定 1440 分鐘過期 (24 小時)
                     await _redisDb.KeyExpireAsync(MATCHMAKING_KEY, TimeSpan.FromMinutes(1440));
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"⚠️ Redis 配對寫入失敗，切換到記憶體儲存: {ex}");
-                    // Redis 失敗時降級到記憶體儲存
-                    _memoryMatchmaking[userId] = matchmaking;
+                    Console.WriteLine($"⚠️ Redis 配對寫入失敗，使用記憶體儲存: {ex}");
                 }
             }
-            else
-            {
-                // 使用記憶體儲存
-                _memoryMatchmaking[userId] = matchmaking;
-                await Task.CompletedTask;
-            }
+            RefreshMatchmakingStatus();
         }
 
         private async Task<List<BattleMatchmaking>> GetWaitingPlayersAsync()
@@ -2817,17 +2839,12 @@ HP為0就是真的死亡，不會再有後續動作
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"⚠️ Redis 配對刪除失敗，切換到記憶體儲存: {ex}");
-                    // Redis 失敗時降級到記憶體儲存
-                    _memoryMatchmaking.Remove(userId);
+                    Console.WriteLine($"⚠️ Redis 配對刪除失敗: {ex}");
                 }
             }
-            else
-            {
-                // 使用記憶體儲存
-                _memoryMatchmaking.Remove(userId);
-                await Task.CompletedTask;
-            }
+            // 記憶體永遠同步
+            _memoryMatchmaking.Remove(userId);
+            RefreshMatchmakingStatus();
         }
 
         private async Task AddToMatchmaking2V2Async(ulong userId, string userName, PokeGamePokemon pokemon1, PokeGamePokemon pokemon2, ulong channel)
@@ -2842,29 +2859,23 @@ HP為0就是真的死亡，不會再有後續動作
                 SearchStartTime = DateTime.UtcNow
             };
 
+            // 記憶體永遠同步
+            _memoryMatchmaking2V2[userId] = matchmaking;
+
             if (_useRedis)
             {
                 try
                 {
                     var data = JsonConvert.SerializeObject(matchmaking);
                     await _redisDb.HashSetAsync(MATCHMAKING_KEY_2V2, userId.ToString(), data);
-
-                    // 設定 1440 分鐘過期 (24 小時)
                     await _redisDb.KeyExpireAsync(MATCHMAKING_KEY_2V2, TimeSpan.FromMinutes(1440));
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"⚠️ Redis 配對寫入失敗，切換到記憶體儲存: {ex}");
-                    // Redis 失敗時降級到記憶體儲存
-                    _memoryMatchmaking2V2[userId] = matchmaking;
+                    Console.WriteLine($"⚠️ Redis 配對寫入失敗，使用記憶體儲存: {ex}");
                 }
             }
-            else
-            {
-                // 使用記憶體儲存
-                _memoryMatchmaking2V2[userId] = matchmaking;
-                await Task.CompletedTask;
-            }
+            RefreshMatchmakingStatus();
         }
 
         private async Task<List<BattleMatchmaking2V2>> GetWaitingPlayers2V2Async()
@@ -2952,17 +2963,12 @@ HP為0就是真的死亡，不會再有後續動作
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"⚠️ Redis 配對刪除失敗，切換到記憶體儲存: {ex}");
-                    // Redis 失敗時降級到記憶體儲存
-                    _memoryMatchmaking2V2.Remove(userId);
+                    Console.WriteLine($"⚠️ Redis 配對刪除失敗: {ex}");
                 }
             }
-            else
-            {
-                // 使用記憶體儲存
-                _memoryMatchmaking2V2.Remove(userId);
-                await Task.CompletedTask;
-            }
+            // 記憶體永遠同步
+            _memoryMatchmaking2V2.Remove(userId);
+            RefreshMatchmakingStatus();
         }
 
 
