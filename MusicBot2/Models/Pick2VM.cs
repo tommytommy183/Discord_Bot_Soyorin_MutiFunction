@@ -75,5 +75,6 @@ namespace MusicBot2.Models
         public Dictionary<int, HashSet<ulong>> Votes { get; set; }
         public ulong ImageMessageId { get; set; }  // 圖片訊息的 ID
         public ulong VoteMessageId { get; set; }   // 投票訊息的 ID
+        public int AutoAdvanceThreshold { get; set; } = 0;  // 0 = 停用；>0 = 達到此票數自動進下一題
     }
 }

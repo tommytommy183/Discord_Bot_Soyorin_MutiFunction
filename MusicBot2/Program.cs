@@ -299,7 +299,7 @@ public class Program
                     if (action == "vote" && parts.Length >= 3)
                     {
                         int choice = int.Parse(parts[2]);
-                        var (imageMessage, newComponent, embed, gameOver) = await pick2Service.HandleVoteAsync(component, choice);
+                        var (imageMessage, newComponent, embed, gameOver, autoAdvanced) = await pick2Service.HandleVoteAsync(component, choice);
 
                         // 先更新投票訊息（快）
                         await component.Message.ModifyAsync(msg =>
@@ -321,6 +321,25 @@ public class Program
                                 }
                             }
                             catch { /* 忽略圖片訊息更新失敗 */ }
+                        }
+                    }
+                    else if (action == "threshold")
+                    {
+                        // Select menu：component.Data.Values[0] 是選到的值
+                        int threshold = int.Parse(component.Data.Values.FirstOrDefault() ?? "0");
+                        pick2Service.SetThreshold(component.Channel.Id, threshold);
+
+                        // 刷新 embed（顯示新門檻）
+                        var gameState = pick2Service.GetGameState(component.Channel.Id);
+                        if (gameState != null)
+                        {
+                            var newComponent2 = pick2Service.BuildVoteButtonsPublic(gameState);
+                            var embed2 = pick2Service.BuildRoundEmbedPublic(gameState);
+                            await component.Message.ModifyAsync(msg =>
+                            {
+                                msg.Embed = embed2;
+                                msg.Components = newComponent2?.Build();
+                            });
                         }
                     }
                     else if (action == "finish")

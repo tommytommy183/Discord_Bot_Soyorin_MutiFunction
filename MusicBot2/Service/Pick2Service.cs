@@ -156,8 +156,15 @@ namespace MusicBot2.Service
             return StartNewMatch(gameState);
         }
 
-        // 處理投票
-        public async Task<(string imageMessage, ComponentBuilder component, Embed embed, bool gameOver)> HandleVoteAsync(SocketMessageComponent component, int choice)
+        // 設定自動推進門檻
+        public void SetThreshold(ulong channelId, int threshold)
+        {
+            if (_activeGames.ContainsKey(channelId))
+                _activeGames[channelId].AutoAdvanceThreshold = threshold;
+        }
+
+        // 處理投票（回傳 autoAdvanced=true 表示已自動推進到下一題）
+        public async Task<(string imageMessage, ComponentBuilder component, Embed embed, bool gameOver, bool autoAdvanced)> HandleVoteAsync(SocketMessageComponent component, int choice)
         {
             var channelId = component.Channel.Id;
             var userId = component.User.Id;
@@ -165,28 +172,33 @@ namespace MusicBot2.Service
             if (!_activeGames.ContainsKey(channelId))
             {
                 var emb = CommonHelper.BuildErrorEmbed("找不到進行中的遊戲");
-                return ("", new ComponentBuilder(), emb, true);
+                return ("", new ComponentBuilder(), emb, true, false);
             }
 
             var gameState = _activeGames[channelId];
 
             // 檢查使用者是否已經投過票
             foreach (var voteSet in gameState.Votes.Values)
-            {
                 voteSet.Remove(userId);
-            }
 
             // 添加新投票
             if (gameState.Votes.ContainsKey(choice))
-            {
                 gameState.Votes[choice].Add(userId);
+
+            // 檢查是否達到自動推進門檻
+            int totalVotes = gameState.Votes.Values.Sum(s => s.Count);
+            if (gameState.AutoAdvanceThreshold > 0 && totalVotes >= gameState.AutoAdvanceThreshold)
+            {
+                // 自動推進到下一題
+                var (img, comp, emb) = await FinishRoundAsync(channelId);
+                return (img, comp, emb, false, true);
             }
 
             var imageMessage = BuildImageMessage(gameState);
             var newComponent = BuildVoteButtons(gameState);
             var embed = BuildRoundEmbed(gameState);
 
-            return (imageMessage, newComponent, embed, false);
+            return (imageMessage, newComponent, embed, false, false);
         }
 
         // 完成當前比賽
@@ -262,7 +274,10 @@ namespace MusicBot2.Service
             return (imageMessage, component, embed.Build());
         }
 
-        // 建立投票按鈕
+        // 建立投票按鈕（public 供 Program.cs 在 threshold 更新後刷新用）
+        public ComponentBuilder BuildVoteButtonsPublic(Pick2GameState gameState) => BuildVoteButtons(gameState);
+        public Embed BuildRoundEmbedPublic(Pick2GameState gameState) => BuildRoundEmbed(gameState);
+
         private ComponentBuilder BuildVoteButtons(Pick2GameState gameState)
         {
             var builder = new ComponentBuilder();
@@ -296,6 +311,20 @@ namespace MusicBot2.Service
             // 第三行：控制按鈕
             builder.WithButton("➡️ 確認並下一題", $"pick2_finish", ButtonStyle.Success, row: 2);
             builder.WithButton("🔄 重新開始", $"pick2_reset", ButtonStyle.Danger, row: 2);
+
+            // 第四行：自動推進設定
+            var threshold = gameState.AutoAdvanceThreshold;
+            var thresholdMenu = new SelectMenuBuilder()
+                .WithCustomId("pick2_threshold")
+                .WithPlaceholder(threshold == 0 ? "⚙️ 設定達幾票後自動下一題（目前：停用）" : $"⚙️ 自動下一題（目前：{threshold}票）")
+                .WithMinValues(1).WithMaxValues(1)
+                .AddOption("停用自動推進", "0", "手動點確認才進下一題", threshold == 0 ? new Emoji("✅") : null)
+                .AddOption("1 票", "1", "任何人投票即自動推進", threshold == 1 ? new Emoji("✅") : null)
+                .AddOption("2 票", "2", "累計 2 票自動推進", threshold == 2 ? new Emoji("✅") : null)
+                .AddOption("3 票", "3", "累計 3 票自動推進", threshold == 3 ? new Emoji("✅") : null)
+                .AddOption("5 票", "5", "累計 5 票自動推進", threshold == 5 ? new Emoji("✅") : null)
+                .AddOption("10 票", "10", "累計 10 票自動推進", threshold == 10 ? new Emoji("✅") : null);
+            builder.WithSelectMenu(thresholdMenu, row: 3);
 
             return builder;
         }
@@ -339,7 +368,10 @@ namespace MusicBot2.Service
                 Color = Color.Blue
             };
 
-            embed.WithFooter("💡 點擊按鈕投票 | 可以更改選擇 | 投票後點「確認並下一題」繼續");
+            string footerText = gameState.AutoAdvanceThreshold > 0
+                ? $"💡 點擊按鈕投票 | 可以更改選擇 | 達 {gameState.AutoAdvanceThreshold} 票自動進下一題"
+                : "💡 點擊按鈕投票 | 可以更改選擇 | 投票後點「確認並下一題」繼續";
+            embed.WithFooter(footerText);
 
             return embed.Build();
         }
