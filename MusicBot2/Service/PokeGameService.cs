@@ -196,11 +196,11 @@ namespace MusicBot2.Service
                 }
 
                 // 檢查pokemon數量是否已達上限
-                if (player.CaughtPokemon.Count >= 10)
+                if (player.CaughtPokemon.Count >= 15)
                 {
                     var errorEmbed = new EmbedBuilder()
                         .WithTitle("❌ pokemon數量已達上限！")
-                        .WithDescription($"你已經有 10 隻pokemon了！\n請使用 `/蛋雕一隻pokemon` 指令釋放一隻後再來抓取新的。")
+                        .WithDescription($"你已經有 15 隻pokemon了！\n請使用 `/蛋雕一隻pokemon` 指令釋放一隻後再來抓取新的。")
                         .WithColor(Color.Red)
                         .Build();
                     return (errorEmbed, new ComponentBuilder());
