@@ -789,7 +789,7 @@ namespace MusicBot2.Service
                 player.CaughtPokemon.RemoveAt(pokemonIndex - 1);
                 await SavePlayerDataAsync(player);
 
-                string flavorText = GetRandomReleasePokemonText();
+                string flavorText = GetRandomReleasePokemonText(pokemon);
 
                 // 通用計數 flavor text
                 var matched = _countedFlavorTexts.FirstOrDefault(kv => kv.Value.baseText == flavorText);
@@ -827,32 +827,38 @@ namespace MusicBot2.Service
         }
 
 
-        public string GetRandomReleasePokemonText()
+        public string GetRandomReleasePokemonText(PokeGamePokemon pokemon)
         {
+            string pokeName = pokemon.CustomName ?? pokemon.Name;
             Random random = new Random();
             List<string> randomTextList = new List<string>
             {
                 "他將會記住你 他將會找到你 他將會回來草飼你",
-                "今日因，明日果，等級100再來找你",
                 "牠沒有哭，只是開始記你的IP，他會回來的",
                 "恭喜，你成功培養了一位未來的Boss",
                 "多年後，野外將多出一隻專門堵你的寶可夢",
                 "牠已加入『被放生者互助會』",
-                "牠離開了，但每逢深夜都會想起你的所作所為",
+                $"{pokeName} 離開了，但每逢深夜都會想起你的所作所為",
                 "你失去了一隻Pokemon，也多了一個潛在敵人",
-                "牠已經在 Google 搜尋：『如何向訓練家復仇』",
-                "牠花了三秒接受現實，剩下的一生都在想怎麼弄你",
-                "牠加入了火箭隊。這都是你的錯",
+                $"{pokeName} 已經在 Google 搜尋：『如何向訓練家復仇』",
+                $"{pokeName} 花了三秒接受現實，剩下的一生都在想怎麼弄你",
+                $"{pokeName} 加入了火箭隊。這都是你的錯",
                 "恭喜解鎖成就：製造一名反派",
-                "牠的劇情，現在才正式開始",
+                $"{pokeName} 的劇情，現在才正式開始",
                 "因為不是真正的夥伴而被逐出訓練家隊伍，流落到邊境展開慢活人生",
-                "從此開啟了回復術士的重啟人生",
+                $"{pokeName} 從此開啟了回復術士的重啟人生",
                 "你沒資格阿你沒資格",
-                "他最後加入了芒果醬樂團",
+                $"{pokeName} 最後加入了芒果醬樂團",
                 "被放生後他被抓去鼎王煮掉了，這都是你害的",
                 "從此你將再也抓不到任何會閃的pokemon",
-                "牠詛咒你從此拉屎都一定沒有衛生紙",
-                "牠說牠也受不了你整天對著牠鹿管，馬上跑走了"
+                $"{pokeName} 詛咒你從此拉屎都一定沒有衛生紙",
+                $"{pokeName} 說牠也受不了你整天對著牠鹿管，馬上跑走了",
+                $"{pokeName} 意外的在2018年12月24日，北緯35度41分，東經139度42分，充滿咒靈廢墟的戰場，最強與最強的對決，日本新宿戰場中被波及到被腰斬死去了",
+                $"{pokeName} 後來發憤圖強變成你的同事，取代了你的工作",
+                $"{pokeName} 想不開決定花500$去買脫衣麻將",
+                $"牠後來成為了特級咒靈 **{pokeName}**",
+                $"{pokeName} 變成你的老闆把你炒了",
+                $"{pokeName} 說要草你媽，他做到了"
             };
 
             string returnText = randomTextList[random.Next(randomTextList.Count)];
