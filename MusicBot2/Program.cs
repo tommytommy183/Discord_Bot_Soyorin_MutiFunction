@@ -1635,11 +1635,40 @@ public class Program
         // 註冊 Slash Commands
         await _interactionService.AddModuleAsync<MusicBot2.SlahCommands.SlashCommandHandler>(_services);
 
-        // 可選：僅在特定伺服器註冊（開發用）
-        // await _interactionService.RegisterCommandsToGuildAsync(YOUR_GUILD_ID);
-
-        // 全域註冊（可能需要最多 1 小時生效）
-        await _interactionService.RegisterCommandsGloballyAsync(deleteMissing: false);
+        // 全域指令註冊，處理 Discord Activities Entry Point command (type 4) 相容問題：
+        // - deleteMissing:true  → Discord API 50240（Entry Point 不能被 bulk overwrite 刪除）
+        // - deleteMissing:false → Discord.Net LINQ 本地炸（type 4 無法轉換 properties）
+        // → fallback 到對所有已加入 guild 個別註冊
+        try
+        {
+            await _interactionService.RegisterCommandsGloballyAsync(deleteMissing: true);
+            Console.WriteLine("[CommandReg] Global commands registered.");
+        }
+        catch (Discord.Net.HttpException ex) when ((int)ex.DiscordCode == 50240)
+        {
+            Console.WriteLine("[CommandReg] Entry Point detected (HTTP 50240), trying deleteMissing:false...");
+            try
+            {
+                await _interactionService.RegisterCommandsGloballyAsync(deleteMissing: false);
+                Console.WriteLine("[CommandReg] Global commands registered (deleteMissing:false).");
+            }
+            catch (InvalidOperationException ioEx) when (ioEx.Message.Contains("command type 4"))
+            {
+                Console.WriteLine("[CommandReg] Discord.Net type 4 bug, falling back to guild registration...");
+                foreach (var guild in _client.Guilds)
+                {
+                    try
+                    {
+                        await _interactionService.RegisterCommandsToGuildAsync(guild.Id, deleteMissing: true);
+                        Console.WriteLine($"[CommandReg] Guild {guild.Name} ({guild.Id}) registered.");
+                    }
+                    catch (Exception gEx)
+                    {
+                        Console.WriteLine($"[CommandReg] Guild {guild.Id} failed: {gEx.Message}");
+                    }
+                }
+            }
+        }
     }
     public Task Log(LogMessage log)
     {
