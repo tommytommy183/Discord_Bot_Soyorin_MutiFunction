@@ -1639,7 +1639,7 @@ public class Program
         // await _interactionService.RegisterCommandsToGuildAsync(YOUR_GUILD_ID);
 
         // 全域註冊（可能需要最多 1 小時生效）
-        await _interactionService.RegisterCommandsGloballyAsync();
+        await _interactionService.RegisterCommandsGloballyAsync(deleteMissing: false);
     }
     public Task Log(LogMessage log)
     {

@@ -960,7 +960,7 @@ namespace MusicBot2.SlahCommands
                 .WithColor(Color.DarkOrange).Build());
         }
         // ── 好感度 ────────────────────────────────────────────────────────────
-        [SlashCommand("摸摸pokemon", "每日愛撫一隻pokemon，提升好感度 +5")]
+        [SlashCommand("摸摸pokemon", "每日愛撫一隻pokemon提升好感度5")]
         public async Task PetPokemonCmdAsync()
         {
             await DeferAsync(ephemeral: true);
@@ -979,7 +979,7 @@ namespace MusicBot2.SlahCommands
         }
 
         // ── 工作系統 ──────────────────────────────────────────────────────────
-        [SlashCommand("指派幻獸pokemon工作", "根據屬性派pokemon去打工，幾小時後回來帶材料")]
+        [SlashCommand("指派幻獸pokemon工作", "根據屬性派pokemon去打工幾小時後回來帶材料")]
         public async Task SendPokeWorkCmdAsync()
         {
             await DeferAsync(ephemeral: true);
