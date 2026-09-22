@@ -963,38 +963,38 @@ namespace MusicBot2.SlahCommands
         [SlashCommand("摸摸pokemon", "每日愛撫一隻pokemon提升好感度5")]
         public async Task PetPokemonCmdAsync()
         {
-            await DeferAsync(ephemeral: true);
+            await DeferAsync();
             var user = Context.User as SocketGuildUser;
             var (embed, comp) = await _pokeGameService.ShowPetMenuAsync(user.Id, user.Username);
-            await FollowupAsync(embed: embed, components: comp.Build(), ephemeral: true);
+            await FollowupAsync(embed: embed, components: comp.Build());
         }
 
         [SlashCommand("設定最好的夥伴", "將好感度 ≥ 200 的pokemon設為你的唯一最好夥伴")]
         public async Task SetBestFriendCmdAsync()
         {
-            await DeferAsync(ephemeral: true);
+            await DeferAsync();
             var user = Context.User as SocketGuildUser;
             var (embed, comp) = await _pokeGameService.ShowSetBestFriendMenuAsync(user.Id, user.Username);
-            await FollowupAsync(embed: embed, components: comp.Build(), ephemeral: true);
+            await FollowupAsync(embed: embed, components: comp.Build());
         }
 
         // ── 工作系統 ──────────────────────────────────────────────────────────
         [SlashCommand("指派幻獸pokemon工作", "根據屬性派pokemon去打工幾小時後回來帶材料")]
         public async Task SendPokeWorkCmdAsync()
         {
-            await DeferAsync(ephemeral: true);
+            await DeferAsync();
             var user = Context.User as SocketGuildUser;
             var (embed, comp) = await _pokeGameService.ShowSendToWorkMenuAsync(user.Id, user.Username);
-            await FollowupAsync(embed: embed, components: comp.Build(), ephemeral: true);
+            await FollowupAsync(embed: embed, components: comp.Build());
         }
 
         [SlashCommand("收工pokemon", "取回工作中的pokemon並獲得材料")]
         public async Task CollectWorkCmdAsync()
         {
-            await DeferAsync(ephemeral: true);
+            await DeferAsync();
             var user = Context.User as SocketGuildUser;
             var (embed, _) = await _pokeGameService.CollectWorkAsync(user.Id, user.Username);
-            await FollowupAsync(embed: embed, ephemeral: true);
+            await FollowupAsync(embed: embed);
         }
 
         // ── 培養系統 ──────────────────────────────────────────────────────────
@@ -1010,38 +1010,38 @@ namespace MusicBot2.SlahCommands
         [SlashCommand("pokemon每日材料", "每日一次領取基礎材料（礦石、魚貨、藥草 各×1）")]
         public async Task DailyMaterialsCmdAsync()
         {
-            await DeferAsync(ephemeral: true);
+            await DeferAsync();
             var user = Context.User as SocketGuildUser;
             var (embed, _) = await _pokeGameService.DailyMaterialsAsync(user.Id, user.Username);
-            await FollowupAsync(embed: embed, ephemeral: true);
+            await FollowupAsync(embed: embed);
         }
 
         [SlashCommand("pokemon合成道具", "用材料合成道具")]
         public async Task CraftItemCmdAsync()
         {
-            await DeferAsync(ephemeral: true);
+            await DeferAsync();
             var user = Context.User as SocketGuildUser;
             var (embed, comp) = await _pokeGameService.ShowCraftMenuAsync(user.Id, user.Username);
-            await FollowupAsync(embed: embed, components: comp.Build(), ephemeral: true);
+            await FollowupAsync(embed: embed, components: comp.Build());
         }
 
         // ── 交配/孵化 ─────────────────────────────────────────────────────────
         [SlashCommand("pokemon瘋狂交配", "讓兩隻pokemon交配，24小時後孵出新的pokemon")]
         public async Task BreedPokemonCmdAsync()
         {
-            await DeferAsync(ephemeral: true);
+            await DeferAsync();
             var user = Context.User as SocketGuildUser;
             var (embed, comp) = await _pokeGameService.ShowBreedParent1MenuAsync(user.Id, user.Username);
-            await FollowupAsync(embed: embed, components: comp.Build(), ephemeral: true);
+            await FollowupAsync(embed: embed, components: comp.Build());
         }
 
         [SlashCommand("孵化pokemon", "查看孵化狀態，蛋好了就孵出來")]
         public async Task HatchEggCmdAsync()
         {
-            await DeferAsync(ephemeral: true);
+            await DeferAsync();
             var user = Context.User as SocketGuildUser;
             var (embed, _) = await _pokeGameService.HatchEggAsync(user.Id, user.Username);
-            await FollowupAsync(embed: embed, ephemeral: true);
+            await FollowupAsync(embed: embed);
         }
 
         // ── 排行榜 ────────────────────────────────────────────────────────────
