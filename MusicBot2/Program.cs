@@ -801,6 +801,166 @@ public class Program
                     }
                 }
             }
+            // ── 撫摸 poke_pet_{userId}_{pokemonIdx} ──────────────────────────
+            else if (component.Data.CustomId.StartsWith("poke_pet_"))
+            {
+                var parts = component.Data.CustomId.Split('_');
+                // parts: [poke, pet, userId, idx]
+                if (parts.Length == 4
+                    && ulong.TryParse(parts[2], out ulong petOwnerId)
+                    && int.TryParse(parts[3], out int petIdx))
+                {
+                    if (component.User.Id != petOwnerId)
+                    { await component.RespondAsync("❌ 這不是你的選單！", ephemeral: true); return; }
+                    await component.DeferAsync(ephemeral: true);
+                    var pokeSvc = _services.GetService<PokeGameService>();
+                    var guildUser = component.User as Discord.WebSocket.SocketGuildUser;
+                    var (embed, _) = await pokeSvc.PetPokemonAsync(petOwnerId, guildUser?.DisplayName ?? component.User.Username, petIdx);
+                    await component.ModifyOriginalResponseAsync(msg => { msg.Embed = embed; msg.Components = new ComponentBuilder().Build(); });
+                }
+            }
+
+            // ── 設定最好的夥伴 poke_bestfriend_{userId}_{pokemonIdx} ─────────
+            else if (component.Data.CustomId.StartsWith("poke_bestfriend_"))
+            {
+                var parts = component.Data.CustomId.Split('_');
+                if (parts.Length == 4
+                    && ulong.TryParse(parts[2], out ulong bfOwnerId)
+                    && int.TryParse(parts[3], out int bfIdx))
+                {
+                    if (component.User.Id != bfOwnerId)
+                    { await component.RespondAsync("❌ 這不是你的選單！", ephemeral: true); return; }
+                    await component.DeferAsync(ephemeral: true);
+                    var pokeSvc = _services.GetService<PokeGameService>();
+                    var guildUser = component.User as Discord.WebSocket.SocketGuildUser;
+                    var (embed, _) = await pokeSvc.SetBestFriendAsync(bfOwnerId, guildUser?.DisplayName ?? component.User.Username, bfIdx);
+                    await component.ModifyOriginalResponseAsync(msg => { msg.Embed = embed; msg.Components = new ComponentBuilder().Build(); });
+                }
+            }
+
+            // ── 派工 poke_work_send_{userId}_{pokemonIdx} ────────────────────
+            else if (component.Data.CustomId.StartsWith("poke_work_send_"))
+            {
+                var parts = component.Data.CustomId.Split('_');
+                // parts: [poke, work, send, userId, idx]
+                if (parts.Length == 5
+                    && ulong.TryParse(parts[3], out ulong workOwnerId)
+                    && int.TryParse(parts[4], out int workIdx))
+                {
+                    if (component.User.Id != workOwnerId)
+                    { await component.RespondAsync("❌ 這不是你的選單！", ephemeral: true); return; }
+                    await component.DeferAsync(ephemeral: true);
+                    var pokeSvc = _services.GetService<PokeGameService>();
+                    var guildUser = component.User as Discord.WebSocket.SocketGuildUser;
+                    var (embed, _) = await pokeSvc.SendPokemonToWorkAsync(workOwnerId, guildUser?.DisplayName ?? component.User.Username, workIdx);
+                    await component.ModifyOriginalResponseAsync(msg => { msg.Embed = embed; msg.Components = new ComponentBuilder().Build(); });
+                }
+            }
+
+            // ── 合成道具 poke_craft_{userId}_{itemKey} ────────────────────────
+            else if (component.Data.CustomId.StartsWith("poke_craft_"))
+            {
+                var parts = component.Data.CustomId.Split('_');
+                // parts: [poke, craft, userId, itemKey]
+                if (parts.Length == 4
+                    && ulong.TryParse(parts[2], out ulong craftOwnerId))
+                {
+                    if (component.User.Id != craftOwnerId)
+                    { await component.RespondAsync("❌ 這不是你的選單！", ephemeral: true); return; }
+                    await component.DeferAsync(ephemeral: true);
+                    var pokeSvc = _services.GetService<PokeGameService>();
+                    var guildUser = component.User as Discord.WebSocket.SocketGuildUser;
+                    var (embed, _) = await pokeSvc.CraftItemAsync(craftOwnerId, guildUser?.DisplayName ?? component.User.Username, parts[3]);
+                    await component.ModifyOriginalResponseAsync(msg => { msg.Embed = embed; msg.Components = new ComponentBuilder().Build(); });
+                }
+            }
+
+            // ── 使用道具 — 選道具 poke_useitem_select_{userId}_{itemKey} ──────
+            else if (component.Data.CustomId.StartsWith("poke_useitem_select_"))
+            {
+                var parts = component.Data.CustomId.Split('_');
+                // parts: [poke, useitem, select, userId, itemKey]
+                if (parts.Length == 5
+                    && ulong.TryParse(parts[3], out ulong useOwnerId))
+                {
+                    if (component.User.Id != useOwnerId)
+                    { await component.RespondAsync("❌ 這不是你的選單！", ephemeral: true); return; }
+                    await component.DeferAsync(ephemeral: true);
+                    var pokeSvc = _services.GetService<PokeGameService>();
+                    var guildUser = component.User as Discord.WebSocket.SocketGuildUser;
+                    var (embed, comp2) = await pokeSvc.ShowUseItemOnPokemonMenuAsync(useOwnerId, guildUser?.DisplayName ?? component.User.Username, parts[4]);
+                    await component.ModifyOriginalResponseAsync(msg => { msg.Embed = embed; msg.Components = comp2.Build(); });
+                }
+            }
+
+            // ── 使用道具 — 選pokemon poke_useitem_use_{userId}_{itemKey}_{idx} ─
+            else if (component.Data.CustomId.StartsWith("poke_useitem_use_"))
+            {
+                var parts = component.Data.CustomId.Split('_');
+                // parts: [poke, useitem, use, userId, itemKey, pokemonIdx]
+                if (parts.Length == 6
+                    && ulong.TryParse(parts[3], out ulong useOwnerId2)
+                    && int.TryParse(parts[5], out int usePokeIdx))
+                {
+                    if (component.User.Id != useOwnerId2)
+                    { await component.RespondAsync("❌ 這不是你的選單！", ephemeral: true); return; }
+                    await component.DeferAsync(ephemeral: true);
+                    var pokeSvc = _services.GetService<PokeGameService>();
+                    var guildUser = component.User as Discord.WebSocket.SocketGuildUser;
+                    var (embed, _) = await pokeSvc.UseItemOnPokemonAsync(useOwnerId2, guildUser?.DisplayName ?? component.User.Username, parts[4], usePokeIdx);
+                    await component.ModifyOriginalResponseAsync(msg => { msg.Embed = embed; msg.Components = new ComponentBuilder().Build(); });
+                }
+            }
+
+            // ── 交配第一隻 poke_breed_1_{userId}_{parent1Idx} ────────────────
+            else if (component.Data.CustomId.StartsWith("poke_breed_1_"))
+            {
+                var parts = component.Data.CustomId.Split('_');
+                // parts: [poke, breed, 1, userId, p1Idx]
+                if (parts.Length == 5
+                    && ulong.TryParse(parts[3], out ulong breedOwnerId)
+                    && int.TryParse(parts[4], out int breedP1Idx))
+                {
+                    if (component.User.Id != breedOwnerId)
+                    { await component.RespondAsync("❌ 這不是你的選單！", ephemeral: true); return; }
+                    await component.DeferAsync(ephemeral: true);
+                    var pokeSvc = _services.GetService<PokeGameService>();
+                    var guildUser = component.User as Discord.WebSocket.SocketGuildUser;
+                    var (embed, comp2) = await pokeSvc.ShowBreedParent2MenuAsync(breedOwnerId, guildUser?.DisplayName ?? component.User.Username, breedP1Idx);
+                    await component.ModifyOriginalResponseAsync(msg => { msg.Embed = embed; msg.Components = comp2.Build(); });
+                }
+            }
+
+            // ── 交配第二隻 poke_breed_2_{userId}_{parent1Idx}_{parent2Idx} ────
+            else if (component.Data.CustomId.StartsWith("poke_breed_2_"))
+            {
+                var parts = component.Data.CustomId.Split('_');
+                // parts: [poke, breed, 2, userId, p1Idx, p2Idx]
+                if (parts.Length == 6
+                    && ulong.TryParse(parts[3], out ulong breedOwnerId2)
+                    && int.TryParse(parts[4], out int breedP1Idx2)
+                    && int.TryParse(parts[5], out int breedP2Idx))
+                {
+                    if (component.User.Id != breedOwnerId2)
+                    { await component.RespondAsync("❌ 這不是你的選單！", ephemeral: true); return; }
+                    await component.DeferAsync(ephemeral: true);
+                    var pokeSvc = _services.GetService<PokeGameService>();
+                    var guildUser = component.User as Discord.WebSocket.SocketGuildUser;
+                    var (embed, _) = await pokeSvc.BreedPokemonAsync(breedOwnerId2, guildUser?.DisplayName ?? component.User.Username, breedP1Idx2, breedP2Idx);
+                    await component.ModifyOriginalResponseAsync(msg => { msg.Embed = embed; msg.Components = new ComponentBuilder().Build(); });
+                }
+            }
+
+            // ── 排行榜切換類別 poke_rank_{category} ─────────────────────────
+            else if (component.Data.CustomId.StartsWith("poke_rank_"))
+            {
+                await component.DeferAsync();
+                var category = component.Data.CustomId.Replace("poke_rank_", "");
+                var pokeSvc = _services.GetService<PokeGameService>();
+                var (embed, comp2) = await pokeSvc.ShowLeaderboardAsync(category);
+                await component.ModifyOriginalResponseAsync(msg => { msg.Embed = embed; msg.Components = comp2.Build(); });
+            }
+
             // ── 蛋雕選擇按鈕 poke_release_{userId}_{pokemonIdx} ───────────────
             else if (component.Data.CustomId.StartsWith("poke_release_"))
             {

@@ -150,6 +150,21 @@ namespace MusicBot2.Models
         public int TotalBattles { get; set; }
         public int Wins { get; set; }
         public int Losses { get; set; }
+
+        // 好感度系統
+        public int BestFriendIndex { get; set; } = -1; // 最好的夥伴（唯一），-1 = 未設定
+
+        // 背包系統（材料 + 道具）
+        public Dictionary<string, int> Bag { get; set; } = new Dictionary<string, int>();
+
+        // 每日登入
+        public DateTime? LastDailyLoginDate { get; set; }
+
+        // 每日球（台灣時間00:00重置）
+        public DateTime? LastDailyBallDate { get; set; }
+
+        // 孵化系統
+        public PokeEgg HatchingEgg { get; set; } = null;
     }
 
     public class PokeGamePokemon
@@ -177,6 +192,45 @@ namespace MusicBot2.Models
         public int? NextEvolutionId { get; set; } // 下一階段進化的 Pokemon ID
         public string Front_GIF { get; set; } // 動態圖片 URL
         public string Back_GIF { get; set; } // 動態圖片 URL
+
+        // 好感度系統
+        public int Friendship { get; set; } = 0; // 好感度 (0-255)
+        public DateTime? LastInteractDate { get; set; } // 上次互動時間（用於衰減判斷）
+
+        // 精力系統
+        public int Stamina { get; set; } = 100; // 精力值 (0-100)
+
+        // 型態變換（對戰用，不儲存至 DB）
+        [JsonIgnore]
+        public bool IsBattleFormChanged { get; set; } = false;
+        [JsonIgnore]
+        public int OriginalId { get; set; } = 0;
+    }
+
+    // ─── 工作系統 ───────────────────────────────────────────────────────────
+    public class PokemonWorkState
+    {
+        [JsonConverter(typeof(UlongStringConverter))]
+        public ulong UserId { get; set; }
+        public DateTime PokemonCaughtDate { get; set; } // 用 CaughtDate 識別哪隻 pokemon
+        public string WorkType { get; set; }            // 工作類型（中文名稱）
+        public string WorkTypeKey { get; set; }         // 工作類型 key
+        public DateTime WorkStartTime { get; set; }
+        public DateTime WorkEndTime { get; set; }
+        public List<string> ExpectedMaterials { get; set; } = new List<string>(); // 預計獲得的材料 key
+    }
+
+    // ─── 孵化/交配系統 ──────────────────────────────────────────────────────
+    public class PokeEgg
+    {
+        public int Parent1Id { get; set; }
+        public DateTime Parent1CaughtDate { get; set; }
+        public string Parent1Name { get; set; }
+        public int Parent2Id { get; set; }
+        public DateTime Parent2CaughtDate { get; set; }
+        public string Parent2Name { get; set; }
+        public DateTime HatchTime { get; set; }         // 孵化完成時間（配對 +24h）
+        public int PredefinedPokemonId { get; set; }    // 孵出哪隻（配對時就決定）
     }
 
     public class BattleMatchmaking

@@ -229,52 +229,52 @@ namespace MusicBot2.SlahCommands
             await FollowupAsync(embed: embed, components: component.Build());
         }
 
-        [SlashCommand("開始超大踩地雷遊戲", "開始超大踩地雷遊戲")]
-        public async Task CustomizedMineCommand(
-            [Summary("寬度", "地圖寬度")] int width,
-            [Summary("高度", "地圖高度")] int height)
-        {
-            await DeferAsync();
+    //    [SlashCommand("開始超大踩地雷遊戲", "開始超大踩地雷遊戲")]
+    //    public async Task CustomizedMineCommand(
+    //        [Summary("寬度", "地圖寬度")] int width,
+    //        [Summary("高度", "地圖高度")] int height)
+    //    {
+    //        await DeferAsync();
 
-            var (component, embed) = await _mineGameService.StartBiggerGameAsync(Context.User.Id, width, height);
+    //        var (component, embed) = await _mineGameService.StartBiggerGameAsync(Context.User.Id, width, height);
 
-            await FollowupAsync(embed: embed, components: component.Build());
-        }
+    //        await FollowupAsync(embed: embed, components: component.Build());
+    //    }
 
-        [SlashCommand("超大踩地雷遊戲開牌", "超大踩地雷遊戲開牌")]
-        public async Task OpenBox(
-            [Summary("x座標", "x座標")] int x,
-            [Summary("y座標", "y座標")] int y)
-        {
-            await DeferAsync();
+    //    [SlashCommand("超大踩地雷遊戲開牌", "超大踩地雷遊戲開牌")]
+    //    public async Task OpenBox(
+    //        [Summary("x座標", "x座標")] int x,
+    //        [Summary("y座標", "y座標")] int y)
+    //    {
+    //        await DeferAsync();
 
-            var embed = await _mineGameService.HandleTextCoordinate(Context.User.Id, x, y);
-            await FollowupAsync(embed: embed);
-        }
+    //        var embed = await _mineGameService.HandleTextCoordinate(Context.User.Id, x, y);
+    //        await FollowupAsync(embed: embed);
+    //    }
 
-        [SlashCommand("開始魔術方塊遊戲", "開始魔術方塊遊戲")]
-        public async Task RubiksCubeCommand(
-    [Summary("難度", "打亂步數 (預設20步)")] int scrambleMoves = 20)
-        {
-            await DeferAsync();
+    //    [SlashCommand("開始魔術方塊遊戲", "開始魔術方塊遊戲")]
+    //    public async Task RubiksCubeCommand(
+    //[Summary("難度", "打亂步數 (預設20步)")] int scrambleMoves = 20)
+    //    {
+    //        await DeferAsync();
 
-            if (scrambleMoves < 5 || scrambleMoves > 100)
-            {
-                await FollowupAsync("❌ 難度必須在 5-100 步之間！", ephemeral: true);
-                return;
-            }
+    //        if (scrambleMoves < 5 || scrambleMoves > 100)
+    //        {
+    //            await FollowupAsync("❌ 難度必須在 5-100 步之間！", ephemeral: true);
+    //            return;
+    //        }
 
-            var (component, embed) = _rubiksCubeService.StartGame(Context.Channel.Id, scrambleMoves);
-            await FollowupAsync(embed: embed, components: component.Build());
-        }
+    //        var (component, embed) = _rubiksCubeService.StartGame(Context.Channel.Id, scrambleMoves);
+    //        await FollowupAsync(embed: embed, components: component.Build());
+    //    }
 
-        [SlashCommand("開始魔術方塊遊戲短版", "開始魔術方塊遊戲 (簡短版)")]
-        public async Task CubeCommand()
-        {
-            await DeferAsync();
-            var (component, embed) = _rubiksCubeService.StartGame(Context.Channel.Id, 20);
-            await FollowupAsync(embed: embed, components: component.Build());
-        }
+    //    [SlashCommand("開始魔術方塊遊戲短版", "開始魔術方塊遊戲 (簡短版)")]
+    //    public async Task CubeCommand()
+    //    {
+    //        await DeferAsync();
+    //        var (component, embed) = _rubiksCubeService.StartGame(Context.Channel.Id, 20);
+    //        await FollowupAsync(embed: embed, components: component.Build());
+    //    }
 
         [SlashCommand("開始2048遊戲", "開始 2048 遊戲")]
         public async Task Game2048Command()
@@ -302,102 +302,102 @@ namespace MusicBot2.SlahCommands
 
         }
 
-        [SlashCommand("開始單人抽鬼牌遊戲", "開始抽鬼牌遊戲(測試模式)")]
-        public async Task GhostStartCommand()
-        {
-            await DeferAsync();
+        //[SlashCommand("開始單人抽鬼牌遊戲", "開始抽鬼牌遊戲(測試模式)")]
+        //public async Task GhostStartCommand()
+        //{
+        //    await DeferAsync();
 
-            var user = Context.User as SocketGuildUser;
-            var result = await _oldMaidService.StartTestGame(Context.Channel, user);
+        //    var user = Context.User as SocketGuildUser;
+        //    var result = await _oldMaidService.StartTestGame(Context.Channel, user);
 
-            // 同時發送按鈕
-            var component = _oldMaidService.GetDrawButtons(Context.Channel);
+        //    // 同時發送按鈕
+        //    var component = _oldMaidService.GetDrawButtons(Context.Channel);
 
-            await FollowupAsync(result, components: component?.Build());
-        }
+        //    await FollowupAsync(result, components: component?.Build());
+        //}
 
-        [SlashCommand("開始多人抽鬼牌遊戲", "開始多人抽鬼牌遊戲")]
-        public async Task GhostPlayCommand(
-            [Summary("玩家2", "第二位玩家")] SocketGuildUser player2,
-            [Summary("玩家3", "第三位玩家（選填）")] SocketGuildUser player3 = null,
-            [Summary("玩家4", "第四位玩家（選填）")] SocketGuildUser player4 = null,
-            [Summary("玩家5", "第五位玩家（選填）")] SocketGuildUser player5 = null,
-            [Summary("玩家6", "第六位玩家（選填）")] SocketGuildUser player6 = null)
-        {
-            await DeferAsync();
+        //[SlashCommand("開始多人抽鬼牌遊戲", "開始多人抽鬼牌遊戲")]
+        //public async Task GhostPlayCommand(
+        //    [Summary("玩家2", "第二位玩家")] SocketGuildUser player2,
+        //    [Summary("玩家3", "第三位玩家（選填）")] SocketGuildUser player3 = null,
+        //    [Summary("玩家4", "第四位玩家（選填）")] SocketGuildUser player4 = null,
+        //    [Summary("玩家5", "第五位玩家（選填）")] SocketGuildUser player5 = null,
+        //    [Summary("玩家6", "第六位玩家（選填）")] SocketGuildUser player6 = null)
+        //{
+        //    await DeferAsync();
 
-            var user = Context.User as SocketGuildUser;
-            var players = new List<SocketGuildUser> { user, player2 };
+        //    var user = Context.User as SocketGuildUser;
+        //    var players = new List<SocketGuildUser> { user, player2 };
 
-            if (player3 != null) players.Add(player3);
-            if (player4 != null) players.Add(player4);
-            if (player5 != null) players.Add(player5);
-            if (player6 != null) players.Add(player6);
+        //    if (player3 != null) players.Add(player3);
+        //    if (player4 != null) players.Add(player4);
+        //    if (player5 != null) players.Add(player5);
+        //    if (player6 != null) players.Add(player6);
 
-            var result = await _oldMaidService.StartGame(Context.Channel, players);
-            var component = _oldMaidService.GetDrawButtons(Context.Channel);
+        //    var result = await _oldMaidService.StartGame(Context.Channel, players);
+        //    var component = _oldMaidService.GetDrawButtons(Context.Channel);
 
-            await FollowupAsync(result, components: component?.Build());
-        }
+        //    await FollowupAsync(result, components: component?.Build());
+        //}
 
-        [SlashCommand("查看你的手牌", "查看你的手牌")]
-        public async Task GhostHandsCommand()
-        {
-            var user = Context.User as SocketGuildUser;
-            var embed = _oldMaidService.GetPlayerHand(Context.Channel, user);
+        //[SlashCommand("查看你的手牌", "查看你的手牌")]
+        //public async Task GhostHandsCommand()
+        //{
+        //    var user = Context.User as SocketGuildUser;
+        //    var embed = _oldMaidService.GetPlayerHand(Context.Channel, user);
 
-            // ephemeral: true 表示只有執行指令的人看得到
-            await RespondAsync(embed: embed, ephemeral: true);
-        }
+        //    // ephemeral: true 表示只有執行指令的人看得到
+        //    await RespondAsync(embed: embed, ephemeral: true);
+        //}
 
-        [SlashCommand("查看抽鬼牌遊戲狀態", "查看抽鬼牌遊戲狀態")]
-        public async Task GhostStatusCommand()
-        {
-            await DeferAsync();
+        //[SlashCommand("查看抽鬼牌遊戲狀態", "查看抽鬼牌遊戲狀態")]
+        //public async Task GhostStatusCommand()
+        //{
+        //    await DeferAsync();
 
-            var status = _oldMaidService.GetStatus(Context.Channel);
-            var component = _oldMaidService.GetDrawButtons(Context.Channel);
+        //    var status = _oldMaidService.GetStatus(Context.Channel);
+        //    var component = _oldMaidService.GetDrawButtons(Context.Channel);
 
-            await FollowupAsync(status, components: component?.Build());
-        }
+        //    await FollowupAsync(status, components: component?.Build());
+        //}
 
-        [SlashCommand("重置抽鬼牌遊戲", "重置抽鬼牌遊戲")]
-        public async Task GhostResetCommand()
-        {
-            await DeferAsync();
+        //[SlashCommand("重置抽鬼牌遊戲", "重置抽鬼牌遊戲")]
+        //public async Task GhostResetCommand()
+        //{
+        //    await DeferAsync();
 
-            var result = _oldMaidService.ResetGame(Context.Channel);
+        //    var result = _oldMaidService.ResetGame(Context.Channel);
 
-            await FollowupAsync(result, ephemeral: true);
-        }
+        //    await FollowupAsync(result, ephemeral: true);
+        //}
 
-        [SlashCommand("1a2b遊戲", "1A2B遊戲")]
-        public async Task SetGames1A2BAsync([Summary("你要設定的數字", "你要設定的數字(4位數) 不輸入則soyo隨機設一筆")] string number = "")
-        {
-            await DeferAsync();
+        //[SlashCommand("1a2b遊戲", "1A2B遊戲")]
+        //public async Task SetGames1A2BAsync([Summary("你要設定的數字", "你要設定的數字(4位數) 不輸入則soyo隨機設一筆")] string number = "")
+        //{
+        //    await DeferAsync();
 
-            // 驗證輸入
-            if (!string.IsNullOrEmpty(number))
-            {
-                if (number.Length != 4 || !number.All(char.IsDigit))
-                {
-                    await FollowupAsync("請輸入4位數字！", ephemeral: true);
-                    return;
-                }
-            }
+        //    // 驗證輸入
+        //    if (!string.IsNullOrEmpty(number))
+        //    {
+        //        if (number.Length != 4 || !number.All(char.IsDigit))
+        //        {
+        //            await FollowupAsync("請輸入4位數字！", ephemeral: true);
+        //            return;
+        //        }
+        //    }
 
-            var userId = Context.User.Id;
-            var (component, embed) = await _game1A2BService.StartGameAsync(userId, number);
+        //    var userId = Context.User.Id;
+        //    var (component, embed) = await _game1A2BService.StartGameAsync(userId, number);
 
-            var message = await FollowupAsync(embed: embed, components: component?.Build());
+        //    var message = await FollowupAsync(embed: embed, components: component?.Build());
 
-            // 儲存訊息ID到session中
-            var session = _game1A2BService.GetSession(userId);
-            if (session != null)
-            {
-                session.MessageId = message.Id;
-            }
-        }
+        //    // 儲存訊息ID到session中
+        //    var session = _game1A2BService.GetSession(userId);
+        //    if (session != null)
+        //    {
+        //        session.MessageId = message.Id;
+        //    }
+        //}
         #endregion
 
         #region neuro功能相關
@@ -959,6 +959,106 @@ namespace MusicBot2.SlahCommands
                 .WithDescription($"**{run.PlayerName}** 的爬塔（第 {run.CurrentFloor} 層）已被取消。")
                 .WithColor(Color.DarkOrange).Build());
         }
+        // ── 好感度 ────────────────────────────────────────────────────────────
+        [SlashCommand("摸摸pokemon", "每日愛撫一隻pokemon，提升好感度 +5")]
+        public async Task PetPokemonCmdAsync()
+        {
+            await DeferAsync(ephemeral: true);
+            var user = Context.User as SocketGuildUser;
+            var (embed, comp) = await _pokeGameService.ShowPetMenuAsync(user.Id, user.Username);
+            await FollowupAsync(embed: embed, components: comp.Build(), ephemeral: true);
+        }
+
+        [SlashCommand("設定最好的夥伴", "將好感度 ≥ 200 的pokemon設為你的唯一最好夥伴")]
+        public async Task SetBestFriendCmdAsync()
+        {
+            await DeferAsync(ephemeral: true);
+            var user = Context.User as SocketGuildUser;
+            var (embed, comp) = await _pokeGameService.ShowSetBestFriendMenuAsync(user.Id, user.Username);
+            await FollowupAsync(embed: embed, components: comp.Build(), ephemeral: true);
+        }
+
+        // ── 工作系統 ──────────────────────────────────────────────────────────
+        [SlashCommand("指派幻獸pokemon工作", "根據屬性派pokemon去打工，幾小時後回來帶材料")]
+        public async Task SendPokeWorkCmdAsync()
+        {
+            await DeferAsync(ephemeral: true);
+            var user = Context.User as SocketGuildUser;
+            var (embed, comp) = await _pokeGameService.ShowSendToWorkMenuAsync(user.Id, user.Username);
+            await FollowupAsync(embed: embed, components: comp.Build(), ephemeral: true);
+        }
+
+        [SlashCommand("收工pokemon", "取回工作中的pokemon並獲得材料")]
+        public async Task CollectWorkCmdAsync()
+        {
+            await DeferAsync(ephemeral: true);
+            var user = Context.User as SocketGuildUser;
+            var (embed, _) = await _pokeGameService.CollectWorkAsync(user.Id, user.Username);
+            await FollowupAsync(embed: embed, ephemeral: true);
+        }
+
+        // ── 培養系統 ──────────────────────────────────────────────────────────
+        [SlashCommand("pokemon背包", "查看背包中的材料與道具")]
+        public async Task ShowBagCmdAsync()
+        {
+            await DeferAsync(ephemeral: true);
+            var user = Context.User as SocketGuildUser;
+            var (embed, comp) = await _pokeGameService.ShowBagAsync(user.Id, user.Username);
+            await FollowupAsync(embed: embed, components: comp.Build(), ephemeral: true);
+        }
+
+        [SlashCommand("pokemon每日材料", "每日一次領取基礎材料（礦石、魚貨、藥草 各×1）")]
+        public async Task DailyMaterialsCmdAsync()
+        {
+            await DeferAsync(ephemeral: true);
+            var user = Context.User as SocketGuildUser;
+            var (embed, _) = await _pokeGameService.DailyMaterialsAsync(user.Id, user.Username);
+            await FollowupAsync(embed: embed, ephemeral: true);
+        }
+
+        [SlashCommand("pokemon合成道具", "用材料合成道具")]
+        public async Task CraftItemCmdAsync()
+        {
+            await DeferAsync(ephemeral: true);
+            var user = Context.User as SocketGuildUser;
+            var (embed, comp) = await _pokeGameService.ShowCraftMenuAsync(user.Id, user.Username);
+            await FollowupAsync(embed: embed, components: comp.Build(), ephemeral: true);
+        }
+
+        // ── 交配/孵化 ─────────────────────────────────────────────────────────
+        [SlashCommand("pokemon瘋狂交配", "讓兩隻pokemon交配，24小時後孵出新的pokemon")]
+        public async Task BreedPokemonCmdAsync()
+        {
+            await DeferAsync(ephemeral: true);
+            var user = Context.User as SocketGuildUser;
+            var (embed, comp) = await _pokeGameService.ShowBreedParent1MenuAsync(user.Id, user.Username);
+            await FollowupAsync(embed: embed, components: comp.Build(), ephemeral: true);
+        }
+
+        [SlashCommand("孵化pokemon", "查看孵化狀態，蛋好了就孵出來")]
+        public async Task HatchEggCmdAsync()
+        {
+            await DeferAsync(ephemeral: true);
+            var user = Context.User as SocketGuildUser;
+            var (embed, _) = await _pokeGameService.HatchEggAsync(user.Id, user.Username);
+            await FollowupAsync(embed: embed, ephemeral: true);
+        }
+
+        // ── 排行榜 ────────────────────────────────────────────────────────────
+        [SlashCommand("pokemon排行", "查看pokemon各類排行榜")]
+        public async Task PokeLeaderboardCmdAsync(
+            [Summary("類型", "勝率/對戰數/好感度/最強")]
+            [Choice("🏆 勝率", "winrate")]
+            [Choice("⚔️ 對戰數", "battles")]
+            [Choice("❤️ 好感度", "friendship")]
+            [Choice("💪 最強pokemon", "strongest")]
+            string 類型 = "winrate")
+        {
+            await DeferAsync();
+            var (embed, comp) = await _pokeGameService.ShowLeaderboardAsync(類型);
+            await FollowupAsync(embed: embed, components: comp.Build());
+        }
+
         #endregion
 
         #region Valorant相關
@@ -1820,133 +1920,133 @@ namespace MusicBot2.SlahCommands
             await FollowupAsync(embed: embed, components: component.Build());
         }
 
-        [SlashCommand("fate聖杯塔開始爬塔", "開始聖杯塔挑戰")]
-        public async Task StartTowerAsync()
-        {
-            await DeferAsync();
-            var (embed, component) = await _holyGrailTowerService.StartTowerRunAsync(Context.Channel.Id, Context.User.Id, Context.User.Username);
-            await FollowupAsync(embed: embed, components: component.Build());
-        }
+        //[SlashCommand("fate聖杯塔開始爬塔", "開始聖杯塔挑戰")]
+        //public async Task StartTowerAsync()
+        //{
+        //    await DeferAsync();
+        //    var (embed, component) = await _holyGrailTowerService.StartTowerRunAsync(Context.Channel.Id, Context.User.Id, Context.User.Username);
+        //    await FollowupAsync(embed: embed, components: component.Build());
+        //}
 
-        [SlashCommand("fate聖杯塔取消爬塔", "放棄或取消現在頻道的聖杯塔挑戰")]
-        public async Task CancelTowerAsync()
-        {
-            await DeferAsync();
-            var (embed, component) = await _holyGrailTowerService.CancelTowerRunAsync(Context.Channel.Id, Context.User.Id);
-            await FollowupAsync(embed: embed, components: component.Build());
-        }
+        //[SlashCommand("fate聖杯塔取消爬塔", "放棄或取消現在頻道的聖杯塔挑戰")]
+        //public async Task CancelTowerAsync()
+        //{
+        //    await DeferAsync();
+        //    var (embed, component) = await _holyGrailTowerService.CancelTowerRunAsync(Context.Channel.Id, Context.User.Id);
+        //    await FollowupAsync(embed: embed, components: component.Build());
+        //}
         #endregion
 
         #region 遊戲王決鬥
 
-        private static readonly string[] YgoDeckChoices = new[] { "yugi", "kaiba", "joey", "jaden", "yusei", "yuya" };
+        //private static readonly string[] YgoDeckChoices = new[] { "yugi", "kaiba", "joey", "jaden", "yusei", "yuya" };
 
-        [SlashCommand("決鬥牌組列表", "查看所有可用的牌組")]
-        public async Task YgoDecksAsync()
-        {
-            var (embed, component) = _ygoService.ListDecks();
-            await RespondAsync(embed: embed, components: component.Build());
-        }
+        //[SlashCommand("決鬥牌組列表", "查看所有可用的牌組")]
+        //public async Task YgoDecksAsync()
+        //{
+        //    var (embed, component) = _ygoService.ListDecks();
+        //    await RespondAsync(embed: embed, components: component.Build());
+        //}
 
-        [SlashCommand("決鬥場地", "顯示當前決鬥場地")]
-        public async Task YgoBoardAsync()
-        {
-            await DeferAsync();
-            var (embed, component) = await _ygoService.GetBoardAsync(Context.Channel.Id);
-            await FollowupAsync(embed: embed, components: component.Build());
-        }
+        //[SlashCommand("決鬥場地", "顯示當前決鬥場地")]
+        //public async Task YgoBoardAsync()
+        //{
+        //    await DeferAsync();
+        //    var (embed, component) = await _ygoService.GetBoardAsync(Context.Channel.Id);
+        //    await FollowupAsync(embed: embed, components: component.Build());
+        //}
 
-        [SlashCommand("決鬥ai", "用動漫牌組挑戰AI決鬥")]
-        public async Task YgoDuelAiAsync(
-            [Summary("我的牌組", "你使用的牌組")]
-            [Choice("🔮 武藤遊戲 (DM)", "yugi")]
-            [Choice("🐉 海馬瀨人 (DM)", "kaiba")]
-            [Choice("🃏 城之內克也 (DM)", "joey")]
-            [Choice("🦅 孔雀舞 (DM)", "mai")]
-            [Choice("☀️ 馬立克 (DM)", "marik")]
-            [Choice("👁️ 佩加瑟斯 (DM)", "pegasus")]
-            [Choice("💀 獏良了 (DM)", "bakura")]
-            [Choice("⚡ 遊城十代 (GX)", "jaden")]
-            [Choice("🏆 万丈目準 (GX)", "chazz")]
-            [Choice("🌸 天上院明日香 (GX)", "alexis")]
-            [Choice("⚙️ 丸藤亮 (GX)", "zane")]
-            string myDeck = "yugi",
-            [Summary("ai牌組", "AI 使用的牌組")]
-            [Choice("🔮 武藤遊戲 (DM)", "yugi")]
-            [Choice("🐉 海馬瀨人 (DM)", "kaiba")]
-            [Choice("🃏 城之內克也 (DM)", "joey")]
-            [Choice("🦅 孔雀舞 (DM)", "mai")]
-            [Choice("☀️ 馬立克 (DM)", "marik")]
-            [Choice("👁️ 佩加瑟斯 (DM)", "pegasus")]
-            [Choice("💀 獏良了 (DM)", "bakura")]
-            [Choice("⚡ 遊城十代 (GX)", "jaden")]
-            [Choice("🏆 万丈目準 (GX)", "chazz")]
-            [Choice("🌸 天上院明日香 (GX)", "alexis")]
-            [Choice("⚙️ 丸藤亮 (GX)", "zane")]
-            string aiDeck = "kaiba")
-        {
-            await DeferAsync();
-            var player = Context.User as Discord.WebSocket.SocketGuildUser;
-            var (embed, component) = await _ygoService.StartPvAiDuelAsync(
-                Context.Channel.Id, player!, myDeck.ToLower(), aiDeck.ToLower());
-            await FollowupAsync(embed: embed, components: component.Build());
-        }
+        //[SlashCommand("決鬥ai", "用動漫牌組挑戰AI決鬥")]
+        //public async Task YgoDuelAiAsync(
+        //    [Summary("我的牌組", "你使用的牌組")]
+        //    [Choice("🔮 武藤遊戲 (DM)", "yugi")]
+        //    [Choice("🐉 海馬瀨人 (DM)", "kaiba")]
+        //    [Choice("🃏 城之內克也 (DM)", "joey")]
+        //    [Choice("🦅 孔雀舞 (DM)", "mai")]
+        //    [Choice("☀️ 馬立克 (DM)", "marik")]
+        //    [Choice("👁️ 佩加瑟斯 (DM)", "pegasus")]
+        //    [Choice("💀 獏良了 (DM)", "bakura")]
+        //    [Choice("⚡ 遊城十代 (GX)", "jaden")]
+        //    [Choice("🏆 万丈目準 (GX)", "chazz")]
+        //    [Choice("🌸 天上院明日香 (GX)", "alexis")]
+        //    [Choice("⚙️ 丸藤亮 (GX)", "zane")]
+        //    string myDeck = "yugi",
+        //    [Summary("ai牌組", "AI 使用的牌組")]
+        //    [Choice("🔮 武藤遊戲 (DM)", "yugi")]
+        //    [Choice("🐉 海馬瀨人 (DM)", "kaiba")]
+        //    [Choice("🃏 城之內克也 (DM)", "joey")]
+        //    [Choice("🦅 孔雀舞 (DM)", "mai")]
+        //    [Choice("☀️ 馬立克 (DM)", "marik")]
+        //    [Choice("👁️ 佩加瑟斯 (DM)", "pegasus")]
+        //    [Choice("💀 獏良了 (DM)", "bakura")]
+        //    [Choice("⚡ 遊城十代 (GX)", "jaden")]
+        //    [Choice("🏆 万丈目準 (GX)", "chazz")]
+        //    [Choice("🌸 天上院明日香 (GX)", "alexis")]
+        //    [Choice("⚙️ 丸藤亮 (GX)", "zane")]
+        //    string aiDeck = "kaiba")
+        //{
+        //    await DeferAsync();
+        //    var player = Context.User as Discord.WebSocket.SocketGuildUser;
+        //    var (embed, component) = await _ygoService.StartPvAiDuelAsync(
+        //        Context.Channel.Id, player!, myDeck.ToLower(), aiDeck.ToLower());
+        //    await FollowupAsync(embed: embed, components: component.Build());
+        //}
 
-        [SlashCommand("查詢卡片", "查詢遊戲王卡片資訊")]
-        public async Task YgoCardInfoAsync([Summary("卡名", "英文卡名")] string name)
-        {
-            await DeferAsync();
-            var (embed, component) = await _ygoService.ShowCardInfoAsync(name);
-            await FollowupAsync(embed: embed, components: component.Build());
-        }
+        //[SlashCommand("查詢卡片", "查詢遊戲王卡片資訊")]
+        //public async Task YgoCardInfoAsync([Summary("卡名", "英文卡名")] string name)
+        //{
+        //    await DeferAsync();
+        //    var (embed, component) = await _ygoService.ShowCardInfoAsync(name);
+        //    await FollowupAsync(embed: embed, components: component.Build());
+        //}
 
         #endregion
 
         #region FreeDuel
 
-        [SlashCommand("freeduel", "開始自由決鬥（對話式，無規則限制）")]
-        public async Task FreeDuelAsync(
-            [Summary("我的牌組"), Discord.Interactions.Choice("武藤遊戲","yugi"), Discord.Interactions.Choice("海馬瀬人","kaiba"),
-             Discord.Interactions.Choice("城之內克也","joey"), Discord.Interactions.Choice("孔雀舞","mai"), Discord.Interactions.Choice("馬立克","marik"),
-             Discord.Interactions.Choice("佩加瑟斯","pegasus"), Discord.Interactions.Choice("獏良了","bakura"),
-             Discord.Interactions.Choice("遊城十代","jaden"), Discord.Interactions.Choice("萬丈目準","chazz"),
-             Discord.Interactions.Choice("天上院明日香","alexis"), Discord.Interactions.Choice("丸藤亮","zane")]
-            string myDeck = "yugi",
-            [Summary("對手"), Discord.Interactions.Choice("武藤遊戲","yugi"), Discord.Interactions.Choice("海馬瀬人","kaiba"),
-             Discord.Interactions.Choice("城之內克也","joey"), Discord.Interactions.Choice("孔雀舞","mai"), Discord.Interactions.Choice("馬立克","marik"),
-             Discord.Interactions.Choice("佩加瑟斯","pegasus"), Discord.Interactions.Choice("獏良了","bakura"),
-             Discord.Interactions.Choice("遊城十代","jaden"), Discord.Interactions.Choice("萬丈目準","chazz"),
-             Discord.Interactions.Choice("天上院明日香","alexis"), Discord.Interactions.Choice("丸藤亮","zane")]
-            string opponent = "kaiba")
-        {
-            await DeferAsync();
-            var user = Context.User as Discord.WebSocket.SocketGuildUser;
-            string playerName = user?.DisplayName ?? Context.User.Username;
+        //[SlashCommand("freeduel", "開始自由決鬥（對話式，無規則限制）")]
+        //public async Task FreeDuelAsync(
+        //    [Summary("我的牌組"), Discord.Interactions.Choice("武藤遊戲","yugi"), Discord.Interactions.Choice("海馬瀬人","kaiba"),
+        //     Discord.Interactions.Choice("城之內克也","joey"), Discord.Interactions.Choice("孔雀舞","mai"), Discord.Interactions.Choice("馬立克","marik"),
+        //     Discord.Interactions.Choice("佩加瑟斯","pegasus"), Discord.Interactions.Choice("獏良了","bakura"),
+        //     Discord.Interactions.Choice("遊城十代","jaden"), Discord.Interactions.Choice("萬丈目準","chazz"),
+        //     Discord.Interactions.Choice("天上院明日香","alexis"), Discord.Interactions.Choice("丸藤亮","zane")]
+        //    string myDeck = "yugi",
+        //    [Summary("對手"), Discord.Interactions.Choice("武藤遊戲","yugi"), Discord.Interactions.Choice("海馬瀬人","kaiba"),
+        //     Discord.Interactions.Choice("城之內克也","joey"), Discord.Interactions.Choice("孔雀舞","mai"), Discord.Interactions.Choice("馬立克","marik"),
+        //     Discord.Interactions.Choice("佩加瑟斯","pegasus"), Discord.Interactions.Choice("獏良了","bakura"),
+        //     Discord.Interactions.Choice("遊城十代","jaden"), Discord.Interactions.Choice("萬丈目準","chazz"),
+        //     Discord.Interactions.Choice("天上院明日香","alexis"), Discord.Interactions.Choice("丸藤亮","zane")]
+        //    string opponent = "kaiba")
+        //{
+        //    await DeferAsync();
+        //    var user = Context.User as Discord.WebSocket.SocketGuildUser;
+        //    string playerName = user?.DisplayName ?? Context.User.Username;
 
-            if (await _freeDuelSvc.IsDuelActiveAsync(Context.Channel.Id))
-            {
-                await FollowupAsync("❌ 此頻道已有決鬥進行中！請先使用 `/endduel` 結束。");
-                return;
-            }
+        //    if (await _freeDuelSvc.IsDuelActiveAsync(Context.Channel.Id))
+        //    {
+        //        await FollowupAsync("❌ 此頻道已有決鬥進行中！請先使用 `/endduel` 結束。");
+        //        return;
+        //    }
 
-            var (embed, component, message) = await _freeDuelSvc.StartDuelAsync(
-                Context.Channel.Id, Context.User.Id, playerName, myDeck, opponent);
+        //    var (embed, component, message) = await _freeDuelSvc.StartDuelAsync(
+        //        Context.Channel.Id, Context.User.Id, playerName, myDeck, opponent);
 
-            await FollowupAsync(text: message, embed: embed, components: component.Build());
-        }
+        //    await FollowupAsync(text: message, embed: embed, components: component.Build());
+        //}
 
-        [SlashCommand("endduel", "強制結束自由決鬥，恢復頻道正常功能")]
-        public async Task EndFreeDuelAsync()
-        {
-            await DeferAsync();
-            if (!await _freeDuelSvc.IsDuelActiveAsync(Context.Channel.Id))
-            {
-                await FollowupAsync("此頻道沒有進行中的自由決鬥。");
-                return;
-            }
-            var msg = await _freeDuelSvc.ForceEndDuelAsync(Context.Channel.Id);
-            await FollowupAsync(msg);
-        }
+        //[SlashCommand("endduel", "強制結束自由決鬥，恢復頻道正常功能")]
+        //public async Task EndFreeDuelAsync()
+        //{
+        //    await DeferAsync();
+        //    if (!await _freeDuelSvc.IsDuelActiveAsync(Context.Channel.Id))
+        //    {
+        //        await FollowupAsync("此頻道沒有進行中的自由決鬥。");
+        //        return;
+        //    }
+        //    var msg = await _freeDuelSvc.ForceEndDuelAsync(Context.Channel.Id);
+        //    await FollowupAsync(msg);
+        //}
 
         #endregion
     }
