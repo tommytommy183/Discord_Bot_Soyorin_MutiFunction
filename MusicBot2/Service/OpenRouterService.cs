@@ -1132,35 +1132,63 @@ namespace MusicBot2.Service
                                             messages2.Add(new OpenRouterMessage { Role = m2.Role == "model" ? "assistant" : "user", Content = m2.Text });
                                         messages2.Add(new OpenRouterMessage { Role = "user", Content = userMessageWithName });
 
-                                        ApiCallResult r2;
-                                        if (_useGoogleAI)
+                                        Console.WriteLine($"[OpenRouter] Stage2 start: useGoogleAI={_useGoogleAI} msgs={messages2.Count}");
+                                        foreach (var model2 in modelsToUse)
                                         {
-                                            var key2 = GetAvailableGoogleKeys().FirstOrDefault() ?? _googleApiKeys.First();
-                                            r2 = await CallGoogleAIOnceAsync(messages2, request.Temperature, request.TopP,
-                                                request.MaxOutputTokens > 0 ? request.MaxOutputTokens : 1024,
-                                                new[] { "使用者名稱:", "\n使用者名稱" }, model, key2, retry: 0);
-                                        }
-                                        else
-                                        {
-                                            var apiRequest2 = new OpenRouterChatRequest
+                                            for (int retry2 = 0; retry2 < maxRetry; retry2++)
                                             {
-                                                Model = model,
-                                                Messages = messages2,
-                                                Temperature = request.Temperature,
-                                                TopP = request.TopP,
-                                                MaxTokens = request.MaxOutputTokens > 0 ? request.MaxOutputTokens : 1024,
-                                                Stop = new[] { "使用者名稱:", "\n使用者名稱" }
-                                            };
-                                            r2 = await CallOnceAsync(apiRequest2, new JsonSerializerOptions { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull }, model, 0);
-                                        }
+                                                try
+                                                {
+                                                    ApiCallResult r2;
+                                                    if (_useGoogleAI)
+                                                    {
+                                                        var key2 = GetAvailableGoogleKeys().FirstOrDefault() ?? _googleApiKeys.First();
+                                                        r2 = await CallGoogleAIOnceAsync(messages2, request.Temperature, request.TopP,
+                                                            request.MaxOutputTokens > 0 ? request.MaxOutputTokens : 1024,
+                                                            new[] { "使用者名稱:", "\n使用者名稱" }, model2, key2, retry: retry2);
+                                                    }
+                                                    else
+                                                    {
+                                                        var apiRequest2 = new OpenRouterChatRequest
+                                                        {
+                                                            Model = model2,
+                                                            Messages = messages2,
+                                                            Temperature = request.Temperature,
+                                                            TopP = request.TopP,
+                                                            MaxTokens = request.MaxOutputTokens > 0 ? request.MaxOutputTokens : 1024,
+                                                            Stop = new[] { "使用者名稱:", "\n使用者名稱" }
+                                                        };
+                                                        r2 = await CallOnceAsync(apiRequest2, new JsonSerializerOptions { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull }, model2, retry2);
+                                                    }
 
-                                        if (!r2.ShouldBreak && !r2.ShouldContinue && !string.IsNullOrWhiteSpace(r2.Text))
-                                        {
-                                            stage2Text = CleanResponse(r2.Text);
-                                            stage2Text = CommonHelper.SwitchSoyoPic(stage2Text);
+                                                    if (r2.ShouldBreak) break;
+                                                    if (r2.ShouldContinue) continue;
+
+                                                    if (!string.IsNullOrWhiteSpace(r2.Text))
+                                                    {
+                                                        stage2Text = CleanResponse(r2.Text);
+                                                        stage2Text = CommonHelper.SwitchSoyoPic(stage2Text);
+                                                    }
+                                                    else
+                                                    {
+                                                        Console.WriteLine($"[OpenRouter] Stage2 empty: model={model2} retry={retry2}");
+                                                    }
+                                                }
+                                                catch (Exception ex2)
+                                                {
+                                                    Console.WriteLine($"[OpenRouter] Stage2 exception model={model2} retry={retry2}: {ex2.Message}");
+                                                }
+                                                if (!string.IsNullOrWhiteSpace(stage2Text)) break;
+                                            }
+                                            if (!string.IsNullOrWhiteSpace(stage2Text)) break;
                                         }
+                                        if (string.IsNullOrWhiteSpace(stage2Text))
+                                            Console.WriteLine("[OpenRouter] Stage2 all models failed");
                                     }
-                                    catch { }
+                                    catch (Exception ex2)
+                                    {
+                                        Console.WriteLine($"[OpenRouter] Stage2 outer exception: {ex2.GetType().Name}: {ex2.Message}");
+                                    }
 
                                     if (!string.IsNullOrWhiteSpace(stage1Text) && !string.IsNullOrWhiteSpace(stage2Text))
                                         text = stage1Text + "\n\n\n◆◆◆\n\n\n" + stage2Text;
