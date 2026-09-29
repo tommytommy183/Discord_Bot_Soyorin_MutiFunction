@@ -1121,9 +1121,11 @@ namespace MusicBot2.Service
                                     try
                                     {
                                         // Stage 2: full Soyo persona + search result + conversation history
+                                        var stage1Context = string.IsNullOrWhiteSpace(stage1Text) ? "" :
+                                            $"\n\n[你剛才已經對使用者說了這句話：「{stage1Text}」。現在搜尋結果回來了，請直接給出完整答案，**不要重複**剛才說過的話，從答案本身開始說。]";
                                         var systemPromptWithSearch = systemPrompt
                                             + $"\n\n{searchContext2}"
-                                            + "\n\n[搜尋結果已提供，請用爽世的語氣根據這些資料完整回答使用者的問題，不要再提到需要搜尋或說你去查。]";
+                                            + stage1Context;
                                         var messages2 = new List<OpenRouterMessage>
                                         {
                                             new() { Role = "system", Content = systemPromptWithSearch }
@@ -1131,9 +1133,6 @@ namespace MusicBot2.Service
                                         foreach (var m2 in GetRecentMessages(channelKey))
                                             messages2.Add(new OpenRouterMessage { Role = m2.Role == "model" ? "assistant" : "user", Content = m2.Text });
                                         messages2.Add(new OpenRouterMessage { Role = "user", Content = userMessageWithName });
-                                        // Stage 1 response is already sent to Discord but not yet in history — add it so stage 2 knows what was said
-                                        if (!string.IsNullOrWhiteSpace(stage1Text))
-                                            messages2.Add(new OpenRouterMessage { Role = "assistant", Content = stage1Text });
 
                                         Console.WriteLine($"[OpenRouter] Stage2 start: useGoogleAI={_useGoogleAI} msgs={messages2.Count}");
                                         foreach (var model2 in modelsToUse)
