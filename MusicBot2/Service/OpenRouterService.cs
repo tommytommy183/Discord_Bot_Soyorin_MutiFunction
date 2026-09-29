@@ -947,7 +947,7 @@ namespace MusicBot2.Service
                 systemPrompt += $"\n\n[遊戲短期記憶 - 目前進行中]\n遊戲類型：{gameState.GameType}\n你出的題目／答案：{gameState.Secret}\n（這是你自己設定的，玩家還不知道答案，請牢記並根據它回應猜測）";
 
             if (twoStageSearch)
-                systemPrompt += "\n\n[搜尋指令說明]\n如果你需要查詢最新資料才能完整回答，請在你回覆的最後一行**單獨**加上 `[SEARCH: 查詢關鍵字]`，不加任何其他文字到該行。先給出你知道的初步回應，說明你需要確認最新資訊，再加上搜尋標籤。不需要搜尋時直接正常回答，完全不要出現 [SEARCH:] 標籤。";
+                systemPrompt += "\n\n[搜尋能力說明]\n你的訓練資料截止於 2025 年初。以下情況**必須**在回覆最後單獨加上 `[SEARCH: 查詢關鍵字]`（該行不加其他文字）：\n- 被問到 2025 年以後的事、近期新發行的音樂/作品/新聞\n- 對具體事實沒有把握（特定歌曲名稱、樂團資訊、新角色、最新排名等）\n- 使用者明確要你查資料\n加標籤前，先用爽世的語氣說你要去確認一下。一般聊天或確定知道答案時直接回答，不用加標籤。";
 
             if (searchContext != null)
                 systemPrompt += $"\n\n{searchContext}";
@@ -1120,12 +1120,43 @@ namespace MusicBot2.Service
                                     string stage2Text = null;
                                     try
                                     {
-                                        // Build a self-contained prompt for stage 2
-                                        string stage2Prompt = $"{searchContext2}\n\n根據以上搜尋結果，請完整回答剛才的問題。";
-                                        stage2Text = await GenerateSimpleTextAsync(stage2Prompt);
-                                        if (!string.IsNullOrWhiteSpace(stage2Text))
+                                        // Stage 2: full Soyo persona + search result + conversation history
+                                        var systemPromptWithSearch = systemPrompt
+                                            + $"\n\n{searchContext2}"
+                                            + "\n\n[搜尋結果已提供，請用爽世的語氣根據這些資料完整回答使用者的問題，不要再提到需要搜尋或說你去查。]";
+                                        var messages2 = new List<OpenRouterMessage>
                                         {
-                                            stage2Text = CleanResponse(stage2Text);
+                                            new() { Role = "system", Content = systemPromptWithSearch }
+                                        };
+                                        foreach (var m2 in GetRecentMessages(channelKey))
+                                            messages2.Add(new OpenRouterMessage { Role = m2.Role == "model" ? "assistant" : "user", Content = m2.Text });
+                                        messages2.Add(new OpenRouterMessage { Role = "user", Content = userMessageWithName });
+
+                                        ApiCallResult r2;
+                                        if (_useGoogleAI)
+                                        {
+                                            var key2 = GetAvailableGoogleKeys().FirstOrDefault() ?? _googleApiKeys.First();
+                                            r2 = await CallGoogleAIOnceAsync(messages2, request.Temperature, request.TopP,
+                                                request.MaxOutputTokens > 0 ? request.MaxOutputTokens : 1024,
+                                                new[] { "使用者名稱:", "\n使用者名稱" }, model, key2, retry: 0);
+                                        }
+                                        else
+                                        {
+                                            var apiRequest2 = new OpenRouterChatRequest
+                                            {
+                                                Model = model,
+                                                Messages = messages2,
+                                                Temperature = request.Temperature,
+                                                TopP = request.TopP,
+                                                MaxTokens = request.MaxOutputTokens > 0 ? request.MaxOutputTokens : 1024,
+                                                Stop = new[] { "使用者名稱:", "\n使用者名稱" }
+                                            };
+                                            r2 = await CallOnceAsync(apiRequest2, new JsonSerializerOptions { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull }, model, 0);
+                                        }
+
+                                        if (!r2.ShouldBreak && !r2.ShouldContinue && !string.IsNullOrWhiteSpace(r2.Text))
+                                        {
+                                            stage2Text = CleanResponse(r2.Text);
                                             stage2Text = CommonHelper.SwitchSoyoPic(stage2Text);
                                         }
                                     }
