@@ -963,10 +963,10 @@ namespace MusicBot2.SlahCommands
         [SlashCommand("摸摸pokemon", "每日愛撫一隻pokemon提升好感度5")]
         public async Task PetPokemonCmdAsync()
         {
-            await DeferAsync();
+            await DeferAsync(ephemeral: true);
             var user = Context.User as SocketGuildUser;
             var (embed, comp) = await _pokeGameService.ShowPetMenuAsync(user.Id, user.Username);
-            await FollowupAsync(embed: embed, components: comp.Build());
+            await FollowupAsync(embed: embed, components: comp.Build(), ephemeral: true);
         }
 
         [SlashCommand("設定最好的夥伴", "將好感度 ≥ 200 的pokemon設為你的唯一最好夥伴")]
@@ -982,10 +982,10 @@ namespace MusicBot2.SlahCommands
         [SlashCommand("指派幻獸pokemon工作", "根據屬性派pokemon去打工幾小時後回來帶材料")]
         public async Task SendPokeWorkCmdAsync()
         {
-            await DeferAsync();
+            await DeferAsync(ephemeral: true);
             var user = Context.User as SocketGuildUser;
             var (embed, comp) = await _pokeGameService.ShowSendToWorkMenuAsync(user.Id, user.Username);
-            await FollowupAsync(embed: embed, components: comp.Build());
+            await FollowupAsync(embed: embed, components: comp.Build(), ephemeral: true);
         }
 
         [SlashCommand("收工pokemon", "取回工作中的pokemon並獲得材料")]

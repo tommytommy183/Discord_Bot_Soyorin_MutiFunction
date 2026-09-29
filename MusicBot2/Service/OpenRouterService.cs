@@ -806,7 +806,7 @@ namespace MusicBot2.Service
         /// <summary>
         /// 進階版：使用 GeminiRequestVM (沿用既有 VM，避免到處改型別)
         /// </summary>
-        public async Task<string> GenerateTextAsync(GeminiRequestVM request, SocketGuildUser user, bool saveToMemory = true, string channelKey = null, IMessage? repliedMessage = null, IEnumerable<IMessage>? contextMessages = null)
+        public async Task<string> GenerateTextAsync(GeminiRequestVM request, SocketGuildUser user, bool saveToMemory = true, string channelKey = null, IMessage? repliedMessage = null, IEnumerable<IMessage>? contextMessages = null, bool twoStageSearch = false)
         {
             channelKey ??= user?.Guild?.Id.ToString() ?? "global";
 
@@ -885,52 +885,55 @@ namespace MusicBot2.Service
             }
             // Phase 1：關鍵字比對判斷是否需要搜尋（取代原本的 AI round-trip）
             string searchContext = null;
-            var searchQuery = DetectSearchQueryByKeyword(request.UserMessage);
-            if (searchQuery != null)
+            if (!twoStageSearch)
             {
-                try
+                var searchQuery = DetectSearchQueryByKeyword(request.UserMessage);
+                if (searchQuery != null)
                 {
-                    Console.WriteLine($"[OpenRouter] AI 判斷需要搜尋，關鍵字: {searchQuery}");
-
-                    // Phase 2a：Tavily 搜尋
-                    string searchResult = null;
-                    if (_searchService != null)
-                        searchResult = await _searchService.SearchAsync(searchQuery);
-
-                    if (!string.IsNullOrWhiteSpace(searchResult))
+                    try
                     {
-                        searchContext = $"[網路搜尋結果 - 關鍵字: {searchQuery}]\n{searchResult}";
-                        Console.WriteLine($"[Tavily] 搜尋成功，字數: {searchResult.Length}");
-                    }
-                    else
-                    {
-                        // Phase 2b：MediaWiki fallback
+                        Console.WriteLine($"[OpenRouter] AI 判斷需要搜尋，關鍵字: {searchQuery}");
+
+                        // Phase 2a：Tavily 搜尋
+                        string searchResult = null;
                         if (_searchService != null)
-                            Console.WriteLine($"[Tavily] 無結果，嘗試 MediaWiki fallback");
-                        else
-                            Console.WriteLine($"[OpenRouter] 無 Tavily key，直接用 MediaWiki");
-                        try
+                            searchResult = await _searchService.SearchAsync(searchQuery);
+
+                        if (!string.IsNullOrWhiteSpace(searchResult))
                         {
-                            var wikiRes = await _wikiService.SearchAsync(searchQuery);
-                            if (wikiRes.Found)
-                            {
-                                searchContext = $"[背景資料 - 維基百科 ({wikiRes.Lang})]\n【{wikiRes.Title}】\n{wikiRes.Extract}";
-                                Console.WriteLine($"[OpenRouter] MediaWiki fallback 成功: {wikiRes.Title}");
-                            }
-                            else
-                            {
-                                Console.WriteLine($"[OpenRouter] MediaWiki fallback 也無結果，不注入 context");
-                            }
+                            searchContext = $"[網路搜尋結果 - 關鍵字: {searchQuery}]\n{searchResult}";
+                            Console.WriteLine($"[Tavily] 搜尋成功，字數: {searchResult.Length}");
                         }
-                        catch (Exception wikiEx)
+                        else
                         {
-                            Console.WriteLine($"[OpenRouter] MediaWiki fallback 失敗: {wikiEx.Message}");
+                            // Phase 2b：MediaWiki fallback
+                            if (_searchService != null)
+                                Console.WriteLine($"[Tavily] 無結果，嘗試 MediaWiki fallback");
+                            else
+                                Console.WriteLine($"[OpenRouter] 無 Tavily key，直接用 MediaWiki");
+                            try
+                            {
+                                var wikiRes = await _wikiService.SearchAsync(searchQuery);
+                                if (wikiRes.Found)
+                                {
+                                    searchContext = $"[背景資料 - 維基百科 ({wikiRes.Lang})]\n【{wikiRes.Title}】\n{wikiRes.Extract}";
+                                    Console.WriteLine($"[OpenRouter] MediaWiki fallback 成功: {wikiRes.Title}");
+                                }
+                                else
+                                {
+                                    Console.WriteLine($"[OpenRouter] MediaWiki fallback 也無結果，不注入 context");
+                                }
+                            }
+                            catch (Exception wikiEx)
+                            {
+                                Console.WriteLine($"[OpenRouter] MediaWiki fallback 失敗: {wikiEx.Message}");
+                            }
                         }
                     }
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"[OpenRouter] 搜尋失敗: {ex.Message}");
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[OpenRouter] 搜尋失敗: {ex.Message}");
+                    }
                 }
             }
 
@@ -942,6 +945,9 @@ namespace MusicBot2.Service
             var gameState = GetGameState(channelKey);
             if (gameState != null)
                 systemPrompt += $"\n\n[遊戲短期記憶 - 目前進行中]\n遊戲類型：{gameState.GameType}\n你出的題目／答案：{gameState.Secret}\n（這是你自己設定的，玩家還不知道答案，請牢記並根據它回應猜測）";
+
+            if (twoStageSearch)
+                systemPrompt += "\n\n[搜尋指令說明]\n如果你需要查詢最新資料才能完整回答，請在你回覆的最後一行**單獨**加上 `[SEARCH: 查詢關鍵字]`，不加任何其他文字到該行。先給出你知道的初步回應，說明你需要確認最新資訊，再加上搜尋標籤。不需要搜尋時直接正常回答，完全不要出現 [SEARCH:] 標籤。";
 
             if (searchContext != null)
                 systemPrompt += $"\n\n{searchContext}";
@@ -1082,6 +1088,62 @@ namespace MusicBot2.Service
 
                         text = CleanResponse(text);
                         text = CommonHelper.SwitchSoyoPic(text);
+
+                        // Two-stage search: check if AI wants to search
+                        if (twoStageSearch)
+                        {
+                            var searchTagMatch = System.Text.RegularExpressions.Regex.Match(text, @"\[SEARCH:\s*(.+?)\]", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                            if (searchTagMatch.Success)
+                            {
+                                string searchQuery2 = searchTagMatch.Groups[1].Value.Trim();
+                                string stage1Text = text.Replace(searchTagMatch.Value, "").Trim();
+
+                                string searchContext2 = null;
+                                try
+                                {
+                                    string searchResult2 = null;
+                                    if (_searchService != null)
+                                        searchResult2 = await _searchService.SearchAsync(searchQuery2);
+                                    if (!string.IsNullOrWhiteSpace(searchResult2))
+                                        searchContext2 = $"[網路搜尋結果 - 關鍵字: {searchQuery2}]\n{searchResult2}";
+                                    else
+                                    {
+                                        var wikiRes2 = await _wikiService.SearchAsync(searchQuery2);
+                                        if (wikiRes2.Found)
+                                            searchContext2 = $"[背景資料 - 維基百科 ({wikiRes2.Lang})]\n【{wikiRes2.Title}】\n{wikiRes2.Extract}";
+                                    }
+                                }
+                                catch { }
+
+                                if (searchContext2 != null)
+                                {
+                                    string stage2Text = null;
+                                    try
+                                    {
+                                        // Build a self-contained prompt for stage 2
+                                        string stage2Prompt = $"{searchContext2}\n\n根據以上搜尋結果，請完整回答剛才的問題。";
+                                        stage2Text = await GenerateSimpleTextAsync(stage2Prompt);
+                                        if (!string.IsNullOrWhiteSpace(stage2Text))
+                                        {
+                                            stage2Text = CleanResponse(stage2Text);
+                                            stage2Text = CommonHelper.SwitchSoyoPic(stage2Text);
+                                        }
+                                    }
+                                    catch { }
+
+                                    if (!string.IsNullOrWhiteSpace(stage1Text) && !string.IsNullOrWhiteSpace(stage2Text))
+                                        text = stage1Text + "\n\n\n◆◆◆\n\n\n" + stage2Text;
+                                    else if (!string.IsNullOrWhiteSpace(stage2Text))
+                                        text = stage2Text;
+                                    else
+                                        text = stage1Text;
+                                }
+                                else
+                                {
+                                    text = stage1Text;
+                                }
+                            }
+                        }
 
                         // ── 遊戲標籤解析（在存記憶前剝掉，不讓玩家看到）────
                         text = await ParseAndHandleGameTagsAsync(text, channelKey);
@@ -1308,7 +1370,7 @@ namespace MusicBot2.Service
         /// <summary>
         /// 簡化版本：直接傳入訊息
         /// </summary>
-        public async Task<string> GenerateTextAsync(string message, SocketGuildUser user, bool saveToMemory = true, string channelKey = null, IMessage? repliedMessage = null, IEnumerable<IMessage>? contextMessages = null, bool isTtsMode = false)
+        public async Task<string> GenerateTextAsync(string message, SocketGuildUser user, bool saveToMemory = true, string channelKey = null, IMessage? repliedMessage = null, IEnumerable<IMessage>? contextMessages = null, bool isTtsMode = false, bool twoStageSearch = false)
         {
             var request = new GeminiRequestVM
             {
@@ -1320,7 +1382,7 @@ namespace MusicBot2.Service
                 SystemInstruction = isTtsMode ? Persona + TtsEmotionAddon : null
             };
 
-            return await GenerateTextAsync(request, user, saveToMemory, channelKey, repliedMessage, contextMessages);
+            return await GenerateTextAsync(request, user, saveToMemory, channelKey, repliedMessage, contextMessages, twoStageSearch: twoStageSearch);
         }
 
         public async Task<string> GenerateSimpleTextAsync(string message, SocketGuildUser user, bool saveToMemory = true, string channelKey = null, IMessage? repliedMessage = null)

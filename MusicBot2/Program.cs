@@ -816,7 +816,15 @@ public class Program
                     var pokeSvc = _services.GetService<PokeGameService>();
                     var guildUser = component.User as Discord.WebSocket.SocketGuildUser;
                     var (embed, _) = await pokeSvc.PetPokemonAsync(petOwnerId, guildUser?.DisplayName ?? component.User.Username, petIdx);
-                    await component.ModifyOriginalResponseAsync(msg => { msg.Embed = embed; msg.Components = new ComponentBuilder().Build(); });
+                    if (!embed.Title.StartsWith("❌") && !embed.Title.Contains("今天已經被摸過"))
+                    {
+                        await component.Channel.SendMessageAsync(embed: embed);
+                        await component.ModifyOriginalResponseAsync(msg => { msg.Content = "✅"; msg.Embed = null; msg.Components = new ComponentBuilder().Build(); });
+                    }
+                    else
+                    {
+                        await component.ModifyOriginalResponseAsync(msg => { msg.Embed = embed; msg.Components = new ComponentBuilder().Build(); });
+                    }
                 }
             }
 
@@ -834,7 +842,15 @@ public class Program
                     var pokeSvc = _services.GetService<PokeGameService>();
                     var guildUser = component.User as Discord.WebSocket.SocketGuildUser;
                     var (embed, _) = await pokeSvc.SetBestFriendAsync(bfOwnerId, guildUser?.DisplayName ?? component.User.Username, bfIdx);
-                    await component.ModifyOriginalResponseAsync(msg => { msg.Embed = embed; msg.Components = new ComponentBuilder().Build(); });
+                    if (!embed.Title.StartsWith("❌") && !embed.Title.Contains("今天已經被摸過"))
+                    {
+                        await component.Channel.SendMessageAsync(embed: embed);
+                        await component.ModifyOriginalResponseAsync(msg => { msg.Content = "✅"; msg.Embed = null; msg.Components = new ComponentBuilder().Build(); });
+                    }
+                    else
+                    {
+                        await component.ModifyOriginalResponseAsync(msg => { msg.Embed = embed; msg.Components = new ComponentBuilder().Build(); });
+                    }
                 }
             }
 
@@ -853,8 +869,23 @@ public class Program
                     var pokeSvc = _services.GetService<PokeGameService>();
                     var guildUser = component.User as Discord.WebSocket.SocketGuildUser;
                     var (embed, _) = await pokeSvc.SendPokemonToWorkAsync(workOwnerId, guildUser?.DisplayName ?? component.User.Username, workIdx);
-                    await component.ModifyOriginalResponseAsync(msg => { msg.Embed = embed; msg.Components = new ComponentBuilder().Build(); });
+                    if (!embed.Title.StartsWith("❌") && !embed.Title.Contains("今天已經被摸過"))
+                    {
+                        await component.Channel.SendMessageAsync(embed: embed);
+                        await component.ModifyOriginalResponseAsync(msg => { msg.Content = "✅"; msg.Embed = null; msg.Components = new ComponentBuilder().Build(); });
+                    }
+                    else
+                    {
+                        await component.ModifyOriginalResponseAsync(msg => { msg.Embed = embed; msg.Components = new ComponentBuilder().Build(); });
+                    }
                 }
+            }
+
+            // ── 合成取消 poke_craft_cancel_{userId} ───────────────────────────
+            else if (component.Data.CustomId.StartsWith("poke_craft_cancel_"))
+            {
+                await component.DeferAsync(ephemeral: true);
+                await component.ModifyOriginalResponseAsync(msg => { msg.Content = "已取消"; msg.Embed = null; msg.Components = new ComponentBuilder().Build(); });
             }
 
             // ── 合成道具 poke_craft_{userId}_{itemKey} ────────────────────────
@@ -871,7 +902,15 @@ public class Program
                     var pokeSvc = _services.GetService<PokeGameService>();
                     var guildUser = component.User as Discord.WebSocket.SocketGuildUser;
                     var (embed, _) = await pokeSvc.CraftItemAsync(craftOwnerId, guildUser?.DisplayName ?? component.User.Username, parts[3]);
-                    await component.ModifyOriginalResponseAsync(msg => { msg.Embed = embed; msg.Components = new ComponentBuilder().Build(); });
+                    if (!embed.Title.StartsWith("❌") && !embed.Title.Contains("今天已經被摸過"))
+                    {
+                        await component.Channel.SendMessageAsync(embed: embed);
+                        await component.ModifyOriginalResponseAsync(msg => { msg.Content = "✅"; msg.Embed = null; msg.Components = new ComponentBuilder().Build(); });
+                    }
+                    else
+                    {
+                        await component.ModifyOriginalResponseAsync(msg => { msg.Embed = embed; msg.Components = new ComponentBuilder().Build(); });
+                    }
                 }
             }
 
@@ -908,7 +947,15 @@ public class Program
                     var pokeSvc = _services.GetService<PokeGameService>();
                     var guildUser = component.User as Discord.WebSocket.SocketGuildUser;
                     var (embed, _) = await pokeSvc.UseItemOnPokemonAsync(useOwnerId2, guildUser?.DisplayName ?? component.User.Username, parts[4], usePokeIdx);
-                    await component.ModifyOriginalResponseAsync(msg => { msg.Embed = embed; msg.Components = new ComponentBuilder().Build(); });
+                    if (!embed.Title.StartsWith("❌") && !embed.Title.Contains("今天已經被摸過"))
+                    {
+                        await component.Channel.SendMessageAsync(embed: embed);
+                        await component.ModifyOriginalResponseAsync(msg => { msg.Content = "✅"; msg.Embed = null; msg.Components = new ComponentBuilder().Build(); });
+                    }
+                    else
+                    {
+                        await component.ModifyOriginalResponseAsync(msg => { msg.Embed = embed; msg.Components = new ComponentBuilder().Build(); });
+                    }
                 }
             }
 
@@ -2071,16 +2118,36 @@ public class Program
                         }
 
                         string userMsg = BuildUserMessageWithVision(message.Content, allDescParts);
-                        result = await _openRouterService.GenerateTextAsync(userMsg, talker, true, channelKey, repliedMessage, contextMessages);
-                        await HandleSoyoResponseAsync(result, message, talker);
+                        result = await _openRouterService.GenerateTextAsync(userMsg, talker, true, channelKey, repliedMessage, contextMessages, twoStageSearch: true);
+                        const string stage2Separator = "\n\n\n◆◆◆\n\n\n";
+                        if (result.Contains(stage2Separator))
+                        {
+                            var stageParts = result.Split(stage2Separator, 2);
+                            await HandleSoyoResponseAsync(stageParts[0].Trim(), message, talker);
+                            await HandleSoyoResponseAsync(stageParts[1].Trim(), message, talker);
+                        }
+                        else
+                        {
+                            await HandleSoyoResponseAsync(result, message, talker);
+                        }
                         return;
                     }
                 }
                 else
                 {
                     string userMsg = BuildUserMessageWithVision(message.Content, allDescParts);
-                    result = await _openRouterService.GenerateTextAsync(userMsg, talker, true, channelKey, null, contextMessages);
-                    await HandleSoyoResponseAsync(result, message, talker);
+                    result = await _openRouterService.GenerateTextAsync(userMsg, talker, true, channelKey, null, contextMessages, twoStageSearch: true);
+                    string stage2Sep = "\n\n\n◆◆◆\n\n\n";
+                    if (result.Contains(stage2Sep))
+                    {
+                        var stageParts2 = result.Split(stage2Sep, 2);
+                        await HandleSoyoResponseAsync(stageParts2[0].Trim(), message, talker);
+                        await HandleSoyoResponseAsync(stageParts2[1].Trim(), message, talker);
+                    }
+                    else
+                    {
+                        await HandleSoyoResponseAsync(result, message, talker);
+                    }
                     return;
                 }
             }

@@ -1289,6 +1289,14 @@ namespace MusicBot2.Service
 
                 var pokemon = player.CaughtPokemon[pokemonIndex - 1];
 
+                // 工作中的 pokemon 不能出戰
+                var workStates = await GetWorkStatesAsync(userId);
+                if (workStates.Any(s => s.PokemonCaughtDate == pokemon.CaughtDate))
+                    return (new EmbedBuilder()
+                        .WithTitle($"❌ {pokemon.CustomName ?? pokemon.Name} 正在工作中！")
+                        .WithDescription("使用 `/收工pokemon` 取回後才能讓牠出戰。")
+                        .WithColor(Color.Red).Build(), new ComponentBuilder());
+
                 // 檢查是否有其他玩家在等待
                 var waitingPlayers = await GetWaitingPlayersAsync();
                 var opponent = waitingPlayers.FirstOrDefault(p => p.UserId != userId);
@@ -1419,7 +1427,11 @@ namespace MusicBot2.Service
                 var pokemon1 = player.CaughtPokemon[index1 - 1];
                 var pokemon2 = player.CaughtPokemon[index2 - 1];
 
-
+                var workStates2v2 = await GetWorkStatesAsync(userId);
+                if (workStates2v2.Any(s => s.PokemonCaughtDate == pokemon1.CaughtDate))
+                    return (new EmbedBuilder().WithTitle($"❌ {pokemon1.CustomName ?? pokemon1.Name} 正在工作中！").WithColor(Color.Red).Build(), new ComponentBuilder());
+                if (workStates2v2.Any(s => s.PokemonCaughtDate == pokemon2.CaughtDate))
+                    return (new EmbedBuilder().WithTitle($"❌ {pokemon2.CustomName ?? pokemon2.Name} 正在工作中！").WithColor(Color.Red).Build(), new ComponentBuilder());
 
                 // 檢查是否有其他玩家在等待
                 var waitingPlayers = await GetWaitingPlayers2V2Async();
@@ -1630,9 +1642,9 @@ HP為0就是真的死亡，不會再有後續動作
                     winner.TotalBattles++;
                     winner.Wins++;
 
-                    // 好感度 +3（勝利）
-                    AddFriendship(winnerPokemon1, 3);
-                    AddFriendship(winnerPokemon2, 3);
+                    // 好感度（勝利）
+                    AddFriendship(winnerPokemon1, new Random().Next(2, 5));
+                    AddFriendship(winnerPokemon2, new Random().Next(2, 5));
                     // 精力消耗
                     winnerPokemon1.Stamina = Math.Max(0, winnerPokemon1.Stamina - 10);
                     winnerPokemon2.Stamina = Math.Max(0, winnerPokemon2.Stamina - 10);
@@ -2085,8 +2097,8 @@ HP為0就是真的死亡，不會再有後續動作
                     winner.TotalBattles++;
                     winner.Wins++;
 
-                    // 好感度 +3（勝利）、精力 -10
-                    AddFriendship(winnerPokemon, 3);
+                    // 好感度（勝利）、精力 -10
+                    AddFriendship(winnerPokemon, new Random().Next(2, 5));
                     winnerPokemon.Stamina = Math.Max(0, winnerPokemon.Stamina - 10);
 
                     // 更新勝利者pokemon的進化點數 (+2)
@@ -3071,7 +3083,7 @@ HP為0就是真的死亡，不會再有後續動作
         #region 好感度系統
 
         private const string WORK_STATE_KEY_PREFIX = "pokegame:work:";
-        private static readonly Dictionary<ulong, PokemonWorkState> _memoryWorkStates = new();
+        private static readonly Dictionary<ulong, List<PokemonWorkState>> _memoryWorkStates = new();
 
         // 好感度衰減：超過 3 天沒互動，每次查看 -2
         private void ApplyFriendshipDecay(PokeGamePokemon p)
@@ -3150,14 +3162,15 @@ HP為0就是真的死亡，不會再有後續動作
                 }
                 else
                 {
-                    AddFriendship(p, 5);
+                    int gained = new Random().Next(3, 8);
+                    AddFriendship(p, gained);
                     await SavePlayerDataAsync(player);
                     embed = new EmbedBuilder()
                         .WithTitle($"🥰 {displayName} 很開心！")
                         .WithDescription($"你輕輕摸了摸 **{displayName}**，牠高興地蹭了你一下！")
                         .WithThumbnailUrl(p.ImageUrl)
                         .WithColor(new Color(0xFFB6C1))
-                        .AddField("好感度", $"{p.Friendship}/255 ❤️ (+5)")
+                        .AddField("好感度", $"{p.Friendship}/255 ❤️ (+{gained})")
                         .AddField("效果提示", p.Friendship >= 200 ? "💛 好感滿滿，攻擊力有加成！" : p.Friendship >= 100 ? "💗 夠好感了，對戰時可能撐住一擊" : "繼續互動提升好感吧！")
                         .Build();
                 }
@@ -3281,7 +3294,7 @@ HP為0就是真的死亡，不會再有後續動作
             ["data"]        = "數據碎片",
         };
 
-        private async Task<PokemonWorkState> GetWorkStateAsync(ulong userId)
+        private async Task<List<PokemonWorkState>> GetWorkStatesAsync(ulong userId)
         {
             if (_useRedis)
             {
@@ -3289,29 +3302,28 @@ HP為0就是真的死亡，不會再有後續動作
                 {
                     var raw = await _redisDb.StringGetAsync($"{WORK_STATE_KEY_PREFIX}{userId}");
                     if (!raw.IsNullOrEmpty)
-                        return JsonConvert.DeserializeObject<PokemonWorkState>(raw);
+                        return JsonConvert.DeserializeObject<List<PokemonWorkState>>(raw) ?? new List<PokemonWorkState>();
                 }
                 catch { }
             }
-            _memoryWorkStates.TryGetValue(userId, out var state);
-            return state;
+            return _memoryWorkStates.TryGetValue(userId, out var list) ? list : new List<PokemonWorkState>();
         }
 
-        private async Task SaveWorkStateAsync(PokemonWorkState state)
+        private async Task SaveWorkStatesAsync(ulong userId, List<PokemonWorkState> states)
         {
             if (_useRedis)
             {
                 try
                 {
-                    var data = JsonConvert.SerializeObject(state);
-                    await _redisDb.StringSetAsync($"{WORK_STATE_KEY_PREFIX}{state.UserId}", data, TimeSpan.FromHours(48));
+                    var data = JsonConvert.SerializeObject(states);
+                    await _redisDb.StringSetAsync($"{WORK_STATE_KEY_PREFIX}{userId}", data, TimeSpan.FromHours(48));
                 }
                 catch { }
             }
-            _memoryWorkStates[state.UserId] = state;
+            _memoryWorkStates[userId] = states;
         }
 
-        private async Task DeleteWorkStateAsync(ulong userId)
+        private async Task DeleteWorkStatesAsync(ulong userId)
         {
             if (_useRedis)
             {
@@ -3347,34 +3359,42 @@ HP為0就是真的死亡，不會再有後續動作
                 if (player.CaughtPokemon.Count == 0)
                     return (new EmbedBuilder().WithTitle("❌ 你還沒有任何pokemon！").WithColor(Color.Red).Build(), new ComponentBuilder());
 
-                var currentWork = await GetWorkStateAsync(userId);
-                string workingNote = currentWork != null
-                    ? $"⚠️ 目前 **{currentWork.WorkType}** 正在工作中，完工時間：{currentWork.WorkEndTime:HH:mm} UTC\n先使用 `/收工pokemon` 取回後才能派新的出去。\n\n"
-                    : "";
+                var currentStates = await GetWorkStatesAsync(userId);
+                var workingDates = currentStates.Select(s => s.PokemonCaughtDate).ToHashSet();
+                int slotsUsed = currentStates.Count;
+                int slotsLeft = 3 - slotsUsed;
+
+                string slotNote = slotsUsed == 0 ? "" : $"⚠️ 目前 **{slotsUsed}/3** 隻在工作中（{string.Join("、", currentStates.Select(s => s.WorkType))}）\n";
+                if (slotsLeft == 0)
+                    return (new EmbedBuilder()
+                        .WithTitle("❌ 3 個工作名額已滿！")
+                        .WithDescription("使用 `/收工pokemon` 收回完成的 pokemon 後再來。")
+                        .WithColor(Color.Red).Build(), new ComponentBuilder());
 
                 var embed = new EmbedBuilder()
                     .WithTitle("🏭 選擇要派去工作的 pokemon")
-                    .WithDescription($"{workingNote}根據 pokemon 的**屬性**決定工作類型與產出材料\n精力低於 30 時產出會減少")
+                    .WithDescription($"{slotNote}還剩 **{slotsLeft}** 個名額 | 根據屬性決定工作類型\n精力低於 30 時產出會減少")
                     .WithColor(new Color(0x5865F2))
                     .Build();
 
                 var comp = new ComponentBuilder();
+                int row = 0, btnInRow = 0;
                 for (int i = 0; i < player.CaughtPokemon.Count; i++)
                 {
                     var p = player.CaughtPokemon[i];
+                    if (workingDates.Contains(p.CaughtDate)) continue; // 已在工作中，跳過
                     string shiny = p.isShiny ? "✨" : "";
-                    // 找對應工作類型
                     string workName = "快遞員";
                     foreach (var t in p.Types)
-                    {
                         if (_typeWorkMap.TryGetValue(t, out var wt)) { workName = wt.WorkName; break; }
-                    }
                     string staminaMark = p.Stamina < 30 ? "⚠️" : "";
                     string label = string.IsNullOrEmpty(p.CustomName)
                         ? $"{i + 1}. {shiny}{p.Name} [{workName}]{staminaMark}"
                         : $"{i + 1}. {shiny}{p.CustomName}（{p.Name}）[{workName}]{staminaMark}";
                     if (label.Length > 80) label = label[..77] + "...";
-                    comp.WithButton(label, $"poke_work_send_{userId}_{i}", ButtonStyle.Primary, row: i / 5);
+                    comp.WithButton(label, $"poke_work_send_{userId}_{i}", ButtonStyle.Primary, row: row);
+                    btnInRow++;
+                    if (btnInRow >= 5) { row++; btnInRow = 0; }
                 }
                 return (embed, comp);
             }
@@ -3393,27 +3413,29 @@ HP為0就是真的死亡，不會再有後續動作
                 if (pokemonIndex < 0 || pokemonIndex >= player.CaughtPokemon.Count)
                     return (new EmbedBuilder().WithTitle("❌ 找不到這隻 pokemon").WithColor(Color.Red).Build(), new ComponentBuilder());
 
-                var existing = await GetWorkStateAsync(userId);
-                if (existing != null && existing.WorkEndTime > DateTime.UtcNow)
+                var existingStates = await GetWorkStatesAsync(userId);
+                if (existingStates.Count >= 3)
                     return (new EmbedBuilder()
-                        .WithTitle("❌ 已有 pokemon 在工作中")
-                        .WithDescription($"請先使用 `/收工pokemon` 取回正在工作的 pokemon")
+                        .WithTitle("❌ 工作名額已滿（3/3）")
+                        .WithDescription("使用 `/收工pokemon` 取回完成的 pokemon 後再派！")
                         .WithColor(Color.Red).Build(), new ComponentBuilder());
 
                 var p = player.CaughtPokemon[pokemonIndex];
+                if (existingStates.Any(s => s.PokemonCaughtDate == p.CaughtDate))
+                    return (new EmbedBuilder()
+                        .WithTitle($"❌ {p.CustomName ?? p.Name} 已經在工作中了！")
+                        .WithColor(Color.Red).Build(), new ComponentBuilder());
+
                 if (p.Stamina <= 0)
                     return (new EmbedBuilder()
                         .WithTitle($"❌ {p.CustomName ?? p.Name} 太累了，無法工作")
                         .WithDescription("使用道具恢復精力後再出發吧！")
                         .WithColor(Color.Red).Build(), new ComponentBuilder());
 
-                // 決定工作類型（優先第一個有對應的屬性）
                 (string WorkName, int WorkHours, List<string> Materials) workDef = ("快遞員", 2, new List<string>{ "ore", "fish" });
                 string matchedType = "normal";
                 foreach (var t in p.Types)
-                {
                     if (_typeWorkMap.TryGetValue(t, out var wt)) { workDef = wt; matchedType = t; break; }
-                }
 
                 var actualMaterials = CalculateWorkOutput(p, workDef.Materials);
                 var state = new PokemonWorkState
@@ -3426,10 +3448,12 @@ HP為0就是真的死亡，不會再有後續動作
                     WorkEndTime = DateTime.UtcNow.AddHours(workDef.WorkHours),
                     ExpectedMaterials = actualMaterials
                 };
-                await SaveWorkStateAsync(state);
+                existingStates.Add(state);
+                await SaveWorkStatesAsync(userId, existingStates);
 
                 string displayName = p.CustomName ?? p.Name;
                 string materialPreview = string.Join("、", actualMaterials.Select(m => MaterialNames.GetValueOrDefault(m, m)));
+                int newSlotCount = existingStates.Count;
 
                 return (new EmbedBuilder()
                     .WithTitle($"🏭 {displayName} 出發去工作了！")
@@ -3438,6 +3462,7 @@ HP為0就是真的死亡，不會再有後續動作
                     .WithColor(new Color(0x5865F2))
                     .AddField("預期回報", materialPreview)
                     .AddField("精力", $"{p.Stamina}/100")
+                    .AddField("工作名額", $"{newSlotCount}/3")
                     .WithFooter("工作中無法對戰，完工後使用 /收工pokemon 取回")
                     .Build(), new ComponentBuilder());
             }
@@ -3452,55 +3477,101 @@ HP為0就是真的死亡，不會再有後續動作
         {
             try
             {
-                var state = await GetWorkStateAsync(userId);
-                if (state == null)
+                var states = await GetWorkStatesAsync(userId);
+                if (states.Count == 0)
                     return (new EmbedBuilder().WithTitle("❌ 目前沒有 pokemon 在工作").WithColor(Color.Orange).Build(), new ComponentBuilder());
 
                 var player = await GetPlayerDataAsync(userId, userName);
-                var p = player.CaughtPokemon.FirstOrDefault(x => x.CaughtDate == state.PokemonCaughtDate);
-                string displayName = p != null ? (p.CustomName ?? p.Name) : "你的pokemon";
+                var now = DateTime.UtcNow;
+                var rng = new Random();
 
-                bool isFinished = DateTime.UtcNow >= state.WorkEndTime;
+                var finished = states.Where(s => now >= s.WorkEndTime).ToList();
+                var stillWorking = states.Where(s => now < s.WorkEndTime).ToList();
 
-                if (!isFinished)
+                if (finished.Count == 0)
                 {
-                    var remaining = state.WorkEndTime - DateTime.UtcNow;
+                    var nextDone = stillWorking.Min(s => s.WorkEndTime);
+                    var remaining = nextDone - now;
+                    var workingNames = stillWorking.Select(s => {
+                        var p2 = player.CaughtPokemon.FirstOrDefault(x => x.CaughtDate == s.PokemonCaughtDate);
+                        return p2 != null ? $"{p2.CustomName ?? p2.Name}（{s.WorkType}）" : s.WorkType;
+                    });
                     return (new EmbedBuilder()
-                        .WithTitle($"⏳ {displayName} 還沒完工！")
-                        .WithDescription($"還需要 **{(int)remaining.TotalHours} 小時 {remaining.Minutes} 分鐘**\n完工時間：{state.WorkEndTime:HH:mm} UTC")
+                        .WithTitle("⏳ 還沒有 pokemon 完工！")
+                        .WithDescription($"最快完工：**{(int)remaining.TotalHours} 小時 {remaining.Minutes} 分鐘**後\n\n在工作的：{string.Join("、", workingNames)}")
                         .WithColor(Color.Orange).Build(), new ComponentBuilder());
                 }
 
-                // 加材料到背包
-                foreach (var mat in state.ExpectedMaterials)
+                // 收工完成的 pokemon
+                var resultLines = new List<string>();
+                int friendshipGained = rng.Next(1, 4);
+                foreach (var state in finished)
                 {
-                    player.Bag.TryGetValue(mat, out int cur);
-                    player.Bag[mat] = cur + 1;
+                    var p = player.CaughtPokemon.FirstOrDefault(x => x.CaughtDate == state.PokemonCaughtDate);
+                    string displayName = p != null ? (p.CustomName ?? p.Name) : "你的pokemon";
+
+                    // 給材料（每種材料 1-2 個）
+                    var matSummary = new Dictionary<string, int>();
+                    foreach (var mat in state.ExpectedMaterials)
+                    {
+                        int qty = rng.Next(1, 3); // 1 or 2
+                        player.Bag.TryGetValue(mat, out int cur);
+                        player.Bag[mat] = cur + qty;
+                        matSummary.TryGetValue(mat, out int existing);
+                        matSummary[mat] = existing + qty;
+                    }
+                    string matText = string.Join("、", matSummary.Select(kv => $"{MaterialNames.GetValueOrDefault(kv.Key, kv.Key)}×{kv.Value}"));
+
+                    if (p != null)
+                    {
+                        p.Stamina = Math.Max(0, p.Stamina - 20);
+                        AddFriendship(p, friendshipGained);
+                    }
+                    resultLines.Add($"**{displayName}**（{state.WorkType}）→ {matText}");
                 }
 
-                // 精力消耗
-                if (p != null)
+                bool allDone = stillWorking.Count == 0;
+
+                // 如果全部都完工，自動重新派遣
+                List<PokemonWorkState> newStates = new(stillWorking);
+                if (allDone && finished.Count > 0)
                 {
-                    p.Stamina = Math.Max(0, p.Stamina - 20);
-                    // 工作也增加好感度
-                    AddFriendship(p, 2);
+                    foreach (var oldState in finished)
+                    {
+                        var p = player.CaughtPokemon.FirstOrDefault(x => x.CaughtDate == oldState.PokemonCaughtDate);
+                        if (p == null || p.Stamina <= 0) continue;
+                        (string WorkName, int WorkHours, List<string> Materials) workDef = ("快遞員", 2, new List<string>{ "ore", "fish" });
+                        string matchedType = "normal";
+                        foreach (var t in p.Types)
+                            if (_typeWorkMap.TryGetValue(t, out var wt)) { workDef = wt; matchedType = t; break; }
+                        newStates.Add(new PokemonWorkState
+                        {
+                            UserId = userId,
+                            PokemonCaughtDate = p.CaughtDate,
+                            WorkType = workDef.WorkName,
+                            WorkTypeKey = matchedType,
+                            WorkStartTime = now,
+                            WorkEndTime = now.AddHours(workDef.WorkHours),
+                            ExpectedMaterials = CalculateWorkOutput(p, workDef.Materials)
+                        });
+                    }
                 }
 
                 await SavePlayerDataAsync(player);
-                await DeleteWorkStateAsync(userId);
+                if (newStates.Count > 0)
+                    await SaveWorkStatesAsync(userId, newStates);
+                else
+                    await DeleteWorkStatesAsync(userId);
 
-                string matResult = string.Join("\n", state.ExpectedMaterials
-                    .GroupBy(m => m)
-                    .Select(g => $"• {MaterialNames.GetValueOrDefault(g.Key, g.Key)} ×{g.Count()}"));
+                string title = allDone ? "🎉 全員收工！已自動重新派遣" : $"🎉 {finished.Count} 隻 pokemon 收工！";
+                string footer = allDone ? $"已自動重新派遣 {newStates.Count} 隻，下次完工時間：{(newStates.Count > 0 ? newStates.MaxBy(s => s.WorkEndTime)?.WorkEndTime.ToString("HH:mm") : "-")} UTC" : $"還有 {stillWorking.Count} 隻仍在工作中";
 
                 return (new EmbedBuilder()
-                    .WithTitle($"🎉 {displayName} 工作回來了！")
-                    .WithDescription($"**{state.WorkType}** 工作順利完成！")
-                    .WithThumbnailUrl(p?.ImageUrl)
+                    .WithTitle(title)
+                    .WithDescription(string.Join("\n", resultLines))
                     .WithColor(Color.Green)
-                    .AddField("🎁 獲得材料", matResult)
-                    .AddField("精力", $"{p?.Stamina ?? 0}/100（-20）")
-                    .AddField("好感度", $"{p?.Friendship ?? 0}/255 (+2)")
+                    .AddField("好感度", $"各 +{friendshipGained}（工作獎勵）")
+                    .WithFooter(footer)
                     .Build(), new ComponentBuilder());
             }
             catch (Exception ex)
@@ -3657,6 +3728,9 @@ HP為0就是真的死亡，不會再有後續動作
                     btnInRow++;
                     if (btnInRow >= 5) { row++; btnInRow = 0; }
                 }
+
+                // 取消按鈕
+                comp.WithButton("取消", $"poke_craft_cancel_{userId}", ButtonStyle.Secondary, row: row + (btnInRow > 0 ? 1 : 0));
 
                 return (embed.Build(), comp);
             }
@@ -4070,6 +4144,22 @@ HP為0就是真的死亡，不會再有後續動作
 
                 player.CaughtPokemon.Add(babyPokemon);
                 player.HatchingEgg = null;
+
+                // 孵化獎勵：2-3 種隨機材料
+                var hatchRng = new Random();
+                var allMats = MaterialNames.Keys.ToList();
+                int matCount = hatchRng.Next(2, 4);
+                var hatchMats = new Dictionary<string, int>();
+                for (int i = 0; i < matCount; i++)
+                {
+                    string mat = allMats[hatchRng.Next(allMats.Count)];
+                    player.Bag.TryGetValue(mat, out int cur);
+                    player.Bag[mat] = cur + 1;
+                    hatchMats.TryGetValue(mat, out int existing);
+                    hatchMats[mat] = existing + 1;
+                }
+                string hatchMatText = string.Join("、", hatchMats.Select(kv => $"{MaterialNames[kv.Key]}×{kv.Value}"));
+
                 await SavePlayerDataAsync(player);
 
                 return (new EmbedBuilder()
@@ -4080,6 +4170,7 @@ HP為0就是真的死亡，不會再有後續動作
                     .AddField("屬性", string.Join(", ", babyPokemon.Types))
                     .AddField("能力", $"HP:{babyPokemon.HP} 攻:{babyPokemon.Attack} 防:{babyPokemon.Defense}")
                     .AddField("初始好感度", $"{babyPokemon.Friendship}/255 ❤️")
+                    .AddField("🎁 孵化獎勵材料", hatchMatText)
                     .Build(), new ComponentBuilder());
             }
             catch (Exception ex)
