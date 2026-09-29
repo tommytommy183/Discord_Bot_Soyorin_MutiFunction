@@ -1121,11 +1121,9 @@ namespace MusicBot2.Service
                                     try
                                     {
                                         // Stage 2: full Soyo persona + search result + conversation history
-                                        var stage1Context = string.IsNullOrWhiteSpace(stage1Text) ? "" :
-                                            $"\n\n[情境說明：你剛才已經用爽世的語氣說了「{stage1Text}」，然後去查詢了資料，現在搜尋結果已回傳（如上）。請直接用查到的資料回答使用者的問題，以爽世的口吻說出答案。不要再解釋你去查了什麼、不要複述上面那句話、不要說「我剛才...」，直接告訴對方查到的結論。]";
                                         var systemPromptWithSearch = systemPrompt
                                             + $"\n\n{searchContext2}"
-                                            + stage1Context;
+                                            + "\n\n[你剛才已對使用者說了第一段話（見對話歷史），現在搜尋結果已回傳（如上）。請根據搜尋結果，用爽世的語氣直接回答。不要再說你要去查、不要複述第一段的內容，直接給出查到的答案。]";
                                         var messages2 = new List<OpenRouterMessage>
                                         {
                                             new() { Role = "system", Content = systemPromptWithSearch }
@@ -1133,6 +1131,11 @@ namespace MusicBot2.Service
                                         foreach (var m2 in GetRecentMessages(channelKey))
                                             messages2.Add(new OpenRouterMessage { Role = m2.Role == "model" ? "assistant" : "user", Content = m2.Text });
                                         messages2.Add(new OpenRouterMessage { Role = "user", Content = userMessageWithName });
+                                        // Add stage 1 as assistant turn so AI knows it already sent that message
+                                        if (!string.IsNullOrWhiteSpace(stage1Text))
+                                            messages2.Add(new OpenRouterMessage { Role = "assistant", Content = stage1Text });
+                                        // Synthetic user turn to prompt stage 2 answer
+                                        messages2.Add(new OpenRouterMessage { Role = "user", Content = "好，查完了，說吧。" });
 
                                         Console.WriteLine($"[OpenRouter] Stage2 start: useGoogleAI={_useGoogleAI} msgs={messages2.Count}");
                                         foreach (var model2 in modelsToUse)
