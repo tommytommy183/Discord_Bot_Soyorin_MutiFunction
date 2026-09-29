@@ -1131,6 +1131,9 @@ namespace MusicBot2.Service
                                         foreach (var m2 in GetRecentMessages(channelKey))
                                             messages2.Add(new OpenRouterMessage { Role = m2.Role == "model" ? "assistant" : "user", Content = m2.Text });
                                         messages2.Add(new OpenRouterMessage { Role = "user", Content = userMessageWithName });
+                                        // Stage 1 response is already sent to Discord but not yet in history — add it so stage 2 knows what was said
+                                        if (!string.IsNullOrWhiteSpace(stage1Text))
+                                            messages2.Add(new OpenRouterMessage { Role = "assistant", Content = stage1Text });
 
                                         Console.WriteLine($"[OpenRouter] Stage2 start: useGoogleAI={_useGoogleAI} msgs={messages2.Count}");
                                         foreach (var model2 in modelsToUse)
