@@ -1184,6 +1184,15 @@ namespace MusicBot2.Service
                                         }
                                         if (string.IsNullOrWhiteSpace(stage2Text))
                                             Console.WriteLine("[OpenRouter] Stage2 all models failed");
+                                        else
+                                        {
+                                            // Strip any [SEARCH:...] tags the AI might have added in stage2
+                                            stage2Text = System.Text.RegularExpressions.Regex.Replace(
+                                                stage2Text, @"\[[^\]]*[Ss][Ee][Aa][Rr][Cc][Hh][^\]]*\]", "").Trim();
+                                            // Strip leading ◆ separators the AI might mimic from conversation history
+                                            stage2Text = System.Text.RegularExpressions.Regex.Replace(
+                                                stage2Text, @"^[◆\s]+", "").Trim();
+                                        }
                                     }
                                     catch (Exception ex2)
                                     {
@@ -1196,6 +1205,10 @@ namespace MusicBot2.Service
                                         text = stage2Text;
                                     else
                                         text = stage1Text;
+
+                                    // Final cleanup: strip any leftover [SEARCH...] / [SERACH...] style tags
+                                    text = System.Text.RegularExpressions.Regex.Replace(
+                                        text, @"\[S[A-Z]{0,3}E[A-Z]{0,3}R[A-Z]{0,3}C[A-Z]{0,3}H[^\]]*\]", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase).Trim();
                                 }
                                 else
                                 {
@@ -1203,6 +1216,10 @@ namespace MusicBot2.Service
                                 }
                             }
                         }
+
+                        // Strip any leftover [SEARCH...] tags the AI may have output or typo'd
+                        text = System.Text.RegularExpressions.Regex.Replace(
+                            text, @"\[S[A-Z]{0,3}E[A-Z]{0,3}R[A-Z]{0,3}C[A-Z]{0,3}H[^\]]*\]", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase).Trim();
 
                         // ── 遊戲標籤解析（在存記憶前剝掉，不讓玩家看到）────
                         text = await ParseAndHandleGameTagsAsync(text, channelKey);
