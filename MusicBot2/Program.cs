@@ -2118,36 +2118,20 @@ public class Program
                         }
 
                         string userMsg = BuildUserMessageWithVision(message.Content, allDescParts);
-                        result = await _openRouterService.GenerateTextAsync(userMsg, talker, true, channelKey, repliedMessage, contextMessages, twoStageSearch: true);
-                        const string stage2Separator = "\n\n\n◆◆◆\n\n\n";
-                        if (result.Contains(stage2Separator))
-                        {
-                            var stageParts = result.Split(stage2Separator, 2);
-                            await HandleSoyoResponseAsync(stageParts[0].Trim(), message, talker);
-                            await HandleSoyoResponseAsync(stageParts[1].Trim(), message, talker);
-                        }
-                        else
-                        {
+                        result = await _openRouterService.GenerateTextAsync(userMsg, talker, true, channelKey, repliedMessage, contextMessages, twoStageSearch: true,
+                            onStage1Ready: async s => await HandleSoyoResponseAsync(s, message, talker));
+                        if (!string.IsNullOrWhiteSpace(result))
                             await HandleSoyoResponseAsync(result, message, talker);
-                        }
                         return;
                     }
                 }
                 else
                 {
                     string userMsg = BuildUserMessageWithVision(message.Content, allDescParts);
-                    result = await _openRouterService.GenerateTextAsync(userMsg, talker, true, channelKey, null, contextMessages, twoStageSearch: true);
-                    string stage2Sep = "\n\n\n◆◆◆\n\n\n";
-                    if (result.Contains(stage2Sep))
-                    {
-                        var stageParts2 = result.Split(stage2Sep, 2);
-                        await HandleSoyoResponseAsync(stageParts2[0].Trim(), message, talker);
-                        await HandleSoyoResponseAsync(stageParts2[1].Trim(), message, talker);
-                    }
-                    else
-                    {
+                    result = await _openRouterService.GenerateTextAsync(userMsg, talker, true, channelKey, null, contextMessages, twoStageSearch: true,
+                        onStage1Ready: async s => await HandleSoyoResponseAsync(s, message, talker));
+                    if (!string.IsNullOrWhiteSpace(result))
                         await HandleSoyoResponseAsync(result, message, talker);
-                    }
                     return;
                 }
             }

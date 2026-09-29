@@ -806,7 +806,7 @@ namespace MusicBot2.Service
         /// <summary>
         /// 進階版：使用 GeminiRequestVM (沿用既有 VM，避免到處改型別)
         /// </summary>
-        public async Task<string> GenerateTextAsync(GeminiRequestVM request, SocketGuildUser user, bool saveToMemory = true, string channelKey = null, IMessage? repliedMessage = null, IEnumerable<IMessage>? contextMessages = null, bool twoStageSearch = false)
+        public async Task<string> GenerateTextAsync(GeminiRequestVM request, SocketGuildUser user, bool saveToMemory = true, string channelKey = null, IMessage? repliedMessage = null, IEnumerable<IMessage>? contextMessages = null, bool twoStageSearch = false, Func<string, Task> onStage1Ready = null)
         {
             channelKey ??= user?.Guild?.Id.ToString() ?? "global";
 
@@ -1098,6 +1098,10 @@ namespace MusicBot2.Service
                                 string searchQuery2 = searchTagMatch.Groups[1].Value.Trim();
                                 string stage1Text = text.Replace(searchTagMatch.Value, "").Trim();
 
+                                // Send stage 1 immediately so user sees it while we search
+                                if (onStage1Ready != null && !string.IsNullOrWhiteSpace(stage1Text))
+                                    await onStage1Ready(stage1Text);
+
                                 string searchContext2 = null;
                                 try
                                 {
@@ -1204,7 +1208,11 @@ namespace MusicBot2.Service
                                         Console.WriteLine($"[OpenRouter] Stage2 outer exception: {ex2.GetType().Name}: {ex2.Message}");
                                     }
 
-                                    if (!string.IsNullOrWhiteSpace(stage1Text) && !string.IsNullOrWhiteSpace(stage2Text))
+                                    // If stage 1 was sent via callback, only return stage 2
+                                    // If no callback (caller doesn't support two-step), fall back to combined
+                                    if (onStage1Ready != null)
+                                        text = !string.IsNullOrWhiteSpace(stage2Text) ? stage2Text : "";
+                                    else if (!string.IsNullOrWhiteSpace(stage1Text) && !string.IsNullOrWhiteSpace(stage2Text))
                                         text = stage1Text + "\n\n\n◆◆◆\n\n\n" + stage2Text;
                                     else if (!string.IsNullOrWhiteSpace(stage2Text))
                                         text = stage2Text;
@@ -1451,7 +1459,7 @@ namespace MusicBot2.Service
         /// <summary>
         /// 簡化版本：直接傳入訊息
         /// </summary>
-        public async Task<string> GenerateTextAsync(string message, SocketGuildUser user, bool saveToMemory = true, string channelKey = null, IMessage? repliedMessage = null, IEnumerable<IMessage>? contextMessages = null, bool isTtsMode = false, bool twoStageSearch = false)
+        public async Task<string> GenerateTextAsync(string message, SocketGuildUser user, bool saveToMemory = true, string channelKey = null, IMessage? repliedMessage = null, IEnumerable<IMessage>? contextMessages = null, bool isTtsMode = false, bool twoStageSearch = false, Func<string, Task> onStage1Ready = null)
         {
             var request = new GeminiRequestVM
             {
@@ -1463,7 +1471,7 @@ namespace MusicBot2.Service
                 SystemInstruction = isTtsMode ? Persona + TtsEmotionAddon : null
             };
 
-            return await GenerateTextAsync(request, user, saveToMemory, channelKey, repliedMessage, contextMessages, twoStageSearch: twoStageSearch);
+            return await GenerateTextAsync(request, user, saveToMemory, channelKey, repliedMessage, contextMessages, twoStageSearch: twoStageSearch, onStage1Ready: onStage1Ready);
         }
 
         public async Task<string> GenerateSimpleTextAsync(string message, SocketGuildUser user, bool saveToMemory = true, string channelKey = null, IMessage? repliedMessage = null)
