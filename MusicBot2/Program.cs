@@ -2118,8 +2118,16 @@ public class Program
                         }
 
                         string userMsg = BuildUserMessageWithVision(message.Content, allDescParts);
+                        var typingCts1 = new System.Threading.CancellationTokenSource();
                         result = await _openRouterService.GenerateTextAsync(userMsg, talker, true, channelKey, repliedMessage, contextMessages, twoStageSearch: true,
-                            onStage1Ready: async s => await HandleSoyoResponseAsync(s, message, talker));
+                            onStage1Ready: async s => {
+                                await HandleSoyoResponseAsync(s, message, talker);
+                                _ = Task.Run(async () => {
+                                    try { while (!typingCts1.Token.IsCancellationRequested) { await message.Channel.TriggerTypingAsync(); await Task.Delay(9000, typingCts1.Token); } }
+                                    catch (OperationCanceledException) { }
+                                });
+                            });
+                        typingCts1.Cancel();
                         if (!string.IsNullOrWhiteSpace(result))
                             await HandleSoyoResponseAsync(result, message, talker);
                         return;
@@ -2128,8 +2136,16 @@ public class Program
                 else
                 {
                     string userMsg = BuildUserMessageWithVision(message.Content, allDescParts);
+                    var typingCts2 = new System.Threading.CancellationTokenSource();
                     result = await _openRouterService.GenerateTextAsync(userMsg, talker, true, channelKey, null, contextMessages, twoStageSearch: true,
-                        onStage1Ready: async s => await HandleSoyoResponseAsync(s, message, talker));
+                        onStage1Ready: async s => {
+                            await HandleSoyoResponseAsync(s, message, talker);
+                            _ = Task.Run(async () => {
+                                try { while (!typingCts2.Token.IsCancellationRequested) { await message.Channel.TriggerTypingAsync(); await Task.Delay(9000, typingCts2.Token); } }
+                                catch (OperationCanceledException) { }
+                            });
+                        });
+                    typingCts2.Cancel();
                     if (!string.IsNullOrWhiteSpace(result))
                         await HandleSoyoResponseAsync(result, message, talker);
                     return;

@@ -974,6 +974,7 @@ namespace MusicBot2.Service
 
 
 
+            string stage1TextForHistory = null;  // captured for saveToMemory when two-stage search runs
             var modelsToUse = _useGoogleAI ? _googleModels : _models;
             foreach (var model in modelsToUse)
             {
@@ -1095,6 +1096,7 @@ namespace MusicBot2.Service
                                 // Send stage 1 immediately so user sees it while we search
                                 if (onStage1Ready != null && !string.IsNullOrWhiteSpace(stage1Text))
                                     await onStage1Ready(stage1Text);
+                                stage1TextForHistory = stage1Text;
 
                                 string searchContext2 = null;
                                 try
@@ -1133,7 +1135,7 @@ namespace MusicBot2.Service
                                         if (!string.IsNullOrWhiteSpace(stage1Text))
                                             messages2.Add(new OpenRouterMessage { Role = "assistant", Content = stage1Text });
                                         // Synthetic user turn to prompt stage 2 answer
-                                        messages2.Add(new OpenRouterMessage { Role = "user", Content = "好，查完了，說吧。" });
+                                        messages2.Add(new OpenRouterMessage { Role = "user", Content = "（搜尋完成）" });
 
                                         Console.WriteLine($"[OpenRouter] Stage2 start: useGoogleAI={_useGoogleAI} msgs={messages2.Count}");
                                         foreach (var model2 in modelsToUse)
@@ -1241,6 +1243,15 @@ namespace MusicBot2.Service
                                 Timestamp = DateTime.Now,
                                 UserName = displayName
                             });
+                            // If two-stage search ran, save stage 1 first so AI remembers it said "I'll check"
+                            if (!string.IsNullOrWhiteSpace(stage1TextForHistory))
+                                history.Add(new ConversationMessage
+                                {
+                                    Role = "model",
+                                    Text = Truncate(stage1TextForHistory, MaxMessageStoreLength),
+                                    Timestamp = DateTime.Now,
+                                    UserName = "爽世"
+                                });
                             history.Add(new ConversationMessage
                             {
                                 Role = "model",
