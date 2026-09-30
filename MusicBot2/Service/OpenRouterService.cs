@@ -234,29 +234,24 @@ namespace MusicBot2.Service
         // 只保留 generateContent 聊天用模型
         private readonly string[] _googleModels =
         {
-            // ══ 第一梯：最強 Pro（複雜推理首選）══
-            //"gemini-3.1-pro-preview",       // 最新一代 Pro，頂峰 無回應
-            //"gemini-3-pro-preview",         // Gen3 Pro，穩定強力 無回應
+            // ══ 第一梯：最新 Flash 主力 ══
+            "gemini-3.8-flash",             // 最新 Flash
+            "gemini-3.7-flash",             // 最新一代 Flash
+            "gemini-3.6-flash",             // 穩定 Flash
 
-            // ══ 第二梯：最新 Flash 主力（速度+智慧平衡）══
-            //"gemini-3.6-flash",             // 最新 Flash 旗艦（暫停，目前打不到）
-            "gemini-3.5-flash",             // 3.5 Flash，品質優秀
-            "gemini-3.1-flash-lite",        // 3.1 Flash-Lite 穩定版
-            "gemini-3-flash-preview",       // Gen3 Flash Preview
-            "gemini-omni-flash-preview",    // Omni Flash
+            // ══ 第二梯：3.5 / 高性價比 ══
+            "gemini-3.5-flash",             // 高品質 Flash
+            "gemini-3.5-flash-lite",        // 高吞吐、低成本
+            "gemini-3.1-flash-lite",        // 舊 Lite，2027/5/7 將關閉
 
-            // ══ 第三梯：2.5 穩定版（久經考驗）══
-            "gemini-2.5-pro",               // 2.5 Pro 穩定版
-            "gemini-2.5-flash",             // 2.5 Flash 穩定版（日常最推薦）
-            "gemini-2.5-flash-lite",        // 2.5 Flash-Lite 穩定版
+            // ══ 第三梯：2.5 穩定版 ══
+            "gemini-2.5-pro",
+            "gemini-2.5-flash",
+            "gemini-2.5-flash-lite",
 
-            // ══ 第四梯：2.0 舊世代備援 ══
-            "gemini-2.0-flash",             // 2.0 Flash 可靠老牌
-            "gemini-2.0-flash-lite",        // 2.0 Flash-Lite 輕量
-
-            // ══ 第五梯：Gemma 開源（最後保底）══
-            "gemma-4-31b-it",               // Gemma 4 31B
-            "gemma-4-26b-a4b-it",           // Gemma 4 26B MoE
+            // ══ 第四梯：Gemma 保底 ══
+            "gemma-4-31b-it",
+            "gemma-4-26b-a4b-it"
         };
 
         private readonly string[] _googleModelsForSimpleText =
@@ -1069,7 +1064,7 @@ namespace MusicBot2.Service
 
                         if (r.ShouldBreak) break;
                         if (r.ShouldContinue) continue;
-
+                        
                         string text = r.Text;
 
                         if (string.IsNullOrWhiteSpace(text))
