@@ -100,6 +100,10 @@ public class Program
         _cookie = configer["YT_DLP_COOKIES"];
 
         string redisConn = configer["Redis:ConnectionString"];
+        string googleAIStudioApiKey3 = configer["GoogleAIStudio:dcBotKey3"] ?? "";
+        string allGoogleKeys = string.Join(",",
+            new[] { googleAIStudioApiKey, googleAIStudioApiKey2, googleAIStudioApiKey3 }
+            .Where(k => !string.IsNullOrWhiteSpace(k)));
         var setTextService = new SetTextService(redisConn);
 
         _client = new DiscordSocketClient(config);
@@ -122,7 +126,7 @@ public class Program
             .AddSingleton<Pick2Service>()
             .AddSingleton<PokeService>()
             .AddSingleton<ValorantService>()
-            .AddSingleton<AIImageService>()
+            .AddSingleton<AIImageService>(sp => new AIImageService(allGoogleKeys))
             .AddSingleton<FgoGuessService>()
             .AddSingleton<UselessApiService>()
             .AddSingleton<NekoBotService>()
@@ -142,11 +146,6 @@ public class Program
                 {
                     // AI:Provider = "google" → 使用 Google AI Studio；其他/未設定 → OpenRouter
                     string aiProvider = configer["AI:Provider"] ?? "openrouter";
-                    // 將多個 key 用逗號串接，OpenRouterService 內部會拆分輪用
-                    string googleAIStudioApiKey3 = configer["GoogleAIStudio:dcBotKey3"] ?? "";
-                    string allGoogleKeys = string.Join(",",
-                        new[] { googleAIStudioApiKey, googleAIStudioApiKey2, googleAIStudioApiKey3 }
-                        .Where(k => !string.IsNullOrWhiteSpace(k)));
                     // 主聊天 provider：google → 傳 googleKey；否則傳 null（用 OpenRouter）
                     string googleKey = aiProvider.Equals("google", StringComparison.OrdinalIgnoreCase)
                         ? allGoogleKeys : null;
