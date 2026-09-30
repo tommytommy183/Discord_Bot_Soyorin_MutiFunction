@@ -235,7 +235,7 @@ namespace MusicBot2.Service
         private readonly string[] _googleModels =
         {
             // ══ 第一梯：最新 Flash 主力 ══
-
+            "gemini-3.8-flash",             // 最新 Flash，但很長無法使用
             "gemini-3.7-flash",             // 最新一代 Flash
             "gemini-3.6-flash",             // 穩定 Flash
 
@@ -248,7 +248,6 @@ namespace MusicBot2.Service
             "gemini-2.5-pro",
             "gemini-2.5-flash",
             "gemini-2.5-flash-lite",
-            "gemini-3.8-flash",             // 最新 Flash，但很長無法使用
             // ══ 第四梯：Gemma 保底 ══
             "gemma-4-31b-it",
             "gemma-4-26b-a4b-it"
@@ -1923,6 +1922,12 @@ namespace MusicBot2.Service
             {
                 int status = (int)response.StatusCode;
                 Console.WriteLine($"[GoogleAI Error] Model:{model} key:...{apiKey[^6..]} Status:{status} => {Truncate(resultJson, 300)}");
+                // high demand → skip this model entirely
+                if (resultJson.Contains("high demand", StringComparison.OrdinalIgnoreCase))
+                {
+                    Console.WriteLine($"[GoogleAI] Model:{model} high demand，跳過此 model");
+                    return new ApiCallResult(null, true, false, null, null);   // ShouldBreak
+                }
                 if (status == 429)
                 {
                     // 這個 key 達到 rate limit，冷卻 60s，由外層換下一個 key
@@ -1941,6 +1946,13 @@ namespace MusicBot2.Service
             try
             {
                 using var doc = JsonDocument.Parse(resultJson);
+                // high demand may also appear in a 200 response body
+                if (resultJson.Contains("high demand", StringComparison.OrdinalIgnoreCase))
+                {
+                    Console.WriteLine($"[GoogleAI] Model:{model} high demand（200 body），跳過此 model");
+                    return new ApiCallResult(null, true, false, null, null);   // ShouldBreak
+                }
+
                 if (!doc.RootElement.TryGetProperty("candidates", out var candidates) || candidates.GetArrayLength() == 0)
                 {
                     Console.WriteLine($"[GoogleAI] 空回應: {Truncate(resultJson, 400)}");
