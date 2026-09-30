@@ -1461,7 +1461,7 @@ namespace MusicBot2.Service
                 Temperature = 0.85f,
                 TopP = 0.9f,
                 TopK = 40,
-                MaxOutputTokens = isTtsMode ? 256 : 1024,
+                MaxOutputTokens = isTtsMode ? 256 : 2048,
                 SystemInstruction = isTtsMode ? Persona + TtsEmotionAddon : null
             };
 
