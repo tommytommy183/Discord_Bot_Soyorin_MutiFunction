@@ -1,6 +1,7 @@
 using System;
 using System.Net;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Threading.Tasks;
 
 namespace MusicBot2.Service
@@ -9,6 +10,7 @@ namespace MusicBot2.Service
     {
         private readonly HttpClient _httpClient;
         private const string CfWorkerUrl = "https://broken-queen-beaa.tommytommy183.workers.dev";
+        private const string CfApiKey = "8f7c2d91e6a44b0f9c3e8d72a1f65b9c4e7d2a8f";
 
         public AIImageService()
         {
@@ -23,7 +25,9 @@ namespace MusicBot2.Service
                     string url = $"{CfWorkerUrl}/?prompt={encodedPrompt}";
                     Console.WriteLine($"[AIImage] Cloudflare Worker: {url[..Math.Min(80, url.Length)]}");
 
-                    using var response = await _httpClient.GetAsync(url);
+                    using var req = new HttpRequestMessage(HttpMethod.Get, url);
+                    req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", CfApiKey);
+                    using var response = await _httpClient.SendAsync(req);
                     if (response.IsSuccessStatusCode)
                     {
                         var bytes = await response.Content.ReadAsByteArrayAsync();
