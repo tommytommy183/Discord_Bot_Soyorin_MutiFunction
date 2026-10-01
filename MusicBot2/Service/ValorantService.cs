@@ -43,23 +43,21 @@ namespace MusicBot2.Service
             bool showRank = true, bool showMatches = true,
             bool showHeadshot = true, bool showAgents = true, bool showWeapons = true)
         {
-            var text = await GetPlayerStatsTextAsync(name, tag, region, showRank, showMatches, showHeadshot, showAgents, showWeapons);
+            var (text, eb) = await GetPlayerStatsInternalAsync(name, tag, region, showRank, showMatches, showHeadshot, showAgents, showWeapons);
             if (text == null) return (null, null);
-            var embed = BuildStatsEmbed(name, tag, text);
-            return (text, embed);
-        }
-
-        private Embed BuildStatsEmbed(string name, string tag, string statsText)
-        {
-            return new EmbedBuilder()
-                .WithTitle($"🎮 {name}#{tag} 的瓦羅蘭戰績")
-                .WithDescription($"```\n{statsText}\n```")
-                .WithColor(new Color(0xFF4655))
-                .WithFooter("資料來源：HenrikDev API")
-                .Build();
+            return (text, eb.Build());
         }
 
         public async Task<string> GetPlayerStatsTextAsync(string name, string tag, string region = "ap",
+            bool showRank = true, bool showMatches = true,
+            bool showHeadshot = true, bool showAgents = true, bool showWeapons = true)
+        {
+            var (text, _) = await GetPlayerStatsInternalAsync(name, tag, region, showRank, showMatches, showHeadshot, showAgents, showWeapons);
+            return text;
+        }
+
+        private async Task<(string TextForAI, EmbedBuilder Embed)> GetPlayerStatsInternalAsync(
+            string name, string tag, string region = "ap",
             bool showRank = true, bool showMatches = true,
             bool showHeadshot = true, bool showAgents = true, bool showWeapons = true)
         {
@@ -100,8 +98,8 @@ namespace MusicBot2.Service
                     }
                 }
 
-                // Recent matches
-                var matchUrl = $"{HenrikDevBase}/valorant/v3/matches/{region}/{Uri.EscapeDataString(name)}/{Uri.EscapeDataString(tag)}";
+                // Recent matches (request 10; free tier may return fewer)
+                var matchUrl = $"{HenrikDevBase}/valorant/v3/matches/{region}/{Uri.EscapeDataString(name)}/{Uri.EscapeDataString(tag)}?size=10";
                 var matchResp = await _httpClient.GetAsync(matchUrl);
                 var matchSummaries = new List<string>();
                 int totalKills = 0, totalDeaths = 0, totalAssists = 0, matchCount = 0;
@@ -196,40 +194,64 @@ namespace MusicBot2.Service
                 var topWeapons = weaponCount.OrderByDescending(x => x.Value).Take(3)
                     .Select(x => $"{x.Key}({x.Value})").ToList();
 
+                // ── Plain text for AI ──
                 var sb = new StringBuilder();
                 sb.AppendLine($"玩家：{name}#{tag}　帳號等級：{accountLevel}");
+                if (showRank)
+                    sb.AppendLine($"當前段位：{rank}（{rr} RR）　歷史最高：{peakRank}");
+                if (matchCount > 0)
+                {
+                    sb.AppendLine($"近 {matchCount} 場：勝率 {wins}/{matchCount}（{winRate:F0}%）　KDA {totalKills}/{totalDeaths}/{totalAssists}（{kda:F2}）　場均 {avgKills:F1}K/{avgDeaths:F1}D");
+                    if (totalShots > 0) sb.AppendLine($"爆頭率：{hsRate:F1}%");
+                    if (topAgents.Any()) sb.AppendLine($"常用英雄：{string.Join("、", topAgents)}");
+                    if (topWeapons.Any()) sb.AppendLine($"常用武器：{string.Join("、", topWeapons)}");
+                    foreach (var ms in matchSummaries) sb.AppendLine(ms);
+                }
+
+                // ── Discord Embed ──
+                var eb = new EmbedBuilder()
+                    .WithTitle($"🎮  {name}#{tag}")
+                    .WithColor(new Color(0xFF4655))
+                    .WithFooter($"Valorant 戰績 · HenrikDev API · 地區：{region.ToUpper()}");
 
                 if (showRank)
                 {
-                    sb.AppendLine($"▸ 當前段位：{rank}（{rr} RR）　歷史最高：{peakRank}");
+                    eb.AddField("🏅 當前段位", $"{rank}\n{rr} RR", inline: true);
+                    eb.AddField("📈 歷史最高", peakRank, inline: true);
+                    eb.AddField("🎖️ 帳號等級", accountLevel, inline: true);
                 }
 
                 if (matchCount > 0 && (showMatches || showHeadshot || showAgents || showWeapons))
                 {
-                    sb.AppendLine($"▸ 近 {matchCount} 場統計：勝率 {wins}/{matchCount}（{winRate:F0}%）");
-                    sb.AppendLine($"  KDA：{totalKills}/{totalDeaths}/{totalAssists}　KDA比：{kda:F2}　場均：{avgKills:F1}殺/{avgDeaths:F1}死");
+                    eb.AddField("📊 近期統計", $"共 {matchCount} 場  |  勝率 **{wins}/{matchCount}**（{winRate:F0}%）", inline: false);
+                    eb.AddField("⚔️ KDA", $"{totalKills} / {totalDeaths} / {totalAssists}\n比值 **{kda:F2}**", inline: true);
+                    eb.AddField("📉 場均", $"**{avgKills:F1}** 殺 / **{avgDeaths:F1}** 死", inline: true);
 
                     if (showHeadshot && totalShots > 0)
-                        sb.AppendLine($"  爆頭率：{hsRate:F1}%　（爆頭 {totalHeadshots} / 軀幹 {totalBodyshots} / 腿 {totalLegshots}）");
+                        eb.AddField("🎯 爆頭率", $"**{hsRate:F1}%**\n爆頭 {totalHeadshots} · 軀幹 {totalBodyshots} · 腿 {totalLegshots}", inline: true);
 
                     if (showAgents && topAgents.Any())
-                        sb.AppendLine($"  常用英雄：{string.Join("、", topAgents)}");
+                        eb.AddField("🦸 常用英雄", string.Join("\n", topAgents), inline: true);
 
                     if (showWeapons && topWeapons.Any())
-                        sb.AppendLine($"  常用武器：{string.Join("、", topWeapons)}");
+                        eb.AddField("🔫 常用武器", string.Join("\n", topWeapons), inline: true);
 
                     if (showMatches && matchSummaries.Any())
                     {
-                        sb.AppendLine($"▸ 近期對局（最新 {matchSummaries.Count} 場）：");
-                        foreach (var ms in matchSummaries) sb.AppendLine($"  {ms}");
+                        var matchLines = string.Join("\n", matchSummaries.Select(m => {
+                            var won2 = m.StartsWith("勝");
+                            return $"{(won2 ? "🟢" : "🔴")} {m}";
+                        }));
+                        eb.AddField($"📋 近 {matchSummaries.Count} 場對局", matchLines, inline: false);
                     }
                 }
-                return sb.ToString().TrimEnd();
+
+                return (sb.ToString().TrimEnd(), eb);
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"[ValorantService] GetPlayerStats 失敗: {ex.Message}");
-                return null;
+                return (null, null);
             }
         }
 
