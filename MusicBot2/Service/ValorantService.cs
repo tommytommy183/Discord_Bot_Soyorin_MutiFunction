@@ -7,6 +7,7 @@ using SkiaSharp;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -17,11 +18,149 @@ namespace MusicBot2.Service
     {
         private readonly HttpClient _httpClient;
         private const string API_BASE_URL = "https://valorant-api.com/v1/agents?language=zh-TW";
+        private const string HenrikDevToken = "HDEV-a084e574-e764-43d6-9976-a03427aaf334";
+        private const string HenrikDevBase = "https://api.henrikdev.xyz";
+
+        // Discord UserId → (Valorant Name, Tag, Region)
+        // Region: ap(亞太) / na / eu / kr / latam / br
+        public static readonly Dictionary<ulong, (string Name, string Tag, string Region)> FriendsList = new()
+        {
+            { 325482625127153664UL, ("小老朋鳥", "大老鳥", "ap") },
+            { 415032840925741056UL, ("小老月月鳥", "鬆鬆餅", "ap") },
+            { 581407603658326016UL, ("Takoyaki", "9120", "ap") },
+            { 541105947435859978UL, ("MadCorgi", "1111", "ap") },
+        };
 
         public ValorantService()
         {
-            _httpClient = new HttpClient();
+            _httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
         }
+
+        #region HenrikDev 戰績查詢
+
+        public async Task<string> GetPlayerStatsTextAsync(string name, string tag, string region = "ap")
+        {
+            try
+            {
+                _httpClient.DefaultRequestHeaders.Remove("Authorization");
+                _httpClient.DefaultRequestHeaders.Add("Authorization", HenrikDevToken);
+
+                // Account info
+                var accountUrl = $"{HenrikDevBase}/valorant/v1/account/{Uri.EscapeDataString(name)}/{Uri.EscapeDataString(tag)}";
+                var accountResp = await _httpClient.GetAsync(accountUrl);
+                string accountLevel = "?";
+                if (accountResp.IsSuccessStatusCode)
+                {
+                    using var doc = System.Text.Json.JsonDocument.Parse(await accountResp.Content.ReadAsStringAsync());
+                    if (doc.RootElement.TryGetProperty("data", out var d))
+                    {
+                        accountLevel = d.TryGetProperty("account_level", out var lv) ? lv.GetInt32().ToString() : "?";
+                    }
+                }
+
+                // MMR (current rank)
+                var mmrUrl = $"{HenrikDevBase}/valorant/v2/mmr/{region}/{Uri.EscapeDataString(name)}/{Uri.EscapeDataString(tag)}";
+                var mmrResp = await _httpClient.GetAsync(mmrUrl);
+                string rank = "未知", rr = "?", peakRank = "未知";
+                if (mmrResp.IsSuccessStatusCode)
+                {
+                    using var doc = System.Text.Json.JsonDocument.Parse(await mmrResp.Content.ReadAsStringAsync());
+                    if (doc.RootElement.TryGetProperty("data", out var d))
+                    {
+                        if (d.TryGetProperty("current_data", out var cur))
+                        {
+                            rank = cur.TryGetProperty("currenttierpatched", out var r) ? r.GetString() ?? "未知" : "未知";
+                            rr = cur.TryGetProperty("ranking_in_tier", out var rrEl) ? rrEl.GetInt32().ToString() : "?";
+                        }
+                        if (d.TryGetProperty("highest_rank", out var peak))
+                            peakRank = peak.TryGetProperty("patched_tier", out var pr) ? pr.GetString() ?? "未知" : "未知";
+                    }
+                }
+
+                // Recent matches
+                var matchUrl = $"{HenrikDevBase}/valorant/v3/matches/{region}/{Uri.EscapeDataString(name)}/{Uri.EscapeDataString(tag)}?size=5";
+                var matchResp = await _httpClient.GetAsync(matchUrl);
+                var matchSummaries = new List<string>();
+                int totalKills = 0, totalDeaths = 0, totalAssists = 0, matchCount = 0;
+                if (matchResp.IsSuccessStatusCode)
+                {
+                    using var doc = System.Text.Json.JsonDocument.Parse(await matchResp.Content.ReadAsStringAsync());
+                    if (doc.RootElement.TryGetProperty("data", out var matches) && matches.ValueKind == System.Text.Json.JsonValueKind.Array)
+                    {
+                        foreach (var match in matches.EnumerateArray())
+                        {
+                            try
+                            {
+                                string map = match.TryGetProperty("metadata", out var meta) && meta.TryGetProperty("map", out var m) ? m.GetString() : "?";
+                                string mode = meta.TryGetProperty("mode", out var md) ? md.GetString() : "?";
+                                bool? won = null;
+                                int k = 0, d = 0, a = 0;
+                                string agent = "?";
+                                string score = "?";
+
+                                if (match.TryGetProperty("players", out var players) && players.TryGetProperty("all_players", out var allPlayers))
+                                {
+                                    foreach (var p in allPlayers.EnumerateArray())
+                                    {
+                                        var pName = p.TryGetProperty("name", out var pn) ? pn.GetString() : "";
+                                        var pTag = p.TryGetProperty("tag", out var pt) ? pt.GetString() : "";
+                                        if (string.Equals(pName, name, StringComparison.OrdinalIgnoreCase) &&
+                                            string.Equals(pTag, tag, StringComparison.OrdinalIgnoreCase))
+                                        {
+                                            agent = p.TryGetProperty("character", out var ch) ? ch.GetString() ?? "?" : "?";
+                                            if (p.TryGetProperty("stats", out var stats))
+                                            {
+                                                k = stats.TryGetProperty("kills", out var kk) ? kk.GetInt32() : 0;
+                                                d = stats.TryGetProperty("deaths", out var dd) ? dd.GetInt32() : 0;
+                                                a = stats.TryGetProperty("assists", out var aa) ? aa.GetInt32() : 0;
+                                            }
+                                            won = p.TryGetProperty("team", out var team) && match.TryGetProperty("teams", out var teams)
+                                                ? CheckWon(team.GetString(), teams) : null;
+                                            if (p.TryGetProperty("currenttier_patched", out var tier))
+                                                score = $"{k}/{d}/{a}";
+                                            break;
+                                        }
+                                    }
+                                }
+                                totalKills += k; totalDeaths += d; totalAssists += a; matchCount++;
+                                string result = won == true ? "勝" : won == false ? "敗" : "?";
+                                matchSummaries.Add($"{result} {map}({mode}) {agent} {k}/{d}/{a}");
+                            }
+                            catch { }
+                        }
+                    }
+                }
+
+                float kda = totalDeaths > 0 ? (float)(totalKills + totalAssists) / totalDeaths : totalKills + totalAssists;
+                var sb = new StringBuilder();
+                sb.AppendLine($"玩家：{name}#{tag}");
+                sb.AppendLine($"帳號等級：{accountLevel}");
+                sb.AppendLine($"當前段位：{rank}（{rr} RR）");
+                sb.AppendLine($"歷史最高：{peakRank}");
+                if (matchCount > 0)
+                {
+                    sb.AppendLine($"近 {matchCount} 場 KDA：{totalKills}/{totalDeaths}/{totalAssists}（{kda:F2}）");
+                    sb.AppendLine("近期對局：");
+                    foreach (var ms in matchSummaries) sb.AppendLine($"  {ms}");
+                }
+                return sb.ToString();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[ValorantService] GetPlayerStats 失敗: {ex.Message}");
+                return null;
+            }
+        }
+
+        private bool CheckWon(string teamColor, System.Text.Json.JsonElement teams)
+        {
+            if (string.IsNullOrWhiteSpace(teamColor)) return false;
+            if (teams.TryGetProperty(teamColor.ToLower(), out var t))
+                return t.TryGetProperty("has_won", out var w) && w.GetBoolean();
+            return false;
+        }
+
+        #endregion
 
         #region 猜角色圖片
         // 儲存遊戲狀態

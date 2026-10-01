@@ -1160,6 +1160,68 @@ namespace MusicBot2.SlahCommands
 
             await FollowupAsync();
         }
+
+        [SlashCommand("瓦羅蘭戰績", "查看 Valorant 玩家戰績（可直接輸入 ID 或使用已登記的朋友）")]
+        public async Task ValorantStatsAsync(
+            [Summary("玩家名稱", "Valorant 玩家名稱（不含 #tag，若已登記可留空用你的 Discord 帳號查）")] string name = "",
+            [Summary("tag", "玩家 tag，例如 TW1")] string tag = "",
+            [Summary("地區", "伺服器地區：ap / na / eu / kr（預設 ap）")] string region = "ap")
+        {
+            var user = Context.User as SocketGuildUser;
+
+            // 查朋友清單 fallback
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                if (ValorantService.FriendsList.TryGetValue(Context.User.Id, out var me))
+                {
+                    name = me.Name; tag = me.Tag; region = me.Region;
+                }
+                else
+                {
+                    await RespondAsync("請輸入玩家名稱，或請豬頭馬又幫你登記 Discord ID ✨", ephemeral: true);
+                    return;
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(tag))
+            {
+                await RespondAsync("請輸入玩家 tag（# 後面的部分）！", ephemeral: true);
+                return;
+            }
+
+            // Stage 1 - 立刻回覆
+            await RespondAsync($"好，我去幫你查一下 **{name}#{tag}** 的瓦羅蘭戰績～稍等一下喔！");
+
+            // Stage 2 - 查戰績 + Soyo 分析
+            var channel = Context.Channel as IMessageChannel;
+            try
+            {
+                var statsText = await _valorantService.GetPlayerStatsTextAsync(name, tag, region);
+                if (string.IsNullOrWhiteSpace(statsText))
+                {
+                    await channel.SendMessageAsync($"啊嗚……找不到 **{name}#{tag}** 的資料，確認一下名字跟 tag 有沒有打對？");
+                    return;
+                }
+
+                var prompt = $"以下是 Valorant 玩家 {name}#{tag} 的最新戰績資料，請用爽世的語氣幫我分析看看他的表現怎麼樣：\n\n{statsText}";
+                var analysis = await _openRouterService.GenerateSimpleTextAsync(prompt, maxTokens: 400);
+
+                var embed = new EmbedBuilder()
+                    .WithTitle($"🎮 {name}#{tag} 的瓦羅蘭戰績")
+                    .WithDescription($"```\n{statsText}\n```")
+                    .WithColor(new Color(0xFF4655))
+                    .Build();
+
+                await channel.SendMessageAsync(embed: embed);
+                if (!string.IsNullOrWhiteSpace(analysis))
+                    await channel.SendMessageAsync(analysis);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[ValorantStats] 指令失敗: {ex.Message}");
+                await channel.SendMessageAsync("查詢時發生錯誤，請稍後再試 🙏");
+            }
+        }
         #endregion
 
         #region TRPG 黑暗奇幻冒險
