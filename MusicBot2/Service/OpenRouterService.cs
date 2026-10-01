@@ -803,7 +803,7 @@ namespace MusicBot2.Service
         /// <summary>
         /// 進階版：使用 GeminiRequestVM (沿用既有 VM，避免到處改型別)
         /// </summary>
-        public async Task<string> GenerateTextAsync(GeminiRequestVM request, SocketGuildUser user, bool saveToMemory = true, string channelKey = null, IMessage? repliedMessage = null, IEnumerable<IMessage>? contextMessages = null, bool twoStageSearch = false, Func<string, Task> onStage1Ready = null)
+        public async Task<string> GenerateTextAsync(GeminiRequestVM request, SocketGuildUser user, bool saveToMemory = true, string channelKey = null, IMessage? repliedMessage = null, IEnumerable<IMessage>? contextMessages = null, bool twoStageSearch = false, Func<string, Task> onStage1Ready = null, Func<Discord.Embed, Task> onValorantEmbed = null)
         {
             channelKey ??= user?.Guild?.Id.ToString() ?? "global";
 
@@ -1118,9 +1118,13 @@ namespace MusicBot2.Service
                                 string statsContext = null;
                                 try
                                 {
-                                    var statsText = await _valorantService.GetPlayerStatsTextAsync(valName, valTag, valRegion);
+                                    var (statsText, statsEmbed) = await _valorantService.GetPlayerStatsAsync(valName, valTag, valRegion);
                                     if (!string.IsNullOrWhiteSpace(statsText))
+                                    {
                                         statsContext = $"[Valorant 戰績資料 - {valName}#{valTag}]\n{statsText}";
+                                        if (onValorantEmbed != null && statsEmbed != null)
+                                            await onValorantEmbed(statsEmbed);
+                                    }
                                 }
                                 catch { }
 
@@ -1587,7 +1591,7 @@ namespace MusicBot2.Service
         /// <summary>
         /// 簡化版本：直接傳入訊息
         /// </summary>
-        public async Task<string> GenerateTextAsync(string message, SocketGuildUser user, bool saveToMemory = true, string channelKey = null, IMessage? repliedMessage = null, IEnumerable<IMessage>? contextMessages = null, bool isTtsMode = false, bool twoStageSearch = false, Func<string, Task> onStage1Ready = null)
+        public async Task<string> GenerateTextAsync(string message, SocketGuildUser user, bool saveToMemory = true, string channelKey = null, IMessage? repliedMessage = null, IEnumerable<IMessage>? contextMessages = null, bool isTtsMode = false, bool twoStageSearch = false, Func<string, Task> onStage1Ready = null, Func<Discord.Embed, Task> onValorantEmbed = null)
         {
             var request = new GeminiRequestVM
             {
@@ -1599,7 +1603,7 @@ namespace MusicBot2.Service
                 SystemInstruction = isTtsMode ? Persona + TtsEmotionAddon : null
             };
 
-            return await GenerateTextAsync(request, user, saveToMemory, channelKey, repliedMessage, contextMessages, twoStageSearch: twoStageSearch, onStage1Ready: onStage1Ready);
+            return await GenerateTextAsync(request, user, saveToMemory, channelKey, repliedMessage, contextMessages, twoStageSearch: twoStageSearch, onStage1Ready: onStage1Ready, onValorantEmbed: onValorantEmbed);
         }
 
         public async Task<string> GenerateSimpleTextAsync(string message, SocketGuildUser user, bool saveToMemory = true, string channelKey = null, IMessage? repliedMessage = null)

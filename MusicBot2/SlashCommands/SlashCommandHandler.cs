@@ -1161,14 +1161,17 @@ namespace MusicBot2.SlahCommands
             await FollowupAsync();
         }
 
-        [SlashCommand("瓦羅蘭戰績", "查看 Valorant 玩家戰績（可直接輸入 ID 或使用已登記的朋友）")]
+        [SlashCommand("瓦羅蘭戰績", "查看 Valorant 玩家戰績")]
         public async Task ValorantStatsAsync(
-            [Summary("玩家名稱", "Valorant 玩家名稱（不含 #tag，若已登記可留空用你的 Discord 帳號查）")] string name = "",
+            [Summary("玩家名稱", "Valorant 玩家名稱（不含 #tag；已登記的可留空自動查自己）")] string name = "",
             [Summary("tag", "玩家 tag，例如 TW1")] string tag = "",
-            [Summary("地區", "伺服器地區：ap / na / eu / kr（預設 ap）")] string region = "ap")
+            [Summary("地區", "伺服器地區：ap / na / eu / kr（預設 ap）")] string region = "ap",
+            [Summary("顯示段位", "顯示當前段位與歷史最高（預設是）")] bool showRank = true,
+            [Summary("顯示近期對局", "列出近 10 場每局結果（預設是）")] bool showMatches = true,
+            [Summary("顯示爆頭率", "顯示爆頭/軀幹/腿部命中統計（預設是）")] bool showHeadshot = true,
+            [Summary("顯示常用英雄", "統計近期最常使用的英雄（預設是）")] bool showAgents = true,
+            [Summary("顯示常用武器", "統計近期最常使用的武器（有資料時才顯示）")] bool showWeapons = true)
         {
-            var user = Context.User as SocketGuildUser;
-
             // 查朋友清單 fallback
             if (string.IsNullOrWhiteSpace(name))
             {
@@ -1189,32 +1192,22 @@ namespace MusicBot2.SlahCommands
                 return;
             }
 
-            // Stage 1 - 立刻回覆
-            await RespondAsync($"好，我去幫你查一下 **{name}#{tag}** 的瓦羅蘭戰績～稍等一下喔！");
+            await DeferAsync();
 
-            // Stage 2 - 查戰績 + Soyo 分析
-            var channel = Context.Channel as IMessageChannel;
             try
             {
-                var statsText = await _valorantService.GetPlayerStatsTextAsync(name, tag, region);
-                if (string.IsNullOrWhiteSpace(statsText))
+                var (statsText, embed) = await _valorantService.GetPlayerStatsAsync(name, tag, region, showRank, showMatches, showHeadshot, showAgents, showWeapons);
+                if (statsText == null)
                 {
-                    await channel.SendMessageAsync($"啊嗚……找不到 **{name}#{tag}** 的資料，確認一下名字跟 tag 有沒有打對？");
+                    await FollowupAsync($"找不到 **{name}#{tag}** 的資料，確認一下名字跟 tag 有沒有打對？");
                     return;
                 }
-
-                var embed = new EmbedBuilder()
-                    .WithTitle($"🎮 {name}#{tag} 的瓦羅蘭戰績")
-                    .WithDescription($"```\n{statsText}\n```")
-                    .WithColor(new Color(0xFF4655))
-                    .Build();
-
-                await channel.SendMessageAsync(embed: embed);
+                await FollowupAsync(embed: embed);
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"[ValorantStats] 指令失敗: {ex.Message}");
-                await channel.SendMessageAsync("查詢時發生錯誤，請稍後再試 🙏");
+                await FollowupAsync("查詢時發生錯誤，請稍後再試 🙏");
             }
         }
         #endregion

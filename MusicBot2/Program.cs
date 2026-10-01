@@ -2126,6 +2126,9 @@ public class Program
                                     try { while (!typingCts1.Token.IsCancellationRequested) { await message.Channel.TriggerTypingAsync(); await Task.Delay(9000, typingCts1.Token); } }
                                     catch (OperationCanceledException) { }
                                 });
+                            },
+                            onValorantEmbed: async embed => {
+                                await message.Channel.SendMessageAsync(embed: embed);
                             });
                         typingCts1.Cancel();
                         if (!string.IsNullOrWhiteSpace(result))
@@ -2144,6 +2147,9 @@ public class Program
                                 try { while (!typingCts2.Token.IsCancellationRequested) { await message.Channel.TriggerTypingAsync(); await Task.Delay(9000, typingCts2.Token); } }
                                 catch (OperationCanceledException) { }
                             });
+                        },
+                        onValorantEmbed: async embed => {
+                            await message.Channel.SendMessageAsync(embed: embed);
                         });
                     typingCts2.Cancel();
                     if (!string.IsNullOrWhiteSpace(result))
