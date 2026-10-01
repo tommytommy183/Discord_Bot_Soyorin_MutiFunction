@@ -101,7 +101,7 @@ namespace MusicBot2.Service
                 }
 
                 // Recent matches
-                var matchUrl = $"{HenrikDevBase}/valorant/v3/matches/{region}/{Uri.EscapeDataString(name)}/{Uri.EscapeDataString(tag)}?size=10";
+                var matchUrl = $"{HenrikDevBase}/valorant/v3/matches/{region}/{Uri.EscapeDataString(name)}/{Uri.EscapeDataString(tag)}";
                 var matchResp = await _httpClient.GetAsync(matchUrl);
                 var matchSummaries = new List<string>();
                 int totalKills = 0, totalDeaths = 0, totalAssists = 0, matchCount = 0;
@@ -109,6 +109,13 @@ namespace MusicBot2.Service
                 int wins = 0;
                 var agentCount = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
                 var weaponCount = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+                Console.WriteLine($"[ValorantService] matches {(int)matchResp.StatusCode}: {matchUrl}");
+                if (!matchResp.IsSuccessStatusCode)
+                {
+                    var errBody = await matchResp.Content.ReadAsStringAsync();
+                    Console.WriteLine($"[ValorantService] matches error body: {errBody[..Math.Min(300, errBody.Length)]}");
+                }
 
                 if (matchResp.IsSuccessStatusCode)
                 {
@@ -176,7 +183,7 @@ namespace MusicBot2.Service
                                 string result = won == true ? "勝" : won == false ? "敗" : "?";
                                 matchSummaries.Add($"{result} {map}({mode}) {agent} {k}/{d}/{a}");
                             }
-                            catch { }
+                            catch (Exception mex) { Console.WriteLine($"[ValorantService] match parse err: {mex.Message}"); }
                         }
                     }
                 }
