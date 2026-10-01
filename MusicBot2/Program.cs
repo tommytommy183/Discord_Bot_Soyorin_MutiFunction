@@ -126,7 +126,7 @@ public class Program
             .AddSingleton<Pick2Service>()
             .AddSingleton<PokeService>()
             .AddSingleton<ValorantService>()
-            .AddSingleton<AIImageService>(sp => new AIImageService(allGoogleKeys))
+            .AddSingleton<AIImageService>()
             .AddSingleton<FgoGuessService>()
             .AddSingleton<UselessApiService>()
             .AddSingleton<NekoBotService>()
