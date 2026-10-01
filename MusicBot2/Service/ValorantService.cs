@@ -77,11 +77,16 @@ namespace MusicBot2.Service
                     }
                 }
 
-                // Recent matches
-                var matchUrl = $"{HenrikDevBase}/valorant/v3/matches/{region}/{Uri.EscapeDataString(name)}/{Uri.EscapeDataString(tag)}?size=5";
+                // Recent matches (fetch 10 for better stats)
+                var matchUrl = $"{HenrikDevBase}/valorant/v3/matches/{region}/{Uri.EscapeDataString(name)}/{Uri.EscapeDataString(tag)}?size=10";
                 var matchResp = await _httpClient.GetAsync(matchUrl);
                 var matchSummaries = new List<string>();
                 int totalKills = 0, totalDeaths = 0, totalAssists = 0, matchCount = 0;
+                int totalHeadshots = 0, totalBodyshots = 0, totalLegshots = 0;
+                int wins = 0;
+                var agentCount = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                var weaponCount = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
                 if (matchResp.IsSuccessStatusCode)
                 {
                     using var doc = System.Text.Json.JsonDocument.Parse(await matchResp.Content.ReadAsStringAsync());
@@ -96,7 +101,6 @@ namespace MusicBot2.Service
                                 bool? won = null;
                                 int k = 0, d = 0, a = 0;
                                 string agent = "?";
-                                string score = "?";
 
                                 if (match.TryGetProperty("players", out var players) && players.TryGetProperty("all_players", out var allPlayers))
                                 {
@@ -108,23 +112,48 @@ namespace MusicBot2.Service
                                             string.Equals(pTag, tag, StringComparison.OrdinalIgnoreCase))
                                         {
                                             agent = p.TryGetProperty("character", out var ch) ? ch.GetString() ?? "?" : "?";
+                                            agentCount.TryGetValue(agent, out int ac);
+                                            agentCount[agent] = ac + 1;
+
                                             if (p.TryGetProperty("stats", out var stats))
                                             {
                                                 k = stats.TryGetProperty("kills", out var kk) ? kk.GetInt32() : 0;
                                                 d = stats.TryGetProperty("deaths", out var dd) ? dd.GetInt32() : 0;
                                                 a = stats.TryGetProperty("assists", out var aa) ? aa.GetInt32() : 0;
+                                                totalHeadshots += stats.TryGetProperty("headshots", out var hs) ? hs.GetInt32() : 0;
+                                                totalBodyshots += stats.TryGetProperty("bodyshots", out var bs) ? bs.GetInt32() : 0;
+                                                totalLegshots += stats.TryGetProperty("legshots", out var ls) ? ls.GetInt32() : 0;
                                             }
+
+                                            // weapon usage from economy kills
+                                            if (p.TryGetProperty("economy", out var eco))
+                                            {
+                                                foreach (var round in eco.EnumerateArray())
+                                                {
+                                                    if (round.TryGetProperty("weapon", out var wpn) && wpn.TryGetProperty("name", out var wn))
+                                                    {
+                                                        var wname = wn.GetString();
+                                                        if (!string.IsNullOrWhiteSpace(wname))
+                                                        {
+                                                            weaponCount.TryGetValue(wname, out int wc);
+                                                            weaponCount[wname] = wc + 1;
+                                                        }
+                                                    }
+                                                }
+                                            }
+
                                             won = p.TryGetProperty("team", out var team) && match.TryGetProperty("teams", out var teams)
                                                 ? CheckWon(team.GetString(), teams) : null;
-                                            if (p.TryGetProperty("currenttier_patched", out var tier))
-                                                score = $"{k}/{d}/{a}";
                                             break;
                                         }
                                     }
                                 }
                                 totalKills += k; totalDeaths += d; totalAssists += a; matchCount++;
+                                if (won == true) wins++;
                                 string result = won == true ? "勝" : won == false ? "敗" : "?";
-                                matchSummaries.Add($"{result} {map}({mode}) {agent} {k}/{d}/{a}");
+                                // only show recent 5 in summary
+                                if (matchCount <= 5)
+                                    matchSummaries.Add($"{result} {map}({mode}) {agent} {k}/{d}/{a}");
                             }
                             catch { }
                         }
@@ -132,6 +161,17 @@ namespace MusicBot2.Service
                 }
 
                 float kda = totalDeaths > 0 ? (float)(totalKills + totalAssists) / totalDeaths : totalKills + totalAssists;
+                float avgKills = matchCount > 0 ? (float)totalKills / matchCount : 0;
+                float avgDeaths = matchCount > 0 ? (float)totalDeaths / matchCount : 0;
+                int totalShots = totalHeadshots + totalBodyshots + totalLegshots;
+                float hsRate = totalShots > 0 ? (float)totalHeadshots / totalShots * 100 : 0;
+                float winRate = matchCount > 0 ? (float)wins / matchCount * 100 : 0;
+
+                var topAgents = agentCount.OrderByDescending(x => x.Value).Take(3)
+                    .Select(x => $"{x.Key}({x.Value}場)").ToList();
+                var topWeapons = weaponCount.OrderByDescending(x => x.Value).Take(3)
+                    .Select(x => $"{x.Key}({x.Value})").ToList();
+
                 var sb = new StringBuilder();
                 sb.AppendLine($"玩家：{name}#{tag}");
                 sb.AppendLine($"帳號等級：{accountLevel}");
@@ -139,8 +179,17 @@ namespace MusicBot2.Service
                 sb.AppendLine($"歷史最高：{peakRank}");
                 if (matchCount > 0)
                 {
-                    sb.AppendLine($"近 {matchCount} 場 KDA：{totalKills}/{totalDeaths}/{totalAssists}（{kda:F2}）");
-                    sb.AppendLine("近期對局：");
+                    sb.AppendLine($"近 {matchCount} 場統計：");
+                    sb.AppendLine($"  勝率：{wins}/{matchCount}（{winRate:F0}%）");
+                    sb.AppendLine($"  KDA：{totalKills}/{totalDeaths}/{totalAssists}（KDA 比：{kda:F2}）");
+                    sb.AppendLine($"  場均：{avgKills:F1}殺 / {avgDeaths:F1}死");
+                    if (totalShots > 0)
+                        sb.AppendLine($"  爆頭率：{hsRate:F1}%（爆頭{totalHeadshots} / 軀幹{totalBodyshots} / 腿{totalLegshots}）");
+                    if (topAgents.Any())
+                        sb.AppendLine($"  常用英雄：{string.Join("、", topAgents)}");
+                    if (topWeapons.Any())
+                        sb.AppendLine($"  常用武器：{string.Join("、", topWeapons)}");
+                    sb.AppendLine("近 5 場對局：");
                     foreach (var ms in matchSummaries) sb.AppendLine($"  {ms}");
                 }
                 return sb.ToString();

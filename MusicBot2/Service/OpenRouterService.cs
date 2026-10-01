@@ -944,7 +944,18 @@ namespace MusicBot2.Service
                 systemPrompt += $"\n\n[遊戲短期記憶 - 目前進行中]\n遊戲類型：{gameState.GameType}\n你出的題目／答案：{gameState.Secret}\n（這是你自己設定的，玩家還不知道答案，請牢記並根據它回應猜測）";
 
             if (twoStageSearch)
+            {
                 systemPrompt += "\n\n[搜尋能力說明]\n你的訓練資料截止於 2025 年初。以下情況**必須**在回覆最後單獨加上對應標籤（該行不加其他文字）：\n\n一、一般網路查詢：加 `[SEARCH: 查詢關鍵字]`\n- 被問到 2025 年以後的事、近期新發行的音樂/作品/新聞\n- 對具體事實沒有把握（特定歌曲名稱、樂團資訊、新角色、最新排名等）\n- 使用者明確要你查資料\n\n二、查 Valorant 玩家戰績：加 `[VALORANT: 玩家名稱#tag 地區]`\n- 使用者要你查某人的瓦羅蘭戰績、段位、K/D 等\n- 地區預設用 ap（亞太），除非使用者指定其他地區\n- 範例：`[VALORANT: PlayerName#TAG ap]`\n\n加任何標籤前，先用爽世的語氣說你要去幫忙查一下。一般聊天或確定知道答案時直接回答，不用加標籤。";
+
+                if (_valorantService != null && ValorantService.FriendsList.Count > 0)
+                {
+                    var friendLines = ValorantService.FriendsList
+                        .Select(kv => $"  <@{kv.Key}> = {kv.Value.Name}#{kv.Value.Tag}（{kv.Value.Region}）");
+                    systemPrompt += "\n\n[已知 Valorant 玩家 ID 對應表（Discord mention → 遊戲 ID）]\n"
+                        + string.Join("\n", friendLines)
+                        + "\n訊息中若出現上述 <@id>，請直接對應到他們的遊戲 ID 輸出 [VALORANT:] 標籤，不需要猜測。";
+                }
+            }
 
             if (searchContext != null)
                 systemPrompt += $"\n\n{searchContext}";
