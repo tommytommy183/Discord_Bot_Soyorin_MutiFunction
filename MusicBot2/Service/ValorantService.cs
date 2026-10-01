@@ -155,20 +155,16 @@ namespace MusicBot2.Service
                                                 totalLegshots += stats.TryGetProperty("legshots", out var ls) ? ls.GetInt32() : 0;
                                             }
 
-                                            // weapon usage from economy kills
-                                            if (p.TryGetProperty("economy", out var eco))
+                                            // weapon usage from economy object
+                                            if (p.TryGetProperty("economy", out var eco)
+                                                && eco.TryGetProperty("weapon", out var wpn)
+                                                && wpn.TryGetProperty("name", out var wn))
                                             {
-                                                foreach (var round in eco.EnumerateArray())
+                                                var wname = wn.GetString();
+                                                if (!string.IsNullOrWhiteSpace(wname))
                                                 {
-                                                    if (round.TryGetProperty("weapon", out var wpn) && wpn.TryGetProperty("name", out var wn))
-                                                    {
-                                                        var wname = wn.GetString();
-                                                        if (!string.IsNullOrWhiteSpace(wname))
-                                                        {
-                                                            weaponCount.TryGetValue(wname, out int wc);
-                                                            weaponCount[wname] = wc + 1;
-                                                        }
-                                                    }
+                                                    weaponCount.TryGetValue(wname, out int wc);
+                                                    weaponCount[wname] = wc + 1;
                                                 }
                                             }
 
