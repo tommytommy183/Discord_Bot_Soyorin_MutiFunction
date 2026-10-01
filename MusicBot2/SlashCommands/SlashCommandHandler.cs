@@ -1203,9 +1203,6 @@ namespace MusicBot2.SlahCommands
                     return;
                 }
 
-                var prompt = $"以下是 Valorant 玩家 {name}#{tag} 的最新戰績資料，請用爽世的語氣幫我分析看看他的表現怎麼樣：\n\n{statsText}";
-                var analysis = await _openRouterService.GenerateSimpleTextAsync(prompt, maxTokens: 400);
-
                 var embed = new EmbedBuilder()
                     .WithTitle($"🎮 {name}#{tag} 的瓦羅蘭戰績")
                     .WithDescription($"```\n{statsText}\n```")
@@ -1213,8 +1210,6 @@ namespace MusicBot2.SlahCommands
                     .Build();
 
                 await channel.SendMessageAsync(embed: embed);
-                if (!string.IsNullOrWhiteSpace(analysis))
-                    await channel.SendMessageAsync(analysis);
             }
             catch (Exception ex)
             {

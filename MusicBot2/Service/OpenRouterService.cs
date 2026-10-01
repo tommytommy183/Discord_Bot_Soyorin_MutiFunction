@@ -32,6 +32,7 @@ namespace MusicBot2.Service
         private readonly HttpClient _httpClient;
         private readonly MediaWikiService _wikiService;
         private readonly TavilySearchService _searchService;
+        private ValorantService _valorantService;
         private readonly string _memoryFilePath = Path.Combine("TxtFolder", "AI_Memory_OpenRouter.txt");
         private readonly string _summaryFilePath = Path.Combine("TxtFolder", "AI_Summary_OpenRouter.txt");
 
@@ -439,6 +440,8 @@ namespace MusicBot2.Service
 
             LoadMemory();
         }
+
+        public void SetValorantService(ValorantService svc) => _valorantService = svc;
 
         #region Memory Persistence
 
@@ -941,7 +944,7 @@ namespace MusicBot2.Service
                 systemPrompt += $"\n\n[遊戲短期記憶 - 目前進行中]\n遊戲類型：{gameState.GameType}\n你出的題目／答案：{gameState.Secret}\n（這是你自己設定的，玩家還不知道答案，請牢記並根據它回應猜測）";
 
             if (twoStageSearch)
-                systemPrompt += "\n\n[搜尋能力說明]\n你的訓練資料截止於 2025 年初。以下情況**必須**在回覆最後單獨加上 `[SEARCH: 查詢關鍵字]`（該行不加其他文字）：\n- 被問到 2025 年以後的事、近期新發行的音樂/作品/新聞\n- 對具體事實沒有把握（特定歌曲名稱、樂團資訊、新角色、最新排名等）\n- 使用者明確要你查資料\n加標籤前，先用爽世的語氣說你要去確認一下。一般聊天或確定知道答案時直接回答，不用加標籤。";
+                systemPrompt += "\n\n[搜尋能力說明]\n你的訓練資料截止於 2025 年初。以下情況**必須**在回覆最後單獨加上對應標籤（該行不加其他文字）：\n\n一、一般網路查詢：加 `[SEARCH: 查詢關鍵字]`\n- 被問到 2025 年以後的事、近期新發行的音樂/作品/新聞\n- 對具體事實沒有把握（特定歌曲名稱、樂團資訊、新角色、最新排名等）\n- 使用者明確要你查資料\n\n二、查 Valorant 玩家戰績：加 `[VALORANT: 玩家名稱#tag 地區]`\n- 使用者要你查某人的瓦羅蘭戰績、段位、K/D 等\n- 地區預設用 ap（亞太），除非使用者指定其他地區\n- 範例：`[VALORANT: PlayerName#TAG ap]`\n\n加任何標籤前，先用爽世的語氣說你要去幫忙查一下。一般聊天或確定知道答案時直接回答，不用加標籤。";
 
             if (searchContext != null)
                 systemPrompt += $"\n\n{searchContext}";
@@ -1084,11 +1087,118 @@ namespace MusicBot2.Service
                         text = CleanResponse(text);
                         text = CommonHelper.SwitchSoyoPic(text);
 
-                        // Two-stage search: check if AI wants to search
+                        // Two-stage search: check if AI wants to search or lookup Valorant
                         if (twoStageSearch)
                         {
+                            var valorantTagMatch = System.Text.RegularExpressions.Regex.Match(text, @"\[VALORANT:\s*([^#\]]+)#([^\s\]]+)(?:\s+(\w+))?\]", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
                             var searchTagMatch = System.Text.RegularExpressions.Regex.Match(text, @"\[SEARCH:\s*(.+?)\]", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-                            if (searchTagMatch.Success)
+
+                            if (valorantTagMatch.Success && _valorantService != null)
+                            {
+                                string valName = valorantTagMatch.Groups[1].Value.Trim();
+                                string valTag = valorantTagMatch.Groups[2].Value.Trim();
+                                string valRegion = valorantTagMatch.Groups[3].Success ? valorantTagMatch.Groups[3].Value.Trim() : "ap";
+                                string stage1Text = text.Replace(valorantTagMatch.Value, "").Trim();
+
+                                if (onStage1Ready != null && !string.IsNullOrWhiteSpace(stage1Text))
+                                    await onStage1Ready(stage1Text);
+                                stage1TextForHistory = stage1Text;
+
+                                string statsContext = null;
+                                try
+                                {
+                                    var statsText = await _valorantService.GetPlayerStatsTextAsync(valName, valTag, valRegion);
+                                    if (!string.IsNullOrWhiteSpace(statsText))
+                                        statsContext = $"[Valorant 戰績資料 - {valName}#{valTag}]\n{statsText}";
+                                }
+                                catch { }
+
+                                if (statsContext != null)
+                                {
+                                    string stage2Text = null;
+                                    try
+                                    {
+                                        var systemPromptWithStats = systemPrompt
+                                            + $"\n\n{statsContext}"
+                                            + "\n\n[你剛才已對使用者說了第一段話（見對話歷史），現在戰績資料已回傳（如上）。請根據戰績資料，用爽世的語氣直接分析這位玩家的表現。不要再說你要去查、不要複述第一段的內容，直接給出分析。]";
+                                        var messages2 = new List<OpenRouterMessage>
+                                        {
+                                            new() { Role = "system", Content = systemPromptWithStats }
+                                        };
+                                        foreach (var m2 in GetRecentMessages(channelKey))
+                                            messages2.Add(new OpenRouterMessage { Role = m2.Role == "model" ? "assistant" : "user", Content = m2.Text });
+                                        messages2.Add(new OpenRouterMessage { Role = "user", Content = userMessageWithName });
+                                        if (!string.IsNullOrWhiteSpace(stage1Text))
+                                            messages2.Add(new OpenRouterMessage { Role = "assistant", Content = stage1Text });
+                                        messages2.Add(new OpenRouterMessage { Role = "user", Content = "（戰績資料已取得）" });
+
+                                        foreach (var model2 in modelsToUse)
+                                        {
+                                            for (int retry2 = 0; retry2 < maxRetry; retry2++)
+                                            {
+                                                try
+                                                {
+                                                    ApiCallResult r2;
+                                                    if (_useGoogleAI)
+                                                    {
+                                                        var key2 = GetAvailableGoogleKeys().FirstOrDefault() ?? _googleApiKeys.First();
+                                                        r2 = await CallGoogleAIOnceAsync(messages2, request.Temperature, request.TopP,
+                                                            request.MaxOutputTokens > 0 ? request.MaxOutputTokens : 1024,
+                                                            new[] { "使用者名稱:", "\n使用者名稱" }, model2, key2, retry: retry2);
+                                                    }
+                                                    else
+                                                    {
+                                                        var apiRequest2 = new OpenRouterChatRequest
+                                                        {
+                                                            Model = model2,
+                                                            Messages = messages2,
+                                                            Temperature = request.Temperature,
+                                                            TopP = request.TopP,
+                                                            MaxTokens = request.MaxOutputTokens > 0 ? request.MaxOutputTokens : 1024,
+                                                            Stop = new[] { "使用者名稱:", "\n使用者名稱" }
+                                                        };
+                                                        r2 = await CallOnceAsync(apiRequest2, new JsonSerializerOptions { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull }, model2, retry2);
+                                                    }
+                                                    if (r2.ShouldBreak) break;
+                                                    if (r2.ShouldContinue) continue;
+                                                    if (!string.IsNullOrWhiteSpace(r2.Text))
+                                                    {
+                                                        stage2Text = CleanResponse(r2.Text);
+                                                        stage2Text = CommonHelper.SwitchSoyoPic(stage2Text);
+                                                    }
+                                                }
+                                                catch { }
+                                                if (!string.IsNullOrWhiteSpace(stage2Text)) break;
+                                            }
+                                            if (!string.IsNullOrWhiteSpace(stage2Text)) break;
+                                        }
+
+                                        stage2Text = System.Text.RegularExpressions.Regex.Replace(stage2Text ?? "", @"\[VALORANT:[^\]]*\]", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase).Trim();
+                                        stage2Text = System.Text.RegularExpressions.Regex.Replace(stage2Text, @"^[◆\s]+", "").Trim();
+                                    }
+                                    catch (Exception ex2)
+                                    {
+                                        Console.WriteLine($"[OpenRouter] VALORANT Stage2 exception: {ex2.Message}");
+                                    }
+
+                                    if (onStage1Ready != null)
+                                        text = !string.IsNullOrWhiteSpace(stage2Text) ? stage2Text : "";
+                                    else if (!string.IsNullOrWhiteSpace(stage1Text) && !string.IsNullOrWhiteSpace(stage2Text))
+                                        text = stage1Text + "\n\n\n◆◆◆\n\n\n" + stage2Text;
+                                    else if (!string.IsNullOrWhiteSpace(stage2Text))
+                                        text = stage2Text;
+                                    else
+                                        text = stage1Text;
+                                }
+                                else
+                                {
+                                    // stats fetch failed
+                                    text = string.IsNullOrWhiteSpace(stage1Text)
+                                        ? $"啊嗚，找不到 {valName}#{valTag} 的資料……確認一下名字有沒有打對？"
+                                        : stage1Text;
+                                }
+                            }
+                            else if (searchTagMatch.Success)
                             {
                                 string searchQuery2 = searchTagMatch.Groups[1].Value.Trim();
                                 string stage1Text = text.Replace(searchTagMatch.Value, "").Trim();
@@ -1226,9 +1336,11 @@ namespace MusicBot2.Service
                             }
                         }
 
-                        // Strip any leftover [SEARCH...] tags the AI may have output or typo'd
+                        // Strip any leftover [SEARCH...] / [VALORANT...] tags
                         text = System.Text.RegularExpressions.Regex.Replace(
                             text, @"\[S[A-Z]{0,3}E[A-Z]{0,3}R[A-Z]{0,3}C[A-Z]{0,3}H[^\]]*\]", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase).Trim();
+                        text = System.Text.RegularExpressions.Regex.Replace(
+                            text, @"\[VALORANT:[^\]]*\]", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase).Trim();
 
                         // ── 遊戲標籤解析（在存記憶前剝掉，不讓玩家看到）────
                         text = await ParseAndHandleGameTagsAsync(text, channelKey);
