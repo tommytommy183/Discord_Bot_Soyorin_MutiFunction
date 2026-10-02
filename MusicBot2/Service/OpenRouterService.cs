@@ -308,6 +308,7 @@ nonoka,  宮永ののか,
 ritsu,   峰月律,
 miyako,  藤都子,
 yuno,    千石ユノ
+viola,   薇歐拉
 
 ●Millsage(後輩樂團)
 

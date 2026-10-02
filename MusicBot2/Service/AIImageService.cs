@@ -49,7 +49,7 @@ namespace MusicBot2.Service
             { "houka",   "houka.png"   },
 
             //Other
-            { "viola", "薇歐拉" },
+            { "viola", "viola.png" },
         };
 
         // 角色 key → 中文名（讓 Soyo 系統提示知道）
