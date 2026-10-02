@@ -63,25 +63,35 @@ namespace MusicBot2.Service
         {
             try
             {
-                _httpClient.DefaultRequestHeaders.Remove("Authorization");
-                _httpClient.DefaultRequestHeaders.Add("Authorization", HenrikDevToken);
+                Console.WriteLine($"[ValorantService] 查詢 {name}#{tag} region={region}");
 
                 // Account info
-                var accountUrl = $"{HenrikDevBase}/valorant/v1/account/{Uri.EscapeDataString(name)}/{Uri.EscapeDataString(tag)}";
-                var accountResp = await _httpClient.GetAsync(accountUrl);
+                using var req1 = new HttpRequestMessage(HttpMethod.Get,
+                    $"{HenrikDevBase}/valorant/v1/account/{Uri.EscapeDataString(name)}/{Uri.EscapeDataString(tag)}");
+                req1.Headers.Add("Authorization", HenrikDevToken);
+                var accountResp = await _httpClient.SendAsync(req1);
+                Console.WriteLine($"[ValorantService] account {(int)accountResp.StatusCode}");
                 string accountLevel = "?";
                 if (accountResp.IsSuccessStatusCode)
                 {
                     using var doc = System.Text.Json.JsonDocument.Parse(await accountResp.Content.ReadAsStringAsync());
                     if (doc.RootElement.TryGetProperty("data", out var d))
-                    {
                         accountLevel = d.TryGetProperty("account_level", out var lv) ? lv.GetInt32().ToString() : "?";
-                    }
+                }
+                else
+                {
+                    var errBody = await accountResp.Content.ReadAsStringAsync();
+                    Console.WriteLine($"[ValorantService] account error: {errBody[..Math.Min(200, errBody.Length)]}");
+                    if ((int)accountResp.StatusCode == 404)
+                        return (null, null);
                 }
 
-                // MMR (current rank)
-                var mmrUrl = $"{HenrikDevBase}/valorant/v2/mmr/{region}/{Uri.EscapeDataString(name)}/{Uri.EscapeDataString(tag)}";
-                var mmrResp = await _httpClient.GetAsync(mmrUrl);
+                // MMR (current rank) via HenrikDev
+                using var req2 = new HttpRequestMessage(HttpMethod.Get,
+                    $"{HenrikDevBase}/valorant/v2/mmr/{region}/{Uri.EscapeDataString(name)}/{Uri.EscapeDataString(tag)}");
+                req2.Headers.Add("Authorization", HenrikDevToken);
+                var mmrResp = await _httpClient.SendAsync(req2);
+                Console.WriteLine($"[ValorantService] mmr {(int)mmrResp.StatusCode}");
                 string rank = "未知", rr = "?", peakRank = "未知";
                 if (mmrResp.IsSuccessStatusCode)
                 {
@@ -100,7 +110,9 @@ namespace MusicBot2.Service
 
                 // Recent matches (request 10; free tier may return fewer)
                 var matchUrl = $"{HenrikDevBase}/valorant/v3/matches/{region}/{Uri.EscapeDataString(name)}/{Uri.EscapeDataString(tag)}?size=10";
-                var matchResp = await _httpClient.GetAsync(matchUrl);
+                using var req3 = new HttpRequestMessage(HttpMethod.Get, matchUrl);
+                req3.Headers.Add("Authorization", HenrikDevToken);
+                var matchResp = await _httpClient.SendAsync(req3);
                 var matchSummaries = new List<string>();
                 int totalKills = 0, totalDeaths = 0, totalAssists = 0, matchCount = 0;
                 int totalHeadshots = 0, totalBodyshots = 0, totalLegshots = 0;

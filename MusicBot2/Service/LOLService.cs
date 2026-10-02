@@ -14,9 +14,20 @@ namespace MusicBot2.Service
         private readonly HttpClient _httpClient;
         private readonly string _apiKey;
 
-        private const string PlatformBase = "https://tw2.api.riotgames.com";
-        private const string RegionalBase = "https://sea.api.riotgames.com";
         private const string DdragonBase = "https://ddragon.leagueoflegends.com";
+
+        // region code → (platform, regional)
+        private static (string Platform, string Regional) GetEndpoints(string region) => (region ?? "tw").ToLower() switch
+        {
+            "kr"   => ("https://kr.api.riotgames.com",   "https://asia.api.riotgames.com"),
+            "jp"   => ("https://jp1.api.riotgames.com",  "https://asia.api.riotgames.com"),
+            "sg"   => ("https://sg2.api.riotgames.com",  "https://sea.api.riotgames.com"),
+            "na"   => ("https://na1.api.riotgames.com",  "https://americas.api.riotgames.com"),
+            "euw"  => ("https://euw1.api.riotgames.com", "https://europe.api.riotgames.com"),
+            "eune" => ("https://eun1.api.riotgames.com", "https://europe.api.riotgames.com"),
+            "oce"  => ("https://oc1.api.riotgames.com",  "https://americas.api.riotgames.com"),
+            _      => ("https://tw2.api.riotgames.com",  "https://sea.api.riotgames.com"),  // tw / 預設
+        };
 
         // Discord ID → PUUID
         public static readonly Dictionary<ulong, string> FriendsPuuid = new()
@@ -57,30 +68,32 @@ namespace MusicBot2.Service
             return doc.RootElement.Clone();
         }
 
-        public async Task<string> GetPuuidByRiotIdAsync(string gameName, string tagLine)
+        public async Task<string> GetPuuidByRiotIdAsync(string gameName, string tagLine, string region = "tw")
         {
-            var url = $"{RegionalBase}/riot/account/v1/accounts/by-riot-id/{Uri.EscapeDataString(gameName)}/{Uri.EscapeDataString(tagLine)}";
+            var (_, regional) = GetEndpoints(region);
+            var url = $"{regional}/riot/account/v1/accounts/by-riot-id/{Uri.EscapeDataString(gameName)}/{Uri.EscapeDataString(tagLine)}";
             var json = await GetJsonAsync(url);
             return json?.TryGetProperty("puuid", out var p) == true ? p.GetString() : null;
         }
 
-        private async Task<(string Id, string Name, int Level)> GetSummonerAsync(string puuid)
+        private async Task<(string Id, string Name, int Level)> GetSummonerAsync(string puuid, string platform)
         {
-            if (_summonerCache.TryGetValue(puuid, out var cached)) return cached;
-            var url = $"{PlatformBase}/lol/summoner/v4/summoners/by-puuid/{Uri.EscapeDataString(puuid)}";
+            var cacheKey = $"{platform}:{puuid}";
+            if (_summonerCache.TryGetValue(cacheKey, out var cached)) return cached;
+            var url = $"{platform}/lol/summoner/v4/summoners/by-puuid/{Uri.EscapeDataString(puuid)}";
             var json = await GetJsonAsync(url);
             if (json == null) return (null, null, 0);
             var id = json.Value.TryGetProperty("id", out var i) ? i.GetString() : null;
             var name = json.Value.TryGetProperty("name", out var n) ? n.GetString() : "?";
             var level = json.Value.TryGetProperty("summonerLevel", out var lv) ? lv.GetInt32() : 0;
             var info = (id, name, level);
-            if (id != null) _summonerCache[puuid] = info;
+            if (id != null) _summonerCache[cacheKey] = info;
             return info;
         }
 
-        private async Task<List<RankEntry>> GetRankEntriesAsync(string summonerId)
+        private async Task<List<RankEntry>> GetRankEntriesAsync(string summonerId, string platform)
         {
-            var url = $"{PlatformBase}/lol/league/v4/entries/by-summoner/{Uri.EscapeDataString(summonerId)}";
+            var url = $"{platform}/lol/league/v4/entries/by-summoner/{Uri.EscapeDataString(summonerId)}";
             var json = await GetJsonAsync(url);
             if (json == null || json.Value.ValueKind != JsonValueKind.Array) return new();
             var list = new List<RankEntry>();
@@ -97,18 +110,18 @@ namespace MusicBot2.Service
             return list;
         }
 
-        private async Task<List<string>> GetMatchIdsAsync(string puuid, int count = 10, int? queueId = null)
+        private async Task<List<string>> GetMatchIdsAsync(string puuid, string regional, int count = 10, int? queueId = null)
         {
             var qParam = queueId.HasValue ? $"&queue={queueId}" : "";
-            var url = $"{RegionalBase}/lol/match/v5/matches/by-puuid/{Uri.EscapeDataString(puuid)}/ids?count={count}{qParam}";
+            var url = $"{regional}/lol/match/v5/matches/by-puuid/{Uri.EscapeDataString(puuid)}/ids?count={count}{qParam}";
             var json = await GetJsonAsync(url);
             if (json == null || json.Value.ValueKind != JsonValueKind.Array) return new();
             return json.Value.EnumerateArray().Select(e => e.GetString()).Where(s => s != null).ToList();
         }
 
-        private async Task<MatchDetail> GetMatchDetailAsync(string matchId, string puuid)
+        private async Task<MatchDetail> GetMatchDetailAsync(string matchId, string puuid, string regional)
         {
-            var url = $"{RegionalBase}/lol/match/v5/matches/{Uri.EscapeDataString(matchId)}";
+            var url = $"{regional}/lol/match/v5/matches/{Uri.EscapeDataString(matchId)}";
             var json = await GetJsonAsync(url);
             if (json == null) return null;
             try
@@ -177,18 +190,19 @@ namespace MusicBot2.Service
 
         #region Public stats methods
 
-        public async Task<(string TextForAI, Embed Embed)> GetPlayerStatsAsync(string puuid)
+        public async Task<(string TextForAI, Embed Embed)> GetPlayerStatsAsync(string puuid, string region = "tw")
         {
-            var (sumId, sumName, level) = await GetSummonerAsync(puuid);
+            var (platform, regional) = GetEndpoints(region);
+            var (sumId, sumName, level) = await GetSummonerAsync(puuid, platform);
             if (sumId == null) return (null, null);
 
-            var rankEntries = await GetRankEntriesAsync(sumId);
+            var rankEntries = await GetRankEntriesAsync(sumId, platform);
             var soloEntry = rankEntries.FirstOrDefault(e => e.Queue == "RANKED_SOLO_5x5");
             var flexEntry = rankEntries.FirstOrDefault(e => e.Queue == "RANKED_FLEX_SR");
 
             // Fetch recent 10 matches (all queues)
-            var matchIds = await GetMatchIdsAsync(puuid, 10);
-            var matchTasks = matchIds.Select(id => GetMatchDetailAsync(id, puuid)).ToArray();
+            var matchIds = await GetMatchIdsAsync(puuid, regional, 10);
+            var matchTasks = matchIds.Select(id => GetMatchDetailAsync(id, puuid, regional)).ToArray();
             await Task.WhenAll(matchTasks);
             var matches = matchTasks.Select(t => t.Result).Where(m => m != null).ToList();
 
@@ -231,15 +245,16 @@ namespace MusicBot2.Service
 
         public async Task<List<LossEvent>> CheckForLossesAsync()
         {
+            var (platform, regional) = GetEndpoints("tw"); // 監控的朋友都是 TW
             var results = new List<LossEvent>();
             foreach (var (discordId, puuid) in FriendsPuuid.Where(kv => MonitoredDiscordIds.Contains(kv.Key)))
             {
                 try
                 {
-                    var (sumId, sumName, _) = await GetSummonerAsync(puuid);
+                    var (sumId, sumName, _) = await GetSummonerAsync(puuid, platform);
                     if (sumId == null) continue;
 
-                    var entries = await GetRankEntriesAsync(sumId);
+                    var entries = await GetRankEntriesAsync(sumId, platform);
                     var solo = entries.FirstOrDefault(e => e.Queue == "RANKED_SOLO_5x5");
                     var flex = entries.FirstOrDefault(e => e.Queue == "RANKED_FLEX_SR");
 
@@ -250,19 +265,16 @@ namespace MusicBot2.Service
 
                     if (_lastRankSnapshot.TryGetValue(discordId, out var last))
                     {
-                        // Solo queue loss
                         if (solo != null && current.SoloLP < last.SoloLP)
                         {
                             int diff = last.SoloLP - current.SoloLP;
-                            // If rank also changed, we demotion (could be more LP diff)
-                            var champ = await GetLastRankedChampAsync(puuid, 420);
+                            var champ = await GetLastRankedChampAsync(puuid, regional, 420);
                             results.Add(new LossEvent(discordId, sumName, "單排", current.SoloFull, diff, champ));
                         }
-                        // Flex queue loss
                         if (flex != null && current.FlexLP < last.FlexLP)
                         {
                             int diff = last.FlexLP - current.FlexLP;
-                            var champ = await GetLastRankedChampAsync(puuid, 440);
+                            var champ = await GetLastRankedChampAsync(puuid, regional, 440);
                             results.Add(new LossEvent(discordId, sumName, "彈性", current.FlexFull, diff, champ));
                         }
                     }
@@ -277,13 +289,13 @@ namespace MusicBot2.Service
             return results;
         }
 
-        private async Task<string> GetLastRankedChampAsync(string puuid, int queueId)
+        private async Task<string> GetLastRankedChampAsync(string puuid, string regional, int queueId)
         {
             try
             {
-                var ids = await GetMatchIdsAsync(puuid, 1, queueId);
+                var ids = await GetMatchIdsAsync(puuid, regional, 1, queueId);
                 if (ids.Count == 0) return null;
-                var match = await GetMatchDetailAsync(ids[0], puuid);
+                var match = await GetMatchDetailAsync(ids[0], puuid, regional);
                 return match?.Champion;
             }
             catch { return null; }

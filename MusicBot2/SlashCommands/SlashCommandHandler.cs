@@ -1240,11 +1240,12 @@ namespace MusicBot2.SlahCommands
         [SlashCommand("lol英雄聯盟戰績", "查看 League of Legends 玩家戰績")]
         public async Task LolStatsAsync(
             [Summary("遊戲名稱", "Riot ID（格式：名稱#tag；已登記可留空查自己）")] string gameName = "",
-            [Summary("查詢對象", "@某人 直接查對方的戰績（需要已登記）")] Discord.WebSocket.SocketGuildUser mention = null)
+            [Summary("查詢對象", "@某人 直接查對方的戰績（需要已登記）")] Discord.WebSocket.SocketGuildUser mention = null,
+            [Summary("地區", "伺服器地區：tw/kr/jp/sg/na/euw/eune/oce（預設 tw）")] string region = "tw")
         {
             string puuid = null;
 
-            // @mention 優先
+            // @mention 優先（登記的朋友預設都是 tw）
             if (mention != null)
             {
                 if (LOLService.FriendsPuuid.TryGetValue(mention.Id, out var fPuuid))
@@ -1284,7 +1285,7 @@ namespace MusicBot2.SlahCommands
             try
             {
                 if (puuid == null)
-                    puuid = await _lolService.GetPuuidByRiotIdAsync(gameName, tagLine);
+                    puuid = await _lolService.GetPuuidByRiotIdAsync(gameName, tagLine, region);
 
                 if (puuid == null)
                 {
@@ -1292,7 +1293,9 @@ namespace MusicBot2.SlahCommands
                     return;
                 }
 
-                var (statsText, embed) = await _lolService.GetPlayerStatsAsync(puuid);
+                // @mention 的朋友都是 TW，其他情況用使用者指定的 region
+                string queryRegion = (mention != null) ? "tw" : region;
+                var (statsText, embed) = await _lolService.GetPlayerStatsAsync(puuid, queryRegion);
                 if (statsText == null)
                 {
                     await FollowupAsync("查詢時發生錯誤，請稍後再試 🙏");
