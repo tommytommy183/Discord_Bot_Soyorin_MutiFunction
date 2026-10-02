@@ -25,6 +25,7 @@ namespace MusicBot2.Service
             { 540922644267270154UL, "WE_uzNuYx4oYgGAt3q89u_P_7H6CVDtXbIKbuXnc-YDVvBiSDB4U1kFEx8POJ2zqUM0EIEgGNPmVSw" },
             { 325482625127153664UL, "Dcy9asOLYTrAbYaT_1IhFSRYfMIPHJwygtXgUwLUqUKP-Gauvekr6kihPechxIuj4PKnhNTKqswCoQ" },
             { 404439235290988544UL, "IuTS7BSjJMHpxpAI2xu6VCO8fz_CEpYdDNLQyhvtn-F2A-vt4qcxmXEkcaM_0swUmIQ6YLHQbyTxRg" },
+            { 541105947435859978, "16dyB1qKIS_aStgZUhFvqTrnzk9rywVRErq28Rge-z8tmxjFRbvu3JOYLnlM5b29PAneS9RBjJiIeQ" },
         };
 
         // Monitored for rank losses (Soyo taunts)
@@ -32,6 +33,7 @@ namespace MusicBot2.Service
         {
             325482625127153664UL,
             404439235290988544UL,
+            541105947435859978,
         };
 
         private readonly Dictionary<string, (string Id, string Name, int Level)> _summonerCache = new();

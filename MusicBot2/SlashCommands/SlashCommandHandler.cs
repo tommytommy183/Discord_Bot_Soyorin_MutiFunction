@@ -1215,13 +1215,12 @@ namespace MusicBot2.SlahCommands
         #endregion
 
         #region LOL 戰績
-        [SlashCommand("LOL戰績", "查看 League of Legends 玩家戰績")]
+        [SlashCommand("lol英雄聯盟戰績", "查看 League of Legends 玩家戰績")]
         public async Task LolStatsAsync(
-            [Summary("遊戲名稱", "Riot ID 名稱（不含 #tag；已登記的可留空查自己）")] string gameName = "",
-            [Summary("tag", "Riot ID tag，例如 TW1")] string tagLine = "")
+            [Summary("遊戲名稱", "Riot ID 名稱（含 #tag；已登記的可留空查自己）")] string gameName = "")
         {
             string puuid = null;
-
+            string tagLine = string.IsNullOrEmpty(gameName) ? "" : (gameName.Contains('#') ? gameName.Split('#')[1].ToString() : "");
             if (string.IsNullOrWhiteSpace(gameName))
             {
                 if (LOLService.FriendsPuuid.TryGetValue(Context.User.Id, out var myPuuid))
