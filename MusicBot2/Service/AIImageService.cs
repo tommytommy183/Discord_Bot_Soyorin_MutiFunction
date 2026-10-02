@@ -52,8 +52,25 @@ namespace MusicBot2.Service
             { "viola", "viola.png" },
         };
 
+        // 角色 key → 英文外觀描述（fallback 純文字產圖用）
+        public static readonly Dictionary<string, string> CharacterVisuals = new()
+        {
+            // MyGO!!!!!
+            { "soyo",    "Nagasaki Soyo, anime girl, long straight light brown hair, gentle elegant smile, soft eyes, BanG Dream MyGO character" },
+            { "tomori",  "Takamatsu Tomori, anime girl, short dark brown hair, red eyes, BanG Dream MyGO character" },
+            { "anon",    "Chihaya Anon, anime girl, pink hair, energetic cute expression, BanG Dream MyGO character" },
+            { "rikki",   "Shiina Rikki, anime girl, short dark hair, cool expression, BanG Dream MyGO character" },
+            { "raana",   "Yoyogi Raana, anime girl, long dark hair, mysterious expression, BanG Dream MyGO character" },
+            // Ave Mujica
+            { "sakiko",  "Togawa Sakiko, anime girl, long dark hair, elegant serious expression, BanG Dream Ave Mujica character" },
+            { "mutsumi", "Wakaba Mutsumi, anime girl, short light hair, gentle smile, BanG Dream Ave Mujica character" },
+            { "uika",    "Misumi Uika, anime girl, long pink-white hair, cheerful expression, BanG Dream Ave Mujica character" },
+            { "umiri",   "Yahata Umiri, anime girl, short dark hair, calm expression, BanG Dream Ave Mujica character" },
+            { "nyamu",   "Yuutenji Nyamu, anime girl, twin-tail hair, playful expression, BanG Dream Ave Mujica character" },
+        };
+
         // 角色 key → 中文名（讓 Soyo 系統提示知道）
-        public static readonly System.Collections.Generic.Dictionary<string, string> CharacterNames = new()
+        public static readonly Dictionary<string, string> CharacterNames = new()
         {
             // MyGO!!!!!
             { "soyo",    "長崎そよ"  },
@@ -260,11 +277,19 @@ namespace MusicBot2.Service
                 images.Add((await File.ReadAllBytesAsync(path), filename));
             }
 
+            // fallback 時加角色外觀描述，讓純文字也能畫出正確角色
+            var visuals = ordered
+                .Where(k => CharacterVisuals.ContainsKey(k))
+                .Select(k => CharacterVisuals[k]);
+            var enrichedPrompt = visuals.Any()
+                ? $"{prompt}, featuring {string.Join(" and ", visuals)}"
+                : prompt;
+
             if (images.Count == 0)
-                return await GenerateImageAsync(prompt);
+                return await GenerateImageAsync(enrichedPrompt);
 
             return await GenerateImageWithMultipleReferencesAsync(prompt, images)
-                   ?? await GenerateImageAsync(prompt);
+                   ?? await GenerateImageAsync(enrichedPrompt);
         }
 
         // 帶多張參考圖產圖
