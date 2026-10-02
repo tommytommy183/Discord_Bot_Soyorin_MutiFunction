@@ -132,28 +132,45 @@ namespace MusicBot2.Service
                 var info = json.Value.GetProperty("info");
                 var queueId = info.TryGetProperty("queueId", out var qi) ? qi.GetInt32() : 0;
                 var duration = info.TryGetProperty("gameDuration", out var gd) ? gd.GetInt32() : 0;
-                var gameMode = info.TryGetProperty("gameMode", out var gm) ? gm.GetString() : "?";
 
                 foreach (var p in info.GetProperty("participants").EnumerateArray())
                 {
                     if (!p.TryGetProperty("puuid", out var pp) || pp.GetString() != puuid) continue;
+                    var kills   = p.TryGetProperty("kills",   out var k)  ? k.GetInt32()  : 0;
+                    var deaths  = p.TryGetProperty("deaths",  out var d)  ? d.GetInt32()  : 0;
+                    var assists = p.TryGetProperty("assists", out var a)  ? a.GetInt32()  : 0;
+                    var cs      = p.TryGetProperty("totalMinionsKilled", out var csv) ? csv.GetInt32() : 0;
+                    var jungle  = p.TryGetProperty("neutralMinionsKilled", out var jv) ? jv.GetInt32() : 0;
+                    var dmg     = p.TryGetProperty("totalDamageDealtToChampions", out var dv) ? dv.GetInt32() : 0;
+                    var vision  = p.TryGetProperty("visionScore", out var vv) ? vv.GetInt32() : 0;
+                    var gold    = p.TryGetProperty("goldEarned", out var gv) ? gv.GetInt32() : 0;
+                    var lane    = p.TryGetProperty("teamPosition", out var lv) && !string.IsNullOrEmpty(lv.GetString())
+                                    ? lv.GetString()
+                                    : (p.TryGetProperty("individualPosition", out var iv) ? iv.GetString() : "");
                     return new MatchDetail(
-                        matchId,
-                        queueId,
-                        QueueIdToName(queueId),
+                        matchId, queueId, QueueIdToName(queueId),
                         p.TryGetProperty("championName", out var cn) ? cn.GetString() : "?",
-                        p.TryGetProperty("kills", out var k) ? k.GetInt32() : 0,
-                        p.TryGetProperty("deaths", out var d) ? d.GetInt32() : 0,
-                        p.TryGetProperty("assists", out var a) ? a.GetInt32() : 0,
+                        kills, deaths, assists,
                         p.TryGetProperty("win", out var w) && w.GetBoolean(),
-                        p.TryGetProperty("totalMinionsKilled", out var cs) ? cs.GetInt32() : 0,
-                        duration / 60
+                        cs + jungle, duration / 60,
+                        dmg, vision, gold,
+                        LaneEmoji(lane)
                     );
                 }
             }
             catch { }
             return null;
         }
+
+        private static string LaneEmoji(string lane) => (lane ?? "").ToUpper() switch
+        {
+            "TOP"     => "🛡️",
+            "JUNGLE"  => "🌿",
+            "MIDDLE"  => "⚡",
+            "BOTTOM"  => "🏹",
+            "UTILITY" => "💊",
+            _         => "❓",
+        };
 
         private static string QueueIdToName(int queueId) => queueId switch
         {
@@ -216,16 +233,31 @@ namespace MusicBot2.Service
             var matches = matchTasks.Select(t => t.Result).Where(m => m != null).ToList();
             Console.WriteLine($"[LOLService] matches parsed={matches.Count}");
 
-            // Text for AI
             var displayName = $"{gameName}#{tagLine}";
+
+            // ── 近場統計 ──
+            int totalWins   = matches.Count(m => m.Win);
+            int totalGames  = matches.Count;
+            double avgKills   = totalGames > 0 ? matches.Average(m => m.Kills)   : 0;
+            double avgDeaths  = totalGames > 0 ? matches.Average(m => m.Deaths)  : 0;
+            double avgAssists = totalGames > 0 ? matches.Average(m => m.Assists) : 0;
+            double avgDmg     = totalGames > 0 ? matches.Average(m => m.Damage)  : 0;
+            double avgVision  = totalGames > 0 ? matches.Average(m => m.VisionScore) : 0;
+            double avgCS      = totalGames > 0 ? matches.Average(m => m.CS)      : 0;
+            string kdaRatio   = avgDeaths > 0 ? $"{(avgKills + avgAssists) / avgDeaths:F2}" : "Perfect";
+            var mostChamp = matches.GroupBy(m => m.Champion).OrderByDescending(g => g.Count()).FirstOrDefault()?.Key ?? "-";
+
+            // Text for AI
             var sb = new StringBuilder();
             sb.AppendLine($"召喚師：{displayName}（等級 {level}）");
             if (soloEntry != null)
                 sb.AppendLine($"單排：{FormatRank(soloEntry.Tier, soloEntry.Rank, soloEntry.LP, soloEntry.Wins, soloEntry.Losses)}");
             if (flexEntry != null)
                 sb.AppendLine($"彈性：{FormatRank(flexEntry.Tier, flexEntry.Rank, flexEntry.LP, flexEntry.Wins, flexEntry.Losses)}");
+            if (totalGames > 0)
+                sb.AppendLine($"近{totalGames}場：{totalWins}勝{totalGames - totalWins}敗（{totalWins * 100 / totalGames}%）KDA {avgKills:F1}/{avgDeaths:F1}/{avgAssists:F1}={kdaRatio} 最常玩:{mostChamp}");
             foreach (var m in matches)
-                sb.AppendLine($"{(m.Win ? "勝" : "敗")} {m.QueueName} {m.Champion} {m.Kills}/{m.Deaths}/{m.Assists} {m.CS}cs {m.DurationMin}分鐘");
+                sb.AppendLine($"{(m.Win ? "勝" : "敗")} {m.QueueName} {m.LaneEmoji}{m.Champion} {m.Kills}/{m.Deaths}/{m.Assists} {m.CS}cs {m.Damage / 1000:F1}k傷害 {m.DurationMin}分鐘");
 
             // Embed
             var eb = new EmbedBuilder()
@@ -235,16 +267,26 @@ namespace MusicBot2.Service
 
             eb.AddField("🗡️ 單排積分",
                 soloEntry != null ? FormatRank(soloEntry.Tier, soloEntry.Rank, soloEntry.LP, soloEntry.Wins, soloEntry.Losses) : "未定位",
-                inline: false);
+                inline: true);
             eb.AddField("⚔️ 彈性積分",
                 flexEntry != null ? FormatRank(flexEntry.Tier, flexEntry.Rank, flexEntry.LP, flexEntry.Wins, flexEntry.Losses) : "未定位",
-                inline: false);
+                inline: true);
 
-            if (matches.Any())
+            if (totalGames > 0)
             {
+                var winRate = totalWins * 100 / totalGames;
+                var summary = $"**{totalWins}勝 {totalGames - totalWins}敗**（{winRate}%）　KDA **{avgKills:F1}/{avgDeaths:F1}/{avgAssists:F1}** = **{kdaRatio}**\n" +
+                              $"平均傷害：{avgDmg / 1000:F1}k　視野分：{avgVision:F1}　CS/場：{avgCS:F0}　最常玩：{mostChamp}";
+                eb.AddField($"📊 近 {totalGames} 場統計", summary, inline: false);
+
                 var matchLines = matches.Select(m =>
-                    $"{(m.Win ? "🟢" : "🔴")} [{m.QueueName}] {m.Champion}  {m.Kills}/{m.Deaths}/{m.Assists}  {m.CS}cs  {m.DurationMin}min").ToList();
-                eb.AddField($"📋 近 {matches.Count} 場對局", string.Join("\n", matchLines), inline: false);
+                {
+                    double kda = m.Deaths > 0 ? (m.Kills + m.Assists) / (double)m.Deaths : m.Kills + m.Assists;
+                    return $"{(m.Win ? "🟢" : "🔴")} `{m.QueueName}` {m.LaneEmoji}**{m.Champion}**　" +
+                           $"{m.Kills}/{m.Deaths}/{m.Assists} ({kda:F1})　" +
+                           $"{m.CS}cs　{m.Damage / 1000:F1}k傷　👁{m.VisionScore}　{m.DurationMin}min";
+                }).ToList();
+                eb.AddField($"📋 對局紀錄", string.Join("\n", matchLines), inline: false);
             }
 
             return (sb.ToString().TrimEnd(), eb.Build());
@@ -322,5 +364,5 @@ namespace MusicBot2.Service
     public record RankEntry(string Queue, string Tier, string Rank, int LP, int Wins, int Losses);
     public record RankSnapshot(int SoloLP, string SoloFull, int FlexLP, string FlexFull);
     public record LossEvent(ulong DiscordId, string SummonerName, string Queue, string RankFull, int LPLost, string ChampionName);
-    public record MatchDetail(string MatchId, int QueueId, string QueueName, string Champion, int Kills, int Deaths, int Assists, bool Win, int CS, int DurationMin);
+    public record MatchDetail(string MatchId, int QueueId, string QueueName, string Champion, int Kills, int Deaths, int Assists, bool Win, int CS, int DurationMin, int Damage, int VisionScore, int Gold, string LaneEmoji);
 }

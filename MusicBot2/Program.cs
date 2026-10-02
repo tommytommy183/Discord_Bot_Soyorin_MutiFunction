@@ -1896,8 +1896,22 @@ public class Program
                 if (!string.IsNullOrWhiteSpace(prompt))
                 {
                     var imgSvc = _services.GetRequiredService<AIImageService>();
-                    var stream = await imgSvc.GenerateImageAsync(prompt);
-                    await channel.SendFileAsync(stream, "image.png");
+                    // 偵測 prompt 裡提到的角色，用角色圖做參考
+                    var charKeys = AIImageService.DetectCharacterKeys(prompt);
+                    Stream stream;
+                    if (charKeys.Count > 0)
+                    {
+                        Console.WriteLine($"[HandleSoyoResponse] 偵測到角色: {string.Join(", ", charKeys)}");
+                        stream = await imgSvc.GenerateCharactersImageAsync(prompt, charKeys);
+                    }
+                    else
+                    {
+                        stream = await imgSvc.GenerateImageAsync(prompt);
+                    }
+                    if (stream != null)
+                        await channel.SendFileAsync(stream, "image.png");
+                    else
+                        await channel.SendMessageAsync("圖片產生失敗，AI 服務暫時無法使用 orz");
                 }
                 return;
             }

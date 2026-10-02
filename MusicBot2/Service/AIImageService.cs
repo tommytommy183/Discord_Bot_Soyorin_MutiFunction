@@ -105,7 +105,10 @@ namespace MusicBot2.Service
                 Console.WriteLine($"[AIImage] Worker 失敗: {ex.Message}，fallback");
             }
 
-            return await CallPollinationsAsync(prompt);
+            var fallback = await CallPollinationsAsync(prompt);
+            if (fallback == null)
+                Console.WriteLine("[AIImage] 所有管道都失敗，回傳 null");
+            return fallback;
         }
 
         // 帶參考圖片產圖（byte[]）
@@ -140,7 +143,111 @@ namespace MusicBot2.Service
             }
         }
 
-        // 用預存角色圖產圖
+        // prompt 裡提到的角色名稱 → key 對照表
+        private static readonly Dictionary<string, string> NameToKey = new(StringComparer.OrdinalIgnoreCase)
+        {
+            // MyGO!!!!!
+            { "soyo", "soyo" }, { "nagasaki soyo", "soyo" }, { "爽世", "soyo" }, { "長崎爽世", "soyo" },
+            { "tomori", "tomori" }, { "komatsubara tomori", "tomori" }, { "高松燈", "tomori" }, { "燈", "tomori" },
+            { "anon", "anon" }, { "chihaya anon", "anon" }, { "千早愛音", "anon" }, { "愛音", "anon" },
+            { "rikki", "rikki" }, { "shiina rikki", "rikki" }, { "椎名立希", "rikki" }, { "立希", "rikki" },
+            { "raana", "raana" }, { "yoyogi raana", "raana" }, { "要楽奈", "raana" }, { "楽奈", "raana" },
+            // Ave Mujica
+            { "sakiko", "sakiko" }, { "togawa sakiko", "sakiko" }, { "倉田祥子", "sakiko" }, { "祥子", "sakiko" },
+            { "mutsumi", "mutsumi" }, { "wakaba mutsumi", "mutsumi" }, { "若葉睦", "mutsumi" }, { "睦", "mutsumi" },
+            { "uika", "uika" }, { "misumi uika", "uika" }, { "三角初華", "uika" }, { "初華", "uika" },
+            { "umiri", "umiri" }, { "yahata umiri", "umiri" }, { "八幡海鈴", "umiri" }, { "海鈴", "umiri" },
+            { "nyamu", "nyamu" }, { "yuutenji nyamu", "nyamu" }, { "にゃむ", "nyamu" },
+            // Mugendai Mewtype
+            { "arale", "arale" }, { "nakamachi arale", "arale" }, { "中街アラレ", "arale" },
+            { "nonoka", "nonoka" }, { "miyanaga nonoka", "nonoka" }, { "宮永ノノカ", "nonoka" },
+            { "ritsu", "ritsu" }, { "minetsuki ritsu", "ritsu" }, { "峰月リツ", "ritsu" },
+            { "miyako", "miyako" }, { "fuji miyako", "miyako" }, { "藤みやこ", "miyako" },
+            { "yuno", "yuno" }, { "sengoku yuno", "yuno" }, { "仙石ユノ", "yuno" },
+            // millsage
+            { "hotaru", "hotaru" }, { "shiomi hotaru", "hotaru" }, { "塩見ほたる", "hotaru" },
+            { "natsume", "natsume" }, { "izawa natsume", "natsume" }, { "伊澤なつめ", "natsume" },
+            { "nagi", "nagi" }, { "kotohira nagi", "nagi" }, { "琴平凪", "nagi" },
+            { "mahoro", "mahoro" }, { "hamasaki mahoro", "mahoro" }, { "浜崎まほろ", "mahoro" },
+            { "houka", "houka" }, { "izumi houka", "houka" }, { "和泉ほうか", "houka" },
+        };
+
+        // 從 prompt 中偵測提到哪些角色 key（去重、保序）
+        public static List<string> DetectCharacterKeys(string prompt)
+        {
+            var found = new List<string>();
+            var seen = new HashSet<string>();
+            // 由長到短匹配，避免 "nagasaki soyo" 被 "soyo" 先截走
+            foreach (var kv in NameToKey.OrderByDescending(x => x.Key.Length))
+            {
+                if (prompt.Contains(kv.Key, StringComparison.OrdinalIgnoreCase) && seen.Add(kv.Value))
+                    found.Add(kv.Value);
+            }
+            return found;
+        }
+
+        // 用多張預存角色圖產圖（Soyo 優先排第一）
+        public async Task<Stream> GenerateCharactersImageAsync(string prompt, List<string> characterKeys)
+        {
+            // 確保 soyo 在最前
+            var ordered = characterKeys.Contains("soyo")
+                ? new[] { "soyo" }.Concat(characterKeys.Where(k => k != "soyo")).ToList()
+                : characterKeys;
+
+            var images = new List<(byte[] bytes, string filename)>();
+            foreach (var key in ordered)
+            {
+                if (!CharacterFiles.TryGetValue(key, out var filename)) continue;
+                var path = Path.Combine(CharacterImagesDir, filename);
+                if (!File.Exists(path)) continue;
+                images.Add((await File.ReadAllBytesAsync(path), filename));
+            }
+
+            if (images.Count == 0)
+                return await GenerateImageAsync(prompt);
+
+            return await GenerateImageWithMultipleReferencesAsync(prompt, images)
+                   ?? await GenerateImageAsync(prompt);
+        }
+
+        // 帶多張參考圖產圖
+        public async Task<Stream> GenerateImageWithMultipleReferencesAsync(string prompt, List<(byte[] bytes, string filename)> images)
+        {
+            try
+            {
+                Console.WriteLine($"[AIImage] 多圖產圖 images={images.Count} prompt={prompt[..Math.Min(60, prompt.Length)]}");
+                var form = new MultipartFormDataContent();
+                form.Add(new StringContent(prompt), "prompt");
+                for (int i = 0; i < images.Count; i++)
+                {
+                    var (bytes, fname) = images[i];
+                    var ct = fname.EndsWith(".png", StringComparison.OrdinalIgnoreCase) ? "image/png" : "image/jpeg";
+                    var imgContent = new ByteArrayContent(bytes);
+                    imgContent.Headers.ContentType = new MediaTypeHeaderValue(ct);
+                    form.Add(imgContent, $"image_{i}", fname);
+                }
+                using var req = new HttpRequestMessage(HttpMethod.Post, CfWorkerUrl);
+                req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", CfApiKey);
+                req.Content = form;
+                using var response = await _httpClient.SendAsync(req);
+                if (response.IsSuccessStatusCode)
+                {
+                    var bytes2 = await response.Content.ReadAsByteArrayAsync();
+                    Console.WriteLine($"[AIImage] Worker(多圖) 成功 {bytes2.Length} bytes");
+                    return new MemoryStream(bytes2);
+                }
+                var errBody = await response.Content.ReadAsStringAsync();
+                Console.WriteLine($"[AIImage] Worker(多圖) error {(int)response.StatusCode}: {errBody[..Math.Min(200, errBody.Length)]}");
+                return null;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[AIImage] Worker(多圖) 失敗: {ex.Message}");
+                return null;
+            }
+        }
+
+        // 用預存角色圖產圖（單張，保留相容）
         public async Task<Stream> GenerateCharacterImageAsync(string characterKey, string prompt)
         {
             if (!CharacterFiles.TryGetValue(characterKey.ToLower(), out var filename))
@@ -163,13 +270,25 @@ namespace MusicBot2.Service
 
         private async Task<Stream> CallPollinationsAsync(string prompt)
         {
-            string encodedPrompt = WebUtility.UrlEncode(prompt);
-            string url = $"https://image.pollinations.ai/prompt/{encodedPrompt}?model=flux";
-            Console.WriteLine("[AIImage] Pollinations fallback");
-            using var response = await _httpClient.GetAsync(url);
-            response.EnsureSuccessStatusCode();
-            byte[] bytes = await response.Content.ReadAsByteArrayAsync();
-            return new MemoryStream(bytes);
+            try
+            {
+                string encodedPrompt = WebUtility.UrlEncode(prompt);
+                string url = $"https://image.pollinations.ai/prompt/{encodedPrompt}?model=flux";
+                Console.WriteLine("[AIImage] Pollinations fallback");
+                using var response = await _httpClient.GetAsync(url);
+                if (!response.IsSuccessStatusCode)
+                {
+                    Console.WriteLine($"[AIImage] Pollinations 失敗 {(int)response.StatusCode}");
+                    return null;
+                }
+                byte[] bytes = await response.Content.ReadAsByteArrayAsync();
+                return new MemoryStream(bytes);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[AIImage] Pollinations 例外: {ex.Message}");
+                return null;
+            }
         }
     }
 }
