@@ -52,8 +52,9 @@ namespace MusicBot2.SlahCommands
         private readonly HolyGrailTowerService _holyGrailTowerService;
         private readonly YgoDuelService _ygoService;
         private readonly FreeDuelService _freeDuelSvc;
+        private readonly LOLService _lolService;
 
-        public SlashCommandHandler(Program program, WordGuessingService wordService, MineGameService mineGameService, ElevenLabsService elevenLabsService, OldMaidService oldMaidService, RubiksCubeService rubiksCubeService, GoogleAIStudioService googleAIStudioService, OpenRouterService openRouterService, RVC_Service rVC_Service, SetTextService setTextService, Game2048Service game2048Service, Game1A2BService game1A2BService, Pick2Service pick2Service, JikanAnimeService animeService, PokeService pokeService, PokeGameService pokeGameService, ValorantService valorantService, TRPGService trpgService, LyrisService lyrisService, LyricsDisplayService lyricsDisplayService, UselessApiService uselessApiService, NekoBotService nekoBotService, WaifuImService waifuImService, WaifuPicsService waifuPicsService, AIImageService aiImageService, GroqWhisperService groqWhisperService, FishAudioService fishAudioService, PokeTowerService pokeTowerService, FgoGuessService fgoGuessService, HolyGrailTowerService holyGrailTowerService, YgoDuelService ygoService, FreeDuelService freeDuelService)
+        public SlashCommandHandler(Program program, WordGuessingService wordService, MineGameService mineGameService, ElevenLabsService elevenLabsService, OldMaidService oldMaidService, RubiksCubeService rubiksCubeService, GoogleAIStudioService googleAIStudioService, OpenRouterService openRouterService, RVC_Service rVC_Service, SetTextService setTextService, Game2048Service game2048Service, Game1A2BService game1A2BService, Pick2Service pick2Service, JikanAnimeService animeService, PokeService pokeService, PokeGameService pokeGameService, ValorantService valorantService, TRPGService trpgService, LyrisService lyrisService, LyricsDisplayService lyricsDisplayService, UselessApiService uselessApiService, NekoBotService nekoBotService, WaifuImService waifuImService, WaifuPicsService waifuPicsService, AIImageService aiImageService, GroqWhisperService groqWhisperService, FishAudioService fishAudioService, PokeTowerService pokeTowerService, FgoGuessService fgoGuessService, HolyGrailTowerService holyGrailTowerService, YgoDuelService ygoService, FreeDuelService freeDuelService, LOLService lolService)
         {
             _program = program;
             _wordService = wordService;
@@ -87,6 +88,7 @@ namespace MusicBot2.SlahCommands
             _holyGrailTowerService = holyGrailTowerService;
             _ygoService = ygoService;
             _freeDuelSvc = freeDuelService;
+            _lolService = lolService;
         }
         #region 音樂撥放相關 > 先拿掉，要撥放音樂用$$就好
         //[SlashCommand("播放音樂", "播放音樂")]
@@ -1207,6 +1209,59 @@ namespace MusicBot2.SlahCommands
             catch (Exception ex)
             {
                 Console.WriteLine($"[ValorantStats] 指令失敗: {ex.Message}");
+                await FollowupAsync("查詢時發生錯誤，請稍後再試 🙏");
+            }
+        }
+        #endregion
+
+        #region LOL 戰績
+        [SlashCommand("LOL戰績", "查看 League of Legends 玩家戰績")]
+        public async Task LolStatsAsync(
+            [Summary("遊戲名稱", "Riot ID 名稱（不含 #tag；已登記的可留空查自己）")] string gameName = "",
+            [Summary("tag", "Riot ID tag，例如 TW1")] string tagLine = "")
+        {
+            string puuid = null;
+
+            if (string.IsNullOrWhiteSpace(gameName))
+            {
+                if (LOLService.FriendsPuuid.TryGetValue(Context.User.Id, out var myPuuid))
+                    puuid = myPuuid;
+                else
+                {
+                    await RespondAsync("請輸入 Riot ID，或請豬頭馬又幫你登記 Discord ID ✨", ephemeral: true);
+                    return;
+                }
+            }
+            else if (string.IsNullOrWhiteSpace(tagLine))
+            {
+                await RespondAsync("請輸入 Riot ID 的 tag（# 後面的部分）！", ephemeral: true);
+                return;
+            }
+
+            await DeferAsync();
+
+            try
+            {
+                if (puuid == null)
+                    puuid = await _lolService.GetPuuidByRiotIdAsync(gameName, tagLine);
+
+                if (puuid == null)
+                {
+                    await FollowupAsync($"找不到 **{gameName}#{tagLine}**，確認一下 Riot ID 有沒有打對？");
+                    return;
+                }
+
+                var (statsText, embed) = await _lolService.GetPlayerStatsAsync(puuid);
+                if (statsText == null)
+                {
+                    await FollowupAsync("查詢時發生錯誤，請稍後再試 🙏");
+                    return;
+                }
+                await FollowupAsync(embed: embed);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[LolStats] 指令失敗: {ex.Message}");
                 await FollowupAsync("查詢時發生錯誤，請稍後再試 🙏");
             }
         }

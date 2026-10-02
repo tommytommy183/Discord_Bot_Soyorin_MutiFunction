@@ -170,6 +170,7 @@ public class Program
               .AddSingleton<HolyGrailTowerService>(sp => new HolyGrailTowerService(redisConn))
               .AddSingleton<YgoDuelService>(sp => new YgoDuelService(redisConn, sp.GetRequiredService<OpenRouterService>(), _client))
               .AddSingleton<FreeDuelService>(sp => new FreeDuelService(redisConn, sp.GetRequiredService<OpenRouterService>(), _client, sp.GetRequiredService<YgoDuelService>()))
+              .AddSingleton<LOLService>(sp => new LOLService(Environment.GetEnvironmentVariable("RIOT_APIKEY") ?? ""))
               .BuildServiceProvider();
 
         _googleAIStudioService = _services.GetRequiredService<GoogleAIStudioService>();
@@ -1716,7 +1717,55 @@ public class Program
                 }
             }
         }
+
+        // 啟動 LOL 段位監控背景任務
+        _ = StartLolRankMonitorAsync();
     }
+
+    private const ulong LolMonitorChannelId = 1516463187564822589UL;
+
+    private async Task StartLolRankMonitorAsync()
+    {
+        var lolService = _services.GetRequiredService<LOLService>();
+        Console.WriteLine("[LOL Monitor] 背景監控啟動，每 20 秒檢查一次段位...");
+        await Task.Delay(15000); // 等待 bot 完全就緒
+
+        // 初始化：先快照一次當前 LP，避免 bot 重啟時誤判
+        await lolService.CheckForLossesAsync();
+        Console.WriteLine("[LOL Monitor] 初始快照完成");
+
+        while (true)
+        {
+            try
+            {
+                await Task.Delay(20000);
+                var losses = await lolService.CheckForLossesAsync();
+                if (losses.Count == 0) continue;
+
+                var channel = _client.GetChannel(LolMonitorChannelId) as Discord.IMessageChannel;
+                if (channel == null)
+                {
+                    Console.WriteLine($"[LOL Monitor] 找不到頻道 {LolMonitorChannelId}");
+                    continue;
+                }
+
+                foreach (var loss in losses)
+                {
+                    Console.WriteLine($"[LOL Monitor] 偵測到掉分：{loss.SummonerName} {loss.Queue} -{loss.LPLost}LP");
+                    var champInfo = string.IsNullOrWhiteSpace(loss.ChampionName) ? "" : $"用 **{loss.ChampionName}** ";
+                    var prompt = $"LOL 玩家 {loss.SummonerName} 剛剛在 {loss.Queue} {champInfo}輸了一局，掉了 {loss.LPLost} LP，現在是 {loss.RankFull}。用爽世的語氣笑他一下，不要超過三句話。";
+                    var soyo = await _openRouterService.GenerateSimpleTextAsync(prompt, maxTokens: 150);
+                    var msg = $"<@{loss.DiscordId}> {soyo}";
+                    await channel.SendMessageAsync(msg);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[LOL Monitor] 迴圈錯誤: {ex.Message}");
+            }
+        }
+    }
+
     public Task Log(LogMessage log)
     {
         Console.WriteLine(log);
