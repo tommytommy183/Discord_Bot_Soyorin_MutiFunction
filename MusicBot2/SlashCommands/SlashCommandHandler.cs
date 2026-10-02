@@ -1165,16 +1165,38 @@ namespace MusicBot2.SlahCommands
 
         [SlashCommand("瓦羅蘭戰績", "查看 Valorant 玩家戰績")]
         public async Task ValorantStatsAsync(
-            [Summary("玩家名稱", "Valorant 玩家名稱（不含 #tag；已登記的可留空自動查自己）")] string name = "",
-            [Summary("tag", "玩家 tag，例如 TW1")] string tag = "",
+            [Summary("玩家名稱", "Valorant 玩家名稱（可直接輸入 名稱#tag；已登記可留空查自己）")] string name = "",
+            [Summary("tag", "玩家 tag，例如 TW1（輸入完整 名稱#tag 時可留空）")] string tag = "",
             [Summary("地區", "伺服器地區：ap / na / eu / kr（預設 ap）")] string region = "ap",
+            [Summary("查詢對象", "@某人 直接查對方的戰績（需要已登記）")] Discord.WebSocket.SocketGuildUser mention = null,
             [Summary("顯示段位", "顯示當前段位與歷史最高（預設是）")] bool showRank = true,
             [Summary("顯示近期對局", "列出近 10 場每局結果（預設是）")] bool showMatches = true,
             [Summary("顯示爆頭率", "顯示爆頭/軀幹/腿部命中統計（預設是）")] bool showHeadshot = true,
             [Summary("顯示常用英雄", "統計近期最常使用的英雄（預設是）")] bool showAgents = true,
             [Summary("顯示常用武器", "統計近期最常使用的武器（有資料時才顯示）")] bool showWeapons = true)
         {
-            // 查朋友清單 fallback
+            // @mention 優先
+            if (mention != null)
+            {
+                if (ValorantService.FriendsList.TryGetValue(mention.Id, out var f))
+                {
+                    name = f.Name; tag = f.Tag; region = f.Region;
+                }
+                else
+                {
+                    await RespondAsync($"{mention.DisplayName} 的 Valorant ID 還沒登記！", ephemeral: true);
+                    return;
+                }
+            }
+            // name 欄含 # 時自動拆分（e.g. 小老朋鳥#大老鳥）
+            else if (name.Contains('#'))
+            {
+                var parts = name.Split('#', 2);
+                name = parts[0].Trim();
+                if (string.IsNullOrWhiteSpace(tag)) tag = parts[1].Trim();
+            }
+
+            // 沒輸入任何東西 → 查自己
             if (string.IsNullOrWhiteSpace(name))
             {
                 if (ValorantService.FriendsList.TryGetValue(Context.User.Id, out var me))
@@ -1217,11 +1239,23 @@ namespace MusicBot2.SlahCommands
         #region LOL 戰績
         [SlashCommand("lol英雄聯盟戰績", "查看 League of Legends 玩家戰績")]
         public async Task LolStatsAsync(
-            [Summary("遊戲名稱", "Riot ID 名稱（含 #tag；已登記的可留空查自己）")] string gameName = "")
+            [Summary("遊戲名稱", "Riot ID（格式：名稱#tag；已登記可留空查自己）")] string gameName = "",
+            [Summary("查詢對象", "@某人 直接查對方的戰績（需要已登記）")] Discord.WebSocket.SocketGuildUser mention = null)
         {
             string puuid = null;
-            string tagLine = string.IsNullOrEmpty(gameName) ? "" : (gameName.Contains('#') ? gameName.Split('#')[1].ToString() : "");
-            if (string.IsNullOrWhiteSpace(gameName))
+
+            // @mention 優先
+            if (mention != null)
+            {
+                if (LOLService.FriendsPuuid.TryGetValue(mention.Id, out var fPuuid))
+                    puuid = fPuuid;
+                else
+                {
+                    await RespondAsync($"{mention.DisplayName} 的 LOL 帳號還沒登記！", ephemeral: true);
+                    return;
+                }
+            }
+            else if (string.IsNullOrWhiteSpace(gameName))
             {
                 if (LOLService.FriendsPuuid.TryGetValue(Context.User.Id, out var myPuuid))
                     puuid = myPuuid;
@@ -1231,10 +1265,18 @@ namespace MusicBot2.SlahCommands
                     return;
                 }
             }
-            else if (string.IsNullOrWhiteSpace(tagLine))
+
+            string tagLine = "";
+            if (puuid == null)
             {
-                await RespondAsync("請輸入 Riot ID 的 tag（# 後面的部分）！", ephemeral: true);
-                return;
+                if (!gameName.Contains('#'))
+                {
+                    await RespondAsync("請輸入完整 Riot ID，格式：名稱#tag", ephemeral: true);
+                    return;
+                }
+                var parts = gameName.Split('#', 2);
+                gameName = parts[0].Trim();
+                tagLine = parts[1].Trim();
             }
 
             await DeferAsync();

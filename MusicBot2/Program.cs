@@ -176,6 +176,7 @@ public class Program
         _googleAIStudioService = _services.GetRequiredService<GoogleAIStudioService>();
         _openRouterService = _services.GetRequiredService<OpenRouterService>();
         _openRouterService.SetValorantService(_services.GetRequiredService<ValorantService>());
+        _openRouterService.SetLolService(_services.GetRequiredService<LOLService>());
         _setTextService = _services.GetRequiredService<SetTextService>();
         _freeDuelSvc = _services.GetRequiredService<FreeDuelService>();
         _trpgService = _services.GetRequiredService<TRPGService>();
