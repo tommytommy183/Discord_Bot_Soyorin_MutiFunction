@@ -28,6 +28,7 @@ namespace MusicBot2.Service
             { "anon",    "anon.png"    },
             { "rikki",   "rikki.png"   },
             { "raana",   "raana.png"   },
+            { "rana",   "raana.png"   },
             // Ave Mujica
             { "sakiko",  "sakiko.png"  },
             { "mutsumi", "mutsumi.png" },
@@ -191,7 +192,7 @@ namespace MusicBot2.Service
             { "tomori", "tomori" }, { "komatsubara tomori", "tomori" }, { "高松燈", "tomori" }, { "燈", "tomori" },
             { "anon", "anon" }, { "chihaya anon", "anon" }, { "千早愛音", "anon" }, { "愛音", "anon" },
             { "rikki", "rikki" }, { "shiina rikki", "rikki" }, { "椎名立希", "rikki" }, { "立希", "rikki" },
-            { "raana", "raana" }, { "yoyogi raana", "raana" }, { "要楽奈", "raana" }, { "楽奈", "raana" },
+            { "raana", "raana" }, { "yoyogi raana", "raana" }, { "要楽奈", "raana" }, { "楽奈", "raana" },{ "rana", "raana" },
             // Ave Mujica
             { "sakiko", "sakiko" }, { "togawa sakiko", "sakiko" }, { "倉田祥子", "sakiko" }, { "祥子", "sakiko" },
             { "mutsumi", "mutsumi" }, { "wakaba mutsumi", "mutsumi" }, { "若葉睦", "mutsumi" }, { "睦", "mutsumi" },
