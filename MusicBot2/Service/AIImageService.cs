@@ -80,13 +80,24 @@ namespace MusicBot2.Service
             _httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(90) };
         }
 
+        // Cloudflare Workers 的 formData() 不接受引號包的 boundary，需要手動去掉引號
+        private static MultipartFormDataContent CreateForm()
+        {
+            var boundary = "----CFBoundary" + Guid.NewGuid().ToString("N");
+            var form = new MultipartFormDataContent(boundary);
+            // 移除 .NET 自動加的引號：boundary="abc" → boundary=abc
+            form.Headers.Remove("Content-Type");
+            form.Headers.TryAddWithoutValidation("Content-Type", $"multipart/form-data; boundary={boundary}");
+            return form;
+        }
+
         // 純文字產圖（沿用舊邏輯）
         public async Task<Stream> GenerateImageAsync(string prompt)
         {
             try
             {
                 Console.WriteLine($"[AIImage] 純文字產圖 prompt={prompt[..Math.Min(80, prompt.Length)]}");
-                var form = new MultipartFormDataContent();
+                var form = CreateForm();
                 form.Add(new StringContent(prompt), "prompt");
                 using var req = new HttpRequestMessage(HttpMethod.Post, CfWorkerUrl);
                 req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", CfApiKey);
@@ -117,7 +128,7 @@ namespace MusicBot2.Service
             try
             {
                 Console.WriteLine($"[AIImage] 帶圖產圖 imageSize={imageBytes.Length} prompt={prompt[..Math.Min(60, prompt.Length)]}");
-                var form = new MultipartFormDataContent();
+                var form = CreateForm();
                 form.Add(new StringContent(prompt), "prompt");
                 var imgContent = new ByteArrayContent(imageBytes);
                 imgContent.Headers.ContentType = new MediaTypeHeaderValue(contentType);
@@ -216,7 +227,7 @@ namespace MusicBot2.Service
             try
             {
                 Console.WriteLine($"[AIImage] 多圖產圖 images={images.Count} prompt={prompt[..Math.Min(60, prompt.Length)]}");
-                var form = new MultipartFormDataContent();
+                var form = CreateForm();
                 form.Add(new StringContent(prompt), "prompt");
                 for (int i = 0; i < images.Count; i++)
                 {
