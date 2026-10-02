@@ -47,6 +47,9 @@ namespace MusicBot2.Service
             { "nagi",    "nagi.png"    },
             { "mahoro",  "mahoro.png"  },
             { "houka",   "houka.png"   },
+
+            //Other
+            { "viola", "薇歐拉" },
         };
 
         // 角色 key → 中文名（讓 Soyo 系統提示知道）
@@ -79,6 +82,9 @@ namespace MusicBot2.Service
             { "nagi",    "琴平凪"    },
             { "mahoro",  "浜崎まほろ" },
             { "houka",   "和泉朋花"  },
+
+            //Other
+            { "viola", "薇歐拉" },
         };
 
         public AIImageService()
@@ -188,29 +194,39 @@ namespace MusicBot2.Service
         private static readonly Dictionary<string, string> NameToKey = new(StringComparer.OrdinalIgnoreCase)
         {
             // MyGO!!!!!
-            { "soyo", "soyo" }, { "nagasaki soyo", "soyo" }, { "爽世", "soyo" }, { "長崎爽世", "soyo" },
-            { "tomori", "tomori" }, { "komatsubara tomori", "tomori" }, { "高松燈", "tomori" }, { "燈", "tomori" },
+            { "soyo", "soyo" }, { "nagasaki soyo", "soyo" }, { "長崎そよ", "soyo" }, { "そよ", "soyo" },
+            { "tomori", "tomori" }, { "takamatsu tomori", "tomori" }, { "高松燈", "tomori" }, { "燈", "tomori" },
             { "anon", "anon" }, { "chihaya anon", "anon" }, { "千早愛音", "anon" }, { "愛音", "anon" },
             { "rikki", "rikki" }, { "shiina rikki", "rikki" }, { "椎名立希", "rikki" }, { "立希", "rikki" },
-            { "raana", "raana" }, { "yoyogi raana", "raana" }, { "要楽奈", "raana" }, { "楽奈", "raana" },{ "rana", "raana" },
+            { "raana", "raana" }, { "yoyogi raana", "raana" }, { "要楽奈", "raana" }, { "楽奈", "raana" },
+            { "rana", "raana" },
+
             // Ave Mujica
-            { "sakiko", "sakiko" }, { "togawa sakiko", "sakiko" }, { "倉田祥子", "sakiko" }, { "祥子", "sakiko" },
+            { "sakiko", "sakiko" }, { "togawa sakiko", "sakiko" }, { "豊川祥子", "sakiko" }, { "祥子", "sakiko" },
             { "mutsumi", "mutsumi" }, { "wakaba mutsumi", "mutsumi" }, { "若葉睦", "mutsumi" }, { "睦", "mutsumi" },
             { "uika", "uika" }, { "misumi uika", "uika" }, { "三角初華", "uika" }, { "初華", "uika" },
             { "umiri", "umiri" }, { "yahata umiri", "umiri" }, { "八幡海鈴", "umiri" }, { "海鈴", "umiri" },
-            { "nyamu", "nyamu" }, { "yuutenji nyamu", "nyamu" }, { "にゃむ", "nyamu" },
+            { "nyamu", "nyamu" }, { "yuutenji nyamu", "nyamu" }, { "祐天寺にゃむ", "nyamu" }, { "にゃむ", "nyamu" },
+
             // Mugendai Mewtype
-            { "arale", "arale" }, { "nakamachi arale", "arale" }, { "中街アラレ", "arale" },
-            { "nonoka", "nonoka" }, { "miyanaga nonoka", "nonoka" }, { "宮永ノノカ", "nonoka" },
-            { "ritsu", "ritsu" }, { "minetsuki ritsu", "ritsu" }, { "峰月リツ", "ritsu" },
-            { "miyako", "miyako" }, { "fuji miyako", "miyako" }, { "藤みやこ", "miyako" },
-            { "yuno", "yuno" }, { "sengoku yuno", "yuno" }, { "仙石ユノ", "yuno" },
+            { "arale", "arale" }, { "nakamachi arale", "arale" }, { "仲町あられ", "arale" }, { "あられ", "arale" },
+            { "nonoka", "nonoka" }, { "miyanaga nonoka", "nonoka" }, { "宮永ののか", "nonoka" }, { "ののか", "nonoka" },
+            { "ritsu", "ritsu" }, { "minetsuki ritsu", "ritsu" }, { "峰月律", "ritsu" }, { "律", "ritsu" },
+            { "miyako", "miyako" }, { "fuji miyako", "miyako" }, { "藤都子", "miyako" }, { "都子", "miyako" },
+            { "yuno", "yuno" }, { "sengoku yuno", "yuno" }, { "千石ユノ", "yuno" }, { "ユノ", "yuno" },
+
             // millsage
-            { "hotaru", "hotaru" }, { "shiomi hotaru", "hotaru" }, { "塩見ほたる", "hotaru" },
-            { "natsume", "natsume" }, { "izawa natsume", "natsume" }, { "伊澤なつめ", "natsume" },
-            { "nagi", "nagi" }, { "kotohira nagi", "nagi" }, { "琴平凪", "nagi" },
-            { "mahoro", "mahoro" }, { "hamasaki mahoro", "mahoro" }, { "浜崎まほろ", "mahoro" },
-            { "houka", "houka" }, { "izumi houka", "houka" }, { "和泉ほうか", "houka" },
+            { "hotaru", "hotaru" }, { "shiomi hotaru", "hotaru" }, { "汐見蛍", "hotaru" }, { "蛍", "hotaru" },
+            { "natsume", "natsume" }, { "izawa natsume", "natsume" }, { "伊沢なつめ", "natsume" }, { "なつめ", "natsume" },
+            { "nagi", "nagi" }, { "kotohira nagi", "nagi" }, { "琴平凪", "nagi" }, { "凪", "nagi" },
+            { "mahoro", "mahoro" }, { "hamasaki mahoro", "mahoro" }, { "浜崎まほろ", "mahoro" }, { "まほろ", "mahoro" },
+            { "houka", "houka" }, { "izumi houka", "houka" }, { "和泉朋花", "houka" }, { "朋花", "houka" },
+
+
+            //other
+            { "viola", "viola" },
+            { "圍毆拉", "viola" },
+            { "薇歐拉", "viola" },
         };
 
         // 從 prompt 中偵測提到哪些角色 key（去重、保序）
