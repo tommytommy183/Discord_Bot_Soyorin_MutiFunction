@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Text;
 using System.Threading.Tasks;
 using System.IO;
 
@@ -80,36 +82,72 @@ namespace MusicBot2.Service
             _httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(90) };
         }
 
-        // Cloudflare Workers 的 formData() 不接受引號包的 boundary，需要手動去掉引號
-        private static MultipartFormDataContent CreateForm()
+        // 手動組 raw multipart bytes，完全繞過 .NET MultipartFormDataContent 的 boundary 引號問題
+        private static (ByteArrayContent body, string contentType) BuildRawMultipart(
+            string prompt, List<(byte[] bytes, string filename, string mimeType)> images = null)
         {
             var boundary = "----CFBoundary" + Guid.NewGuid().ToString("N");
-            var form = new MultipartFormDataContent(boundary);
-            // 移除 .NET 自動加的引號：boundary="abc" → boundary=abc
-            form.Headers.Remove("Content-Type");
-            form.Headers.TryAddWithoutValidation("Content-Type", $"multipart/form-data; boundary={boundary}");
-            return form;
+            var nl = "\r\n";
+            var bodyBytes = new List<byte>();
+
+            void AppendText(string s) => bodyBytes.AddRange(Encoding.UTF8.GetBytes(s));
+            void AppendBytes(byte[] b) => bodyBytes.AddRange(b);
+
+            // prompt field
+            AppendText($"--{boundary}{nl}");
+            AppendText($"Content-Disposition: form-data; name=\"prompt\"{nl}{nl}");
+            AppendText(prompt);
+            AppendText(nl);
+
+            // image fields
+            if (images != null)
+            {
+                for (int i = 0; i < images.Count; i++)
+                {
+                    var (imgBytes, fname, mime) = images[i];
+                    var fieldName = images.Count == 1 ? "image" : $"image_{i}";
+                    AppendText($"--{boundary}{nl}");
+                    AppendText($"Content-Disposition: form-data; name=\"{fieldName}\"; filename=\"{fname}\"{nl}");
+                    AppendText($"Content-Type: {mime}{nl}{nl}");
+                    AppendBytes(imgBytes);
+                    AppendText(nl);
+                }
+            }
+
+            AppendText($"--{boundary}--{nl}");
+
+            var content = new ByteArrayContent(bodyBytes.ToArray());
+            return (content, $"multipart/form-data; boundary={boundary}");
         }
 
-        // 純文字產圖（沿用舊邏輯）
+        private async Task<Stream> PostToWorkerAsync(string prompt, List<(byte[] bytes, string filename, string mimeType)> images = null)
+        {
+            var (body, ct) = BuildRawMultipart(prompt, images);
+            body.Headers.TryAddWithoutValidation("Content-Type", ct);
+            using var req = new HttpRequestMessage(HttpMethod.Post, CfWorkerUrl);
+            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", CfApiKey);
+            req.Content = body;
+            using var response = await _httpClient.SendAsync(req);
+            if (response.IsSuccessStatusCode)
+            {
+                var bytes = await response.Content.ReadAsByteArrayAsync();
+                Console.WriteLine($"[AIImage] Worker 成功 {bytes.Length} bytes");
+                return new MemoryStream(bytes);
+            }
+            var err = await response.Content.ReadAsStringAsync();
+            Console.WriteLine($"[AIImage] Worker error {(int)response.StatusCode}: {err[..Math.Min(200, err.Length)]}");
+            return null;
+        }
+
+        // 純文字產圖
         public async Task<Stream> GenerateImageAsync(string prompt)
         {
             try
             {
                 Console.WriteLine($"[AIImage] 純文字產圖 prompt={prompt[..Math.Min(80, prompt.Length)]}");
-                var form = CreateForm();
-                form.Add(new StringContent(prompt), "prompt");
-                using var req = new HttpRequestMessage(HttpMethod.Post, CfWorkerUrl);
-                req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", CfApiKey);
-                req.Content = form;
-                using var response = await _httpClient.SendAsync(req);
-                if (response.IsSuccessStatusCode)
-                {
-                    var bytes = await response.Content.ReadAsByteArrayAsync();
-                    Console.WriteLine($"[AIImage] Worker 成功 {bytes.Length} bytes");
-                    return new MemoryStream(bytes);
-                }
-                Console.WriteLine($"[AIImage] Worker error {(int)response.StatusCode}，fallback");
+                var stream = await PostToWorkerAsync(prompt);
+                if (stream != null) return stream;
+                Console.WriteLine("[AIImage] Worker 失敗，fallback Pollinations");
             }
             catch (Exception ex)
             {
@@ -122,30 +160,14 @@ namespace MusicBot2.Service
             return fallback;
         }
 
-        // 帶參考圖片產圖（byte[]）
+        // 帶單張參考圖片產圖（byte[]）
         public async Task<Stream> GenerateImageWithReferenceAsync(string prompt, byte[] imageBytes, string filename = "reference.png", string contentType = "image/png")
         {
             try
             {
                 Console.WriteLine($"[AIImage] 帶圖產圖 imageSize={imageBytes.Length} prompt={prompt[..Math.Min(60, prompt.Length)]}");
-                var form = CreateForm();
-                form.Add(new StringContent(prompt), "prompt");
-                var imgContent = new ByteArrayContent(imageBytes);
-                imgContent.Headers.ContentType = new MediaTypeHeaderValue(contentType);
-                form.Add(imgContent, "image", filename);
-                using var req = new HttpRequestMessage(HttpMethod.Post, CfWorkerUrl);
-                req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", CfApiKey);
-                req.Content = form;
-                using var response = await _httpClient.SendAsync(req);
-                if (response.IsSuccessStatusCode)
-                {
-                    var bytes = await response.Content.ReadAsByteArrayAsync();
-                    Console.WriteLine($"[AIImage] Worker(圖) 成功 {bytes.Length} bytes");
-                    return new MemoryStream(bytes);
-                }
-                var errBody = await response.Content.ReadAsStringAsync();
-                Console.WriteLine($"[AIImage] Worker(圖) error {(int)response.StatusCode}: {errBody[..Math.Min(200, errBody.Length)]}");
-                return null;
+                var images = new List<(byte[], string, string)> { (imageBytes, filename, contentType) };
+                return await PostToWorkerAsync(prompt, images);
             }
             catch (Exception ex)
             {
@@ -227,29 +249,12 @@ namespace MusicBot2.Service
             try
             {
                 Console.WriteLine($"[AIImage] 多圖產圖 images={images.Count} prompt={prompt[..Math.Min(60, prompt.Length)]}");
-                var form = CreateForm();
-                form.Add(new StringContent(prompt), "prompt");
-                for (int i = 0; i < images.Count; i++)
+                var imgList = images.Select(img =>
                 {
-                    var (bytes, fname) = images[i];
-                    var ct = fname.EndsWith(".png", StringComparison.OrdinalIgnoreCase) ? "image/png" : "image/jpeg";
-                    var imgContent = new ByteArrayContent(bytes);
-                    imgContent.Headers.ContentType = new MediaTypeHeaderValue(ct);
-                    form.Add(imgContent, $"image_{i}", fname);
-                }
-                using var req = new HttpRequestMessage(HttpMethod.Post, CfWorkerUrl);
-                req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", CfApiKey);
-                req.Content = form;
-                using var response = await _httpClient.SendAsync(req);
-                if (response.IsSuccessStatusCode)
-                {
-                    var bytes2 = await response.Content.ReadAsByteArrayAsync();
-                    Console.WriteLine($"[AIImage] Worker(多圖) 成功 {bytes2.Length} bytes");
-                    return new MemoryStream(bytes2);
-                }
-                var errBody = await response.Content.ReadAsStringAsync();
-                Console.WriteLine($"[AIImage] Worker(多圖) error {(int)response.StatusCode}: {errBody[..Math.Min(200, errBody.Length)]}");
-                return null;
+                    var mime = img.filename.EndsWith(".png", StringComparison.OrdinalIgnoreCase) ? "image/png" : "image/jpeg";
+                    return (img.bytes, img.filename, mime);
+                }).ToList();
+                return await PostToWorkerAsync(prompt, imgList);
             }
             catch (Exception ex)
             {
