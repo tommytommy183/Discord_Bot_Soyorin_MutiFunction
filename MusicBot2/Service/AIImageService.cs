@@ -51,6 +51,8 @@ namespace MusicBot2.Service
             //Other
             { "viola", "viola.png" },
             { "nori","nori.png"},
+            { "fibi","fibi.png"},
+            { "nuonuo","nuonuo.png"},
         };
 
         // 角色 key → 英文外觀描述（fallback 純文字產圖用）
@@ -104,6 +106,8 @@ namespace MusicBot2.Service
             //Other
             { "viola", "薇歐拉" },
             { "nori","海苔"},
+            { "fibi","菲比"},
+            { "nuonuo", "糯糯" },
         };
 
         public AIImageService()
@@ -245,6 +249,8 @@ namespace MusicBot2.Service
             //other
             { "viola", "viola" },{ "圍毆拉", "viola" },{ "薇歐拉", "viola" },
             { "nori","nori"},{ "海苔", "nori" },
+            { "菲比","fibi"},{ "fibi", "fibi" },
+            { "糯糯","nuonuo"},{ "nuonuo", "nuonuo" },
         };
 
         // 從 prompt 中偵測提到哪些角色 key（去重、保序）
