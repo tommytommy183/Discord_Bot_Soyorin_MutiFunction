@@ -44,6 +44,9 @@ RUN pip3 install --break-system-packages --upgrade yt-dlp && \
 # 複製 .NET 發布產物
 COPY --from=build /app/publish .
 
+# 複製角色圖片資料夾
+COPY MusicBot2/CharacterImages/ CharacterImages/
+
 # 驗證所有函式庫
 RUN ldconfig && \
     echo "=== 函式庫驗證 ===" && \

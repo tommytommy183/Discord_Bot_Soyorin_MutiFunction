@@ -288,6 +288,10 @@ namespace MusicBot2.Service
                 }).ToList();
                 eb.AddField($"📋 對局紀錄", string.Join("\n", matchLines), inline: false);
             }
+            else
+            {
+                eb.AddField("📋 近期對局", "Riot API 未回傳近期對局資料（可能近期未出賽）", inline: false);
+            }
 
             return (sb.ToString().TrimEnd(), eb.Build());
             }
