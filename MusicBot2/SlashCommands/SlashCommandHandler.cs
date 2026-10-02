@@ -53,6 +53,7 @@ namespace MusicBot2.SlahCommands
         private readonly YgoDuelService _ygoService;
         private readonly FreeDuelService _freeDuelSvc;
         private readonly LOLService _lolService;
+        private readonly System.Net.Http.HttpClient _httpClient = new();
 
         public SlashCommandHandler(Program program, WordGuessingService wordService, MineGameService mineGameService, ElevenLabsService elevenLabsService, OldMaidService oldMaidService, RubiksCubeService rubiksCubeService, GoogleAIStudioService googleAIStudioService, OpenRouterService openRouterService, RVC_Service rVC_Service, SetTextService setTextService, Game2048Service game2048Service, Game1A2BService game1A2BService, Pick2Service pick2Service, JikanAnimeService animeService, PokeService pokeService, PokeGameService pokeGameService, ValorantService valorantService, TRPGService trpgService, LyrisService lyrisService, LyricsDisplayService lyricsDisplayService, UselessApiService uselessApiService, NekoBotService nekoBotService, WaifuImService waifuImService, WaifuPicsService waifuPicsService, AIImageService aiImageService, GroqWhisperService groqWhisperService, FishAudioService fishAudioService, PokeTowerService pokeTowerService, FgoGuessService fgoGuessService, HolyGrailTowerService holyGrailTowerService, YgoDuelService ygoService, FreeDuelService freeDuelService, LOLService lolService)
         {
@@ -1887,6 +1888,75 @@ namespace MusicBot2.SlahCommands
             }
             catch (Exception ex)
             {
+                await FollowupAsync($"產生圖片失敗：{ex.Message}");
+            }
+        }
+
+        [SlashCommand("mygo產圖", "以 MyGO 角色或自訂圖片為參考產生 AI 圖片")]
+        public async Task MygoGenerateImageAsync(
+            [Summary("描述", "你想要的圖片描述")] string description,
+            [Summary("角色", "選擇要參考的角色（選了就不需要上傳圖片）")]
+            [Discord.Interactions.Choice("長崎爽世 (MyGO)", "soyo")]
+            [Discord.Interactions.Choice("高松燈 (MyGO)", "tomori")]
+            [Discord.Interactions.Choice("千早愛音 (MyGO)", "anon")]
+            [Discord.Interactions.Choice("椎名立希 (MyGO)", "rikki")]
+            [Discord.Interactions.Choice("要楽奈 (MyGO)", "raana")]
+            [Discord.Interactions.Choice("倉田祥子 (Ave Mujica)", "sakiko")]
+            [Discord.Interactions.Choice("乙坂睦 (Ave Mujica)", "mutsumi")]
+            [Discord.Interactions.Choice("三角初華 (Ave Mujica)", "uika")]
+            [Discord.Interactions.Choice("八幡海鈴 (Ave Mujica)", "umiri")]
+            [Discord.Interactions.Choice("にゃむ (Ave Mujica)", "nyamu")]
+            [Discord.Interactions.Choice("中街アラレ (mewtype)", "arale")]
+            [Discord.Interactions.Choice("宮永ノノカ (mewtype)", "nonoka")]
+            [Discord.Interactions.Choice("峰月リツ (mewtype)", "ritsu")]
+            [Discord.Interactions.Choice("藤みやこ (mewtype)", "miyako")]
+            [Discord.Interactions.Choice("仙石ユノ (mewtype)", "yuno")]
+            [Discord.Interactions.Choice("塩見ほたる (millsage)", "hotaru")]
+            [Discord.Interactions.Choice("伊澤なつめ (millsage)", "natsume")]
+            [Discord.Interactions.Choice("琴平凪 (millsage)", "nagi")]
+            [Discord.Interactions.Choice("浜崎まほろ (millsage)", "mahoro")]
+            [Discord.Interactions.Choice("和泉ほうか (millsage)", "houka")]
+            string character = null,
+            [Summary("圖片", "上傳自己的參考圖片（選了角色時可不填）")] Discord.IAttachment attachment = null)
+        {
+            await DeferAsync();
+            try
+            {
+                Stream imageStream = null;
+
+                if (character != null)
+                {
+                    // 使用預存角色圖
+                    imageStream = await _aiImageService.GenerateCharacterImageAsync(character, description);
+                }
+                else if (attachment != null)
+                {
+                    // 使用使用者上傳的圖片
+                    var imgBytes = await _httpClient.GetByteArrayAsync(attachment.Url);
+                    var ct = attachment.ContentType ?? "image/png";
+                    var fname = attachment.Filename ?? "upload.png";
+                    imageStream = await _aiImageService.GenerateImageWithReferenceAsync(description, imgBytes, fname, ct);
+                    if (imageStream == null)
+                        imageStream = await _aiImageService.GenerateImageAsync(description);
+                }
+                else
+                {
+                    // 純文字
+                    imageStream = await _aiImageService.GenerateImageAsync(description);
+                }
+
+                if (imageStream == null)
+                {
+                    await FollowupAsync("產圖失敗，請稍後再試 🙏");
+                    return;
+                }
+
+                using (imageStream)
+                    await FollowupWithFileAsync(imageStream, "mygo-image.png");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[MygoImage] 失敗: {ex.Message}");
                 await FollowupAsync($"產生圖片失敗：{ex.Message}");
             }
         }

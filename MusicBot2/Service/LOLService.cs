@@ -76,24 +76,27 @@ namespace MusicBot2.Service
             return json?.TryGetProperty("puuid", out var p) == true ? p.GetString() : null;
         }
 
-        private async Task<(string Id, string Name, int Level)> GetSummonerAsync(string puuid, string platform)
+        private async Task<(string GameName, string TagLine)> GetAccountByPuuidAsync(string puuid, string regional)
         {
-            var cacheKey = $"{platform}:{puuid}";
-            if (_summonerCache.TryGetValue(cacheKey, out var cached)) return cached;
-            var url = $"{platform}/lol/summoner/v4/summoners/by-puuid/{Uri.EscapeDataString(puuid)}";
+            var url = $"{regional}/riot/account/v1/accounts/by-puuid/{Uri.EscapeDataString(puuid)}";
             var json = await GetJsonAsync(url);
-            if (json == null) return (null, null, 0);
-            var id = json.Value.TryGetProperty("id", out var i) ? i.GetString() : null;
-            var name = json.Value.TryGetProperty("name", out var n) ? n.GetString() : "?";
-            var level = json.Value.TryGetProperty("summonerLevel", out var lv) ? lv.GetInt32() : 0;
-            var info = (id, name, level);
-            if (id != null) _summonerCache[cacheKey] = info;
-            return info;
+            if (json == null) return ("?", "?");
+            var gameName = json.Value.TryGetProperty("gameName", out var g) ? g.GetString() : "?";
+            var tagLine = json.Value.TryGetProperty("tagLine", out var t) ? t.GetString() : "?";
+            return (gameName ?? "?", tagLine ?? "?");
         }
 
-        private async Task<List<RankEntry>> GetRankEntriesAsync(string summonerId, string platform)
+        private async Task<int> GetSummonerLevelAsync(string puuid, string platform)
         {
-            var url = $"{platform}/lol/league/v4/entries/by-summoner/{Uri.EscapeDataString(summonerId)}";
+            var url = $"{platform}/lol/summoner/v4/summoners/by-puuid/{Uri.EscapeDataString(puuid)}";
+            var json = await GetJsonAsync(url);
+            if (json == null) return 0;
+            return json.Value.TryGetProperty("summonerLevel", out var lv) ? lv.GetInt32() : 0;
+        }
+
+        private async Task<List<RankEntry>> GetRankEntriesAsync(string puuid, string platform)
+        {
+            var url = $"{platform}/lol/league/v4/entries/by-puuid/{Uri.EscapeDataString(puuid)}";
             var json = await GetJsonAsync(url);
             if (json == null || json.Value.ValueKind != JsonValueKind.Array) return new();
             var list = new List<RankEntry>();
@@ -192,23 +195,31 @@ namespace MusicBot2.Service
 
         public async Task<(string TextForAI, Embed Embed)> GetPlayerStatsAsync(string puuid, string region = "tw")
         {
+            try
+            {
             var (platform, regional) = GetEndpoints(region);
-            var (sumId, sumName, level) = await GetSummonerAsync(puuid, platform);
-            if (sumId == null) return (null, null);
+            Console.WriteLine($"[LOLService] GetPlayerStats puuid={puuid[..20]}... platform={platform} regional={regional}");
+            var (gameName, tagLine) = await GetAccountByPuuidAsync(puuid, regional);
+            var level = await GetSummonerLevelAsync(puuid, platform);
+            Console.WriteLine($"[LOLService] account={gameName}#{tagLine} level={level}");
 
-            var rankEntries = await GetRankEntriesAsync(sumId, platform);
+            var rankEntries = await GetRankEntriesAsync(puuid, platform);
+            Console.WriteLine($"[LOLService] rankEntries count={rankEntries.Count}");
             var soloEntry = rankEntries.FirstOrDefault(e => e.Queue == "RANKED_SOLO_5x5");
             var flexEntry = rankEntries.FirstOrDefault(e => e.Queue == "RANKED_FLEX_SR");
 
             // Fetch recent 10 matches (all queues)
             var matchIds = await GetMatchIdsAsync(puuid, regional, 10);
+            Console.WriteLine($"[LOLService] matchIds count={matchIds.Count}");
             var matchTasks = matchIds.Select(id => GetMatchDetailAsync(id, puuid, regional)).ToArray();
             await Task.WhenAll(matchTasks);
             var matches = matchTasks.Select(t => t.Result).Where(m => m != null).ToList();
+            Console.WriteLine($"[LOLService] matches parsed={matches.Count}");
 
             // Text for AI
+            var displayName = $"{gameName}#{tagLine}";
             var sb = new StringBuilder();
-            sb.AppendLine($"召喚師：{sumName}（等級 {level}）");
+            sb.AppendLine($"召喚師：{displayName}（等級 {level}）");
             if (soloEntry != null)
                 sb.AppendLine($"單排：{FormatRank(soloEntry.Tier, soloEntry.Rank, soloEntry.LP, soloEntry.Wins, soloEntry.Losses)}");
             if (flexEntry != null)
@@ -218,7 +229,7 @@ namespace MusicBot2.Service
 
             // Embed
             var eb = new EmbedBuilder()
-                .WithTitle($"🎮  {sumName}")
+                .WithTitle($"🎮  {displayName}")
                 .WithColor(new Color(0xC89B3C))
                 .WithFooter($"LOL 戰績 · Riot API · 等級 {level}");
 
@@ -237,6 +248,12 @@ namespace MusicBot2.Service
             }
 
             return (sb.ToString().TrimEnd(), eb.Build());
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[LOLService] GetPlayerStats EXCEPTION: {ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}");
+                return (null, null);
+            }
         }
 
         #endregion
@@ -251,10 +268,8 @@ namespace MusicBot2.Service
             {
                 try
                 {
-                    var (sumId, sumName, _) = await GetSummonerAsync(puuid, platform);
-                    if (sumId == null) continue;
-
-                    var entries = await GetRankEntriesAsync(sumId, platform);
+                    var (sumName, _) = await GetAccountByPuuidAsync(puuid, regional);
+                    var entries = await GetRankEntriesAsync(puuid, platform);
                     var solo = entries.FirstOrDefault(e => e.Queue == "RANKED_SOLO_5x5");
                     var flex = entries.FirstOrDefault(e => e.Queue == "RANKED_FLEX_SR");
 
