@@ -52,29 +52,32 @@ namespace MusicBot2.Service
         public static readonly System.Collections.Generic.Dictionary<string, string> CharacterNames = new()
         {
             // MyGO!!!!!
-            { "soyo",    "長崎爽世"  },
+            { "soyo",    "長崎そよ"  },
             { "tomori",  "高松燈"    },
             { "anon",    "千早愛音"  },
             { "rikki",   "椎名立希"  },
             { "raana",   "要楽奈"    },
+
             // Ave Mujica
-            { "sakiko",  "倉田祥子"  },
-            { "mutsumi", "乙坂睦"    },
+            { "sakiko",  "豊川祥子"  },
+            { "mutsumi", "若葉睦"    },
             { "uika",    "三角初華"  },
             { "umiri",   "八幡海鈴"  },
-            { "nyamu",   "にゃむ"    },
+            { "nyamu",   "祐天寺にゃむ" },
+
             // Mugendai Mewtype
-            { "arale",   "中街アラレ"  },
-            { "nonoka",  "宮永ノノカ"  },
-            { "ritsu",   "峰月リツ"    },
-            { "miyako",  "藤みやこ"    },
-            { "yuno",    "仙石ユノ"    },
+            { "arale",   "仲町あられ" },
+            { "nonoka",  "宮永ののか" },
+            { "ritsu",   "峰月律"    },
+            { "miyako",  "藤都子"    },
+            { "yuno",    "千石ユノ"  },
+
             // millsage
-            { "hotaru",  "塩見ほたる"  },
-            { "natsume", "伊澤なつめ"  },
-            { "nagi",    "琴平凪"      },
-            { "mahoro",  "浜崎まほろ"  },
-            { "houka",   "和泉ほうか"  },
+            { "hotaru",  "汐見蛍"    },
+            { "natsume", "伊沢なつめ" },
+            { "nagi",    "琴平凪"    },
+            { "mahoro",  "浜崎まほろ" },
+            { "houka",   "和泉朋花"  },
         };
 
         public AIImageService()
