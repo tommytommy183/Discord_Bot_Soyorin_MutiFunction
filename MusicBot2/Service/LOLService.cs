@@ -21,12 +21,12 @@ namespace MusicBot2.Service
         {
             "kr"   => ("https://kr.api.riotgames.com",   "https://asia.api.riotgames.com"),
             "jp"   => ("https://jp1.api.riotgames.com",  "https://asia.api.riotgames.com"),
-            "sg"   => ("https://sg2.api.riotgames.com",  "https://sea.api.riotgames.com"),
+            "sg"   => ("https://sg2.api.riotgames.com",  "https://asia.api.riotgames.com"),
             "na"   => ("https://na1.api.riotgames.com",  "https://americas.api.riotgames.com"),
             "euw"  => ("https://euw1.api.riotgames.com", "https://europe.api.riotgames.com"),
             "eune" => ("https://eun1.api.riotgames.com", "https://europe.api.riotgames.com"),
             "oce"  => ("https://oc1.api.riotgames.com",  "https://americas.api.riotgames.com"),
-            _      => ("https://tw2.api.riotgames.com",  "https://sea.api.riotgames.com"),  // tw / 預設
+            _      => ("https://tw2.api.riotgames.com",  "https://asia.api.riotgames.com"),  // tw / 預設
         };
 
         // Discord ID → PUUID
