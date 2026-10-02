@@ -1890,9 +1890,10 @@ public class Program
         try
         {
             // 產生圖片帶 prompt 參數，獨立處理
-            if (feature.StartsWith("產生圖片:"))
+            if (feature.StartsWith("產生圖片:") || feature.StartsWith("产生圖片:"))
             {
                 var prompt = feature.Substring("產生圖片:".Length).Trim();
+                prompt = feature.Substring("产生圖片:".Length).Trim();
                 if (!string.IsNullOrWhiteSpace(prompt))
                 {
                     var imgSvc = _services.GetRequiredService<AIImageService>();

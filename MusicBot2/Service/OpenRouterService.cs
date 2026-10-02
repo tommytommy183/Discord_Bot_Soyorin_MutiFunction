@@ -237,7 +237,7 @@ namespace MusicBot2.Service
         private readonly string[] _googleModels =
         {
             // ══ 第一梯：最新 Flash 主力 ══
-            "gemini-3.8-flash",             // 最新 Flash，但很長無法使用
+            //"gemini-3.8-flash",             // 最新 Flash，但很長無法使用
             "gemini-3.7-flash",             // 最新一代 Flash
             "gemini-3.6-flash",             // 穩定 Flash
 
