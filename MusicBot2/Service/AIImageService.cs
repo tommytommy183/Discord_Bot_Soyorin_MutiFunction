@@ -122,6 +122,10 @@ namespace MusicBot2.Service
 
         private async Task<Stream> PostToWorkerAsync(string prompt, List<(byte[] bytes, string filename, string mimeType)> images = null)
         {
+            // 有圖時加安全關鍵字，降低 Cloudflare AI content filter 誤判機率
+            if (images != null && images.Count > 0 && !prompt.Contains("safe for work", StringComparison.OrdinalIgnoreCase))
+                prompt += ", safe for work, wholesome, family friendly, sfw, non-explicit";
+
             var (body, ct) = BuildRawMultipart(prompt, images);
             body.Headers.TryAddWithoutValidation("Content-Type", ct);
             using var req = new HttpRequestMessage(HttpMethod.Post, CfWorkerUrl);
