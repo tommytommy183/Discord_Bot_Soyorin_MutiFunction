@@ -56,7 +56,7 @@ namespace MusicBot2.Service
             RankEntry SoloEntry, RankEntry FlexEntry,
             List<MatchDetail> Matches,
             List<(List<ParticipantInfo> Blue, List<ParticipantInfo> Red)> Teams);
-        private record MatchWithTeams(MatchDetail Detail, List<ParticipantInfo> Blue, List<ParticipantInfo> Red);
+        private record MatchWithTeams(MatchDetail Detail, List<ParticipantInfo> Blue, List<ParticipantInfo> Red, string PlayerGameName = null, string PlayerTagLine = null);
 
         private static string MakeCacheKey(string puuid)
             => new string(puuid.Where(char.IsLetterOrDigit).Take(14).ToArray());
@@ -146,6 +146,7 @@ namespace MusicBot2.Service
                 var gameEnd  = info.TryGetProperty("gameEndTimestamp",  out var gete) ? gete.GetInt64() : 0L;
 
                 MatchDetail myDetail = null;
+                string playerGameName = null, playerTagLine = null;
                 var blueTeam = new List<ParticipantInfo>();
                 var redTeam  = new List<ParticipantInfo>();
 
@@ -174,6 +175,10 @@ namespace MusicBot2.Service
 
                     if (isMe)
                     {
+                        // Extract name from match data as fallback
+                        playerGameName = p.TryGetProperty("riotIdGameName", out var mgn) && !string.IsNullOrEmpty(mgn.GetString()) ? mgn.GetString() : null;
+                        playerTagLine  = p.TryGetProperty("riotIdTagline",  out var mtl) && !string.IsNullOrEmpty(mtl.GetString()) ? mtl.GetString() : null;
+
                         var vision  = p.TryGetProperty("visionScore",               out var vv) ? vv.GetInt32() : 0;
                         var gold    = p.TryGetProperty("goldEarned",                out var gv) ? gv.GetInt32() : 0;
                         var doubles = p.TryGetProperty("doubleKills",               out var dk) ? dk.GetInt32() : 0;
@@ -192,7 +197,7 @@ namespace MusicBot2.Service
                     }
                 }
                 if (myDetail == null) return null;
-                return new MatchWithTeams(myDetail, blueTeam, redTeam);
+                return new MatchWithTeams(myDetail, blueTeam, redTeam, playerGameName, playerTagLine);
             }
             catch { }
             return null;
@@ -277,6 +282,14 @@ namespace MusicBot2.Service
             var matches = matchResults.Select(m => m.Detail).ToList();
             var teams   = matchResults.Select(m => (m.Blue, m.Red)).ToList();
             Console.WriteLine($"[LOLService] matches parsed={matches.Count}");
+
+            // Fallback: use name from first match if account API returned "?"
+            if ((gameName == "?" || string.IsNullOrEmpty(gameName)) && matchResults.Count > 0)
+            {
+                var first = matchResults[0];
+                if (!string.IsNullOrEmpty(first.PlayerGameName)) gameName = first.PlayerGameName;
+                if (!string.IsNullOrEmpty(first.PlayerTagLine))  tagLine  = first.PlayerTagLine;
+            }
 
             // Store in cache
             var cacheKey = MakeCacheKey(puuid);
