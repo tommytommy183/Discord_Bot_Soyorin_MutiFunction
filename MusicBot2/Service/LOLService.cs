@@ -16,17 +16,19 @@ namespace MusicBot2.Service
 
         private const string DdragonBase = "https://ddragon.leagueoflegends.com";
 
-        // region code → (platform, regional)
-        private static (string Platform, string Regional) GetEndpoints(string region) => (region ?? "tw").ToLower() switch
+        // region code → (platform, matchRegional, accountRegional)
+        // matchRegional:   /lol/match/v5/ routing
+        // accountRegional: /riot/account/v1/ routing（TW 帳號 API 只在 asia 可查，match 用 sea）
+        private static (string Platform, string MatchRegional, string AccountRegional) GetEndpoints(string region) => (region ?? "tw").ToLower() switch
         {
-            "kr"   => ("https://kr.api.riotgames.com",   "https://asia.api.riotgames.com"),
-            "jp"   => ("https://jp1.api.riotgames.com",  "https://asia.api.riotgames.com"),
-            "sg"   => ("https://sg2.api.riotgames.com",  "https://asia.api.riotgames.com"),
-            "na"   => ("https://na1.api.riotgames.com",  "https://americas.api.riotgames.com"),
-            "euw"  => ("https://euw1.api.riotgames.com", "https://europe.api.riotgames.com"),
-            "eune" => ("https://eun1.api.riotgames.com", "https://europe.api.riotgames.com"),
-            "oce"  => ("https://oc1.api.riotgames.com",  "https://americas.api.riotgames.com"),
-            _      => ("https://tw2.api.riotgames.com",  "https://sea.api.riotgames.com"),  // tw / 預設
+            "kr"   => ("https://kr.api.riotgames.com",   "https://asia.api.riotgames.com",     "https://asia.api.riotgames.com"),
+            "jp"   => ("https://jp1.api.riotgames.com",  "https://asia.api.riotgames.com",     "https://asia.api.riotgames.com"),
+            "sg"   => ("https://sg2.api.riotgames.com",  "https://sea.api.riotgames.com",      "https://asia.api.riotgames.com"),
+            "na"   => ("https://na1.api.riotgames.com",  "https://americas.api.riotgames.com", "https://americas.api.riotgames.com"),
+            "euw"  => ("https://euw1.api.riotgames.com", "https://europe.api.riotgames.com",   "https://europe.api.riotgames.com"),
+            "eune" => ("https://eun1.api.riotgames.com", "https://europe.api.riotgames.com",   "https://europe.api.riotgames.com"),
+            "oce"  => ("https://oc1.api.riotgames.com",  "https://americas.api.riotgames.com", "https://americas.api.riotgames.com"),
+            _      => ("https://tw2.api.riotgames.com",  "https://sea.api.riotgames.com",      "https://asia.api.riotgames.com"),  // tw / 預設
         };
 
         // Discord ID → PUUID
@@ -81,8 +83,8 @@ namespace MusicBot2.Service
 
         public async Task<string> GetPuuidByRiotIdAsync(string gameName, string tagLine, string region = "tw")
         {
-            var (_, regional) = GetEndpoints(region);
-            var url = $"{regional}/riot/account/v1/accounts/by-riot-id/{Uri.EscapeDataString(gameName)}/{Uri.EscapeDataString(tagLine)}";
+            var (_, _, accountRegional) = GetEndpoints(region);
+            var url = $"{accountRegional}/riot/account/v1/accounts/by-riot-id/{Uri.EscapeDataString(gameName)}/{Uri.EscapeDataString(tagLine)}";
             var json = await GetJsonAsync(url);
             return json?.TryGetProperty("puuid", out var p) == true ? p.GetString() : null;
         }
@@ -262,9 +264,9 @@ namespace MusicBot2.Service
         {
             try
             {
-            var (platform, regional) = GetEndpoints(region);
-            Console.WriteLine($"[LOLService] GetPlayerStats puuid={puuid[..20]}... platform={platform} regional={regional}");
-            var (gameName, tagLine) = await GetAccountByPuuidAsync(puuid, regional);
+            var (platform, matchRegional, accountRegional) = GetEndpoints(region);
+            Console.WriteLine($"[LOLService] GetPlayerStats puuid={puuid[..20]}... platform={platform} match={matchRegional} account={accountRegional}");
+            var (gameName, tagLine) = await GetAccountByPuuidAsync(puuid, accountRegional);
             var level = await GetSummonerLevelAsync(puuid, platform);
             Console.WriteLine($"[LOLService] account={gameName}#{tagLine} level={level}");
 
@@ -273,10 +275,10 @@ namespace MusicBot2.Service
             var soloEntry = rankEntries.FirstOrDefault(e => e.Queue == "RANKED_SOLO_5x5");
             var flexEntry = rankEntries.FirstOrDefault(e => e.Queue == "RANKED_FLEX_SR");
 
-            // Fetch recent 15 matches (all queues)
-            var matchIds = await GetMatchIdsAsync(puuid, regional, 15);
+            // Fetch recent 20 matches (all queues)
+            var matchIds = await GetMatchIdsAsync(puuid, matchRegional, 20);
             Console.WriteLine($"[LOLService] matchIds count={matchIds.Count}");
-            var matchTasks = matchIds.Select(id => GetMatchWithTeamsAsync(id, puuid, regional)).ToArray();
+            var matchTasks = matchIds.Select(id => GetMatchWithTeamsAsync(id, puuid, matchRegional)).ToArray();
             await Task.WhenAll(matchTasks);
             var matchResults = matchTasks.Select(t => t.Result).Where(m => m != null).ToList();
             var matches = matchResults.Select(m => m.Detail).ToList();
@@ -475,13 +477,13 @@ namespace MusicBot2.Service
 
         public async Task<List<LossEvent>> CheckForLossesAsync()
         {
-            var (platform, regional) = GetEndpoints("tw"); // 監控的朋友都是 TW
+            var (platform, matchRegional, accountRegional) = GetEndpoints("tw"); // 監控的朋友都是 TW
             var results = new List<LossEvent>();
             foreach (var (discordId, puuid) in FriendsPuuid.Where(kv => MonitoredDiscordIds.Contains(kv.Key)))
             {
                 try
                 {
-                    var (sumName, _) = await GetAccountByPuuidAsync(puuid, regional);
+                    var (sumName, _) = await GetAccountByPuuidAsync(puuid, accountRegional);
                     var entries = await GetRankEntriesAsync(puuid, platform);
                     var solo = entries.FirstOrDefault(e => e.Queue == "RANKED_SOLO_5x5");
                     var flex = entries.FirstOrDefault(e => e.Queue == "RANKED_FLEX_SR");
@@ -496,13 +498,13 @@ namespace MusicBot2.Service
                         if (solo != null && current.SoloLP < last.SoloLP)
                         {
                             int diff = last.SoloLP - current.SoloLP;
-                            var champ = await GetLastRankedChampAsync(puuid, regional, 420);
+                            var champ = await GetLastRankedChampAsync(puuid, matchRegional, 420);
                             results.Add(new LossEvent(discordId, sumName, "單排", current.SoloFull, diff, champ));
                         }
                         if (flex != null && current.FlexLP < last.FlexLP)
                         {
                             int diff = last.FlexLP - current.FlexLP;
-                            var champ = await GetLastRankedChampAsync(puuid, regional, 440);
+                            var champ = await GetLastRankedChampAsync(puuid, matchRegional, 440);
                             results.Add(new LossEvent(discordId, sumName, "彈性", current.FlexFull, diff, champ));
                         }
                     }
