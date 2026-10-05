@@ -714,6 +714,34 @@ public class Program
                     });
                 }
             }
+            else if (component.Data.CustomId.StartsWith("lol_match_") || component.Data.CustomId.StartsWith("lol_back_"))
+            {
+                await component.DeferAsync();
+                var lolService = _services.GetService<LOLService>();
+                var id = component.Data.CustomId;
+                (Discord.Embed embed, ComponentBuilder comp) result;
+
+                if (id.StartsWith("lol_back_"))
+                {
+                    var cacheKey = id["lol_back_".Length..];
+                    result = lolService.GetOverviewEmbed(cacheKey);
+                }
+                else
+                {
+                    // lol_match_{cacheKey}_{index}
+                    var rest = id["lol_match_".Length..];
+                    var lastUnderscore = rest.LastIndexOf('_');
+                    var cacheKey = rest[..lastUnderscore];
+                    var index = int.TryParse(rest[(lastUnderscore + 1)..], out var idx) ? idx : 0;
+                    result = lolService.GetMatchDetailEmbed(cacheKey, index);
+                }
+
+                await component.ModifyOriginalResponseAsync(msg =>
+                {
+                    msg.Embed = result.embed;
+                    msg.Components = result.comp?.Build();
+                });
+            }
             else if (component.Data.CustomId.StartsWith("poke_exchange_"))
             {
                 await component.DeferAsync();

@@ -1296,13 +1296,13 @@ namespace MusicBot2.SlahCommands
 
                 // @mention 的朋友都是 TW，其他情況用使用者指定的 region
                 string queryRegion = (mention != null) ? "tw" : region;
-                var (statsText, embed) = await _lolService.GetPlayerStatsAsync(puuid, queryRegion);
+                var (statsText, embed, component, _) = await _lolService.GetPlayerStatsAsync(puuid, queryRegion);
                 if (statsText == null)
                 {
                     await FollowupAsync("查詢時發生錯誤，請稍後再試 🙏");
                     return;
                 }
-                await FollowupAsync(embed: embed);
+                await FollowupAsync(embed: embed, components: component?.Build());
             }
             catch (Exception ex)
             {

@@ -50,6 +50,14 @@ namespace MusicBot2.Service
         private readonly Dictionary<string, (string Id, string Name, int Level)> _summonerCache = new();
         private readonly Dictionary<ulong, RankSnapshot> _lastRankSnapshot = new();
 
+        // Match list cache：key = first 12 alphanum chars of puuid
+        private static readonly Dictionary<string, MatchListCache> _matchCache = new();
+        private record MatchListCache(string GameName, string TagLine, int Level,
+            RankEntry SoloEntry, RankEntry FlexEntry, List<MatchDetail> Matches);
+
+        private static string MakeCacheKey(string puuid)
+            => new string(puuid.Where(char.IsLetterOrDigit).Take(14).ToArray());
+
         public LOLService(string apiKey)
         {
             _apiKey = apiKey;
@@ -132,6 +140,7 @@ namespace MusicBot2.Service
                 var info = json.Value.GetProperty("info");
                 var queueId = info.TryGetProperty("queueId", out var qi) ? qi.GetInt32() : 0;
                 var duration = info.TryGetProperty("gameDuration", out var gd) ? gd.GetInt32() : 0;
+                var gameEnd  = info.TryGetProperty("gameEndTimestamp", out var get) ? get.GetInt64() : 0L;
 
                 foreach (var p in info.GetProperty("participants").EnumerateArray())
                 {
@@ -147,6 +156,13 @@ namespace MusicBot2.Service
                     var lane    = p.TryGetProperty("teamPosition", out var lv) && !string.IsNullOrEmpty(lv.GetString())
                                     ? lv.GetString()
                                     : (p.TryGetProperty("individualPosition", out var iv) ? iv.GetString() : "");
+                    var doubles = p.TryGetProperty("doubleKills",  out var dk)  ? dk.GetInt32()  : 0;
+                    var triples = p.TryGetProperty("tripleKills",  out var tk)  ? tk.GetInt32()  : 0;
+                    var quadras = p.TryGetProperty("quadraKills",  out var qk)  ? qk.GetInt32()  : 0;
+                    var pentas  = p.TryGetProperty("pentaKills",   out var pk)  ? pk.GetInt32()  : 0;
+                    var objDmg  = p.TryGetProperty("damageDealtToObjectives", out var ov) ? ov.GetInt32() : 0;
+                    var turrets = p.TryGetProperty("turretKills",  out var tv)  ? tv.GetInt32()  : 0;
+                    var heal    = p.TryGetProperty("totalHeal",    out var hv)  ? hv.GetInt32()  : 0;
                     return new MatchDetail(
                         matchId, queueId, QueueIdToName(queueId),
                         p.TryGetProperty("championName", out var cn) ? cn.GetString() : "?",
@@ -154,7 +170,9 @@ namespace MusicBot2.Service
                         p.TryGetProperty("win", out var w) && w.GetBoolean(),
                         cs + jungle, duration / 60,
                         dmg, vision, gold,
-                        LaneEmoji(lane)
+                        LaneEmoji(lane),
+                        doubles, triples, quadras, pentas,
+                        objDmg, turrets, heal, gameEnd
                     );
                 }
             }
@@ -210,7 +228,7 @@ namespace MusicBot2.Service
 
         #region Public stats methods
 
-        public async Task<(string TextForAI, Embed Embed)> GetPlayerStatsAsync(string puuid, string region = "tw")
+        public async Task<(string TextForAI, Embed Embed, ComponentBuilder Component, string CacheKey)> GetPlayerStatsAsync(string puuid, string region = "tw")
         {
             try
             {
@@ -225,41 +243,52 @@ namespace MusicBot2.Service
             var soloEntry = rankEntries.FirstOrDefault(e => e.Queue == "RANKED_SOLO_5x5");
             var flexEntry = rankEntries.FirstOrDefault(e => e.Queue == "RANKED_FLEX_SR");
 
-            // Fetch recent 10 matches (all queues)
-            var matchIds = await GetMatchIdsAsync(puuid, regional, 10);
+            // Fetch recent 20 matches (all queues)
+            var matchIds = await GetMatchIdsAsync(puuid, regional, 20);
             Console.WriteLine($"[LOLService] matchIds count={matchIds.Count}");
             var matchTasks = matchIds.Select(id => GetMatchDetailAsync(id, puuid, regional)).ToArray();
             await Task.WhenAll(matchTasks);
             var matches = matchTasks.Select(t => t.Result).Where(m => m != null).ToList();
             Console.WriteLine($"[LOLService] matches parsed={matches.Count}");
 
-            var displayName = $"{gameName}#{tagLine}";
+            // Store in cache
+            var cacheKey = MakeCacheKey(puuid);
+            _matchCache[cacheKey] = new MatchListCache(gameName, tagLine, level, soloEntry, flexEntry, matches);
 
-            // ── 近場統計 ──
-            int totalWins   = matches.Count(m => m.Win);
-            int totalGames  = matches.Count;
-            double avgKills   = totalGames > 0 ? matches.Average(m => m.Kills)   : 0;
-            double avgDeaths  = totalGames > 0 ? matches.Average(m => m.Deaths)  : 0;
-            double avgAssists = totalGames > 0 ? matches.Average(m => m.Assists) : 0;
-            double avgDmg     = totalGames > 0 ? matches.Average(m => m.Damage)  : 0;
-            double avgVision  = totalGames > 0 ? matches.Average(m => m.VisionScore) : 0;
-            double avgCS      = totalGames > 0 ? matches.Average(m => m.CS)      : 0;
-            string kdaRatio   = avgDeaths > 0 ? $"{(avgKills + avgAssists) / avgDeaths:F2}" : "Perfect";
-            var mostChamp = matches.GroupBy(m => m.Champion).OrderByDescending(g => g.Count()).FirstOrDefault()?.Key ?? "-";
+            var (embed, component) = BuildOverviewEmbed(gameName, tagLine, level, soloEntry, flexEntry, matches, cacheKey);
 
             // Text for AI
+            var displayName = $"{gameName}#{tagLine}";
             var sb = new StringBuilder();
             sb.AppendLine($"召喚師：{displayName}（等級 {level}）");
             if (soloEntry != null)
                 sb.AppendLine($"單排：{FormatRank(soloEntry.Tier, soloEntry.Rank, soloEntry.LP, soloEntry.Wins, soloEntry.Losses)}");
             if (flexEntry != null)
                 sb.AppendLine($"彈性：{FormatRank(flexEntry.Tier, flexEntry.Rank, flexEntry.LP, flexEntry.Wins, flexEntry.Losses)}");
-            if (totalGames > 0)
-                sb.AppendLine($"近{totalGames}場：{totalWins}勝{totalGames - totalWins}敗（{totalWins * 100 / totalGames}%）KDA {avgKills:F1}/{avgDeaths:F1}/{avgAssists:F1}={kdaRatio} 最常玩:{mostChamp}");
+            if (matches.Count > 0)
+            {
+                var totalWins = matches.Count(m => m.Win);
+                double avgK = matches.Average(m => m.Kills), avgD = matches.Average(m => m.Deaths), avgA = matches.Average(m => m.Assists);
+                string kdaRatio = avgD > 0 ? $"{(avgK + avgA) / avgD:F2}" : "Perfect";
+                sb.AppendLine($"近{matches.Count}場：{totalWins}勝{matches.Count - totalWins}敗（{totalWins * 100 / matches.Count}%）KDA {avgK:F1}/{avgD:F1}/{avgA:F1}={kdaRatio}");
+            }
             foreach (var m in matches)
-                sb.AppendLine($"{(m.Win ? "勝" : "敗")} {m.QueueName} {m.LaneEmoji}{m.Champion} {m.Kills}/{m.Deaths}/{m.Assists} {m.CS}cs {m.Damage / 1000:F1}k傷害 {m.DurationMin}分鐘");
+                sb.AppendLine($"{(m.Win ? "勝" : "敗")} {m.QueueName} {m.LaneEmoji}{m.Champion} {m.Kills}/{m.Deaths}/{m.Assists} {m.CS}cs {m.Damage / 1000:F1}k傷 {m.DurationMin}min");
 
-            // Embed
+            return (sb.ToString().TrimEnd(), embed, component, cacheKey);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[LOLService] GetPlayerStats EXCEPTION: {ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}");
+                return (null, null, null, null);
+            }
+        }
+
+        private static (Embed embed, ComponentBuilder component) BuildOverviewEmbed(
+            string gameName, string tagLine, int level,
+            RankEntry soloEntry, RankEntry flexEntry, List<MatchDetail> matches, string cacheKey)
+        {
+            var displayName = $"{gameName}#{tagLine}";
             var eb = new EmbedBuilder()
                 .WithTitle($"🎮  {displayName}")
                 .WithColor(new Color(0xC89B3C))
@@ -272,8 +301,21 @@ namespace MusicBot2.Service
                 flexEntry != null ? FormatRank(flexEntry.Tier, flexEntry.Rank, flexEntry.LP, flexEntry.Wins, flexEntry.Losses) : "未定位",
                 inline: true);
 
-            if (totalGames > 0)
+            var component = new ComponentBuilder();
+
+            if (matches.Count > 0)
             {
+                int totalWins   = matches.Count(m => m.Win);
+                int totalGames  = matches.Count;
+                double avgKills   = matches.Average(m => m.Kills);
+                double avgDeaths  = matches.Average(m => m.Deaths);
+                double avgAssists = matches.Average(m => m.Assists);
+                double avgDmg     = matches.Average(m => m.Damage);
+                double avgVision  = matches.Average(m => m.VisionScore);
+                double avgCS      = matches.Average(m => m.CS);
+                string kdaRatio   = avgDeaths > 0 ? $"{(avgKills + avgAssists) / avgDeaths:F2}" : "Perfect";
+                var mostChamp = matches.GroupBy(m => m.Champion).OrderByDescending(g => g.Count()).FirstOrDefault()?.Key ?? "-";
+
                 var winRate = totalWins * 100 / totalGames;
                 var summary = $"**{totalWins}勝 {totalGames - totalWins}敗**（{winRate}%）　KDA **{avgKills:F1}/{avgDeaths:F1}/{avgAssists:F1}** = **{kdaRatio}**\n" +
                               $"平均傷害：{avgDmg / 1000:F1}k　視野分：{avgVision:F1}　CS/場：{avgCS:F0}　最常玩：{mostChamp}";
@@ -286,20 +328,88 @@ namespace MusicBot2.Service
                            $"{m.Kills}/{m.Deaths}/{m.Assists} ({kda:F1})　" +
                            $"{m.CS}cs　{m.Damage / 1000:F1}k傷　👁{m.VisionScore}　{m.DurationMin}min";
                 }).ToList();
-                eb.AddField($"📋 對局紀錄", string.Join("\n", matchLines), inline: false);
+                eb.AddField($"📋 對局紀錄（點按鈕查詳情）", string.Join("\n", matchLines), inline: false);
+
+                // Add buttons (max 25 = 5 rows × 5): each match gets a button
+                for (int i = 0; i < Math.Min(matches.Count, 25); i++)
+                {
+                    var m = matches[i];
+                    var champ = m.Champion.Length > 6 ? m.Champion[..6] : m.Champion;
+                    var label = $"{(m.Win ? "✅" : "❌")}#{i + 1} {champ}";
+                    component.WithButton(label, $"lol_match_{cacheKey}_{i}", ButtonStyle.Secondary, row: i / 5);
+                }
             }
             else
             {
                 eb.AddField("📋 近期對局", "Riot API 未回傳近期對局資料（可能近期未出賽）", inline: false);
             }
 
-            return (sb.ToString().TrimEnd(), eb.Build());
-            }
-            catch (Exception ex)
+            return (eb.Build(), component);
+        }
+
+        public (Embed embed, ComponentBuilder component) GetMatchDetailEmbed(string cacheKey, int matchIndex)
+        {
+            if (!_matchCache.TryGetValue(cacheKey, out var cache))
+                return (new EmbedBuilder().WithTitle("❌ 查詢已過期").WithDescription("請重新執行指令").WithColor(Color.Red).Build(), new ComponentBuilder());
+
+            if (matchIndex < 0 || matchIndex >= cache.Matches.Count)
+                return (new EmbedBuilder().WithTitle("❌ 對局不存在").WithColor(Color.Red).Build(), new ComponentBuilder());
+
+            var m = cache.Matches[matchIndex];
+            double kda = m.Deaths > 0 ? (m.Kills + m.Assists) / (double)m.Deaths : m.Kills + m.Assists;
+
+            // Multi-kill badge
+            string multiKill = m.PentaKills > 0 ? "🏆 **PENTA KILL**" :
+                               m.QuadraKills > 0 ? "🔥 **QUADRA KILL**" :
+                               m.TripleKills > 0 ? "⚡ **TRIPLE KILL**" :
+                               m.DoubleKills > 0 ? "✨ Double Kill" : "";
+
+            // Time ago
+            string timeAgo = "";
+            if (m.GameEndTimestamp > 0)
             {
-                Console.WriteLine($"[LOLService] GetPlayerStats EXCEPTION: {ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}");
-                return (null, null);
+                var dt = DateTimeOffset.FromUnixTimeMilliseconds(m.GameEndTimestamp).ToLocalTime();
+                var diff = DateTimeOffset.Now - dt;
+                timeAgo = diff.TotalDays >= 1 ? $"{(int)diff.TotalDays}天前" :
+                          diff.TotalHours >= 1 ? $"{(int)diff.TotalHours}小時前" :
+                          $"{(int)diff.TotalMinutes}分鐘前";
             }
+
+            var eb = new EmbedBuilder()
+                .WithTitle($"{(m.Win ? "🟢 勝利" : "🔴 失敗")} — {m.LaneEmoji} {m.Champion}")
+                .WithDescription($"`{m.QueueName}` · {m.DurationMin} 分鐘 · {timeAgo}{(multiKill != "" ? $"\n{multiKill}" : "")}")
+                .WithColor(m.Win ? new Color(0x57AB27) : new Color(0xDA373C))
+                .WithFooter($"{cache.GameName}#{cache.TagLine} · 第 {matchIndex + 1} 場");
+
+            eb.AddField("⚔️ KDA",
+                $"**{m.Kills} / {m.Deaths} / {m.Assists}**\nKDA 比：**{kda:F2}**",
+                inline: true);
+            eb.AddField("🗡️ 傷害",
+                $"對英雄：**{m.Damage / 1000:F1}k**\n對目標：{m.ObjDamage / 1000:F1}k",
+                inline: true);
+            eb.AddField("💰 資源",
+                $"CS：**{m.CS}**\n金幣：{m.Gold / 1000:F1}k",
+                inline: true);
+            eb.AddField("👁️ 視野",
+                $"視野分：**{m.VisionScore}**",
+                inline: true);
+            if (m.TurretKills > 0)
+                eb.AddField("🏰 推塔", $"**{m.TurretKills}** 座", inline: true);
+            if (m.TotalHeal > 500)
+                eb.AddField("💚 治療", $"{m.TotalHeal / 1000:F1}k", inline: true);
+
+            var component = new ComponentBuilder()
+                .WithButton("← 返回戰績列表", $"lol_back_{cacheKey}", ButtonStyle.Secondary);
+
+            return (eb.Build(), component);
+        }
+
+        public (Embed embed, ComponentBuilder component) GetOverviewEmbed(string cacheKey)
+        {
+            if (!_matchCache.TryGetValue(cacheKey, out var cache))
+                return (new EmbedBuilder().WithTitle("❌ 查詢已過期").WithDescription("請重新執行指令").WithColor(Color.Red).Build(), new ComponentBuilder());
+
+            return BuildOverviewEmbed(cache.GameName, cache.TagLine, cache.Level, cache.SoloEntry, cache.FlexEntry, cache.Matches, cacheKey);
         }
 
         #endregion
@@ -368,5 +478,7 @@ namespace MusicBot2.Service
     public record RankEntry(string Queue, string Tier, string Rank, int LP, int Wins, int Losses);
     public record RankSnapshot(int SoloLP, string SoloFull, int FlexLP, string FlexFull);
     public record LossEvent(ulong DiscordId, string SummonerName, string Queue, string RankFull, int LPLost, string ChampionName);
-    public record MatchDetail(string MatchId, int QueueId, string QueueName, string Champion, int Kills, int Deaths, int Assists, bool Win, int CS, int DurationMin, int Damage, int VisionScore, int Gold, string LaneEmoji);
+    public record MatchDetail(string MatchId, int QueueId, string QueueName, string Champion, int Kills, int Deaths, int Assists, bool Win, int CS, int DurationMin, int Damage, int VisionScore, int Gold, string LaneEmoji,
+        int DoubleKills = 0, int TripleKills = 0, int QuadraKills = 0, int PentaKills = 0,
+        int ObjDamage = 0, int TurretKills = 0, int TotalHeal = 0, long GameEndTimestamp = 0);
 }

@@ -1257,7 +1257,7 @@ houka,和泉朋花
                                 Discord.Embed statsEmbed = null;
                                 try
                                 {
-                                    var (statsText, embed) = await _lolService.GetPlayerStatsAsync(lolPuuid);
+                                    var (statsText, embed, _, _) = await _lolService.GetPlayerStatsAsync(lolPuuid);
                                     if (!string.IsNullOrWhiteSpace(statsText))
                                     {
                                         statsContext = $"[LOL 戰績資料]\n{statsText}";
