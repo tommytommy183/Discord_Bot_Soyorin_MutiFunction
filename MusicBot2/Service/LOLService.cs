@@ -50,10 +50,13 @@ namespace MusicBot2.Service
         private readonly Dictionary<string, (string Id, string Name, int Level)> _summonerCache = new();
         private readonly Dictionary<ulong, RankSnapshot> _lastRankSnapshot = new();
 
-        // Match list cache：key = first 12 alphanum chars of puuid
+        // Match list cache：key = first 14 alphanum chars of puuid
         private static readonly Dictionary<string, MatchListCache> _matchCache = new();
         private record MatchListCache(string GameName, string TagLine, int Level,
-            RankEntry SoloEntry, RankEntry FlexEntry, List<MatchDetail> Matches);
+            RankEntry SoloEntry, RankEntry FlexEntry,
+            List<MatchDetail> Matches,
+            List<(List<ParticipantInfo> Blue, List<ParticipantInfo> Red)> Teams);
+        private record MatchWithTeams(MatchDetail Detail, List<ParticipantInfo> Blue, List<ParticipantInfo> Red);
 
         private static string MakeCacheKey(string puuid)
             => new string(puuid.Where(char.IsLetterOrDigit).Take(14).ToArray());
@@ -130,54 +133,76 @@ namespace MusicBot2.Service
             return json.Value.EnumerateArray().Select(e => e.GetString()).Where(s => s != null).ToList();
         }
 
-        private async Task<MatchDetail> GetMatchDetailAsync(string matchId, string puuid, string regional)
+        private async Task<MatchWithTeams> GetMatchWithTeamsAsync(string matchId, string puuid, string regional)
         {
             var url = $"{regional}/lol/match/v5/matches/{Uri.EscapeDataString(matchId)}";
             var json = await GetJsonAsync(url);
             if (json == null) return null;
             try
             {
-                var info = json.Value.GetProperty("info");
-                var queueId = info.TryGetProperty("queueId", out var qi) ? qi.GetInt32() : 0;
-                var duration = info.TryGetProperty("gameDuration", out var gd) ? gd.GetInt32() : 0;
-                var gameEnd  = info.TryGetProperty("gameEndTimestamp", out var get) ? get.GetInt64() : 0L;
+                var info     = json.Value.GetProperty("info");
+                var queueId  = info.TryGetProperty("queueId",          out var qi)  ? qi.GetInt32()  : 0;
+                var duration = info.TryGetProperty("gameDuration",      out var gd)  ? gd.GetInt32()  : 0;
+                var gameEnd  = info.TryGetProperty("gameEndTimestamp",  out var gete) ? gete.GetInt64() : 0L;
+
+                MatchDetail myDetail = null;
+                var blueTeam = new List<ParticipantInfo>();
+                var redTeam  = new List<ParticipantInfo>();
 
                 foreach (var p in info.GetProperty("participants").EnumerateArray())
                 {
-                    if (!p.TryGetProperty("puuid", out var pp) || pp.GetString() != puuid) continue;
-                    var kills   = p.TryGetProperty("kills",   out var k)  ? k.GetInt32()  : 0;
-                    var deaths  = p.TryGetProperty("deaths",  out var d)  ? d.GetInt32()  : 0;
-                    var assists = p.TryGetProperty("assists", out var a)  ? a.GetInt32()  : 0;
-                    var cs      = p.TryGetProperty("totalMinionsKilled", out var csv) ? csv.GetInt32() : 0;
-                    var jungle  = p.TryGetProperty("neutralMinionsKilled", out var jv) ? jv.GetInt32() : 0;
+                    var pPuuid  = p.TryGetProperty("puuid", out var ppv) ? ppv.GetString() : "";
+                    var isMe    = pPuuid == puuid;
+                    var pName   = p.TryGetProperty("riotIdGameName", out var rn) && !string.IsNullOrEmpty(rn.GetString())
+                                    ? rn.GetString()
+                                    : (p.TryGetProperty("summonerName", out var sn) ? sn.GetString() : "?");
+                    var champ   = p.TryGetProperty("championName",              out var cn) ? cn.GetString() : "?";
+                    var kills   = p.TryGetProperty("kills",                     out var k)  ? k.GetInt32()  : 0;
+                    var deaths  = p.TryGetProperty("deaths",                    out var d)  ? d.GetInt32()  : 0;
+                    var assists = p.TryGetProperty("assists",                   out var a)  ? a.GetInt32()  : 0;
+                    var cs      = p.TryGetProperty("totalMinionsKilled",        out var csv) ? csv.GetInt32() : 0;
+                    var jungle  = p.TryGetProperty("neutralMinionsKilled",      out var jv)  ? jv.GetInt32()  : 0;
                     var dmg     = p.TryGetProperty("totalDamageDealtToChampions", out var dv) ? dv.GetInt32() : 0;
-                    var vision  = p.TryGetProperty("visionScore", out var vv) ? vv.GetInt32() : 0;
-                    var gold    = p.TryGetProperty("goldEarned", out var gv) ? gv.GetInt32() : 0;
-                    var lane    = p.TryGetProperty("teamPosition", out var lv) && !string.IsNullOrEmpty(lv.GetString())
+                    var win     = p.TryGetProperty("win",                       out var w)  && w.GetBoolean();
+                    var teamId  = p.TryGetProperty("teamId",                    out var ti)  ? ti.GetInt32() : 100;
+                    var lane    = p.TryGetProperty("teamPosition",              out var lv)  && !string.IsNullOrEmpty(lv.GetString())
                                     ? lv.GetString()
-                                    : (p.TryGetProperty("individualPosition", out var iv) ? iv.GetString() : "");
-                    var doubles = p.TryGetProperty("doubleKills",  out var dk)  ? dk.GetInt32()  : 0;
-                    var triples = p.TryGetProperty("tripleKills",  out var tk)  ? tk.GetInt32()  : 0;
-                    var quadras = p.TryGetProperty("quadraKills",  out var qk)  ? qk.GetInt32()  : 0;
-                    var pentas  = p.TryGetProperty("pentaKills",   out var pk)  ? pk.GetInt32()  : 0;
-                    var objDmg  = p.TryGetProperty("damageDealtToObjectives", out var ov) ? ov.GetInt32() : 0;
-                    var turrets = p.TryGetProperty("turretKills",  out var tv)  ? tv.GetInt32()  : 0;
-                    var heal    = p.TryGetProperty("totalHeal",    out var hv)  ? hv.GetInt32()  : 0;
-                    return new MatchDetail(
-                        matchId, queueId, QueueIdToName(queueId),
-                        p.TryGetProperty("championName", out var cn) ? cn.GetString() : "?",
-                        kills, deaths, assists,
-                        p.TryGetProperty("win", out var w) && w.GetBoolean(),
-                        cs + jungle, duration / 60,
-                        dmg, vision, gold,
-                        LaneEmoji(lane),
-                        doubles, triples, quadras, pentas,
-                        objDmg, turrets, heal, gameEnd
-                    );
+                                    : (p.TryGetProperty("individualPosition",  out var iv) ? iv.GetString() : "");
+
+                    var pi = new ParticipantInfo(pName ?? "?", champ, kills, deaths, assists, dmg, cs + jungle, win, isMe, lane);
+                    if (teamId == 100) blueTeam.Add(pi); else redTeam.Add(pi);
+
+                    if (isMe)
+                    {
+                        var vision  = p.TryGetProperty("visionScore",               out var vv) ? vv.GetInt32() : 0;
+                        var gold    = p.TryGetProperty("goldEarned",                out var gv) ? gv.GetInt32() : 0;
+                        var doubles = p.TryGetProperty("doubleKills",               out var dk) ? dk.GetInt32() : 0;
+                        var triples = p.TryGetProperty("tripleKills",               out var tk) ? tk.GetInt32() : 0;
+                        var quadras = p.TryGetProperty("quadraKills",               out var qk) ? qk.GetInt32() : 0;
+                        var pentas  = p.TryGetProperty("pentaKills",                out var pk) ? pk.GetInt32() : 0;
+                        var objDmg  = p.TryGetProperty("damageDealtToObjectives",   out var ov) ? ov.GetInt32() : 0;
+                        var turrets = p.TryGetProperty("turretKills",               out var tv) ? tv.GetInt32() : 0;
+                        var heal    = p.TryGetProperty("totalHeal",                 out var hv) ? hv.GetInt32() : 0;
+                        myDetail = new MatchDetail(
+                            matchId, queueId, QueueIdToName(queueId), champ,
+                            kills, deaths, assists, win, cs + jungle, duration / 60,
+                            dmg, vision, gold, LaneEmoji(lane),
+                            doubles, triples, quadras, pentas, objDmg, turrets, heal, gameEnd
+                        );
+                    }
                 }
+                if (myDetail == null) return null;
+                return new MatchWithTeams(myDetail, blueTeam, redTeam);
             }
             catch { }
             return null;
+        }
+
+        // Keep compat for loss monitor (only needs MatchDetail)
+        private async Task<MatchDetail> GetMatchDetailAsync(string matchId, string puuid, string regional)
+        {
+            var result = await GetMatchWithTeamsAsync(matchId, puuid, regional);
+            return result?.Detail;
         }
 
         private static string LaneEmoji(string lane) => (lane ?? "").ToUpper() switch
@@ -243,17 +268,19 @@ namespace MusicBot2.Service
             var soloEntry = rankEntries.FirstOrDefault(e => e.Queue == "RANKED_SOLO_5x5");
             var flexEntry = rankEntries.FirstOrDefault(e => e.Queue == "RANKED_FLEX_SR");
 
-            // Fetch recent 20 matches (all queues)
-            var matchIds = await GetMatchIdsAsync(puuid, regional, 20);
+            // Fetch recent 15 matches (all queues)
+            var matchIds = await GetMatchIdsAsync(puuid, regional, 15);
             Console.WriteLine($"[LOLService] matchIds count={matchIds.Count}");
-            var matchTasks = matchIds.Select(id => GetMatchDetailAsync(id, puuid, regional)).ToArray();
+            var matchTasks = matchIds.Select(id => GetMatchWithTeamsAsync(id, puuid, regional)).ToArray();
             await Task.WhenAll(matchTasks);
-            var matches = matchTasks.Select(t => t.Result).Where(m => m != null).ToList();
+            var matchResults = matchTasks.Select(t => t.Result).Where(m => m != null).ToList();
+            var matches = matchResults.Select(m => m.Detail).ToList();
+            var teams   = matchResults.Select(m => (m.Blue, m.Red)).ToList();
             Console.WriteLine($"[LOLService] matches parsed={matches.Count}");
 
             // Store in cache
             var cacheKey = MakeCacheKey(puuid);
-            _matchCache[cacheKey] = new MatchListCache(gameName, tagLine, level, soloEntry, flexEntry, matches);
+            _matchCache[cacheKey] = new MatchListCache(gameName, tagLine, level, soloEntry, flexEntry, matches, teams);
 
             var (embed, component) = BuildOverviewEmbed(gameName, tagLine, level, soloEntry, flexEntry, matches, cacheKey);
 
@@ -358,18 +385,15 @@ namespace MusicBot2.Service
             var m = cache.Matches[matchIndex];
             double kda = m.Deaths > 0 ? (m.Kills + m.Assists) / (double)m.Deaths : m.Kills + m.Assists;
 
-            // Multi-kill badge
             string multiKill = m.PentaKills > 0 ? "🏆 **PENTA KILL**" :
                                m.QuadraKills > 0 ? "🔥 **QUADRA KILL**" :
                                m.TripleKills > 0 ? "⚡ **TRIPLE KILL**" :
                                m.DoubleKills > 0 ? "✨ Double Kill" : "";
 
-            // Time ago
             string timeAgo = "";
             if (m.GameEndTimestamp > 0)
             {
-                var dt = DateTimeOffset.FromUnixTimeMilliseconds(m.GameEndTimestamp).ToLocalTime();
-                var diff = DateTimeOffset.Now - dt;
+                var diff = DateTimeOffset.Now - DateTimeOffset.FromUnixTimeMilliseconds(m.GameEndTimestamp).ToLocalTime();
                 timeAgo = diff.TotalDays >= 1 ? $"{(int)diff.TotalDays}天前" :
                           diff.TotalHours >= 1 ? $"{(int)diff.TotalHours}小時前" :
                           $"{(int)diff.TotalMinutes}分鐘前";
@@ -390,13 +414,33 @@ namespace MusicBot2.Service
             eb.AddField("💰 資源",
                 $"CS：**{m.CS}**\n金幣：{m.Gold / 1000:F1}k",
                 inline: true);
-            eb.AddField("👁️ 視野",
-                $"視野分：**{m.VisionScore}**",
-                inline: true);
+            eb.AddField("👁️ 視野", $"視野分：**{m.VisionScore}**", inline: true);
             if (m.TurretKills > 0)
                 eb.AddField("🏰 推塔", $"**{m.TurretKills}** 座", inline: true);
             if (m.TotalHeal > 500)
                 eb.AddField("💚 治療", $"{m.TotalHeal / 1000:F1}k", inline: true);
+
+            // Team compositions
+            if (matchIndex < cache.Teams.Count)
+            {
+                var (blue, red) = cache.Teams[matchIndex];
+
+                string TeamLine(ParticipantInfo p)
+                {
+                    double pkda = p.Deaths > 0 ? (p.Kills + p.Assists) / (double)p.Deaths : p.Kills + p.Assists;
+                    var nameShort = p.Name.Length > 12 ? p.Name[..12] : p.Name;
+                    return $"{(p.IsMe ? "▶ " : "")}{LaneEmoji(p.Lane)}**{p.Champion}**  " +
+                           $"{p.Kills}/{p.Deaths}/{p.Assists} ({pkda:F1})  " +
+                           $"{p.CS}cs  {p.Damage / 1000:F1}k傷  `{nameShort}`";
+                }
+
+                if (blue.Count > 0)
+                    eb.AddField($"{(blue[0].Win ? "🔵🏆 藍方（勝）" : "🔵 藍方")}",
+                        string.Join("\n", blue.Select(TeamLine)), inline: false);
+                if (red.Count > 0)
+                    eb.AddField($"{(red[0].Win ? "🔴🏆 紅方（勝）" : "🔴 紅方")}",
+                        string.Join("\n", red.Select(TeamLine)), inline: false);
+            }
 
             var component = new ComponentBuilder()
                 .WithButton("← 返回戰績列表", $"lol_back_{cacheKey}", ButtonStyle.Secondary);
@@ -475,6 +519,7 @@ namespace MusicBot2.Service
         #endregion
     }
 
+    public record ParticipantInfo(string Name, string Champion, int Kills, int Deaths, int Assists, int Damage, int CS, bool Win, bool IsMe, string Lane);
     public record RankEntry(string Queue, string Tier, string Rank, int LP, int Wins, int Losses);
     public record RankSnapshot(int SoloLP, string SoloFull, int FlexLP, string FlexFull);
     public record LossEvent(ulong DiscordId, string SummonerName, string Queue, string RankFull, int LPLost, string ChampionName);
