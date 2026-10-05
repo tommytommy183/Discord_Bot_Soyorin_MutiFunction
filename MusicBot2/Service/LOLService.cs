@@ -363,14 +363,19 @@ namespace MusicBot2.Service
                               $"平均傷害：{avgDmg / 1000:F1}k　視野分：{avgVision:F1}　CS/場：{avgCS:F0}　最常玩：{mostChamp}";
                 eb.AddField($"📊 近 {totalGames} 場統計", summary, inline: false);
 
-                var matchLines = matches.Select(m =>
+                var matchLines = matches.Select((m, i) =>
                 {
                     double kda = m.Deaths > 0 ? (m.Kills + m.Assists) / (double)m.Deaths : m.Kills + m.Assists;
-                    return $"{(m.Win ? "🟢" : "🔴")} `{m.QueueName}` {m.LaneEmoji}**{m.Champion}**　" +
+                    return $"`#{i + 1}` {(m.Win ? "🟢" : "🔴")} `{m.QueueName}` {m.LaneEmoji}**{m.Champion}**　" +
                            $"{m.Kills}/{m.Deaths}/{m.Assists} ({kda:F1})　" +
                            $"{m.CS}cs　{m.Damage / 1000:F1}k傷　👁{m.VisionScore}　{m.DurationMin}min";
                 }).ToList();
-                eb.AddField($"📋 對局紀錄（點按鈕查詳情）", string.Join("\n", matchLines), inline: false);
+
+                // Split into two fields to stay under Discord's 1024-char field limit
+                var half = (matchLines.Count + 1) / 2;
+                eb.AddField("📋 對局紀錄（點按鈕查詳情）", string.Join("\n", matchLines.Take(half)), inline: false);
+                if (matchLines.Count > half)
+                    eb.AddField("📋 對局紀錄（續）", string.Join("\n", matchLines.Skip(half)), inline: false);
 
                 // Add buttons (max 25 = 5 rows × 5): each match gets a button
                 for (int i = 0; i < Math.Min(matches.Count, 25); i++)
