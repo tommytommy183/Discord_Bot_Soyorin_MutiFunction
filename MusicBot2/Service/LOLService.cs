@@ -26,7 +26,7 @@ namespace MusicBot2.Service
             "euw"  => ("https://euw1.api.riotgames.com", "https://europe.api.riotgames.com"),
             "eune" => ("https://eun1.api.riotgames.com", "https://europe.api.riotgames.com"),
             "oce"  => ("https://oc1.api.riotgames.com",  "https://americas.api.riotgames.com"),
-            _      => ("https://tw2.api.riotgames.com",  "https://asia.api.riotgames.com"),  // tw / 預設
+            _      => ("https://tw2.api.riotgames.com",  "https://sea.api.riotgames.com"),  // tw / 預設
         };
 
         // Discord ID → PUUID
