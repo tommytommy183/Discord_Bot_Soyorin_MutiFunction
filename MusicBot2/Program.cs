@@ -205,6 +205,8 @@ public class Program
     #region 額外的handler
     private async Task InteractionCreated(SocketInteraction interaction)
     {
+        try
+        {
         if (interaction is SocketMessageComponent component)
         {
             // 處理踩地雷按鈕
@@ -1704,6 +1706,17 @@ public class Program
         {
             var context = new SocketInteractionContext(_client, interaction);
             await _interactionService.ExecuteCommandAsync(context, _services);
+        }
+        }
+        catch (Discord.Net.HttpException ex) when ((int)ex.DiscordCode == 10062 || (int)ex.DiscordCode == 40060)
+        {
+            // 10062 = Unknown interaction (token expired, >3s)
+            // 40060 = Interaction has already been acknowledged
+            Console.WriteLine($"[Interaction] Expired/duplicate interaction ignored: {ex.DiscordCode}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Interaction] Unhandled error: {ex.Message}");
         }
     }
 

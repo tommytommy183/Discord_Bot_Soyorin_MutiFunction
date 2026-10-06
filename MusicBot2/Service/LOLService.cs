@@ -34,6 +34,7 @@ namespace MusicBot2.Service
         // Discord ID → 一或多個 PUUID（同一人可能有多個帳號）
         public static readonly Dictionary<ulong, List<string>> FriendsPuuid = new()
         {
+            { 489444066828746764UL, new() { "FTNVBO4-Lh126Ri_D7RrU27B4edEhvBVEbSRjye8EuboxXskud1sK6JByL052mMOy0jRegg-u1CNGA" } },
             { 415032840925741056UL, new() { "jBDEyQij_banYooUWZph_QHX7K-LC5MzCE0cMoeo4vSFpKFtqpUffBO0d2eNy_b1JB16VHJHqB4Z1Q" } },
             { 540922644267270154UL, new() { "WE_uzNuYx4oYgGAt3q89u_P_7H6CVDtXbIKbuXnc-YDVvBiSDB4U1kFEx8POJ2zqUM0EIEgGNPmVSw" } },
             { 325482625127153664UL, new() { "Dcy9asOLYTrAbYaT_1IhFSRYfMIPHJwygtXgUwLUqUKP-Gauvekr6kihPechxIuj4PKnhNTKqswCoQ" } },
