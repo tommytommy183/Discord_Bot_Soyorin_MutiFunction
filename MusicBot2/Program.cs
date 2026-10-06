@@ -2260,21 +2260,26 @@ public class Program
             if (steamDup.HasValue)
             {
                 var (origChId, origMsgId, origUserId) = steamDup.Value;
-                // 回覆新訊息
-                if (message is IUserMessage userMsg)
-                    await userMsg.ReplyAsync("耖你媽，傳過了");
-                else
-                    await message.Channel.SendMessageAsync("耖你媽，傳過了");
-                // 回覆原始訊息：@新傳的人
-                try
+                if (origMsgId != 0)
                 {
-                    var origChannel = _client.GetChannel(origChId) as IMessageChannel;
-                    if (origChannel != null)
+                    // 有記錄原始訊息 ID → 回覆原始訊息，@新傳的人
+                    try
+                    {
+                        var origChannel = _client.GetChannel(origChId) as IMessageChannel ?? message.Channel;
                         await origChannel.SendMessageAsync(
                             $"耖你媽，<@{message.Author.Id}> 傳過了",
                             messageReference: new Discord.MessageReference(origMsgId, origChId));
+                    }
+                    catch
+                    {
+                        await message.Channel.SendMessageAsync($"耖你媽，<@{message.Author.Id}> 傳過了");
+                    }
                 }
-                catch { }
+                else
+                {
+                    // 舊格式（沒有 messageId）→ 直接回傳
+                    await message.Channel.SendMessageAsync("耖你媽，傳過了");
+                }
             }
         }
 
