@@ -980,7 +980,7 @@ houka,和泉朋花
                 if (_lolService != null && LOLService.FriendsPuuid.Count > 0)
                 {
                     var lolFriendLines = LOLService.FriendsPuuid
-                        .Select(kv => $"  <@{kv.Key}> = {kv.Value}");
+                        .Select(kv => $"  <@{kv.Key}> = {string.Join(", ", kv.Value)}");
                     systemPrompt += "\n\n[已知 LOL 玩家 PUUID 對應表（Discord mention → PUUID）]\n"
                         + string.Join("\n", lolFriendLines)
                         + "\n訊息中若出現上述 <@id>，請直接對應到他們的 PUUID 輸出 [LOL:] 標籤，不需要猜測。";

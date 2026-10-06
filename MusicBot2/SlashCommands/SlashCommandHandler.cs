@@ -1244,13 +1244,13 @@ namespace MusicBot2.SlahCommands
             [Summary("查詢對象", "@某人 直接查對方的戰績（需要已登記）")] Discord.WebSocket.SocketGuildUser mention = null,
             [Summary("地區", "伺服器地區：tw/kr/jp/sg/na/euw/eune/oce（預設 tw）")] string region = "tw")
         {
-            string puuid = null;
+            List<string> puuids = null;
 
             // @mention 優先（登記的朋友預設都是 tw）
             if (mention != null)
             {
-                if (LOLService.FriendsPuuid.TryGetValue(mention.Id, out var fPuuid))
-                    puuid = fPuuid;
+                if (LOLService.FriendsPuuid.TryGetValue(mention.Id, out var fPuuids))
+                    puuids = fPuuids;
                 else
                 {
                     await RespondAsync($"{mention.DisplayName} 的 LOL 帳號還沒登記！", ephemeral: true);
@@ -1259,8 +1259,8 @@ namespace MusicBot2.SlahCommands
             }
             else if (string.IsNullOrWhiteSpace(gameName))
             {
-                if (LOLService.FriendsPuuid.TryGetValue(Context.User.Id, out var myPuuid))
-                    puuid = myPuuid;
+                if (LOLService.FriendsPuuid.TryGetValue(Context.User.Id, out var myPuuids))
+                    puuids = myPuuids;
                 else
                 {
                     await RespondAsync("請輸入 Riot ID，或請豬頭馬又幫你登記 Discord ID ✨", ephemeral: true);
@@ -1269,7 +1269,7 @@ namespace MusicBot2.SlahCommands
             }
 
             string tagLine = "";
-            if (puuid == null)
+            if (puuids == null)
             {
                 if (!gameName.Contains('#'))
                 {
@@ -1285,24 +1285,36 @@ namespace MusicBot2.SlahCommands
 
             try
             {
-                if (puuid == null)
-                    puuid = await _lolService.GetPuuidByRiotIdAsync(gameName, tagLine, region);
-
-                if (puuid == null)
+                if (puuids == null)
                 {
-                    await FollowupAsync($"找不到 **{gameName}#{tagLine}**，確認一下 Riot ID 有沒有打對？");
-                    return;
+                    var singlePuuid = await _lolService.GetPuuidByRiotIdAsync(gameName, tagLine, region);
+                    if (singlePuuid == null)
+                    {
+                        await FollowupAsync($"找不到 **{gameName}#{tagLine}**，確認一下 Riot ID 有沒有打對？");
+                        return;
+                    }
+                    puuids = new List<string> { singlePuuid };
                 }
 
                 // @mention 的朋友都是 TW，其他情況用使用者指定的 region
                 string queryRegion = (mention != null) ? "tw" : region;
-                var (statsText, embed, component, _) = await _lolService.GetPlayerStatsAsync(puuid, queryRegion);
-                if (statsText == null)
+
+                bool first = true;
+                foreach (var puuid in puuids)
                 {
-                    await FollowupAsync("查詢時發生錯誤，請稍後再試 🙏");
-                    return;
+                    var (statsText, embed, component, _) = await _lolService.GetPlayerStatsAsync(puuid, queryRegion);
+                    if (statsText == null) continue;
+                    if (first)
+                    {
+                        await FollowupAsync(embed: embed, components: component?.Build());
+                        first = false;
+                    }
+                    else
+                    {
+                        await FollowupAsync(embed: embed, components: component?.Build());
+                    }
                 }
-                await FollowupAsync(embed: embed, components: component?.Build());
+                if (first) await FollowupAsync("查詢時發生錯誤，請稍後再試 🙏");
             }
             catch (Exception ex)
             {
@@ -1312,119 +1324,119 @@ namespace MusicBot2.SlahCommands
         }
         #endregion
 
-        #region TRPG 黑暗奇幻冒險
-        [SlashCommand("開始冒險", "開始一個黑暗奇幻 TRPG 冒險（此頻道所有訊息將成為遊戲內容）")]
-        public async Task StartAdventureAsync([Summary("職業", "選擇職業：戰士、盜賊、法師、牧師、遊俠")]
-        [Choice("戰士", "1")]
-        [Choice("盜賊", "2")]
-        [Choice("法師", "3")]
-        [Choice("牧師", "4")]
-        [Choice("遊俠", "5")]
-        string classChoice)
-        {
-            await DeferAsync();
-            var user = Context.User as SocketGuildUser;
-            if (user == null)
-            {
-                await FollowupAsync("❌ 無法取得使用者資訊", ephemeral: true);
-                return;
-            }
+        #region TRPG 黑暗奇幻冒險 當前模型扛不住
+        //[SlashCommand("開始冒險", "開始一個黑暗奇幻 TRPG 冒險（此頻道所有訊息將成為遊戲內容）")]
+        //public async Task StartAdventureAsync([Summary("職業", "選擇職業：戰士、盜賊、法師、牧師、遊俠")]
+        //[Choice("戰士", "1")]
+        //[Choice("盜賊", "2")]
+        //[Choice("法師", "3")]
+        //[Choice("牧師", "4")]
+        //[Choice("遊俠", "5")]
+        //string classChoice)
+        //{
+        //    await DeferAsync();
+        //    var user = Context.User as SocketGuildUser;
+        //    if (user == null)
+        //    {
+        //        await FollowupAsync("❌ 無法取得使用者資訊", ephemeral: true);
+        //        return;
+        //    }
 
-            var result = await _trpgService.StartAdventureAsync(Context.Channel.Id, user, classChoice);
-            await FollowupAsync(result);
-        }
+        //    var result = await _trpgService.StartAdventureAsync(Context.Channel.Id, user, classChoice);
+        //    await FollowupAsync(result);
+        //}
 
-        [SlashCommand("加入冒險", "加入當前頻道進行中的 TRPG 冒險")]
-        public async Task JoinAdventureAsync([Summary("職業", "選擇職業：戰士、盜賊、法師、牧師、遊俠")]
-        [Choice("戰士", "1")]
-        [Choice("盜賊", "2")]
-        [Choice("法師", "3")]
-        [Choice("牧師", "4")]
-        [Choice("遊俠", "5")]
-        string classChoice)
-        {
-            await DeferAsync();
-            var user = Context.User as SocketGuildUser;
-            if (user == null)
-            {
-                await FollowupAsync("❌ 無法取得使用者資訊", ephemeral: true);
-                return;
-            }
+        //[SlashCommand("加入冒險", "加入當前頻道進行中的 TRPG 冒險")]
+        //public async Task JoinAdventureAsync([Summary("職業", "選擇職業：戰士、盜賊、法師、牧師、遊俠")]
+        //[Choice("戰士", "1")]
+        //[Choice("盜賊", "2")]
+        //[Choice("法師", "3")]
+        //[Choice("牧師", "4")]
+        //[Choice("遊俠", "5")]
+        //string classChoice)
+        //{
+        //    await DeferAsync();
+        //    var user = Context.User as SocketGuildUser;
+        //    if (user == null)
+        //    {
+        //        await FollowupAsync("❌ 無法取得使用者資訊", ephemeral: true);
+        //        return;
+        //    }
 
-            var result = await _trpgService.JoinAdventureAsync(Context.Channel.Id, user, classChoice);
-            await FollowupAsync(result);
-        }
+        //    var result = await _trpgService.JoinAdventureAsync(Context.Channel.Id, user, classChoice);
+        //    await FollowupAsync(result);
+        //}
 
-        [SlashCommand("投骰", "投擲 20 面骰來判定行動結果")]
-        public async Task RollDiceAsync()
-        {
-            await DeferAsync();
-            var user = Context.User as SocketGuildUser;
-            if (user == null)
-            {
-                await FollowupAsync("❌ 無法取得使用者資訊", ephemeral: true);
-                return;
-            }
+        //[SlashCommand("投骰", "投擲 20 面骰來判定行動結果")]
+        //public async Task RollDiceAsync()
+        //{
+        //    await DeferAsync();
+        //    var user = Context.User as SocketGuildUser;
+        //    if (user == null)
+        //    {
+        //        await FollowupAsync("❌ 無法取得使用者資訊", ephemeral: true);
+        //        return;
+        //    }
 
-            var (rollText, rollImagePrompt) = await _trpgService.RollDiceAsync(Context.Channel.Id, user);
-            await FollowupAsync(rollText);
+        //    var (rollText, rollImagePrompt) = await _trpgService.RollDiceAsync(Context.Channel.Id, user);
+        //    await FollowupAsync(rollText);
 
-            // 異步生成場景圖片
-            if (!string.IsNullOrWhiteSpace(rollImagePrompt))
-            {
-                _ = Task.Run(async () =>
-                {
-                    try
-                    {
-                        var stream = await _aiImageService.GenerateImageAsync(rollImagePrompt);
-                        if (stream != null)
-                            await Context.Channel.SendFileAsync(stream, "scene.png", $"🖼️ *{rollImagePrompt}*");
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"[TRPG Image] 擲骰場景圖片生成失敗: {ex.Message}");
-                    }
-                });
-            }
-        }
+        //    // 異步生成場景圖片
+        //    if (!string.IsNullOrWhiteSpace(rollImagePrompt))
+        //    {
+        //        _ = Task.Run(async () =>
+        //        {
+        //            try
+        //            {
+        //                var stream = await _aiImageService.GenerateImageAsync(rollImagePrompt);
+        //                if (stream != null)
+        //                    await Context.Channel.SendFileAsync(stream, "scene.png", $"🖼️ *{rollImagePrompt}*");
+        //            }
+        //            catch (Exception ex)
+        //            {
+        //                Console.WriteLine($"[TRPG Image] 擲骰場景圖片生成失敗: {ex.Message}");
+        //            }
+        //        });
+        //    }
+        //}
 
-        [SlashCommand("結束冒險", "結束當前頻道的 TRPG 冒險")]
-        public async Task EndAdventureAsync()
-        {
-            await DeferAsync();
-            var user = Context.User as SocketGuildUser;
-            if (user == null)
-            {
-                await FollowupAsync("❌ 無法取得使用者資訊", ephemeral: true);
-                return;
-            }
+        //[SlashCommand("結束冒險", "結束當前頻道的 TRPG 冒險")]
+        //public async Task EndAdventureAsync()
+        //{
+        //    await DeferAsync();
+        //    var user = Context.User as SocketGuildUser;
+        //    if (user == null)
+        //    {
+        //        await FollowupAsync("❌ 無法取得使用者資訊", ephemeral: true);
+        //        return;
+        //    }
 
-            var result = await _trpgService.EndAdventureAsync(Context.Channel.Id, user);
-            await FollowupAsync(result);
-        }
+        //    var result = await _trpgService.EndAdventureAsync(Context.Channel.Id, user);
+        //    await FollowupAsync(result);
+        //}
 
-        [SlashCommand("冒險狀態", "查看當前冒險的狀態")]
-        public async Task AdventureStatusAsync()
-        {
-            await DeferAsync();
-            var result = await _trpgService.GetAdventureStatusAsync(Context.Channel.Id);
-            await FollowupAsync(result, ephemeral: true);
-        }
+        //[SlashCommand("冒險狀態", "查看當前冒險的狀態")]
+        //public async Task AdventureStatusAsync()
+        //{
+        //    await DeferAsync();
+        //    var result = await _trpgService.GetAdventureStatusAsync(Context.Channel.Id);
+        //    await FollowupAsync(result, ephemeral: true);
+        //}
 
-        [SlashCommand("查看背包", "查看你的背包物品")]
-        public async Task ViewInventoryAsync()
-        {
-            await DeferAsync();
-            var user = Context.User as SocketGuildUser;
-            if (user == null)
-            {
-                await FollowupAsync("❌ 無法取得使用者資訊", ephemeral: true);
-                return;
-            }
+        //[SlashCommand("查看背包", "查看你的背包物品")]
+        //public async Task ViewInventoryAsync()
+        //{
+        //    await DeferAsync();
+        //    var user = Context.User as SocketGuildUser;
+        //    if (user == null)
+        //    {
+        //        await FollowupAsync("❌ 無法取得使用者資訊", ephemeral: true);
+        //        return;
+        //    }
 
-            var result = await _trpgService.GetInventoryAsync(Context.Channel.Id, user);
-            await FollowupAsync(result, ephemeral: true);
-        }
+        //    var result = await _trpgService.GetInventoryAsync(Context.Channel.Id, user);
+        //    await FollowupAsync(result, ephemeral: true);
+        //}
         #endregion
 
         #region 歌詞相關

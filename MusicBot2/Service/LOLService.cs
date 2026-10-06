@@ -31,14 +31,18 @@ namespace MusicBot2.Service
             _      => ("https://tw2.api.riotgames.com",  "https://sea.api.riotgames.com",      "https://asia.api.riotgames.com"),  // tw / 預設
         };
 
-        // Discord ID → PUUID
-        public static readonly Dictionary<ulong, string> FriendsPuuid = new()
+        // Discord ID → 一或多個 PUUID（同一人可能有多個帳號）
+        public static readonly Dictionary<ulong, List<string>> FriendsPuuid = new()
         {
-            { 415032840925741056UL, "jBDEyQij_banYooUWZph_QHX7K-LC5MzCE0cMoeo4vSFpKFtqpUffBO0d2eNy_b1JB16VHJHqB4Z1Q" },
-            { 540922644267270154UL, "WE_uzNuYx4oYgGAt3q89u_P_7H6CVDtXbIKbuXnc-YDVvBiSDB4U1kFEx8POJ2zqUM0EIEgGNPmVSw" },
-            { 325482625127153664UL, "Dcy9asOLYTrAbYaT_1IhFSRYfMIPHJwygtXgUwLUqUKP-Gauvekr6kihPechxIuj4PKnhNTKqswCoQ" },
-            { 404439235290988544UL, "IuTS7BSjJMHpxpAI2xu6VCO8fz_CEpYdDNLQyhvtn-F2A-vt4qcxmXEkcaM_0swUmIQ6YLHQbyTxRg" },
-            { 541105947435859978, "16dyB1qKIS_aStgZUhFvqTrnzk9rywVRErq28Rge-z8tmxjFRbvu3JOYLnlM5b29PAneS9RBjJiIeQ" },
+            { 415032840925741056UL, new() { "jBDEyQij_banYooUWZph_QHX7K-LC5MzCE0cMoeo4vSFpKFtqpUffBO0d2eNy_b1JB16VHJHqB4Z1Q" } },
+            { 540922644267270154UL, new() { "WE_uzNuYx4oYgGAt3q89u_P_7H6CVDtXbIKbuXnc-YDVvBiSDB4U1kFEx8POJ2zqUM0EIEgGNPmVSw" } },
+            { 325482625127153664UL, new() { "Dcy9asOLYTrAbYaT_1IhFSRYfMIPHJwygtXgUwLUqUKP-Gauvekr6kihPechxIuj4PKnhNTKqswCoQ" } },
+            { 404439235290988544UL, new() { "IuTS7BSjJMHpxpAI2xu6VCO8fz_CEpYdDNLQyhvtn-F2A-vt4qcxmXEkcaM_0swUmIQ6YLHQbyTxRg" } },
+            { 541105947435859978UL, new() {
+                "16dyB1qKIS_aStgZUhFvqTrnzk9rywVRErq28Rge-z8tmxjFRbvu3JOYLnlM5b29PAneS9RBjJiIeQ",
+                "6_UgVXnsJ10o0hhuaSIsrLqd8UEynBljpE2EYzcXtsuetRGBp_7Zva4JX-rzCAbkmBpboyIG4MhL1g"
+            }},
+            { 332066875896889344UL, new() { "VJX1fvKn8OetT94HycBIY6DOk4MYLnhJ2RXpIGrchUi2Gch-4whq7CYW5op9WOmH8oqTS9chnWmItA" } }
         };
 
         // Monitored for rank losses (Soyo taunts)
@@ -50,7 +54,7 @@ namespace MusicBot2.Service
         };
 
         private readonly Dictionary<string, (string Id, string Name, int Level)> _summonerCache = new();
-        private readonly Dictionary<ulong, RankSnapshot> _lastRankSnapshot = new();
+        private readonly Dictionary<string, RankSnapshot> _lastRankSnapshot = new(); // key = puuid
 
         // Match list cache：key = first 14 alphanum chars of puuid
         private static readonly Dictionary<string, MatchListCache> _matchCache = new();
@@ -347,22 +351,27 @@ namespace MusicBot2.Service
 
             if (matches.Count > 0)
             {
-                int totalWins   = matches.Count(m => m.Win);
-                int totalGames  = matches.Count;
-                double avgKills   = matches.Average(m => m.Kills);
-                double avgDeaths  = matches.Average(m => m.Deaths);
-                double avgAssists = matches.Average(m => m.Assists);
-                double avgDmg     = matches.Average(m => m.Damage);
-                double avgVision  = matches.Average(m => m.VisionScore);
-                double avgCS      = matches.Average(m => m.CS);
+                // 積分場（單排420 / 彈性440）才計 KDA 統計
+                var ranked = matches.Where(m => m.QueueId is 420 or 440).ToList();
+                var statsBase = ranked.Count > 0 ? ranked : matches; // fallback：若沒積分場就用全部
+                int totalWins   = statsBase.Count(m => m.Win);
+                int totalGames  = statsBase.Count;
+                double avgKills   = statsBase.Average(m => m.Kills);
+                double avgDeaths  = statsBase.Average(m => m.Deaths);
+                double avgAssists = statsBase.Average(m => m.Assists);
+                double avgDmg     = statsBase.Average(m => m.Damage);
+                double avgVision  = statsBase.Average(m => m.VisionScore);
+                double avgCS      = statsBase.Average(m => m.CS);
                 string kdaRatio   = avgDeaths > 0 ? $"{(avgKills + avgAssists) / avgDeaths:F2}" : "Perfect";
-                var mostChamp = matches.GroupBy(m => m.Champion).OrderByDescending(g => g.Count()).FirstOrDefault()?.Key ?? "-";
+                var mostChamp = statsBase.GroupBy(m => m.Champion).OrderByDescending(g => g.Count()).FirstOrDefault()?.Key ?? "-";
 
-                var winRate = totalWins * 100 / totalGames;
+                var winRate = totalGames > 0 ? totalWins * 100 / totalGames : 0;
+                var statsLabel = ranked.Count > 0 ? $"📊 近 {totalGames} 場積分統計" : $"📊 近 {totalGames} 場統計（無積分場）";
                 var summary = $"**{totalWins}勝 {totalGames - totalWins}敗**（{winRate}%）　KDA **{avgKills:F1}/{avgDeaths:F1}/{avgAssists:F1}** = **{kdaRatio}**\n" +
                               $"平均傷害：{avgDmg / 1000:F1}k　視野分：{avgVision:F1}　CS/場：{avgCS:F0}　最常玩：{mostChamp}";
-                eb.AddField($"📊 近 {totalGames} 場統計", summary, inline: false);
+                eb.AddField(statsLabel, summary, inline: false);
 
+                // 對局列表顯示全部（含非積分場），不限 queue type
                 var matchLines = matches.Select((m, i) =>
                 {
                     double kda = m.Deaths > 0 ? (m.Kills + m.Assists) / (double)m.Deaths : m.Kills + m.Assists;
@@ -484,8 +493,10 @@ namespace MusicBot2.Service
         {
             var (platform, matchRegional, accountRegional) = GetEndpoints("tw"); // 監控的朋友都是 TW
             var results = new List<LossEvent>();
-            foreach (var (discordId, puuid) in FriendsPuuid.Where(kv => MonitoredDiscordIds.Contains(kv.Key)))
+            foreach (var (discordId, puuids) in FriendsPuuid.Where(kv => MonitoredDiscordIds.Contains(kv.Key)))
             {
+                foreach (var puuid in puuids)
+                {
                 try
                 {
                     var (sumName, _) = await GetAccountByPuuidAsync(puuid, accountRegional);
@@ -498,7 +509,7 @@ namespace MusicBot2.Service
                         flex?.LP ?? 0, flex != null ? $"{flex.Tier} {flex.Rank}" : "UNRANKED"
                     );
 
-                    if (_lastRankSnapshot.TryGetValue(discordId, out var last))
+                    if (_lastRankSnapshot.TryGetValue(puuid, out var last))
                     {
                         if (solo != null && current.SoloLP < last.SoloLP)
                         {
@@ -514,12 +525,13 @@ namespace MusicBot2.Service
                         }
                     }
 
-                    _lastRankSnapshot[discordId] = current;
+                    _lastRankSnapshot[puuid] = current;
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"[LOLService] CheckForLosses {discordId}: {ex.Message}");
+                    Console.WriteLine($"[LOLService] CheckForLosses {discordId}/{puuid[..12]}: {ex.Message}");
                 }
+                } // end foreach puuid
             }
             return results;
         }

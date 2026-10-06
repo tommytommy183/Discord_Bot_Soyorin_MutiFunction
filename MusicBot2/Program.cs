@@ -2252,6 +2252,32 @@ public class Program
             }
         }
 
+        // Steam 連結重複偵測
+        if (message.Content.Contains("https://store.steampowered.com/", StringComparison.OrdinalIgnoreCase))
+        {
+            var steamDup = await _setTextService.CheckSteamLinkAsync(
+                message.Content, message.Channel.Id, message.Id, message.Author.Id);
+            if (steamDup.HasValue)
+            {
+                var (origChId, origMsgId, origUserId) = steamDup.Value;
+                // 回覆新訊息
+                if (message is IUserMessage userMsg)
+                    await userMsg.ReplyAsync("耖你媽，傳過了");
+                else
+                    await message.Channel.SendMessageAsync("耖你媽，傳過了");
+                // 回覆原始訊息：@新傳的人
+                try
+                {
+                    var origChannel = _client.GetChannel(origChId) as IMessageChannel;
+                    if (origChannel != null)
+                        await origChannel.SendMessageAsync(
+                            $"耖你媽，<@{message.Author.Id}> 傳過了",
+                            messageReference: new Discord.MessageReference(origMsgId, origChId));
+                }
+                catch { }
+            }
+        }
+
         string match = await _setTextService.Match(message.Content.ToLower());
         if (!string.IsNullOrEmpty(match))
         {
