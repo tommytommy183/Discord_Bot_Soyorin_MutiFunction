@@ -1,5 +1,6 @@
 ﻿using Discord;
 using Discord.WebSocket;
+using StackExchange.Redis;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -11,6 +12,31 @@ namespace MusicBot2.Helpers
 {
     public static class RewardsHelpers
     {
+        private static IDatabase _redisDb;
+        private const string RedisKey = "rewards:list";
+
+        public static async Task InitializeAsync(IDatabase db)
+        {
+            _redisDb = db;
+            var len = await db.HashLengthAsync(RedisKey);
+            if (len == 0)
+            {
+                var fields = rewardsCompareList.Select(kv =>
+                    new HashEntry(kv.Key.ToString(), kv.Value)).ToArray();
+                await db.HashSetAsync(RedisKey, fields);
+            }
+        }
+
+        private static List<string> laodroSong = new List<string>
+        {
+            "https://www.threads.com/share/BAIhU0xvRS/",
+            "https://www.threads.com/share/BAVIM5PTzL/",
+            "https://www.threads.com/share/_44z2qzhv/",
+            "https://www.threads.com/share/BCNzgT0MXg/",
+            "https://www.threads.com/share/BAXsklFDy_/",
+            "https://www.threads.com/share/_xXAScrqR/",
+        };
+
         //後續可以考慮直接下載音檔，然後撥放就好
         private static Dictionary<int, string> videoCompareList = new Dictionary<int, string>
         {
@@ -91,18 +117,21 @@ namespace MusicBot2.Helpers
 
         public static async Task<string> GetRandomRewards(IMessageChannel channel, SocketGuildUser user)
         {
-
             var random = new Random();
-            Dictionary<int, string> reward = rewardsCompareList.OrderBy(x => random.Next()).ToDictionary(x => x.Key, x => x.Value);
 
-            
-            //如果人在頻道，又抽到有音樂的獎勵，就直接撥音樂，現在為了節省流量，先註解
-            //if (user?.VoiceChannel != null && videoCompareList.ContainsKey(reward.Keys.First()))
-            //{
-            //    await PlayRewardsMusicAsync(reward.Keys.First(), channel, user);
-            //}
+            if (_redisDb != null)
+            {
+                try
+                {
+                    var entries = await _redisDb.HashGetAllAsync(RedisKey);
+                    if (entries.Length > 0)
+                        return entries[random.Next(entries.Length)].Value.ToString();
+                }
+                catch { }
+            }
 
-            return reward.Values.First();
+            // Fallback to in-memory list
+            return rewardsCompareList.OrderBy(_ => random.Next()).First().Value;
         }
 
 

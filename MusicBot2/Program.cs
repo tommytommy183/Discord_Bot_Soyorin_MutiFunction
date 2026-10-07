@@ -105,6 +105,17 @@ public class Program
             new[] { googleAIStudioApiKey, googleAIStudioApiKey2, googleAIStudioApiKey3 }
             .Where(k => !string.IsNullOrWhiteSpace(k)));
         var setTextService = new SetTextService(redisConn);
+        // 初始化 rewards list 到 Redis（若為空則自動 seed）
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var redisForRewards = StackExchange.Redis.ConnectionMultiplexer.Connect(redisConn);
+                await MusicBot2.Helpers.RewardsHelpers.InitializeAsync(redisForRewards.GetDatabase());
+                Console.WriteLine("[Rewards] Redis rewards list initialized.");
+            }
+            catch (Exception ex) { Console.WriteLine($"[Rewards] Redis init failed: {ex.Message}"); }
+        });
 
         _client = new DiscordSocketClient(config);
         _commands = new CommandService();
@@ -171,12 +182,14 @@ public class Program
               .AddSingleton<YgoDuelService>(sp => new YgoDuelService(redisConn, sp.GetRequiredService<OpenRouterService>(), _client))
               .AddSingleton<FreeDuelService>(sp => new FreeDuelService(redisConn, sp.GetRequiredService<OpenRouterService>(), _client, sp.GetRequiredService<YgoDuelService>()))
               .AddSingleton<LOLService>(sp => new LOLService(Environment.GetEnvironmentVariable("RIOT_APIKEY") ?? ""))
+              .AddSingleton<TFTService>(sp => new TFTService(Environment.GetEnvironmentVariable("RIOT_APIKEY") ?? ""))
               .BuildServiceProvider();
 
         _googleAIStudioService = _services.GetRequiredService<GoogleAIStudioService>();
         _openRouterService = _services.GetRequiredService<OpenRouterService>();
         _openRouterService.SetValorantService(_services.GetRequiredService<ValorantService>());
         _openRouterService.SetLolService(_services.GetRequiredService<LOLService>());
+        _openRouterService.SetTftService(_services.GetRequiredService<TFTService>());
         _setTextService = _services.GetRequiredService<SetTextService>();
         _freeDuelSvc = _services.GetRequiredService<FreeDuelService>();
         _trpgService = _services.GetRequiredService<TRPGService>();
@@ -736,6 +749,34 @@ public class Program
                     var cacheKey = rest[..lastUnderscore];
                     var index = int.TryParse(rest[(lastUnderscore + 1)..], out var idx) ? idx : 0;
                     result = lolService.GetMatchDetailEmbed(cacheKey, index);
+                }
+
+                await component.ModifyOriginalResponseAsync(msg =>
+                {
+                    msg.Embed = result.embed;
+                    msg.Components = result.comp?.Build();
+                });
+            }
+            else if (component.Data.CustomId.StartsWith("tft_match_") || component.Data.CustomId.StartsWith("tft_back_"))
+            {
+                await component.DeferAsync();
+                var tftService = _services.GetService<TFTService>();
+                var id = component.Data.CustomId;
+                (Discord.Embed embed, ComponentBuilder comp) result;
+
+                if (id.StartsWith("tft_back_"))
+                {
+                    var cacheKey = id["tft_back_".Length..];
+                    result = tftService.GetOverviewEmbed(cacheKey);
+                }
+                else
+                {
+                    // tft_match_{cacheKey}_{index}
+                    var rest = id["tft_match_".Length..];
+                    var lastUnderscore = rest.LastIndexOf('_');
+                    var cacheKey = rest[..lastUnderscore];
+                    var index = int.TryParse(rest[(lastUnderscore + 1)..], out var idx) ? idx : 0;
+                    result = tftService.GetMatchDetailEmbed(cacheKey, index);
                 }
 
                 await component.ModifyOriginalResponseAsync(msg =>

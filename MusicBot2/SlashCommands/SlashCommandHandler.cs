@@ -53,9 +53,10 @@ namespace MusicBot2.SlahCommands
         private readonly YgoDuelService _ygoService;
         private readonly FreeDuelService _freeDuelSvc;
         private readonly LOLService _lolService;
+        private readonly TFTService _tftService;
         private readonly System.Net.Http.HttpClient _httpClient = new();
 
-        public SlashCommandHandler(Program program, WordGuessingService wordService, MineGameService mineGameService, ElevenLabsService elevenLabsService, OldMaidService oldMaidService, RubiksCubeService rubiksCubeService, GoogleAIStudioService googleAIStudioService, OpenRouterService openRouterService, RVC_Service rVC_Service, SetTextService setTextService, Game2048Service game2048Service, Game1A2BService game1A2BService, Pick2Service pick2Service, JikanAnimeService animeService, PokeService pokeService, PokeGameService pokeGameService, ValorantService valorantService, TRPGService trpgService, LyrisService lyrisService, LyricsDisplayService lyricsDisplayService, UselessApiService uselessApiService, NekoBotService nekoBotService, WaifuImService waifuImService, WaifuPicsService waifuPicsService, AIImageService aiImageService, GroqWhisperService groqWhisperService, FishAudioService fishAudioService, PokeTowerService pokeTowerService, FgoGuessService fgoGuessService, HolyGrailTowerService holyGrailTowerService, YgoDuelService ygoService, FreeDuelService freeDuelService, LOLService lolService)
+        public SlashCommandHandler(Program program, WordGuessingService wordService, MineGameService mineGameService, ElevenLabsService elevenLabsService, OldMaidService oldMaidService, RubiksCubeService rubiksCubeService, GoogleAIStudioService googleAIStudioService, OpenRouterService openRouterService, RVC_Service rVC_Service, SetTextService setTextService, Game2048Service game2048Service, Game1A2BService game1A2BService, Pick2Service pick2Service, JikanAnimeService animeService, PokeService pokeService, PokeGameService pokeGameService, ValorantService valorantService, TRPGService trpgService, LyrisService lyrisService, LyricsDisplayService lyricsDisplayService, UselessApiService uselessApiService, NekoBotService nekoBotService, WaifuImService waifuImService, WaifuPicsService waifuPicsService, AIImageService aiImageService, GroqWhisperService groqWhisperService, FishAudioService fishAudioService, PokeTowerService pokeTowerService, FgoGuessService fgoGuessService, HolyGrailTowerService holyGrailTowerService, YgoDuelService ygoService, FreeDuelService freeDuelService, LOLService lolService, TFTService tftService)
         {
             _program = program;
             _wordService = wordService;
@@ -90,6 +91,7 @@ namespace MusicBot2.SlahCommands
             _ygoService = ygoService;
             _freeDuelSvc = freeDuelService;
             _lolService = lolService;
+            _tftService = tftService;
         }
         #region 音樂撥放相關 > 先拿掉，要撥放音樂用$$就好
         //[SlashCommand("播放音樂", "播放音樂")]
@@ -468,12 +470,18 @@ namespace MusicBot2.SlahCommands
             );
         }
 
-        [SlashCommand("soyo記憶消除", "清除 Soyo 的記憶（包含對話摘要）")]
+        [SlashCommand("soyo記憶消除", "清除 Soyo 的記憶（包含對話摘要 豬頭馬又only）")]
         public async Task ClearSoyoMemory(
     [Summary("頻道", "要清除記憶的頻道（留空 = 全部）")] string channelKey = null
 )
         {
             await DeferAsync();
+            var userId = Context.User.Id;
+            if (userId != 415032840925741056)
+            {
+                await FollowupAsync("❌ 你沒有權限清除 Soyo 的記憶！", ephemeral: true);
+                return;
+            }
 
             await _googleAIStudioService.ClearMemoryAsync(channelKey);
             await _openRouterService.ClearMemoryAsync(channelKey);
@@ -1319,6 +1327,84 @@ namespace MusicBot2.SlahCommands
             catch (Exception ex)
             {
                 Console.WriteLine($"[LolStats] 指令失敗: {ex.Message}");
+                await FollowupAsync("查詢時發生錯誤，請稍後再試 🙏");
+            }
+        }
+        #endregion
+
+        #region TFT 雲頂之弈戰績
+        [SlashCommand("tft雲頂之弈戰績", "查看 TFT 雲頂之弈玩家戰績")]
+        public async Task TftStatsAsync(
+            [Summary("遊戲名稱", "Riot ID（格式：名稱#tag；已登記可留空查自己）")] string gameName = "",
+            [Summary("查詢對象", "@某人 直接查對方的戰績（需要已登記）")] Discord.WebSocket.SocketGuildUser mention = null,
+            [Summary("地區", "伺服器地區：tw/kr/jp/sg/na/euw/eune（預設 tw）")] string region = "tw")
+        {
+            List<string> puuids = null;
+
+            if (mention != null)
+            {
+                if (LOLService.FriendsPuuid.TryGetValue(mention.Id, out var fPuuids))
+                    puuids = fPuuids;
+                else
+                {
+                    await RespondAsync($"{mention.DisplayName} 的帳號還沒登記！", ephemeral: true);
+                    return;
+                }
+            }
+            else if (string.IsNullOrWhiteSpace(gameName))
+            {
+                if (LOLService.FriendsPuuid.TryGetValue(Context.User.Id, out var myPuuids))
+                    puuids = myPuuids;
+                else
+                {
+                    await RespondAsync("請輸入 Riot ID，或請豬頭馬又幫你登記 Discord ID ✨", ephemeral: true);
+                    return;
+                }
+            }
+
+            string tagLine = "";
+            if (puuids == null)
+            {
+                if (!gameName.Contains('#'))
+                {
+                    await RespondAsync("請輸入完整 Riot ID，格式：名稱#tag", ephemeral: true);
+                    return;
+                }
+                var parts = gameName.Split('#', 2);
+                gameName = parts[0].Trim();
+                tagLine = parts[1].Trim();
+            }
+
+            await DeferAsync();
+
+            try
+            {
+                if (puuids == null)
+                {
+                    var singlePuuid = await _tftService.GetPuuidByRiotIdAsync(gameName, tagLine, region);
+                    if (singlePuuid == null)
+                    {
+                        await FollowupAsync($"找不到 **{gameName}#{tagLine}**，確認一下 Riot ID 有沒有打對？");
+                        return;
+                    }
+                    puuids = new List<string> { singlePuuid };
+                }
+
+                string queryRegion = (mention != null) ? "tw" : region;
+
+                bool first = true;
+                foreach (var puuid in puuids)
+                {
+                    var (statsText, embed, component, _) = await _tftService.GetPlayerStatsAsync(puuid, queryRegion);
+                    if (statsText == null) continue;
+                    await FollowupAsync(embed: embed, components: component?.Build());
+                    first = false;
+                }
+                if (first) await FollowupAsync("查詢時發生錯誤，請稍後再試 🙏");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[TftStats] 指令失敗: {ex.Message}");
                 await FollowupAsync("查詢時發生錯誤，請稍後再試 🙏");
             }
         }

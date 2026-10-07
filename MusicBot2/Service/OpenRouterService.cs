@@ -34,6 +34,7 @@ namespace MusicBot2.Service
         private readonly TavilySearchService _searchService;
         private ValorantService _valorantService;
         private LOLService _lolService;
+        private TFTService _tftService;
         private readonly string _memoryFilePath = Path.Combine("TxtFolder", "AI_Memory_OpenRouter.txt");
         private readonly string _summaryFilePath = Path.Combine("TxtFolder", "AI_Summary_OpenRouter.txt");
 
@@ -463,6 +464,7 @@ houka,和泉朋花
 
         public void SetValorantService(ValorantService svc) => _valorantService = svc;
         public void SetLolService(LOLService svc) => _lolService = svc;
+        public void SetTftService(TFTService svc) => _tftService = svc;
 
         #region Memory Persistence
 
@@ -981,9 +983,9 @@ houka,和泉朋花
                 {
                     var lolFriendLines = LOLService.FriendsPuuid
                         .Select(kv => $"  <@{kv.Key}> = {string.Join(", ", kv.Value)}");
-                    systemPrompt += "\n\n[已知 LOL 玩家 PUUID 對應表（Discord mention → PUUID）]\n"
+                    systemPrompt += "\n\n[已知 LOL/TFT 玩家 PUUID 對應表（Discord mention → PUUID）]\n"
                         + string.Join("\n", lolFriendLines)
-                        + "\n訊息中若出現上述 <@id>，請直接對應到他們的 PUUID 輸出 [LOL:] 標籤，不需要猜測。";
+                        + "\n訊息中若出現上述 <@id> 且問的是 LOL（英雄聯盟），請輸出 [LOL: {puuid}] 標籤；若問的是 TFT（雲頂之弈），請輸出 [TFT: {puuid}] 標籤。不需要猜測，只查詢上述已知玩家。";
                 }
             }
 
@@ -1133,6 +1135,7 @@ houka,和泉朋花
                         {
                             var valorantTagMatch = System.Text.RegularExpressions.Regex.Match(text, @"\[VALORANT:\s*([^#\]]+)#([^\s\]]+)(?:\s+(\w+))?\]", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
                             var lolTagMatch = System.Text.RegularExpressions.Regex.Match(text, @"\[LOL:\s*([^\]]+)\]", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                            var tftTagMatch = System.Text.RegularExpressions.Regex.Match(text, @"\[TFT:\s*([^\]]+)\]", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
                             var searchTagMatch = System.Text.RegularExpressions.Regex.Match(text, @"\[SEARCH:\s*(.+?)\]", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
                             if (valorantTagMatch.Success && _valorantService != null)
@@ -1349,6 +1352,114 @@ houka,和泉朋花
                                 {
                                     text = string.IsNullOrWhiteSpace(stage1Text)
                                         ? "啊嗚，找不到這個玩家的 LOL 資料……確認一下有沒有打對？"
+                                        : stage1Text;
+                                }
+                            }
+                            else if (tftTagMatch.Success && _tftService != null)
+                            {
+                                string tftPuuid = tftTagMatch.Groups[1].Value.Trim();
+                                string stage1Text = text.Replace(tftTagMatch.Value, "").Trim();
+
+                                if (onStage1Ready != null && !string.IsNullOrWhiteSpace(stage1Text))
+                                    await onStage1Ready(stage1Text);
+                                stage1TextForHistory = stage1Text;
+
+                                string statsContext = null;
+                                Discord.Embed statsEmbed = null;
+                                try
+                                {
+                                    var (statsText, embed, _, _) = await _tftService.GetPlayerStatsAsync(tftPuuid);
+                                    if (!string.IsNullOrWhiteSpace(statsText))
+                                    {
+                                        statsContext = $"[TFT 雲頂之弈戰績資料]\n{statsText}";
+                                        statsEmbed = embed;
+                                        if (onValorantEmbed != null && statsEmbed != null)
+                                            await onValorantEmbed(statsEmbed);
+                                    }
+                                }
+                                catch { }
+
+                                if (statsContext != null)
+                                {
+                                    string stage2Text = null;
+                                    try
+                                    {
+                                        var systemPromptWithStats = systemPrompt
+                                            + $"\n\n{statsContext}"
+                                            + "\n\n[你剛才已對使用者說了第一段話（見對話歷史），現在 TFT 雲頂之弈戰績資料已回傳（如上）。請根據戰績資料，用爽世的語氣直接分析這位玩家的表現。不要再說你要去查、不要複述第一段的內容，直接給出分析。]";
+                                        var messages2 = new List<OpenRouterMessage>
+                                        {
+                                            new() { Role = "system", Content = systemPromptWithStats }
+                                        };
+                                        foreach (var m2 in GetRecentMessages(channelKey))
+                                            messages2.Add(new OpenRouterMessage { Role = m2.Role == "model" ? "assistant" : "user", Content = m2.Text });
+                                        messages2.Add(new OpenRouterMessage { Role = "user", Content = userMessageWithName });
+                                        if (!string.IsNullOrWhiteSpace(stage1Text))
+                                            messages2.Add(new OpenRouterMessage { Role = "assistant", Content = stage1Text });
+                                        messages2.Add(new OpenRouterMessage { Role = "user", Content = "（戰績資料已取得）" });
+
+                                        foreach (var model2 in modelsToUse)
+                                        {
+                                            for (int retry2 = 0; retry2 < maxRetry; retry2++)
+                                            {
+                                                try
+                                                {
+                                                    ApiCallResult r2;
+                                                    if (_useGoogleAI)
+                                                    {
+                                                        var key2 = GetAvailableGoogleKeys().FirstOrDefault() ?? _googleApiKeys.First();
+                                                        r2 = await CallGoogleAIOnceAsync(messages2, request.Temperature, request.TopP,
+                                                            request.MaxOutputTokens > 0 ? request.MaxOutputTokens : 1024,
+                                                            new[] { "使用者名稱:", "\n使用者名稱" }, model2, key2, retry: retry2);
+                                                    }
+                                                    else
+                                                    {
+                                                        var apiRequest2 = new OpenRouterChatRequest
+                                                        {
+                                                            Model = model2,
+                                                            Messages = messages2,
+                                                            Temperature = request.Temperature,
+                                                            TopP = request.TopP,
+                                                            MaxTokens = request.MaxOutputTokens > 0 ? request.MaxOutputTokens : 1024,
+                                                            Stop = new[] { "使用者名稱:", "\n使用者名稱" }
+                                                        };
+                                                        r2 = await CallOnceAsync(apiRequest2, new JsonSerializerOptions { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull }, model2, retry2);
+                                                    }
+                                                    if (r2.ShouldBreak) break;
+                                                    if (r2.ShouldContinue) continue;
+                                                    if (!string.IsNullOrWhiteSpace(r2.Text))
+                                                    {
+                                                        stage2Text = CleanResponse(r2.Text);
+                                                        stage2Text = CommonHelper.SwitchSoyoPic(stage2Text);
+                                                    }
+                                                }
+                                                catch { }
+                                                if (!string.IsNullOrWhiteSpace(stage2Text)) break;
+                                            }
+                                            if (!string.IsNullOrWhiteSpace(stage2Text)) break;
+                                        }
+
+                                        stage2Text = System.Text.RegularExpressions.Regex.Replace(stage2Text ?? "", @"\[TFT:[^\]]*\]", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase).Trim();
+                                        stage2Text = System.Text.RegularExpressions.Regex.Replace(stage2Text, @"^[◆\s]+", "").Trim();
+                                    }
+                                    catch (Exception ex2)
+                                    {
+                                        Console.WriteLine($"[OpenRouter] TFT Stage2 exception: {ex2.Message}");
+                                    }
+
+                                    if (onStage1Ready != null)
+                                        text = !string.IsNullOrWhiteSpace(stage2Text) ? stage2Text : "";
+                                    else if (!string.IsNullOrWhiteSpace(stage1Text) && !string.IsNullOrWhiteSpace(stage2Text))
+                                        text = stage1Text + "\n\n\n◆◆◆\n\n\n" + stage2Text;
+                                    else if (!string.IsNullOrWhiteSpace(stage2Text))
+                                        text = stage2Text;
+                                    else
+                                        text = stage1Text;
+                                }
+                                else
+                                {
+                                    text = string.IsNullOrWhiteSpace(stage1Text)
+                                        ? "啊嗚，找不到這個玩家的 TFT 資料……確認一下有沒有打對？"
                                         : stage1Text;
                                 }
                             }
