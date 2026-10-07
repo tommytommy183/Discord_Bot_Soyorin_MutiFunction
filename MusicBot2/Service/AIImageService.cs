@@ -61,36 +61,61 @@ namespace MusicBot2.Service
         public static readonly Dictionary<string, string> CharacterVisuals = new()
         {
             // MyGO!!!!!
-            { "soyo",    "light honey blonde wavy shoulder-length hair no bangs with one strand over forehead, pale blue almond eyes, navy school uniform blazer with white collar trim and gray neck ribbon, navy A-line knee skirt with white hem stripes, navy knee socks, anime style" },
-            { "tomori",  "short chin-length messy lavender-purple hair with wispy bangs, amber-gold almond eyes, lavender-gray school blazer over white shirt and dark green striped necktie, dark green plaid pleated miniskirt, dark green knee socks, anime style" },
-            { "anon",    "long straight pastel pink hair with light side-swept bangs, large pale mint-green eyes, lavender-gray school blazer over white shirt and dark green striped necktie, dark green and black plaid pleated miniskirt, dark green knee socks, anime style" },
-            { "rikki",   "dark brown shoulder-length straight hair with soft side fringe, deep muted brown eyes, light brown school uniform dress with navy Peter Pan collar, red ribbon bow with gold emblem at neckline, long navy-cuffed sleeves, navy knee socks, anime style" },
-            { "raana",   "short white-silver bob with straight blunt bangs and bluish undertones, heterochromia right eye warm amber and left eye cool lavender-blue, oversized dark gray distressed off-shoulder t-shirt over long white sleeves underneath, gray ankle boots, anime style" },
-            { "rana",    "short white-silver bob with straight blunt bangs and bluish undertones, heterochromia right eye warm amber and left eye cool lavender-blue, oversized dark gray distressed off-shoulder t-shirt over long white sleeves underneath, gray ankle boots, anime style" },
+            { "soyo", "light honey-blonde wavy shoulder-length hair with no bangs and one strand falling over the forehead, pale blue almond eyes, navy school uniform blazer with white collar trim and gray neck ribbon, navy A-line knee skirt with white hem stripes, navy knee socks" },
+
+            { "tomori", "short chin-length messy lavender-purple hair with wispy bangs, amber-gold almond eyes, lavender-gray school blazer over a white shirt with dark green striped tie, dark green plaid pleated mini skirt, dark green knee socks and black shoes" },
+
+            { "anon", "long straight pastel pink hair with soft side-swept bangs and long side strands, large pale mint-green eyes, lavender-gray school blazer with white collar and dark green striped tie, dark green plaid pleated mini skirt, black knee-high socks and black shoes" },
+
+            { "rikki", "dark brown long straight hair with soft side-swept bangs and long side strands, deep brown eyes, light brown school uniform dress with navy Peter Pan collar, red ribbon bow with gold emblem at the neckline, long navy cuffs, navy knee socks and brown shoes" },
+
+            { "raana", "short white-silver bob with blunt straight bangs and bluish undertones, heterochromia with warm amber right eye and cool lavender-blue left eye, oversized dark charcoal off-shoulder T-shirt over long white sleeves, dark shorts, gray ankle boots" },
+
+            { "rana", "short white-silver bob with blunt straight bangs and bluish undertones, heterochromia with warm amber right eye and cool lavender-blue left eye, oversized dark charcoal off-shoulder T-shirt over long white sleeves, dark shorts, gray ankle boots" },
+
             // Ave Mujica
-            { "sakiko",  "pale lavender-blue hair in long twin tails with side locks and soft straight parted bangs, bright amber orange eyes, cream puffed-sleeve blouse with black bow tie at neckline, gray and white plaid high-waisted A-line pleated skirt, white knee socks with pink cuffs, anime style" },
-            { "mutsumi", "pale mint-green long straight hair with wispy bangs and long side locks, sage-green almond eyes, dark purple-gray dress with cream bib inset of black buttons and lace trim, teal ribbon bow at collar, black choker necklace, anime style" },
-            { "uika",    "straight honey blonde shoulder-length hair with straight-cut bangs and longer side strands, large expressive purple eyes, plain white short-sleeved top, high-waisted muted beige-gray midi skirt with belt loops and pockets, dark gray baseball cap, anime style" },
-            { "umiri",   "dark charcoal gray layered bob with subtle purple undertones and textured side-swept bangs, light blue-gray luminous eyes, black cropped leather biker jacket over vibrant crimson red crop top, light gray high-waisted mini skirt, bright pink choker necklace, black combat platform boots, anime style" },
-            { "nyamu",   "dusty lavender-purple short messy bob with wispy bangs and short side locks, muted pink-violet eyes, dark charcoal gray sleeveless mini dress with gray-purple ruffled off-shoulder overlay on spaghetti straps, black choker necklace, black strappy heels, anime style" },
+            { "sakiko", "pale lavender-blue long twin tails with side locks and soft parted bangs, bright amber-orange eyes, cream puff-sleeve blouse with black bow tie, gray-white plaid high-waisted pleated skirt, white knee socks with pink cuffs and dark shoes" },
+
+            { "mutsumi", "long pale mint-green straight hair with wispy bangs and long side locks, soft sage-green eyes, dark purple-gray plaid dress with a cream bib front, black buttons and lace trim, teal ribbon bow at the collar, black choker" },
+
+            { "uika", "straight honey-blonde shoulder-length hair with straight bangs and longer side strands, large purple eyes, black baseball cap, plain white short-sleeved top, high-waisted muted beige-gray midi skirt with belt loops and pockets, simple dark shoes" },
+
+            { "umiri", "dark charcoal-gray layered bob with subtle purple undertones and textured side-swept bangs, luminous light blue-gray eyes, black cropped leather biker jacket over a vivid crimson red top, light gray high-waisted mini skirt, bright pink choker, black platform combat boots" },
+
+            { "nyamu", "short dusty lavender-purple messy bob with wispy bangs and short side locks, muted pink-violet eyes, dark charcoal sleeveless mini dress with gray-purple ruffled off-shoulder overlay, black choker, black strappy high heels" },
+
             // Mugendai Mewtype
-            { "arale",   "long bright light-blonde straight hair with side-swept fringe covering right eye and side locks framing face, large violet-pink eyes, muted teal-blue denim jacket over white t-shirt, matching teal-blue denim mid-thigh skirt, small pink hair clip above left eye, anime style" },
-            { "nonoka",  "long pale silver-lavender wavy hair with wispy bangs and side locks, large bright purple-blue eyes and cheerful open expression, oversized soft pastel pink cardigan over white t-shirt, light cream-yellow knee-length shorts, anime style" },
-            { "ritsu",   "short bright cyan-blue neat bob with short wispy bangs, large expressive light blue eyes, dark navy long-sleeved collared shirt under sleeveless cream V-neck knit sweater vest with small emblem, short beige-to-pink gradient pleated skirt, white calf socks, dark brown loafers, anime style" },
-            { "miyako",  "medium vibrant purple short bob with soft voluminous waves and side-swept bangs with curly side locks, deep violet eyes, dark elegant dress with black cold-shoulder bodice and ruffled dark sleeves over violet under-sleeves, long dark purple-to-black gradient ankle skirt, anime style" },
-            { "yuno",    "straight bright pink shoulder-length hair with wispy bangs and small left-side braid tied dark and cowlick ahoge on top, pinkish-red large eyes, black round-framed glasses, oversized pale lavender-blue-to-purple gradient zip-up hoodie with red drawstrings, dark blue and white striped short pleated skirt, anime style" },
+            { "arale", "long bright blonde hair with soft bangs and curled side strands, large violet-pink eyes, small pink hair clip above the left side, blue denim jacket over white shirt, matching blue denim mid-thigh skirt, white socks and blue sneakers" },
+
+            { "nonoka", "long pale silver-lavender wavy hair with wispy bangs and long side locks, large bright purple-blue eyes, oversized soft pastel pink cardigan over a white shirt, light cream-yellow knee-length skirt, white socks and light shoes" },
+
+            { "ritsu", "short bright cyan-blue neat bob with wispy bangs, large light blue eyes, dark navy collared shirt under a sleeveless cream V-neck sweater vest with small emblem, short beige-to-pink gradient pleated skirt, white calf socks and dark brown loafers" },
+
+            { "miyako", "short dark purple bob with soft bangs and curled side strands, deep violet eyes, dark elegant long dress with fitted bodice and layered flared skirt, puffed dark sleeves, subtle purple accents, black shoes and dark stockings" },
+
+            { "yuno", "straight bright pink shoulder-length hair with wispy bangs, small left-side braid and cowlick ahoge, large pinkish-red eyes, black round glasses, oversized pale lavender-blue gradient zip hoodie with red drawstrings, dark blue-and-white striped short pleated skirt and dark shoes" },
+
             // millsage
-            { "hotaru",  "long stark white straight hair with straight-cut bangs and small dark hair clips on right side, large pale lavender-blue wide eyes, white high-collared long-sleeved pleated dress with puffed shoulders and ruffled cuffs, dark charcoal gray shawl draped over shoulders, anime style" },
-            { "natsume", "muted light sage green shoulder-length wavy bob with side-parted fringe and wispy side strands, striking pale violet eyes with faint blush, dark forest green plaid blazer with white grid over white inner top, gold choker-style and longer pendant chain necklaces, dark slate gray trousers, anime style" },
-            { "nagi",    "light grayish-brown long straight hair with wispy straight bangs and long framing side locks, light olive green calm eyes, muted gray off-shoulder long-sleeved crop top with criss-cross lace-up ribbons on outer arms, high-waisted dark charcoal gray pants with heart-clasp metallic belt, silver chain necklaces, anime style" },
-            { "mahoro",  "short muted lavender-blue choppy bob with straight bangs and small white hair clips on one side, bright light blue eyes, white zip-up cropped hoodie jacket over dark gray horizontal-striped fitted turtleneck with small white bow at collar, pale sage green pleated midi skirt, anime style" },
-            { "houka",   "pastel pink long straight hair with straight wispy bangs, black bow headband on right and black bow hair clips on left side locks, light pink gentle eyes, off-white tweed houndstooth blazer over dark mauve fitted turtleneck, matching off-white pleated skirt with thin black belt and gold clasp, multi-strand white pearl necklace, anime style" },
+            { "hotaru", "long stark white straight hair with blunt bangs and small dark clips on the right side, large pale lavender-blue eyes, white high-collared long-sleeved pleated dress with puffed shoulders and ruffled cuffs, dark charcoal shawl draped over the shoulders" },
+
+            { "natsume", "shoulder-length muted sage-green wavy hair with side-parted wispy bangs, pale violet eyes, dark forest-green plaid blazer with white grid over a white top, gold choker-style necklace and longer pendant chain, dark slate-gray trousers" },
+
+            { "nagi", "long light grayish-brown straight hair with wispy bangs and long face-framing locks, calm light olive-green eyes, muted gray off-shoulder long-sleeved crop top with criss-cross arm lacing, high-waisted dark charcoal pants, metallic heart-clasp belt and layered silver chains" },
+
+            { "mahoro", "short bright blue-gray bob with soft bangs and long side strands, large light blue eyes, white oversized cardigan with loose sleeves over a black high-neck striped top, pale sage-green pleated midi skirt, delicate black choker" },
+
+            { "houka", "long pastel pink hair with wispy straight bangs and long side strands, soft light pink eyes, black bow headband on the right and black bow clips on left side locks, off-white tweed houndstooth blazer, dark mauve turtleneck, matching pleated skirt, thin black belt and layered pearl necklace" },
+
             // Other
-            { "viola",   "long dark forest green straight hair with full straight-cut bangs and small rounded hair bun on left side of head, dark purple almond eyes, dark charcoal gray high-zip-collar uniform jacket with pale cream yoke panel and reddish-orange piping trim, dark gray pleated high-waisted mini skirt, gray crew socks, pale grayish-green loafers, anime style" },
-            { "nori",    "bright golden yellow hair in thick braided side pigtails with short straight bangs and single curved ahoge sticking up, large warm amber-gold eyes, three small stacked heart marks on left cheek (pink, white, dark), dark charcoal gray uniform top with white collar and dark ribbon bow at neck, yellow headband, brown bear-shaped hair clip, anime style" },
-            { "fibi",    "chibi super-deformed proportions with large round head, long light blonde hair with blunt-cut short bangs and side locks framing face, large round expressive purple eyes with glossy highlights, wide-brimmed white hat with dark band and blue cross hair clip, white long-sleeve tunic under dark vest, bright blue scarf across chest, white thigh-high stockings with dark horizontal stripes, anime chibi style" },
-            { "nuonuo",  "pale mint-green bob with straight blunt-cut bangs and shoulder-length wavy side locks, heavy-lidded sleepy pale blue eyes with soft pink blush on cheeks, white top with red ribbon accents at neckline and prominent large red bow at chest, red arm sleeves with lighter reddish bands, soft chibi anime style" },
-            { "fishbone","light honey blonde shoulder-length layered hair with soft texture and straight wispy bangs, large expressive light blue-gray eyes with long delicate eyelashes, oversized slouchy muted lavender-purple ribbed turtleneck sweater with dropped shoulders, dark charcoal gray pleated mini skirt, opaque black tights, brown leather loafers, small hair clip on left side, anime style" },
+            { "viola", "long dark forest-green straight hair with full blunt bangs and a small rounded bun on the left side, dark purple almond eyes, dark charcoal high-collar uniform jacket with pale cream yoke and reddish-orange piping, dark gray pleated high-waisted mini skirt, gray socks and pale gray-green loafers" },
+
+            { "nori", "bright golden-yellow hair in thick braided twin side ponytails with short straight bangs and a curved ahoge, large warm amber-gold eyes, three stacked heart marks on the left cheek, yellow headband and brown bear hair clip, dark charcoal uniform top with white collar and ribbon bow" },
+
+            { "fibi", "chibi super-deformed proportions with a large round head, long light blonde hair with blunt short bangs and side locks, large round purple eyes, wide white brimmed hat with dark band and blue cross clip, white tunic under dark vest, bright blue scarf, white striped thigh-high socks" },
+
+            { "nuonuo", "chibi proportions with a large round head, pale mint-green bob with blunt bangs and wavy shoulder-length side locks, heavy-lidded pale blue eyes with soft pink cheek blush, white top with red ribbon accents and a large red chest bow, red arm sleeves with lighter bands" },
+
+            { "fishbone", "light honey-blonde shoulder-length layered hair with wispy bangs and a small side hair clip, large light blue-gray eyes with long lashes, oversized muted lavender ribbed turtleneck sweater with dropped shoulders, dark charcoal pleated mini skirt, opaque black tights and brown loafers" }
         };
 
         // 角色 key → 中文名（讓 Soyo 系統提示知道）
