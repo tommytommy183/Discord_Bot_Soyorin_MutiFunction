@@ -1982,6 +1982,7 @@ public class Program
                     var imgSvc = _services.GetRequiredService<AIImageService>();
                     // 偵測 prompt 裡提到的角色，用角色圖做參考
                     var charKeys = AIImageService.DetectCharacterKeys(prompt);
+                    prompt = AIImageService.ReplaceCharacterKeysFromPrompt(prompt);
                     Stream stream;
                     if (charKeys.Count > 0)
                     {
