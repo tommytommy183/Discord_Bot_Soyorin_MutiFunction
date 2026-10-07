@@ -316,6 +316,27 @@ namespace MusicBot2.Service
             return found;
         }
 
+        public static string ReplaceCharacterKeysFromPrompt(string prompt)
+        {
+            if (string.IsNullOrWhiteSpace(prompt))
+                return prompt;
+
+            string result = prompt;
+
+            // 由長到短替換，避免：
+            // "nagasaki soyo" 還沒處理完，就先被 "soyo" 替換
+            foreach (var kv in NameToKey.OrderByDescending(x => x.Key.Length))
+            {
+                result = result.Replace(
+                    kv.Key,
+                    kv.Value,
+                    StringComparison.OrdinalIgnoreCase
+                );
+            }
+
+            return result;
+        }
+
         // 用多張預存角色圖產圖（Soyo 優先排第一）
         public async Task<Stream> GenerateCharactersImageAsync(string prompt, List<string> characterKeys)
         {
@@ -392,8 +413,6 @@ namespace MusicBot2.Service
             // 導致 fallback 完全沒有該角色的外觀資訊。
             // ============================================================
 
-            var missingVisuals = new List<string>();
-
             foreach (var key in ordered)
             {
                 if (!CharacterVisuals.TryGetValue(key, out var visual))
@@ -407,15 +426,7 @@ namespace MusicBot2.Service
 
                     if (visual.Length > 350)
                         visual = visual[..350];
-
-                    missingVisuals.Add($"{key} ({visual})");
                 }
-            }
-
-            if (missingVisuals.Count > 0)
-            {
-                enrichedPrompt += ", additional characters: " +
-                                  string.Join(", ", missingVisuals);
             }
 
             // ============================================================
