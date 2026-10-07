@@ -6,6 +6,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Threading.Tasks;
 using System.IO;
+using System.Text.RegularExpressions;
 
 namespace MusicBot2.Service
 {
@@ -228,7 +229,7 @@ namespace MusicBot2.Service
         {
             try
             {
-                Console.WriteLine($"[AIImage] 純文字產圖 prompt={prompt[..Math.Min(80, prompt.Length)]}");
+                Console.WriteLine($"[AIImage] 純文字產圖 prompt={prompt[..Math.Min(1000, prompt.Length)]}");
                 var stream = await PostToWorkerAsync(prompt);
                 if (stream != null) return stream;
                 Console.WriteLine("[AIImage] Worker 失敗，fallback Pollinations");
@@ -324,39 +325,125 @@ namespace MusicBot2.Service
                 : characterKeys;
 
             var images = new List<(byte[] bytes, string filename)>();
+
+            // 取得角色參考圖片
             foreach (var key in ordered)
             {
-                if (!CharacterFiles.TryGetValue(key, out var filename)) continue;
+                if (!CharacterFiles.TryGetValue(key, out var filename))
+                    continue;
+
                 var path = Path.Combine(CharacterImagesDir, filename);
-                if (!File.Exists(path)) continue;
+
+                if (!File.Exists(path))
+                    continue;
+
                 images.Add((await File.ReadAllBytesAsync(path), filename));
             }
 
-            // fallback 時加角色外觀描述
-            // 控制每個角色最多 350 字，避免多角色造成 prompt 爆長
-            var visuals = ordered
-                .Where(k => CharacterVisuals.ContainsKey(k))
-                .Select(k =>
+            // ============================================================
+            // 建立「角色外觀 + 原本動作」綁定的 Prompt
+            //
+            // 例如：
+            //
+            // 原本：
+            // Tomori singing into a microphone in the center
+            //
+            // 變成：
+            // Tomori [short chin-length messy lavender-purple hair...]
+            // singing into a microphone in the center
+            //
+            // 這樣角色外觀會直接和角色的動作/位置綁在一起
+            // ============================================================
+
+            string enrichedPrompt = prompt;
+
+            foreach (var key in ordered)
+            {
+                if (!CharacterVisuals.TryGetValue(key, out var visual))
+                    continue;
+
+                visual = visual.Trim();
+
+                // 每個角色最多 350 字
+                if (visual.Length > 350)
+                    visual = visual[..350];
+
+                // 使用 key 找角色名稱
+                // IgnoreCase 可以處理：
+                // tomori / Tomori / TOMORI
+                //
+                // Regex 的 \b 可以避免誤傷其他單字
+                var pattern = $@"\b{Regex.Escape(key)}\b";
+
+                // 找到角色名稱後，直接把外觀插在角色名字後面
+                enrichedPrompt = Regex.Replace(
+                    enrichedPrompt,
+                    pattern,
+                    match => $"{match.Value} ({visual})",
+                    RegexOptions.IgnoreCase
+                );
+            }
+
+            // ============================================================
+            // 如果 AI #1 沒有在 Prompt 裡寫出某個角色名稱，
+            // 就把該角色補到最後。
+            //
+            // 避免 characterKeys 有角色，但 AI #1 忘記提到角色，
+            // 導致 fallback 完全沒有該角色的外觀資訊。
+            // ============================================================
+
+            var missingVisuals = new List<string>();
+
+            foreach (var key in ordered)
+            {
+                if (!CharacterVisuals.TryGetValue(key, out var visual))
+                    continue;
+
+                var pattern = $@"\b{Regex.Escape(key)}\b";
+
+                if (!Regex.IsMatch(prompt, pattern, RegexOptions.IgnoreCase))
                 {
-                    var visual = CharacterVisuals[k].Trim();
+                    visual = visual.Trim();
 
                     if (visual.Length > 350)
                         visual = visual[..350];
 
-                    return visual;
-                })
-                .ToList();
+                    missingVisuals.Add($"{key} ({visual})");
+                }
+            }
 
-            var enrichedPrompt = visuals.Any()
-                ? $"{prompt}, featuring {string.Join(", ", visuals)}"
-                : prompt;
+            if (missingVisuals.Count > 0)
+            {
+                enrichedPrompt += ", additional characters: " +
+                                  string.Join(", ", missingVisuals);
+            }
 
-            // 最終保護，不要讓 fallback prompt 過長
-            if (enrichedPrompt.Length > 1800)
-                enrichedPrompt = enrichedPrompt[..1800];
+            // ============================================================
+            // 最終保護
+            // ============================================================
+
+            if (enrichedPrompt.Length > 2000)
+            {
+                enrichedPrompt = enrichedPrompt[..2000];
+            }
+
+            // ============================================================
+            // 沒有參考圖片
+            // → 直接使用帶角色外觀的 Prompt
+            // ============================================================
 
             if (images.Count == 0)
+            {
                 return await GenerateImageAsync(enrichedPrompt);
+            }
+
+            // ============================================================
+            // 有參考圖片
+            // → 優先使用圖片 + 原始 Prompt
+            //
+            // 因為圖片本身已經提供角色外觀，
+            // 不需要把 CharacterVisuals 再塞進 image-to-image prompt。
+            // ============================================================
 
             return await GenerateImageWithMultipleReferencesAsync(prompt, images)
                    ?? await GenerateImageAsync(enrichedPrompt);
