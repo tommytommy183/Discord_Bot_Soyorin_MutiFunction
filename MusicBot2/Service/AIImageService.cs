@@ -308,14 +308,14 @@ namespace MusicBot2.Service
             }
 
             // fallback 時加角色外觀描述
-            // 控制每個角色最多 120 字，避免多角色造成 prompt 爆長
+            // 控制每個角色最多 350 字，避免多角色造成 prompt 爆長
             var visuals = ordered
                 .Where(k => CharacterVisuals.ContainsKey(k))
                 .Select(k =>
                 {
                     var visual = CharacterVisuals[k].Trim();
 
-                    if (visual.Length > 300)
+                    if (visual.Length > 350)
                         visual = visual[..350];
 
                     return visual;
