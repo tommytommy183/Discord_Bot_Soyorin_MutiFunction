@@ -512,13 +512,13 @@ namespace MusicBot2.Service
 
                     if (_lastRankSnapshot.TryGetValue(puuid, out var last))
                     {
-                        if (solo != null && current.SoloLP < last.SoloLP)
+                        if (solo != null && current.SoloLP < last.SoloLP && !IsPromotion(last.SoloFull, current.SoloFull))
                         {
                             int diff = last.SoloLP - current.SoloLP;
                             var champ = await GetLastRankedChampAsync(puuid, matchRegional, 420);
                             results.Add(new LossEvent(discordId, sumName, "單排", current.SoloFull, diff, champ));
                         }
-                        if (flex != null && current.FlexLP < last.FlexLP)
+                        if (flex != null && current.FlexLP < last.FlexLP && !IsPromotion(last.FlexFull, current.FlexFull))
                         {
                             int diff = last.FlexLP - current.FlexLP;
                             var champ = await GetLastRankedChampAsync(puuid, matchRegional, 440);
@@ -535,6 +535,42 @@ namespace MusicBot2.Service
                 } // end foreach puuid
             }
             return results;
+        }
+
+        // 判斷段位是否升級（升牌位時 LP 會減少，不應算掉分）
+        // rankFull 格式："{TIER} {RANK}"，例如 "SILVER I" → "GOLD IV"
+        private static bool IsPromotion(string prevRankFull, string currRankFull)
+        {
+            return RankToValue(currRankFull) > RankToValue(prevRankFull);
+        }
+
+        private static int RankToValue(string rankFull)
+        {
+            if (string.IsNullOrWhiteSpace(rankFull) || rankFull == "UNRANKED") return 0;
+            var parts = rankFull.Trim().Split(' ', 2);
+            int tierVal = parts[0].ToUpperInvariant() switch
+            {
+                "IRON"        => 1,
+                "BRONZE"      => 2,
+                "SILVER"      => 3,
+                "GOLD"        => 4,
+                "PLATINUM"    => 5,
+                "EMERALD"     => 6,
+                "DIAMOND"     => 7,
+                "MASTER"      => 8,
+                "GRANDMASTER" => 9,
+                "CHALLENGER"  => 10,
+                _             => 0,
+            };
+            int divVal = parts.Length > 1 ? parts[1].ToUpperInvariant() switch
+            {
+                "IV"  => 1,
+                "III" => 2,
+                "II"  => 3,
+                "I"   => 4,
+                _     => 0,
+            } : 0;
+            return tierVal * 10 + divVal;
         }
 
         private async Task<string> GetLastRankedChampAsync(string puuid, string regional, int queueId)
