@@ -52,6 +52,9 @@ namespace MusicBot2.Service
             325482625127153664UL,
             404439235290988544UL,
             541105947435859978,
+            540922644267270154,
+            415032840925741056,
+            489444066828746764
         };
 
         private readonly Dictionary<string, (string Id, string Name, int Level)> _summonerCache = new();
