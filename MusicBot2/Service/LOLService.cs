@@ -52,7 +52,6 @@ namespace MusicBot2.Service
             325482625127153664UL,
             404439235290988544UL,
             541105947435859978,
-            540922644267270154,
         };
 
         private readonly Dictionary<string, (string Id, string Name, int Level)> _summonerCache = new();
@@ -527,10 +526,9 @@ namespace MusicBot2.Service
                         }
                     }
 
-                        _lastRankSnapshot[puuid] = current;
-                        await Task.Delay(500); // 等待 bot 完全就緒
-                    }
-                    catch (Exception ex)
+                    _lastRankSnapshot[puuid] = current;
+                }
+                catch (Exception ex)
                 {
                     Console.WriteLine($"[LOLService] CheckForLosses {discordId}/{puuid[..12]}: {ex.Message}");
                 }
