@@ -10,8 +10,8 @@
 		<StartupObject>Program</StartupObject>
 	</PropertyGroup>
 	<ItemGroup>
-		<PackageReference Include="Discord.Net" Version="3.20.1" />
-		<PackageReference Include="Discord.Net.Dave" Version="3.20.1" />
+		<PackageReference Include="Discord.Net" Version="3.20.2" />
+		<PackageReference Include="Discord.Net.Dave" Version="3.20.2" />
 		<PackageReference Include="DuckDuckGo.Net" Version="1.0.1" />
 		<PackageReference Include="ElevenLabs-DotNet" Version="3.7.2" />
 		<PackageReference Include="InstagramApiSharp" Version="1.8.1" />
