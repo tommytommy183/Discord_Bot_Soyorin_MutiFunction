@@ -2354,10 +2354,23 @@ houka,和泉朋花
                 string text = null;
                 if (candidate.TryGetProperty("content", out var content) &&
                     content.TryGetProperty("parts", out var parts) &&
-                    parts.GetArrayLength() > 0 &&
-                    parts[0].TryGetProperty("text", out var textEl))
+                    parts.GetArrayLength() > 0)
                 {
-                    text = textEl.GetString();
+                    var sb = new System.Text.StringBuilder();
+                    foreach (var part in parts.EnumerateArray())
+                    {
+                        // 跳過思考過程（thought: true）
+                        bool isThought = part.TryGetProperty("thought", out var thoughtProp) && thoughtProp.ValueKind == JsonValueKind.True;
+                        if (isThought)
+                        {
+                            if (part.TryGetProperty("text", out var thinkEl))
+                                Console.WriteLine($"[GoogleAI Thinking] {Truncate(thinkEl.GetString(), 200)}");
+                            continue;
+                        }
+                        if (part.TryGetProperty("text", out var textEl))
+                            sb.Append(textEl.GetString());
+                    }
+                    text = sb.Length > 0 ? sb.ToString() : null;
                 }
 
                 Console.WriteLine($"[GoogleAI] Model:{model}=> {Truncate(text, 100)}");
