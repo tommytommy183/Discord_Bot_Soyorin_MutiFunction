@@ -1837,7 +1837,7 @@ public class Program
                     Console.WriteLine($"[LOL Monitor] 偵測到掉分：{loss.SummonerName} {loss.Queue} -{loss.LPLost}LP");
                     var champInfo = string.IsNullOrWhiteSpace(loss.ChampionName) ? "" : $"用 **{loss.ChampionName}** ";
                     var prompt = $"LOL 玩家 {loss.SummonerName} 剛剛在 {loss.Queue} {champInfo}輸了一局，掉了 {loss.LPLost} LP，現在是 {loss.RankFull}。笑他一下，不要超過三句話。";
-                    var soyo = await _openRouterService.GenerateTextAsync(prompt, user: null);
+                    var soyo = await _openRouterService.GenerateTextAsync(prompt, user: null, saveToMemory: false, channelKey: $"lol_monitor_{loss.DiscordId}");
                     var msg = $"<@{loss.DiscordId}> {soyo}";
                     await channel.SendMessageAsync(msg);
                 }

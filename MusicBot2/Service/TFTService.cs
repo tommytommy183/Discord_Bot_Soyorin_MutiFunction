@@ -28,10 +28,13 @@ namespace MusicBot2.Service
 
         // Match list cache
         private static readonly Dictionary<string, TFTCache> _cache = new();
+        private const int TFTCacheMaxSize = 20;
+        private static readonly TimeSpan TFTCacheTTL = TimeSpan.FromMinutes(30);
 
         private record TFTCache(string GameName, string TagLine,
             string Tier, string Rank, int LP, int Wins, int Losses,
-            List<TFTMatchDetail> Matches, List<List<TFTParticipant>> AllPlayers);
+            List<TFTMatchDetail> Matches, List<List<TFTParticipant>> AllPlayers,
+            DateTime CachedAt);
 
         public record TFTMatchDetail(string MatchId, int QueueId, int Placement, int Level,
             int LastRound, long DamageTo, int KOs,
@@ -228,7 +231,12 @@ namespace MusicBot2.Service
                     gameName = fallback;
 
                 var cacheKey = MakeCacheKey(puuid);
-                _cache[cacheKey] = new TFTCache(gameName, tagLine, tier, rank, lp, wins, losses, matches, allPlayers);
+                if (_cache.Count >= TFTCacheMaxSize && !_cache.ContainsKey(cacheKey))
+                {
+                    var oldest = _cache.OrderBy(kv => kv.Value.CachedAt).First().Key;
+                    _cache.Remove(oldest);
+                }
+                _cache[cacheKey] = new TFTCache(gameName, tagLine, tier, rank, lp, wins, losses, matches, allPlayers, DateTime.UtcNow);
 
                 var (embed, component) = BuildOverviewEmbed(gameName, tagLine, tier, rank, lp, wins, losses, matches, cacheKey);
 
@@ -319,7 +327,7 @@ namespace MusicBot2.Service
 
         public (Embed embed, ComponentBuilder component) GetMatchDetailEmbed(string cacheKey, int idx)
         {
-            if (!_cache.TryGetValue(cacheKey, out var cache))
+            if (!_cache.TryGetValue(cacheKey, out var cache) || DateTime.UtcNow - cache.CachedAt > TFTCacheTTL)
                 return (new EmbedBuilder().WithTitle("❌ 查詢已過期").WithDescription("請重新執行指令").WithColor(Color.Red).Build(), new ComponentBuilder());
             if (idx < 0 || idx >= cache.Matches.Count)
                 return (new EmbedBuilder().WithTitle("❌ 對局不存在").WithColor(Color.Red).Build(), new ComponentBuilder());
@@ -378,7 +386,7 @@ namespace MusicBot2.Service
 
         public (Embed embed, ComponentBuilder component) GetOverviewEmbed(string cacheKey)
         {
-            if (!_cache.TryGetValue(cacheKey, out var cache))
+            if (!_cache.TryGetValue(cacheKey, out var cache) || DateTime.UtcNow - cache.CachedAt > TFTCacheTTL)
                 return (new EmbedBuilder().WithTitle("❌ 查詢已過期").WithDescription("請重新執行指令").WithColor(Color.Red).Build(), new ComponentBuilder());
             return BuildOverviewEmbed(cache.GameName, cache.TagLine, cache.Tier, cache.Rank, cache.LP, cache.Wins, cache.Losses, cache.Matches, cacheKey);
         }

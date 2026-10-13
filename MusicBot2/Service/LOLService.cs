@@ -59,10 +59,13 @@ namespace MusicBot2.Service
 
         // Match list cache：key = first 14 alphanum chars of puuid
         private static readonly Dictionary<string, MatchListCache> _matchCache = new();
+        private const int MatchCacheMaxSize = 30;
+        private static readonly TimeSpan MatchCacheTTL = TimeSpan.FromMinutes(30);
         private record MatchListCache(string GameName, string TagLine, int Level,
             RankEntry SoloEntry, RankEntry FlexEntry,
             List<MatchDetail> Matches,
-            List<(List<ParticipantInfo> Blue, List<ParticipantInfo> Red)> Teams);
+            List<(List<ParticipantInfo> Blue, List<ParticipantInfo> Red)> Teams,
+            DateTime CachedAt);
         private record MatchWithTeams(MatchDetail Detail, List<ParticipantInfo> Blue, List<ParticipantInfo> Red, string PlayerGameName = null, string PlayerTagLine = null);
 
         private static string MakeCacheKey(string puuid)
@@ -298,9 +301,14 @@ namespace MusicBot2.Service
                 if (!string.IsNullOrEmpty(first.PlayerTagLine))  tagLine  = first.PlayerTagLine;
             }
 
-            // Store in cache
+            // Store in cache (evict oldest if over size limit)
             var cacheKey = MakeCacheKey(puuid);
-            _matchCache[cacheKey] = new MatchListCache(gameName, tagLine, level, soloEntry, flexEntry, matches, teams);
+            if (_matchCache.Count >= MatchCacheMaxSize && !_matchCache.ContainsKey(cacheKey))
+            {
+                var oldest = _matchCache.OrderBy(kv => kv.Value.CachedAt).First().Key;
+                _matchCache.Remove(oldest);
+            }
+            _matchCache[cacheKey] = new MatchListCache(gameName, tagLine, level, soloEntry, flexEntry, matches, teams, DateTime.UtcNow);
 
             var (embed, component) = BuildOverviewEmbed(gameName, tagLine, level, soloEntry, flexEntry, matches, cacheKey);
 
@@ -406,7 +414,7 @@ namespace MusicBot2.Service
 
         public (Embed embed, ComponentBuilder component) GetMatchDetailEmbed(string cacheKey, int matchIndex)
         {
-            if (!_matchCache.TryGetValue(cacheKey, out var cache))
+            if (!_matchCache.TryGetValue(cacheKey, out var cache) || DateTime.UtcNow - cache.CachedAt > MatchCacheTTL)
                 return (new EmbedBuilder().WithTitle("❌ 查詢已過期").WithDescription("請重新執行指令").WithColor(Color.Red).Build(), new ComponentBuilder());
 
             if (matchIndex < 0 || matchIndex >= cache.Matches.Count)
@@ -480,7 +488,7 @@ namespace MusicBot2.Service
 
         public (Embed embed, ComponentBuilder component) GetOverviewEmbed(string cacheKey)
         {
-            if (!_matchCache.TryGetValue(cacheKey, out var cache))
+            if (!_matchCache.TryGetValue(cacheKey, out var cache) || DateTime.UtcNow - cache.CachedAt > MatchCacheTTL)
                 return (new EmbedBuilder().WithTitle("❌ 查詢已過期").WithDescription("請重新執行指令").WithColor(Color.Red).Build(), new ComponentBuilder());
 
             return BuildOverviewEmbed(cache.GameName, cache.TagLine, cache.Level, cache.SoloEntry, cache.FlexEntry, cache.Matches, cacheKey);

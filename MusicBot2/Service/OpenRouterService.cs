@@ -41,13 +41,18 @@ namespace MusicBot2.Service
         // Redis 持久化
         private readonly IDatabase _redisDb;
         private readonly bool _useRedis;
-        private const string HISTORIES_REDIS_KEY = "chat:all_histories";
-        private const string SUMMARIES_REDIS_KEY = "chat:all_summaries";
+        private const string HISTORIES_REDIS_KEY  = "chat:all_histories";   // 舊 key，只用於遷移
+        private const string SUMMARIES_REDIS_KEY  = "chat:all_summaries";   // 舊 key，只用於遷移
+        private const string CHANNEL_HIST_PREFIX  = "chat:hist:";
+        private const string CHANNEL_SUM_PREFIX   = "chat:sum:";
         private const string GAME_REDIS_PREFIX    = "soyo:game:";
+        private const int    MaxInMemoryChannels  = 15;
+        private static readonly TimeSpan ChannelHistoryTTL = TimeSpan.FromDays(7);
 
-        // 以「頻道」為單位分開存對話
-        private Dictionary<string, List<ConversationMessage>> _channelHistories = new();
-        private Dictionary<string, string> _channelSummaries = new();
+        // 以「頻道」為單位分開存對話（LRU，最多 MaxInMemoryChannels 個頻道在記憶體中）
+        private readonly Dictionary<string, List<ConversationMessage>> _channelHistories = new();
+        private readonly Dictionary<string, string> _channelSummaries = new();
+        private readonly Dictionary<string, DateTime> _channelLastAccess = new();
         private readonly SemaphoreSlim _saveLock = new(1, 1);
         private readonly HashSet<string> _summarizingChannels = new();
 
@@ -577,32 +582,50 @@ houka,和泉朋花
 
         private void LoadMemory()
         {
-            // 優先從 Redis 載入
+            // 使用 per-channel Redis key：啟動時只做遷移，不把全部頻道載入記憶體
             if (_useRedis)
             {
                 try
                 {
-                    var histJson = _redisDb.StringGet(HISTORIES_REDIS_KEY);
-                    if (!histJson.IsNullOrEmpty)
+                    // 遷移舊 blob → per-channel keys（一次性）
+                    var oldHist = _redisDb.StringGet(HISTORIES_REDIS_KEY);
+                    var oldSum  = _redisDb.StringGet(SUMMARIES_REDIS_KEY);
+                    if (!oldHist.IsNullOrEmpty)
                     {
-                        var dict = JsonSerializer.Deserialize<Dictionary<string, List<ConversationMessage>>>(histJson.ToString());
-                        if (dict != null) _channelHistories = dict;
+                        var dict = JsonSerializer.Deserialize<Dictionary<string, List<ConversationMessage>>>(oldHist.ToString());
+                        var sums = !oldSum.IsNullOrEmpty
+                            ? JsonSerializer.Deserialize<Dictionary<string, string>>(oldSum.ToString())
+                            : null;
+                        if (dict != null)
+                        {
+                            var jsonOpts = new JsonSerializerOptions { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+                            foreach (var kv in dict)
+                            {
+                                var hKey = CHANNEL_HIST_PREFIX + kv.Key;
+                                if (!_redisDb.KeyExists(hKey))
+                                    _redisDb.StringSet(hKey, JsonSerializer.Serialize(kv.Value, jsonOpts), ChannelHistoryTTL);
+                            }
+                            if (sums != null)
+                            {
+                                foreach (var kv in sums)
+                                {
+                                    var sKey = CHANNEL_SUM_PREFIX + kv.Key;
+                                    if (!_redisDb.KeyExists(sKey))
+                                        _redisDb.StringSet(sKey, kv.Value, ChannelHistoryTTL);
+                                }
+                            }
+                            // 刪除舊 blob
+                            _redisDb.KeyDelete(HISTORIES_REDIS_KEY);
+                            _redisDb.KeyDelete(SUMMARIES_REDIS_KEY);
+                            Console.WriteLine($"[OpenRouter Memory] 舊 blob 已遷移 {dict.Count} 個頻道到 per-channel keys");
+                        }
                     }
-
-                    var sumJson = _redisDb.StringGet(SUMMARIES_REDIS_KEY);
-                    if (!sumJson.IsNullOrEmpty)
-                    {
-                        var sums = JsonSerializer.Deserialize<Dictionary<string, string>>(sumJson.ToString());
-                        if (sums != null) _channelSummaries = sums;
-                    }
-
-                    var total = _channelHistories.Values.Sum(v => v.Count);
-                    Console.WriteLine($"[OpenRouter Memory] Redis 載入 {_channelHistories.Count} 個頻道、{total} 條記錄、{_channelSummaries.Count} 個摘要");
+                    Console.WriteLine("[OpenRouter Memory] Redis per-channel 模式就緒，頻道資料將在需要時 lazy 載入");
                     return;
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"[OpenRouter Memory] Redis 載入失敗，改用檔案: {ex.Message}");
+                    Console.WriteLine($"[OpenRouter Memory] Redis 初始化失敗: {ex.Message}");
                 }
             }
 
@@ -617,58 +640,57 @@ houka,和泉朋花
                         var dict = JsonSerializer.Deserialize<Dictionary<string, List<ConversationMessage>>>(json);
                         if (dict != null)
                         {
-                            _channelHistories = dict;
-                            var total = _channelHistories.Values.Sum(v => v.Count);
-                            Console.WriteLine($"[OpenRouter Memory] 檔案載入 {_channelHistories.Count} 個頻道、{total} 條記錄");
+                            foreach (var kv in dict) _channelHistories[kv.Key] = kv.Value;
+                            Console.WriteLine($"[OpenRouter Memory] 檔案載入 {dict.Count} 個頻道");
                         }
                     }
                 }
-
                 if (File.Exists(_summaryFilePath))
                 {
                     var json = File.ReadAllText(_summaryFilePath, Encoding.UTF8);
                     if (!string.IsNullOrWhiteSpace(json))
                     {
                         var sums = JsonSerializer.Deserialize<Dictionary<string, string>>(json);
-                        if (sums != null) _channelSummaries = sums;
+                        if (sums != null) foreach (var kv in sums) _channelSummaries[kv.Key] = kv.Value;
                     }
                 }
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"[OpenRouter Memory Error] 載入失敗: {ex.Message}");
-                _channelHistories = new();
-                _channelSummaries = new();
             }
         }
 
-        private async Task SaveMemoryAsync()
+        private async Task SaveChannelAsync(string channelKey)
         {
             await _saveLock.WaitAsync();
             try
             {
-                var jsonOptions = new JsonSerializerOptions
+                var jsonOpts = new JsonSerializerOptions
                 {
                     WriteIndented = false,
                     Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
                 };
 
-                var histJson = JsonSerializer.Serialize(_channelHistories, jsonOptions);
-
                 if (_useRedis)
                 {
-                    await _redisDb.StringSetAsync(HISTORIES_REDIS_KEY, histJson);
+                    if (_channelHistories.TryGetValue(channelKey, out var hist))
+                        await _redisDb.StringSetAsync(CHANNEL_HIST_PREFIX + channelKey, JsonSerializer.Serialize(hist, jsonOpts), ChannelHistoryTTL);
+                    if (_channelSummaries.TryGetValue(channelKey, out var sum))
+                        await _redisDb.StringSetAsync(CHANNEL_SUM_PREFIX + channelKey, sum, ChannelHistoryTTL);
                 }
                 else
                 {
+                    // fallback：把當前記憶體所有頻道存到 txt（維持舊行為）
                     var dir = Path.GetDirectoryName(_memoryFilePath);
                     if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
-                    await File.WriteAllTextAsync(_memoryFilePath, histJson, Encoding.UTF8);
+                    await File.WriteAllTextAsync(_memoryFilePath, JsonSerializer.Serialize(_channelHistories, jsonOpts), Encoding.UTF8);
+                    await File.WriteAllTextAsync(_summaryFilePath, JsonSerializer.Serialize(_channelSummaries, jsonOpts), Encoding.UTF8);
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[OpenRouter Memory Error] 儲存失敗: {ex.Message}");
+                Console.WriteLine($"[OpenRouter Memory Error] 儲存失敗 ({channelKey}): {ex.Message}");
             }
             finally
             {
@@ -676,55 +698,80 @@ houka,和泉朋花
             }
         }
 
-        private async Task SaveSummariesAsync()
-        {
-            try
-            {
-                var jsonOptions = new JsonSerializerOptions
-                {
-                    Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
-                };
-                var json = JsonSerializer.Serialize(_channelSummaries, jsonOptions);
-
-                if (_useRedis)
-                {
-                    await _redisDb.StringSetAsync(SUMMARIES_REDIS_KEY, json);
-                }
-                else
-                {
-                    var dir = Path.GetDirectoryName(_summaryFilePath);
-                    if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
-                    await File.WriteAllTextAsync(_summaryFilePath, json, Encoding.UTF8);
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[OpenRouter Memory Error] 摘要儲存失敗: {ex.Message}");
-            }
-        }
-
         public async Task ClearMemoryAsync(string channelKey = null)
         {
             if (string.IsNullOrEmpty(channelKey))
             {
+                var keys = _channelHistories.Keys.ToList();
                 _channelHistories.Clear();
                 _channelSummaries.Clear();
+                _channelLastAccess.Clear();
+                if (_useRedis)
+                {
+                    foreach (var k in keys)
+                    {
+                        await _redisDb.KeyDeleteAsync(CHANNEL_HIST_PREFIX + k);
+                        await _redisDb.KeyDeleteAsync(CHANNEL_SUM_PREFIX + k);
+                    }
+                }
             }
             else
             {
                 _channelHistories.Remove(channelKey);
                 _channelSummaries.Remove(channelKey);
+                _channelLastAccess.Remove(channelKey);
+                if (_useRedis)
+                {
+                    await _redisDb.KeyDeleteAsync(CHANNEL_HIST_PREFIX + channelKey);
+                    await _redisDb.KeyDeleteAsync(CHANNEL_SUM_PREFIX + channelKey);
+                }
             }
-            await SaveMemoryAsync();
-            await SaveSummariesAsync();
+            if (!_useRedis) await SaveChannelAsync(channelKey ?? "");
             Console.WriteLine($"[OpenRouter Memory] 對話記憶已清除 ({channelKey ?? "ALL"})");
         }
 
         private List<ConversationMessage> GetHistory(string channelKey)
         {
+            _channelLastAccess[channelKey] = DateTime.UtcNow;
+
             if (!_channelHistories.TryGetValue(channelKey, out var list))
             {
-                list = new List<ConversationMessage>();
+                // Lazy-load from Redis
+                if (_useRedis)
+                {
+                    try
+                    {
+                        var json = _redisDb.StringGet(CHANNEL_HIST_PREFIX + channelKey);
+                        if (!json.IsNullOrEmpty)
+                        {
+                            list = JsonSerializer.Deserialize<List<ConversationMessage>>(json.ToString()) ?? new();
+                            Console.WriteLine($"[OpenRouter Memory] Lazy-loaded channel {channelKey}: {list.Count} msgs");
+                        }
+                        else
+                        {
+                            list = new List<ConversationMessage>();
+                        }
+                    }
+                    catch { list = new List<ConversationMessage>(); }
+                }
+                else
+                {
+                    list = new List<ConversationMessage>();
+                }
+
+                // Evict LRU channel if over limit
+                if (_channelHistories.Count >= MaxInMemoryChannels)
+                {
+                    var lruKey = _channelLastAccess
+                        .Where(kv => kv.Key != channelKey && _channelHistories.ContainsKey(kv.Key))
+                        .OrderBy(kv => kv.Value)
+                        .First().Key;
+                    _channelHistories.Remove(lruKey);
+                    _channelSummaries.Remove(lruKey);
+                    _channelLastAccess.Remove(lruKey);
+                    Console.WriteLine($"[OpenRouter Memory] LRU evicted channel {lruKey}");
+                }
+
                 _channelHistories[channelKey] = list;
             }
             return list;
@@ -732,7 +779,16 @@ houka,和泉朋花
 
         public string GetChannelSummary(string channelKey)
         {
-            _channelSummaries.TryGetValue(channelKey, out var summary);
+            if (!_channelSummaries.TryGetValue(channelKey, out var summary) && _useRedis)
+            {
+                try
+                {
+                    var val = _redisDb.StringGet(CHANNEL_SUM_PREFIX + channelKey);
+                    summary = val.IsNullOrEmpty ? null : val.ToString();
+                    if (summary != null) _channelSummaries[channelKey] = summary;
+                }
+                catch { }
+            }
             return summary;
         }
 
@@ -806,8 +862,7 @@ houka,和泉朋花
                     _channelSummaries[channelKey] = newSummary;  // 縮短摘要長度限制
                     _channelHistories[channelKey] = history.Skip(SummarizeChunkSize).ToList();
 
-                    _ = SaveMemoryAsync();
-                    _ = SaveSummariesAsync();
+                    _ = SaveChannelAsync(channelKey);
                     Console.WriteLine($"[OpenRouter Memory] 頻道 {channelKey} 已摘要 {SummarizeChunkSize} 則對話");
                 }
             }
@@ -1639,7 +1694,7 @@ houka,和泉朋花
                                 UserName = "爽世"
                             });
 
-                            _ = SaveMemoryAsync();
+                            _ = SaveChannelAsync(channelKey);
                             _ = SummarizeIfNeededAsync(channelKey);
                         }
                         Console.WriteLine($"[OpenRouter] Model:{model}=> {text}");
