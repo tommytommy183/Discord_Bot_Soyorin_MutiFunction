@@ -450,13 +450,12 @@ namespace MusicBot2.Service
 
             // ============================================================
             // 有參考圖片
-            // → 優先使用圖片 + 原始 Prompt
-            //
-            // 因為圖片本身已經提供角色外觀，
-            // 不需要把 CharacterVisuals 再塞進 image-to-image prompt。
+            // → 使用 enrichedPrompt（角色名字後插入外觀描述），讓模型
+            //   能把描述與動作綁在一起，避免角色行為對調。
+            //   圖片提供外觀風格參考；enrichedPrompt 決定誰做什麼。
             // ============================================================
 
-            return await GenerateImageWithMultipleReferencesAsync(prompt, images)
+            return await GenerateImageWithMultipleReferencesAsync(enrichedPrompt, images)
                    ?? await GenerateImageAsync(enrichedPrompt);
         }
 
