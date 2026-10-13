@@ -3532,39 +3532,14 @@ HP為0就是真的死亡，不會再有後續動作
 
                 bool allDone = stillWorking.Count == 0;
 
-                // 如果全部都完工，自動重新派遣
-                List<PokemonWorkState> newStates = new(stillWorking);
-                if (allDone && finished.Count > 0)
-                {
-                    foreach (var oldState in finished)
-                    {
-                        var p = player.CaughtPokemon.FirstOrDefault(x => x.CaughtDate == oldState.PokemonCaughtDate);
-                        if (p == null || p.Stamina <= 0) continue;
-                        (string WorkName, int WorkHours, List<string> Materials) workDef = ("快遞員", 2, new List<string>{ "ore", "fish" });
-                        string matchedType = "normal";
-                        foreach (var t in p.Types)
-                            if (_typeWorkMap.TryGetValue(t, out var wt)) { workDef = wt; matchedType = t; break; }
-                        newStates.Add(new PokemonWorkState
-                        {
-                            UserId = userId,
-                            PokemonCaughtDate = p.CaughtDate,
-                            WorkType = workDef.WorkName,
-                            WorkTypeKey = matchedType,
-                            WorkStartTime = now,
-                            WorkEndTime = now.AddHours(workDef.WorkHours),
-                            ExpectedMaterials = CalculateWorkOutput(p, workDef.Materials)
-                        });
-                    }
-                }
-
                 await SavePlayerDataAsync(player);
-                if (newStates.Count > 0)
-                    await SaveWorkStatesAsync(userId, newStates);
+                if (stillWorking.Count > 0)
+                    await SaveWorkStatesAsync(userId, stillWorking);
                 else
                     await DeleteWorkStatesAsync(userId);
 
-                string title = allDone ? "🎉 全員收工！已自動重新派遣" : $"🎉 {finished.Count} 隻 pokemon 收工！";
-                string footer = allDone ? $"已自動重新派遣 {newStates.Count} 隻，下次完工時間：{(newStates.Count > 0 ? newStates.MaxBy(s => s.WorkEndTime)?.WorkEndTime.ToString("HH:mm") : "-")} UTC" : $"還有 {stillWorking.Count} 隻仍在工作中";
+                string title = allDone ? "🎉 全員收工！" : $"🎉 {finished.Count} 隻 pokemon 收工！";
+                string footer = allDone ? "所有 pokemon 都收工了，可以重新派遣喔！" : $"還有 {stillWorking.Count} 隻仍在工作中";
 
                 return (new EmbedBuilder()
                     .WithTitle(title)
