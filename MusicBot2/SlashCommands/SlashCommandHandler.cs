@@ -995,7 +995,7 @@ namespace MusicBot2.SlahCommands
         {
             await DeferAsync(ephemeral: true);
             var user = Context.User as SocketGuildUser;
-            var (embed, comp) = await _pokeGameService.ShowSendToWorkMenuAsync(user.Id, user.Username);
+            var (embed, comp) = await _pokeGameService.ShowSendToWorkMenuAsync(user.Id, user.Username, page: 0, resetSelection: true);
             await FollowupAsync(embed: embed, components: comp.Build(), ephemeral: true);
         }
 

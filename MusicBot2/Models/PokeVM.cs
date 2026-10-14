@@ -165,6 +165,9 @@ namespace MusicBot2.Models
 
         // 孵化系統
         public PokeEgg HatchingEgg { get; set; } = null;
+
+        // 倉庫擴建等級（每級 +5 pokemon 上限，最多 3 級 → 30 隻）
+        public int WarehouseLevel { get; set; } = 0;
     }
 
     public class PokeGamePokemon

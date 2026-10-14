@@ -223,11 +223,12 @@ namespace MusicBot2.Service
                 }
 
                 // 檢查pokemon數量是否已達上限
-                if (player.CaughtPokemon.Count >= 15)
+                int maxPokemon = GetMaxPokemon(player);
+                if (player.CaughtPokemon.Count >= maxPokemon)
                 {
                     return (new EmbedBuilder()
                         .WithTitle("❌ pokemon數量已達上限！")
-                        .WithDescription($"你已經有 15 隻pokemon了！\n請使用 `/蛋雕一隻pokemon` 指令釋放一隻後再來抓取新的。")
+                        .WithDescription($"你已經有 {maxPokemon} 隻pokemon了！\n請使用 `/蛋雕一隻pokemon` 釋放一隻，或合成**倉庫擴建 🏗️**道具擴充上限。")
                         .WithColor(Color.Red).Build(), new ComponentBuilder());
                 }
 
@@ -3085,6 +3086,10 @@ HP為0就是真的死亡，不會再有後續動作
         private const string WORK_STATE_KEY_PREFIX = "pokegame:work:";
         private static readonly Dictionary<ulong, List<PokemonWorkState>> _memoryWorkStates = new();
 
+        // 多選派遣：暫存使用者跨頁選擇狀態（userId → 已選的 CaughtPokemon 索引）
+        private static readonly Dictionary<ulong, HashSet<int>> _pendingWorkSelections = new();
+        private const int WorkSelectPageSize = 24; // Discord SelectMenu 上限 25，留 1 個 buffer
+
         // 好感度衰減：超過 3 天沒互動，每次查看 -2
         private void ApplyFriendshipDecay(PokeGamePokemon p)
         {
@@ -3294,6 +3299,22 @@ HP為0就是真的死亡，不會再有後續動作
             ["data"]        = "數據碎片",
         };
 
+        // 倉庫上限：基礎 15，每級 +5，最多 3 級
+        private static int GetMaxPokemon(PokeGamePlayer player)
+            => 15 + Math.Min(player.WarehouseLevel, 3) * 5;
+
+        // 工作名額：基礎 3，每級 +1
+        private static int GetMaxWorkSlots(PokeGamePlayer player)
+            => 3 + Math.Min(player.WarehouseLevel, 3);
+
+        // 依屬性取工作名稱
+        private string GetWorkName(PokeGamePokemon p)
+        {
+            foreach (var t in p.Types)
+                if (_typeWorkMap.TryGetValue(t, out var wt)) return wt.WorkName;
+            return "快遞員";
+        }
+
         private async Task<List<PokemonWorkState>> GetWorkStatesAsync(ulong userId)
         {
             if (_useRedis)
@@ -3351,56 +3372,257 @@ HP為0就是真的死亡，不會再有後續動作
         }
 
         // 選單：派 pokemon 出工
-        public async Task<(Embed embed, ComponentBuilder component)> ShowSendToWorkMenuAsync(ulong userId, string userName)
+        public async Task<(Embed embed, ComponentBuilder component)> ShowSendToWorkMenuAsync(
+            ulong userId, string userName, int page = 0, bool resetSelection = false)
         {
             try
             {
+                if (resetSelection)
+                    _pendingWorkSelections.Remove(userId);
+
                 var player = await GetPlayerDataAsync(userId, userName);
                 if (player.CaughtPokemon.Count == 0)
                     return (new EmbedBuilder().WithTitle("❌ 你還沒有任何pokemon！").WithColor(Color.Red).Build(), new ComponentBuilder());
 
                 var currentStates = await GetWorkStatesAsync(userId);
                 var workingDates = currentStates.Select(s => s.PokemonCaughtDate).ToHashSet();
-                int slotsUsed = currentStates.Count;
-                int slotsLeft = 3 - slotsUsed;
+                int maxSlots = GetMaxWorkSlots(player);
+                int slotsLeft = maxSlots - currentStates.Count;
 
-                string slotNote = slotsUsed == 0 ? "" : $"⚠️ 目前 **{slotsUsed}/3** 隻在工作中（{string.Join("、", currentStates.Select(s => s.WorkType))}）\n";
                 if (slotsLeft == 0)
                     return (new EmbedBuilder()
-                        .WithTitle("❌ 3 個工作名額已滿！")
+                        .WithTitle($"❌ {maxSlots} 個工作名額已滿！")
                         .WithDescription("使用 `/收工pokemon` 收回完成的 pokemon 後再來。")
                         .WithColor(Color.Red).Build(), new ComponentBuilder());
 
-                var embed = new EmbedBuilder()
-                    .WithTitle("🏭 選擇要派去工作的 pokemon")
-                    .WithDescription($"{slotNote}還剩 **{slotsLeft}** 個名額 | 根據屬性決定工作類型\n精力低於 30 時產出會減少")
-                    .WithColor(new Color(0x5865F2))
-                    .Build();
-
-                var comp = new ComponentBuilder();
-                int row = 0, btnInRow = 0;
+                // 可派遣 pokemon（沒在工作、精力 > 0）
+                var available = new List<(int idx, PokeGamePokemon p)>();
                 for (int i = 0; i < player.CaughtPokemon.Count; i++)
                 {
                     var p = player.CaughtPokemon[i];
-                    if (workingDates.Contains(p.CaughtDate)) continue; // 已在工作中，跳過
-                    string shiny = p.isShiny ? "✨" : "";
-                    string workName = "快遞員";
-                    foreach (var t in p.Types)
-                        if (_typeWorkMap.TryGetValue(t, out var wt)) { workName = wt.WorkName; break; }
-                    string staminaMark = p.Stamina < 30 ? "⚠️" : "";
-                    string label = string.IsNullOrEmpty(p.CustomName)
-                        ? $"{i + 1}. {shiny}{p.Name} [{workName}]{staminaMark}"
-                        : $"{i + 1}. {shiny}{p.CustomName}（{p.Name}）[{workName}]{staminaMark}";
-                    if (label.Length > 80) label = label[..77] + "...";
-                    comp.WithButton(label, $"poke_work_send_{userId}_{i}", ButtonStyle.Primary, row: row);
-                    btnInRow++;
-                    if (btnInRow >= 5) { row++; btnInRow = 0; }
+                    if (!workingDates.Contains(p.CaughtDate) && p.Stamina > 0)
+                        available.Add((i, p));
                 }
+
+                if (!available.Any())
+                    return (new EmbedBuilder()
+                        .WithTitle("❌ 沒有可派遣的 pokemon！")
+                        .WithDescription("所有 pokemon 都在工作中或精力耗盡，請恢復精力後再來。")
+                        .WithColor(Color.Orange).Build(), new ComponentBuilder());
+
+                // 初始化 / 清理暫選狀態
+                if (!_pendingWorkSelections.TryGetValue(userId, out var pending))
+                {
+                    pending = new HashSet<int>();
+                    _pendingWorkSelections[userId] = pending;
+                }
+                var availableIndices = available.Select(a => a.idx).ToHashSet();
+                pending.RemoveWhere(i => !availableIndices.Contains(i)); // 移除不再可用的
+
+                int totalPages = (available.Count + WorkSelectPageSize - 1) / WorkSelectPageSize;
+                page = Math.Clamp(page, 0, totalPages - 1);
+                var pageItems = available.Skip(page * WorkSelectPageSize).Take(WorkSelectPageSize).ToList();
+
+                var pageItemIndices = pageItems.Select(pi => pi.idx).ToHashSet();
+                int pendingOtherPages = pending.Count(i => !pageItemIndices.Contains(i));
+                int maxSelectThisPage = Math.Max(0, slotsLeft - pendingOtherPages);
+
+                // 工作類型計數（現有 + 已暫選）
+                var workTypeActive = currentStates.GroupBy(s => s.WorkType)
+                    .ToDictionary(g => g.Key, g => g.Count());
+                foreach (var si in pending)
+                {
+                    if (si < player.CaughtPokemon.Count)
+                    {
+                        var wn = GetWorkName(player.CaughtPokemon[si]);
+                        workTypeActive[wn] = workTypeActive.GetValueOrDefault(wn, 0) + 1;
+                    }
+                }
+
+                // SelectMenu
+                int menuMax = Math.Max(1, Math.Min(maxSelectThisPage, pageItems.Count));
+                var menu = new SelectMenuBuilder()
+                    .WithCustomId($"poke_work_sel_{userId}_{page}")
+                    .WithPlaceholder($"選擇要派去工作的 pokemon（本頁最多選 {menuMax} 隻）")
+                    .WithMinValues(0)
+                    .WithMaxValues(menuMax);
+
+                foreach (var (idx, p) in pageItems)
+                {
+                    bool isSelected = pending.Contains(idx);
+                    string workName = GetWorkName(p);
+
+                    // 分業：計算這隻 pokemon 所屬類型的數量（不計本身若已選）
+                    int typeCountExcludingSelf = workTypeActive.GetValueOrDefault(workName, 0) - (isSelected ? 1 : 0);
+                    bool typeFull = !isSelected && typeCountExcludingSelf >= 2;
+
+                    string shiny = p.isShiny ? "✨" : "";
+                    string name = string.IsNullOrEmpty(p.CustomName) ? p.Name : p.CustomName;
+                    string typeMark = typeFull ? "🚫" : "";
+                    string staminaMark = p.Stamina < 30 ? "⚠️" : "";
+                    string label = $"{shiny}{name}[{workName}]{staminaMark}{typeMark}";
+                    if (label.Length > 100) label = label[..97] + "...";
+                    string desc = $"精力:{p.Stamina} ATK:{p.Attack} DEF:{p.Defense} | {string.Join("/", p.Types)}";
+                    if (desc.Length > 100) desc = desc[..97] + "...";
+
+                    menu.AddOption(label, idx.ToString(), desc, isDefault: isSelected);
+                }
+
+                if (maxSelectThisPage == 0)
+                    menu.WithDisabled(true);
+
+                var comp = new ComponentBuilder().WithSelectMenu(menu, row: 0);
+
+                // 操作按鈕列
+                if (page > 0)
+                    comp.WithButton("◀ 上一頁", $"poke_work_pg_{userId}_{page - 1}", ButtonStyle.Secondary, row: 1);
+
+                int totalPending = pending.Count;
+                comp.WithButton(
+                    totalPending > 0 ? $"✅ 確認派遣（{totalPending} 隻）" : "✅ 確認派遣",
+                    $"poke_work_confirm_{userId}",
+                    totalPending > 0 ? ButtonStyle.Success : ButtonStyle.Secondary,
+                    row: 1, disabled: totalPending == 0);
+
+                if (page < totalPages - 1)
+                    comp.WithButton("▶ 下一頁", $"poke_work_pg_{userId}_{page + 1}", ButtonStyle.Secondary, row: 1);
+
+                string pageInfo = totalPages > 1 ? $" | 第 {page + 1}/{totalPages} 頁" : "";
+                var embed = new EmbedBuilder()
+                    .WithTitle("🏭 派遣 pokemon 工作")
+                    .WithDescription(
+                        $"名額：**{currentStates.Count}/{maxSlots}**（剩 {slotsLeft} 個）{pageInfo}\n" +
+                        $"已暫選：**{totalPending} 隻** | 分業限制：同類型最多 2 隻同時工作\n" +
+                        $"精力低於 30 時產出減少，🚫 = 同類型已達上限")
+                    .WithColor(new Color(0x5865F2))
+                    .Build();
+
                 return (embed, comp);
             }
             catch (Exception ex)
             {
                 return (CommonHelper.BuildErrorResponse($"顯示選單時發生錯誤: {ex.Message}").Item2, new ComponentBuilder());
+            }
+        }
+
+        // SelectMenu 選擇後更新暫選狀態
+        public async Task<(Embed embed, ComponentBuilder component)> HandleWorkSelectionAsync(
+            ulong userId, string userName, int page, List<int> selectedIndices)
+        {
+            try
+            {
+                var player = await GetPlayerDataAsync(userId, userName);
+                var currentStates = await GetWorkStatesAsync(userId);
+                var workingDates = currentStates.Select(s => s.PokemonCaughtDate).ToHashSet();
+
+                var available = new List<(int idx, PokeGamePokemon p)>();
+                for (int i = 0; i < player.CaughtPokemon.Count; i++)
+                {
+                    var p = player.CaughtPokemon[i];
+                    if (!workingDates.Contains(p.CaughtDate) && p.Stamina > 0)
+                        available.Add((i, p));
+                }
+
+                int totalPages = (available.Count + WorkSelectPageSize - 1) / WorkSelectPageSize;
+                page = Math.Clamp(page, 0, totalPages - 1);
+                var pageItemIndices = available
+                    .Skip(page * WorkSelectPageSize).Take(WorkSelectPageSize)
+                    .Select(a => a.idx).ToHashSet();
+
+                if (!_pendingWorkSelections.TryGetValue(userId, out var pending))
+                {
+                    pending = new HashSet<int>();
+                    _pendingWorkSelections[userId] = pending;
+                }
+
+                // 更新此頁的選擇：移除此頁舊選擇，加入新選擇
+                pending.RemoveWhere(i => pageItemIndices.Contains(i));
+                foreach (var idx in selectedIndices)
+                    if (pageItemIndices.Contains(idx)) pending.Add(idx);
+
+                return await ShowSendToWorkMenuAsync(userId, userName, page);
+            }
+            catch (Exception ex)
+            {
+                return (CommonHelper.BuildErrorResponse($"選擇失敗: {ex.Message}").Item2, new ComponentBuilder());
+            }
+        }
+
+        // 確認派遣所有暫選的 pokemon
+        public async Task<(Embed embed, ComponentBuilder component)> ConfirmWorkDispatchAsync(ulong userId, string userName)
+        {
+            try
+            {
+                if (!_pendingWorkSelections.TryGetValue(userId, out var pending) || pending.Count == 0)
+                    return (new EmbedBuilder().WithTitle("❌ 尚未選擇任何 pokemon").WithColor(Color.Red).Build(), new ComponentBuilder());
+
+                var player = await GetPlayerDataAsync(userId, userName);
+                var existingStates = await GetWorkStatesAsync(userId);
+                int maxSlots = GetMaxWorkSlots(player);
+
+                var successList = new List<string>();
+                var failList = new List<string>();
+                var workTypeCounts = existingStates.GroupBy(s => s.WorkType).ToDictionary(g => g.Key, g => g.Count());
+
+                foreach (var pokemonIndex in pending.OrderBy(i => i))
+                {
+                    if (existingStates.Count >= maxSlots)
+                        { failList.Add($"名額已滿，剩餘未派遣"); break; }
+                    if (pokemonIndex < 0 || pokemonIndex >= player.CaughtPokemon.Count)
+                        { failList.Add($"索引 {pokemonIndex} 找不到"); continue; }
+
+                    var p = player.CaughtPokemon[pokemonIndex];
+                    if (existingStates.Any(s => s.PokemonCaughtDate == p.CaughtDate))
+                        { failList.Add($"{p.CustomName ?? p.Name}（已在工作）"); continue; }
+                    if (p.Stamina <= 0)
+                        { failList.Add($"{p.CustomName ?? p.Name}（精力耗盡）"); continue; }
+
+                    (string WorkName, int WorkHours, List<string> Materials) workDef = ("快遞員", 2, new List<string> { "ore", "fish" });
+                    string matchedType = "normal";
+                    foreach (var t in p.Types)
+                        if (_typeWorkMap.TryGetValue(t, out var wt)) { workDef = wt; matchedType = t; break; }
+
+                    if (workTypeCounts.GetValueOrDefault(workDef.WorkName, 0) >= 2)
+                        { failList.Add($"{p.CustomName ?? p.Name}（{workDef.WorkName} 同類型已滿）"); continue; }
+
+                    var actualMaterials = CalculateWorkOutput(p, workDef.Materials);
+                    existingStates.Add(new PokemonWorkState
+                    {
+                        UserId = userId,
+                        PokemonCaughtDate = p.CaughtDate,
+                        WorkType = workDef.WorkName,
+                        WorkTypeKey = matchedType,
+                        WorkStartTime = DateTime.UtcNow,
+                        WorkEndTime = DateTime.UtcNow.AddHours(workDef.WorkHours),
+                        ExpectedMaterials = actualMaterials
+                    });
+                    workTypeCounts[workDef.WorkName] = workTypeCounts.GetValueOrDefault(workDef.WorkName, 0) + 1;
+
+                    string shiny = p.isShiny ? "✨" : "";
+                    string mats = string.Join("、", actualMaterials.Select(m => MaterialNames.GetValueOrDefault(m, m)));
+                    successList.Add($"{shiny}{p.CustomName ?? p.Name} → {workDef.WorkName}（{workDef.WorkHours}h，回報：{mats}）");
+                }
+
+                if (successList.Any())
+                    await SaveWorkStatesAsync(userId, existingStates);
+
+                pending.Clear();
+
+                var eb = new EmbedBuilder()
+                    .WithTitle(successList.Any() ? "🏭 派遣成功！" : "❌ 派遣失敗")
+                    .WithColor(successList.Any() ? Color.Green : Color.Red);
+
+                if (successList.Any())
+                    eb.AddField($"✅ 已派遣 {successList.Count} 隻", string.Join("\n", successList));
+                if (failList.Any())
+                    eb.AddField($"⚠️ {failList.Count} 隻未派遣", string.Join("\n", failList));
+
+                eb.WithFooter("完工後使用 /收工pokemon 取回");
+                return (eb.Build(), new ComponentBuilder());
+            }
+            catch (Exception ex)
+            {
+                return (CommonHelper.BuildErrorResponse($"派遣失敗: {ex.Message}").Item2, new ComponentBuilder());
             }
         }
 
@@ -3414,9 +3636,10 @@ HP為0就是真的死亡，不會再有後續動作
                     return (new EmbedBuilder().WithTitle("❌ 找不到這隻 pokemon").WithColor(Color.Red).Build(), new ComponentBuilder());
 
                 var existingStates = await GetWorkStatesAsync(userId);
-                if (existingStates.Count >= 3)
+                int maxWorkSlots = GetMaxWorkSlots(player);
+                if (existingStates.Count >= maxWorkSlots)
                     return (new EmbedBuilder()
-                        .WithTitle("❌ 工作名額已滿（3/3）")
+                        .WithTitle($"❌ 工作名額已滿（{maxWorkSlots}/{maxWorkSlots}）")
                         .WithDescription("使用 `/收工pokemon` 取回完成的 pokemon 後再派！")
                         .WithColor(Color.Red).Build(), new ComponentBuilder());
 
@@ -3436,6 +3659,14 @@ HP為0就是真的死亡，不會再有後續動作
                 string matchedType = "normal";
                 foreach (var t in p.Types)
                     if (_typeWorkMap.TryGetValue(t, out var wt)) { workDef = wt; matchedType = t; break; }
+
+                // 分業系統：同類型最多 2 隻同時工作
+                int sameTypeCount = existingStates.Count(s => s.WorkType == workDef.WorkName);
+                if (sameTypeCount >= 2)
+                    return (new EmbedBuilder()
+                        .WithTitle($"❌ 分業限制：{workDef.WorkName} 已有 2 隻在工作中")
+                        .WithDescription("同類型最多 2 隻同時工作，請換其他屬性的 pokemon 派遣！")
+                        .WithColor(Color.Orange).Build(), new ComponentBuilder());
 
                 var actualMaterials = CalculateWorkOutput(p, workDef.Materials);
                 var state = new PokemonWorkState
@@ -3570,7 +3801,8 @@ HP為0就是真的死亡，不會再有後續動作
             ["rarecandy"]    = ("稀有糖果", new(){ ["fossil"]=2, ["energystone"]=2, ["gem"]=1 },                               "直接進化（已是最終形態則無效）"),
             ["powderboost"]  = ("強力補給", new(){ ["ore"]=2, ["gem"]=1 },                                                     "下一場對戰攻擊 +15%"),
             ["pokeball"]     = ("精靈球",  new(){ ["ore"]=2, ["herb"]=1 },                                                     "抓一隻 pokemon（每日台灣時間00:00自動補一顆）"),
-            ["luckyball"]    = ("幸運球 ✨", new(){ ["gem"]=4, ["fossil"]=4, ["energystone"]=4, ["data"]=3, ["seafood"]=2 },   "保證下一次抓到的是閃光 pokemon！"),
+            ["luckyball"]        = ("幸運球 ✨",  new(){ ["gem"]=4, ["fossil"]=4, ["energystone"]=4, ["data"]=3, ["seafood"]=2 }, "保證下一次抓到的是閃光 pokemon！"),
+            ["warehouse_expand"] = ("倉庫擴建 🏗️", new(){ ["ore"]=5, ["gem"]=5, ["fossil"]=5, ["data"]=4 },                     "pokemon 上限 +5（最多 3 次，上限 30 隻）"),
         };
 
         // 查看背包
@@ -3785,7 +4017,11 @@ HP為0就是真的死亡，不會再有後續動作
                 foreach (var key in ownedItems)
                 {
                     var (itemName, _, desc) = CraftRecipes[key];
-                    comp.WithButton($"{itemName} ×{bag[key]}", $"poke_useitem_select_{userId}_{key}", ButtonStyle.Primary, row: row);
+                    // 倉庫擴建不需要選 pokemon，走獨立路由
+                    string customId = key == "warehouse_expand"
+                        ? $"poke_warehouse_expand_{userId}"
+                        : $"poke_useitem_select_{userId}_{key}";
+                    comp.WithButton($"{itemName} ×{bag[key]}", customId, ButtonStyle.Primary, row: row);
                     btnInRow++;
                     if (btnInRow >= 5) { row++; btnInRow = 0; }
                 }
@@ -3922,6 +4158,9 @@ HP為0就是真的死亡，不會再有後續動作
                 player.Bag[itemKey]--;
                 await SavePlayerDataAsync(player);
 
+                // warehouse_expand 不應到達這裡（應走 UseWarehouseExpandAsync）
+                // 若誤呼叫，在此直接 fallthrough
+
                 return (new EmbedBuilder()
                     .WithTitle($"✅ 使用了 {itemName}！")
                     .WithThumbnailUrl(p.ImageUrl)
@@ -3932,6 +4171,40 @@ HP為0就是真的死亡，不會再有後續動作
             catch (Exception ex)
             {
                 return (CommonHelper.BuildErrorResponse($"使用道具失敗: {ex.Message}").Item2, new ComponentBuilder());
+            }
+        }
+
+        // 使用倉庫擴建（不需要選 pokemon，直接對 player 生效）
+        public async Task<(Embed embed, ComponentBuilder component)> UseWarehouseExpandAsync(ulong userId, string userName)
+        {
+            try
+            {
+                var player = await GetPlayerDataAsync(userId, userName);
+                if (player.Bag.GetValueOrDefault("warehouse_expand", 0) <= 0)
+                    return (new EmbedBuilder().WithTitle("❌ 沒有倉庫擴建道具").WithColor(Color.Red).Build(), new ComponentBuilder());
+
+                if (player.WarehouseLevel >= 3)
+                    return (new EmbedBuilder()
+                        .WithTitle("❌ 倉庫已達最高等級！")
+                        .WithDescription($"目前已是第 3 級倉庫（上限 30 隻），無法再擴建。")
+                        .WithColor(Color.Orange).Build(), new ComponentBuilder());
+
+                player.WarehouseLevel++;
+                player.Bag["warehouse_expand"]--;
+                await SavePlayerDataAsync(player);
+
+                int newMax = GetMaxPokemon(player);
+                int newSlots = GetMaxWorkSlots(player);
+                return (new EmbedBuilder()
+                    .WithTitle("🏗️ 倉庫擴建成功！")
+                    .WithDescription($"倉庫升至 **Lv.{player.WarehouseLevel}**\n\n" +
+                                     $"📦 pokemon 上限：**{newMax} 隻**\n" +
+                                     $"🏭 工作名額：**{newSlots} 個**")
+                    .WithColor(Color.Gold).Build(), new ComponentBuilder());
+            }
+            catch (Exception ex)
+            {
+                return (CommonHelper.BuildErrorResponse($"倉庫擴建失敗: {ex.Message}").Item2, new ComponentBuilder());
             }
         }
 
@@ -4107,10 +4380,10 @@ HP為0就是真的死亡，不會再有後續動作
                 }
 
                 // 檢查上限
-                if (player.CaughtPokemon.Count >= 15)
+                if (player.CaughtPokemon.Count >= GetMaxPokemon(player))
                     return (new EmbedBuilder()
                         .WithTitle("❌ pokemon 數量已達上限！")
-                        .WithDescription("請先蛋雕一隻才能孵化新的！")
+                        .WithDescription($"請先蛋雕一隻，或合成**倉庫擴建 🏗️**道具擴充上限（目前 {GetMaxPokemon(player)} 隻）。")
                         .WithColor(Color.Red).Build(), new ComponentBuilder());
 
                 // 孵出 pokemon

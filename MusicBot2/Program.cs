@@ -927,30 +927,62 @@ public class Program
                 }
             }
 
-            // ── 派工 poke_work_send_{userId}_{pokemonIdx} ────────────────────
-            else if (component.Data.CustomId.StartsWith("poke_work_send_"))
+            // ── 派工 SelectMenu: poke_work_sel_{userId}_{page} ─────────────
+            else if (component.Data.CustomId.StartsWith("poke_work_sel_"))
             {
                 var parts = component.Data.CustomId.Split('_');
-                // parts: [poke, work, send, userId, idx]
+                // parts: [poke, work, sel, userId, page]
                 if (parts.Length == 5
-                    && ulong.TryParse(parts[3], out ulong workOwnerId)
-                    && int.TryParse(parts[4], out int workIdx))
+                    && ulong.TryParse(parts[3], out ulong workSelUserId)
+                    && int.TryParse(parts[4], out int workSelPage))
                 {
-                    if (component.User.Id != workOwnerId)
+                    if (component.User.Id != workSelUserId)
                     { await component.RespondAsync("❌ 這不是你的選單！", ephemeral: true); return; }
                     await component.DeferAsync(ephemeral: true);
                     var pokeSvc = _services.GetService<PokeGameService>();
                     var guildUser = component.User as Discord.WebSocket.SocketGuildUser;
-                    var (embed, _) = await pokeSvc.SendPokemonToWorkAsync(workOwnerId, guildUser?.DisplayName ?? component.User.Username, workIdx);
-                    if (!embed.Title.StartsWith("❌") && !embed.Title.Contains("今天已經被摸過"))
-                    {
-                        await component.Channel.SendMessageAsync(embed: embed);
-                        await component.ModifyOriginalResponseAsync(msg => { msg.Content = "✅"; msg.Embed = null; msg.Components = new ComponentBuilder().Build(); });
-                    }
-                    else
-                    {
-                        await component.ModifyOriginalResponseAsync(msg => { msg.Embed = embed; msg.Components = new ComponentBuilder().Build(); });
-                    }
+                    var selectedValues = (component as Discord.WebSocket.SocketMessageComponent)?.Data?.Values;
+                    var selectedIndices = selectedValues?
+                        .Select(v => int.TryParse(v, out int idx) ? idx : -1)
+                        .Where(i => i >= 0).ToList() ?? new List<int>();
+                    var (embed, comp) = await pokeSvc.HandleWorkSelectionAsync(workSelUserId, guildUser?.DisplayName ?? component.User.Username, workSelPage, selectedIndices);
+                    await component.ModifyOriginalResponseAsync(msg => { msg.Embed = embed; msg.Components = comp.Build(); });
+                }
+            }
+
+            // ── 派工翻頁: poke_work_pg_{userId}_{page} ──────────────────────
+            else if (component.Data.CustomId.StartsWith("poke_work_pg_"))
+            {
+                var parts = component.Data.CustomId.Split('_');
+                // parts: [poke, work, pg, userId, page]
+                if (parts.Length == 5
+                    && ulong.TryParse(parts[3], out ulong workPgUserId)
+                    && int.TryParse(parts[4], out int workPgPage))
+                {
+                    if (component.User.Id != workPgUserId)
+                    { await component.RespondAsync("❌ 這不是你的選單！", ephemeral: true); return; }
+                    await component.DeferAsync(ephemeral: true);
+                    var pokeSvc = _services.GetService<PokeGameService>();
+                    var guildUser = component.User as Discord.WebSocket.SocketGuildUser;
+                    var (embed, comp) = await pokeSvc.ShowSendToWorkMenuAsync(workPgUserId, guildUser?.DisplayName ?? component.User.Username, workPgPage);
+                    await component.ModifyOriginalResponseAsync(msg => { msg.Embed = embed; msg.Components = comp.Build(); });
+                }
+            }
+
+            // ── 派工確認: poke_work_confirm_{userId} ────────────────────────
+            else if (component.Data.CustomId.StartsWith("poke_work_confirm_"))
+            {
+                var parts = component.Data.CustomId.Split('_');
+                // parts: [poke, work, confirm, userId]
+                if (parts.Length == 4 && ulong.TryParse(parts[3], out ulong workConfirmUserId))
+                {
+                    if (component.User.Id != workConfirmUserId)
+                    { await component.RespondAsync("❌ 這不是你的選單！", ephemeral: true); return; }
+                    await component.DeferAsync(ephemeral: true);
+                    var pokeSvc = _services.GetService<PokeGameService>();
+                    var guildUser = component.User as Discord.WebSocket.SocketGuildUser;
+                    var (embed, comp) = await pokeSvc.ConfirmWorkDispatchAsync(workConfirmUserId, guildUser?.DisplayName ?? component.User.Username);
+                    await component.ModifyOriginalResponseAsync(msg => { msg.Embed = embed; msg.Components = comp.Build(); });
                 }
             }
 
@@ -1002,6 +1034,24 @@ public class Program
                     var guildUser = component.User as Discord.WebSocket.SocketGuildUser;
                     var (embed, comp2) = await pokeSvc.ShowUseItemOnPokemonMenuAsync(useOwnerId, guildUser?.DisplayName ?? component.User.Username, parts[4]);
                     await component.ModifyOriginalResponseAsync(msg => { msg.Embed = embed; msg.Components = comp2.Build(); });
+                }
+            }
+
+            // ── 倉庫擴建 poke_warehouse_expand_{userId} ─────────────────────
+            else if (component.Data.CustomId.StartsWith("poke_warehouse_expand_"))
+            {
+                var parts = component.Data.CustomId.Split('_');
+                // parts: [poke, warehouse, expand, userId]
+                if (parts.Length == 4 && ulong.TryParse(parts[3], out ulong whOwnerId))
+                {
+                    if (component.User.Id != whOwnerId)
+                    { await component.RespondAsync("❌ 這不是你的選單！", ephemeral: true); return; }
+                    await component.DeferAsync(ephemeral: true);
+                    var pokeSvc = _services.GetService<PokeGameService>();
+                    var guildUser = component.User as Discord.WebSocket.SocketGuildUser;
+                    var (embed, _) = await pokeSvc.UseWarehouseExpandAsync(whOwnerId, guildUser?.DisplayName ?? component.User.Username);
+                    await component.Channel.SendMessageAsync(embed: embed);
+                    await component.ModifyOriginalResponseAsync(msg => { msg.Content = "✅"; msg.Embed = null; msg.Components = new ComponentBuilder().Build(); });
                 }
             }
 
