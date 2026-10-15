@@ -996,8 +996,8 @@ public class Program
             // ── 合成道具 poke_craft_{userId}_{itemKey} ────────────────────────
             else if (component.Data.CustomId.StartsWith("poke_craft_"))
             {
-                var parts = component.Data.CustomId.Split('_');
-                // parts: [poke, craft, userId, itemKey]
+                var parts = component.Data.CustomId.Split('_', 4);
+                // parts: [poke, craft, userId, itemKey]（itemKey 本身可含底線）
                 if (parts.Length == 4
                     && ulong.TryParse(parts[2], out ulong craftOwnerId))
                 {
@@ -1022,8 +1022,8 @@ public class Program
             // ── 使用道具 — 選道具 poke_useitem_select_{userId}_{itemKey} ──────
             else if (component.Data.CustomId.StartsWith("poke_useitem_select_"))
             {
-                var parts = component.Data.CustomId.Split('_');
-                // parts: [poke, useitem, select, userId, itemKey]
+                var parts = component.Data.CustomId.Split('_', 5);
+                // parts: [poke, useitem, select, userId, itemKey]（itemKey 可含底線）
                 if (parts.Length == 5
                     && ulong.TryParse(parts[3], out ulong useOwnerId))
                 {
@@ -1066,18 +1066,21 @@ public class Program
             // ── 使用道具 — 選pokemon poke_useitem_use_{userId}_{itemKey}_{idx} ─
             else if (component.Data.CustomId.StartsWith("poke_useitem_use_"))
             {
-                var parts = component.Data.CustomId.Split('_');
-                // parts: [poke, useitem, use, userId, itemKey, pokemonIdx]
-                if (parts.Length == 6
-                    && ulong.TryParse(parts[3], out ulong useOwnerId2)
-                    && int.TryParse(parts[5], out int usePokeIdx))
+                // 從尾巴取 idx，中間部分為 itemKey（可含底線）
+                var parts = component.Data.CustomId.Split('_', 4); // [poke, useitem, use, {userId}_{itemKey}_{idx}]
+                var lastParts = parts.Length == 4 ? parts[3].Split('_') : Array.Empty<string>();
+                // lastParts: [userId, ...itemKey parts..., idx]
+                if (lastParts.Length >= 3
+                    && ulong.TryParse(lastParts[0], out ulong useOwnerId2)
+                    && int.TryParse(lastParts[^1], out int usePokeIdx))
                 {
+                    string itemKey2 = string.Join("_", lastParts[1..^1]);
                     if (component.User.Id != useOwnerId2)
                     { await component.RespondAsync("❌ 這不是你的選單！", ephemeral: true); return; }
                     await component.DeferAsync(ephemeral: true);
                     var pokeSvc = _services.GetService<PokeGameService>();
                     var guildUser = component.User as Discord.WebSocket.SocketGuildUser;
-                    var (embed, _) = await pokeSvc.UseItemOnPokemonAsync(useOwnerId2, guildUser?.DisplayName ?? component.User.Username, parts[4], usePokeIdx);
+                    var (embed, _) = await pokeSvc.UseItemOnPokemonAsync(useOwnerId2, guildUser?.DisplayName ?? component.User.Username, itemKey2, usePokeIdx);
                     if (!embed.Title.StartsWith("❌") && !embed.Title.Contains("今天已經被摸過"))
                     {
                         await component.Channel.SendMessageAsync(embed: embed);
