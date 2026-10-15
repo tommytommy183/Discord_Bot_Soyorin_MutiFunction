@@ -3303,17 +3303,28 @@ HP為0就是真的死亡，不會再有後續動作
         private static int GetMaxPokemon(PokeGamePlayer player)
             => 15 + Math.Min(player.WarehouseLevel, 3) * 5;
 
-        // 工作名額：基礎 3，每級 +1
-        private static int GetMaxWorkSlots(PokeGamePlayer player)
-            => 3 + Math.Min(player.WarehouseLevel, 3);
+        // 工作中的獨立 pokemon 數（一隻多職業算一隻）
+        private static int GetWorkingPokemonCount(List<PokemonWorkState> states)
+            => states.Select(s => s.PokemonCaughtDate).Distinct().Count();
 
-        // 依屬性取工作名稱
-        private string GetWorkName(PokeGamePokemon p)
+        // 最多同時派遣幾隻 pokemon（固定 3 隻）
+        private const int MaxWorkingPokemon = 3;
+
+        // 依屬性取所有可用職業（去重，保留順序）
+        private List<(string WorkName, string TypeKey, int WorkHours, List<string> Materials)> GetWorkDefs(PokeGamePokemon p)
         {
+            var seen = new HashSet<string>();
+            var result = new List<(string, string, int, List<string>)>();
             foreach (var t in p.Types)
-                if (_typeWorkMap.TryGetValue(t, out var wt)) return wt.WorkName;
-            return "快遞員";
+                if (_typeWorkMap.TryGetValue(t, out var wt) && seen.Add(wt.WorkName))
+                    result.Add((wt.WorkName, t, wt.WorkHours, wt.Materials));
+            if (result.Count == 0)
+                result.Add(("快遞員", "normal", 2, new List<string> { "ore", "fish" }));
+            return result;
         }
+
+        // 取第一個職業名稱（向下相容用）
+        private string GetWorkName(PokeGamePokemon p) => GetWorkDefs(p)[0].WorkName;
 
         private async Task<List<PokemonWorkState>> GetWorkStatesAsync(ulong userId)
         {
@@ -3385,13 +3396,13 @@ HP為0就是真的死亡，不會再有後續動作
                     return (new EmbedBuilder().WithTitle("❌ 你還沒有任何pokemon！").WithColor(Color.Red).Build(), new ComponentBuilder());
 
                 var currentStates = await GetWorkStatesAsync(userId);
-                var workingDates = currentStates.Select(s => s.PokemonCaughtDate).ToHashSet();
-                int maxSlots = GetMaxWorkSlots(player);
-                int slotsLeft = maxSlots - currentStates.Count;
+                var workingDates = currentStates.Select(s => s.PokemonCaughtDate).Distinct().ToHashSet();
+                int workingCount = workingDates.Count;
+                int slotsLeft = MaxWorkingPokemon - workingCount;
 
                 if (slotsLeft == 0)
                     return (new EmbedBuilder()
-                        .WithTitle($"❌ {maxSlots} 個工作名額已滿！")
+                        .WithTitle($"❌ 已有 {MaxWorkingPokemon} 隻 pokemon 在工作中！")
                         .WithDescription("使用 `/收工pokemon` 收回完成的 pokemon 後再來。")
                         .WithColor(Color.Red).Build(), new ComponentBuilder());
 
@@ -3417,7 +3428,7 @@ HP為0就是真的死亡，不會再有後續動作
                     _pendingWorkSelections[userId] = pending;
                 }
                 var availableIndices = available.Select(a => a.idx).ToHashSet();
-                pending.RemoveWhere(i => !availableIndices.Contains(i)); // 移除不再可用的
+                pending.RemoveWhere(i => !availableIndices.Contains(i));
 
                 int totalPages = (available.Count + WorkSelectPageSize - 1) / WorkSelectPageSize;
                 page = Math.Clamp(page, 0, totalPages - 1);
@@ -3425,42 +3436,27 @@ HP為0就是真的死亡，不會再有後續動作
 
                 var pageItemIndices = pageItems.Select(pi => pi.idx).ToHashSet();
                 int pendingOtherPages = pending.Count(i => !pageItemIndices.Contains(i));
+                // 最多可選隻數 = 剩餘名額 - 其他頁已暫選隻數
                 int maxSelectThisPage = Math.Max(0, slotsLeft - pendingOtherPages);
-
-                // 工作類型計數（現有 + 已暫選）
-                var workTypeActive = currentStates.GroupBy(s => s.WorkType)
-                    .ToDictionary(g => g.Key, g => g.Count());
-                foreach (var si in pending)
-                {
-                    if (si < player.CaughtPokemon.Count)
-                    {
-                        var wn = GetWorkName(player.CaughtPokemon[si]);
-                        workTypeActive[wn] = workTypeActive.GetValueOrDefault(wn, 0) + 1;
-                    }
-                }
 
                 // SelectMenu
                 int menuMax = Math.Max(1, Math.Min(maxSelectThisPage, pageItems.Count));
                 var menu = new SelectMenuBuilder()
                     .WithCustomId($"poke_work_sel_{userId}_{page}")
-                    .WithPlaceholder($"選擇要派去工作的 pokemon（本頁最多選 {menuMax} 隻）")
+                    .WithPlaceholder($"選擇要派去工作的 pokemon（最多選 {menuMax} 隻）")
                     .WithMinValues(0)
                     .WithMaxValues(menuMax);
 
                 foreach (var (idx, p) in pageItems)
                 {
                     bool isSelected = pending.Contains(idx);
-                    string workName = GetWorkName(p);
-
-                    // 分業：計算這隻 pokemon 所屬類型的數量（不計本身若已選）
-                    int typeCountExcludingSelf = workTypeActive.GetValueOrDefault(workName, 0) - (isSelected ? 1 : 0);
-                    bool typeFull = !isSelected && typeCountExcludingSelf >= 2;
+                    var workDefs = GetWorkDefs(p);
+                    string workNamesStr = string.Join("/", workDefs.Select(d => d.WorkName).Distinct());
 
                     string shiny = p.isShiny ? "✨" : "";
                     string name = string.IsNullOrEmpty(p.CustomName) ? p.Name : p.CustomName;
-                    string typeMark = typeFull ? "🚫" : "";
                     string staminaMark = p.Stamina < 30 ? "⚠️" : "";
-                    string label = $"{shiny}{name}[{workName}]{staminaMark}{typeMark}";
+                    string label = $"{shiny}{name}[{workNamesStr}]{staminaMark}";
                     if (label.Length > 100) label = label[..97] + "...";
                     string desc = $"精力:{p.Stamina} ATK:{p.Attack} DEF:{p.Defense} | {string.Join("/", p.Types)}";
                     if (desc.Length > 100) desc = desc[..97] + "...";
@@ -3473,7 +3469,6 @@ HP為0就是真的死亡，不會再有後續動作
 
                 var comp = new ComponentBuilder().WithSelectMenu(menu, row: 0);
 
-                // 操作按鈕列
                 if (page > 0)
                     comp.WithButton("◀ 上一頁", $"poke_work_pg_{userId}_{page - 1}", ButtonStyle.Secondary, row: 1);
 
@@ -3491,9 +3486,9 @@ HP為0就是真的死亡，不會再有後續動作
                 var embed = new EmbedBuilder()
                     .WithTitle("🏭 派遣 pokemon 工作")
                     .WithDescription(
-                        $"名額：**{currentStates.Count}/{maxSlots}**（剩 {slotsLeft} 個）{pageInfo}\n" +
-                        $"已暫選：**{totalPending} 隻** | 分業限制：同類型最多 2 隻同時工作\n" +
-                        $"精力低於 30 時產出減少，🚫 = 同類型已達上限")
+                        $"工作中：**{workingCount}/{MaxWorkingPokemon}** 隻（剩 {slotsLeft} 個名額）{pageInfo}\n" +
+                        $"已暫選：**{totalPending} 隻** | 多屬性 pokemon 會同時做所有職業\n" +
+                        $"精力低於 30 時產出減少")
                     .WithColor(new Color(0x5865F2))
                     .Build();
 
@@ -3558,16 +3553,15 @@ HP為0就是真的死亡，不會再有後續動作
 
                 var player = await GetPlayerDataAsync(userId, userName);
                 var existingStates = await GetWorkStatesAsync(userId);
-                int maxSlots = GetMaxWorkSlots(player);
+                int workingCount = existingStates.Select(s => s.PokemonCaughtDate).Distinct().Count();
 
                 var successList = new List<string>();
                 var failList = new List<string>();
-                var workTypeCounts = existingStates.GroupBy(s => s.WorkType).ToDictionary(g => g.Key, g => g.Count());
 
                 foreach (var pokemonIndex in pending.OrderBy(i => i))
                 {
-                    if (existingStates.Count >= maxSlots)
-                        { failList.Add($"名額已滿，剩餘未派遣"); break; }
+                    if (workingCount >= MaxWorkingPokemon)
+                        { failList.Add("名額已滿（最多 3 隻），剩餘未派遣"); break; }
                     if (pokemonIndex < 0 || pokemonIndex >= player.CaughtPokemon.Count)
                         { failList.Add($"索引 {pokemonIndex} 找不到"); continue; }
 
@@ -3577,30 +3571,30 @@ HP為0就是真的死亡，不會再有後續動作
                     if (p.Stamina <= 0)
                         { failList.Add($"{p.CustomName ?? p.Name}（精力耗盡）"); continue; }
 
-                    (string WorkName, int WorkHours, List<string> Materials) workDef = ("快遞員", 2, new List<string> { "ore", "fish" });
-                    string matchedType = "normal";
-                    foreach (var t in p.Types)
-                        if (_typeWorkMap.TryGetValue(t, out var wt)) { workDef = wt; matchedType = t; break; }
-
-                    if (workTypeCounts.GetValueOrDefault(workDef.WorkName, 0) >= 2)
-                        { failList.Add($"{p.CustomName ?? p.Name}（{workDef.WorkName} 同類型已滿）"); continue; }
-
-                    var actualMaterials = CalculateWorkOutput(p, workDef.Materials);
-                    existingStates.Add(new PokemonWorkState
-                    {
-                        UserId = userId,
-                        PokemonCaughtDate = p.CaughtDate,
-                        WorkType = workDef.WorkName,
-                        WorkTypeKey = matchedType,
-                        WorkStartTime = DateTime.UtcNow,
-                        WorkEndTime = DateTime.UtcNow.AddHours(workDef.WorkHours),
-                        ExpectedMaterials = actualMaterials
-                    });
-                    workTypeCounts[workDef.WorkName] = workTypeCounts.GetValueOrDefault(workDef.WorkName, 0) + 1;
-
+                    // 多屬性 pokemon 同時做所有職業
+                    var allWorkDefs = GetWorkDefs(p);
                     string shiny = p.isShiny ? "✨" : "";
-                    string mats = string.Join("、", actualMaterials.Select(m => MaterialNames.GetValueOrDefault(m, m)));
-                    successList.Add($"{shiny}{p.CustomName ?? p.Name} → {workDef.WorkName}（{workDef.WorkHours}h，回報：{mats}）");
+                    var jobLines = new List<string>();
+
+                    foreach (var wd in allWorkDefs)
+                    {
+                        var actualMaterials = CalculateWorkOutput(p, wd.Materials);
+                        existingStates.Add(new PokemonWorkState
+                        {
+                            UserId = userId,
+                            PokemonCaughtDate = p.CaughtDate,
+                            WorkType = wd.WorkName,
+                            WorkTypeKey = wd.TypeKey,
+                            WorkStartTime = DateTime.UtcNow,
+                            WorkEndTime = DateTime.UtcNow.AddHours(wd.WorkHours),
+                            ExpectedMaterials = actualMaterials
+                        });
+                        string mats = string.Join("、", actualMaterials.Select(m => MaterialNames.GetValueOrDefault(m, m)));
+                        jobLines.Add($"{wd.WorkName}（{wd.WorkHours}h → {mats}）");
+                    }
+
+                    workingCount++;
+                    successList.Add($"{shiny}{p.CustomName ?? p.Name} → {string.Join(" + ", jobLines)}");
                 }
 
                 if (successList.Any())
@@ -3636,10 +3630,10 @@ HP為0就是真的死亡，不會再有後續動作
                     return (new EmbedBuilder().WithTitle("❌ 找不到這隻 pokemon").WithColor(Color.Red).Build(), new ComponentBuilder());
 
                 var existingStates = await GetWorkStatesAsync(userId);
-                int maxWorkSlots = GetMaxWorkSlots(player);
-                if (existingStates.Count >= maxWorkSlots)
+                int workingNow = existingStates.Select(s => s.PokemonCaughtDate).Distinct().Count();
+                if (workingNow >= MaxWorkingPokemon)
                     return (new EmbedBuilder()
-                        .WithTitle($"❌ 工作名額已滿（{maxWorkSlots}/{maxWorkSlots}）")
+                        .WithTitle($"❌ 工作名額已滿（{MaxWorkingPokemon}/{MaxWorkingPokemon}）")
                         .WithDescription("使用 `/收工pokemon` 取回完成的 pokemon 後再派！")
                         .WithColor(Color.Red).Build(), new ComponentBuilder());
 
@@ -4194,12 +4188,11 @@ HP為0就是真的死亡，不會再有後續動作
                 await SavePlayerDataAsync(player);
 
                 int newMax = GetMaxPokemon(player);
-                int newSlots = GetMaxWorkSlots(player);
                 return (new EmbedBuilder()
                     .WithTitle("🏗️ 倉庫擴建成功！")
                     .WithDescription($"倉庫升至 **Lv.{player.WarehouseLevel}**\n\n" +
                                      $"📦 pokemon 上限：**{newMax} 隻**\n" +
-                                     $"🏭 工作名額：**{newSlots} 個**")
+                                     $"🏭 工作名額：固定 {MaxWorkingPokemon} 隻")
                     .WithColor(Color.Gold).Build(), new ComponentBuilder());
             }
             catch (Exception ex)

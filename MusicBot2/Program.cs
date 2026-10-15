@@ -1050,8 +1050,16 @@ public class Program
                     var pokeSvc = _services.GetService<PokeGameService>();
                     var guildUser = component.User as Discord.WebSocket.SocketGuildUser;
                     var (embed, _) = await pokeSvc.UseWarehouseExpandAsync(whOwnerId, guildUser?.DisplayName ?? component.User.Username);
-                    await component.Channel.SendMessageAsync(embed: embed);
-                    await component.ModifyOriginalResponseAsync(msg => { msg.Content = "✅"; msg.Embed = null; msg.Components = new ComponentBuilder().Build(); });
+                    bool expandOk = !embed.Title.StartsWith("❌");
+                    if (expandOk)
+                    {
+                        await component.Channel.SendMessageAsync(embed: embed);
+                        await component.ModifyOriginalResponseAsync(msg => { msg.Content = "✅"; msg.Embed = null; msg.Components = new ComponentBuilder().Build(); });
+                    }
+                    else
+                    {
+                        await component.ModifyOriginalResponseAsync(msg => { msg.Embed = embed; msg.Components = new ComponentBuilder().Build(); });
+                    }
                 }
             }
 
