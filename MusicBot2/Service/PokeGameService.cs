@@ -4066,6 +4066,10 @@ HP為0就是真的死亡，不會再有後續動作
         {
             try
             {
+                // 倉庫擴建不需要選 pokemon，直接轉呼叫
+                if (itemKey == "warehouse_expand")
+                    return await UseWarehouseExpandAsync(userId, userName);
+
                 var player = await GetPlayerDataAsync(userId, userName);
                 if (!CraftRecipes.TryGetValue(itemKey, out var recipe))
                     return (new EmbedBuilder().WithTitle("❌ 未知的道具").WithColor(Color.Red).Build(), new ComponentBuilder());
