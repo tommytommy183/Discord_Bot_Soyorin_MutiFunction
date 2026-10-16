@@ -62,7 +62,7 @@ namespace MusicBot2.Service
         public static readonly Dictionary<string, string> CharacterVisuals = new()
         {
             // MyGO!!!!!
-            { "soyo", "light honey-blonde wavy shoulder-length hair with no bangs and one strand falling over the forehead, pale blue almond eyes, navy school uniform blazer with white collar trim and gray neck ribbon, navy A-line knee skirt with white hem stripes, navy knee socks" },
+            { "soyo", "light rosy-brown (ash pink-brown) wavy shoulder-length hair with soft wispy side-parted bangs and one loose strand falling over the forehead, pale steel-blue almond eyes, dark navy school uniform blazer with white sailor collar trim and gray neck ribbon, dark navy A-line knee skirt with two white hem stripes, dark navy knee socks and brown loafers" },
 
             { "tomori", "short chin-length messy lavender-purple hair with wispy bangs, amber-gold almond eyes, lavender-gray school blazer over a white shirt with dark green striped tie, dark green plaid pleated mini skirt, dark green knee socks and black shoes" },
 
