@@ -71,11 +71,39 @@ namespace MusicBot2.Service
         private static string MakeCacheKey(string puuid)
             => new string(puuid.Where(char.IsLetterOrDigit).Take(14).ToArray());
 
-        public LOLService(string apiKey)
+        private readonly StackExchange.Redis.IDatabase _redisDb;
+        private readonly bool _useRedis;
+        private const string MonitorEnabledKey = "lol_monitor:enabled";
+
+        public LOLService(string apiKey, string redisConnStr = null)
         {
             _apiKey = apiKey;
             _httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
             _httpClient.DefaultRequestHeaders.Add("X-Riot-Token", apiKey);
+            if (!string.IsNullOrEmpty(redisConnStr))
+            {
+                try
+                {
+                    var conn = StackExchange.Redis.ConnectionMultiplexer.Connect(
+                        redisConnStr + ",connectTimeout=10000,abortConnect=false,connectRetry=3");
+                    _redisDb = conn.GetDatabase();
+                    _useRedis = true;
+                }
+                catch { _useRedis = false; }
+            }
+        }
+
+        // 從 Redis 讀取開關，預設開啟；SET lol_monitor:enabled 0 可停用
+        public async Task<bool> IsMonitorEnabledAsync()
+        {
+            if (!_useRedis) return true;
+            try
+            {
+                var val = await _redisDb.StringGetAsync(MonitorEnabledKey);
+                if (val.IsNullOrEmpty) return true;
+                return val.ToString() == "1" || val.ToString().Equals("true", StringComparison.OrdinalIgnoreCase);
+            }
+            catch { return true; }
         }
 
         #region Riot API helpers

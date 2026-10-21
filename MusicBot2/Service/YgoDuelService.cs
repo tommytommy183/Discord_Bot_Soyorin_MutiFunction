@@ -26,6 +26,7 @@ namespace MusicBot2.Service
 
         private static readonly Dictionary<ulong, YgoDuelState> _memDuels = new();
         private static readonly Dictionary<string, YgoCardData> _cardCache = new();
+        private const int CardCacheMaxSize = 500;
 
         // ─────────────────────────────────────────────────────────────────
         // 動漫牌組清單
@@ -1314,6 +1315,8 @@ namespace MusicBot2.Service
                 var card = response?.Data?.FirstOrDefault();
                 if (card == null) return null;
 
+                if (_cardCache.Count >= CardCacheMaxSize)
+                    _cardCache.Remove(_cardCache.Keys.First());
                 _cardCache[cacheKey] = card;
                 if (_useRedis)
                 {

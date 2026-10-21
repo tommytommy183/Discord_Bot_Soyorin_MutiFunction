@@ -181,7 +181,7 @@ public class Program
               .AddSingleton<HolyGrailTowerService>(sp => new HolyGrailTowerService(redisConn))
               .AddSingleton<YgoDuelService>(sp => new YgoDuelService(redisConn, sp.GetRequiredService<OpenRouterService>(), _client))
               .AddSingleton<FreeDuelService>(sp => new FreeDuelService(redisConn, sp.GetRequiredService<OpenRouterService>(), _client, sp.GetRequiredService<YgoDuelService>()))
-              .AddSingleton<LOLService>(sp => new LOLService(Environment.GetEnvironmentVariable("RIOT_APIKEY") ?? ""))
+              .AddSingleton<LOLService>(sp => new LOLService(Environment.GetEnvironmentVariable("RIOT_APIKEY") ?? "", redisConn))
               .AddSingleton<TFTService>(sp => new TFTService(Environment.GetEnvironmentVariable("RIOT_APIKEY") ?? ""))
               .BuildServiceProvider();
 
@@ -1867,11 +1867,22 @@ public class Program
     }
 
     private const ulong LolMonitorChannelId = 1516463187564822589UL;
+    private const string LolMonitorRedisKey = "lol_monitor:enabled";
+
+    private async Task<bool> IsLolMonitorEnabledAsync()
+    {
+        try
+        {
+            var lolService = _services.GetRequiredService<LOLService>();
+            return await lolService.IsMonitorEnabledAsync();
+        }
+        catch { return true; }
+    }
 
     private async Task StartLolRankMonitorAsync()
     {
         var lolService = _services.GetRequiredService<LOLService>();
-        Console.WriteLine("[LOL Monitor] 背景監控啟動，每 20 秒檢查一次段位...");
+        Console.WriteLine("[LOL Monitor] 背景監控啟動，每 60 秒檢查一次段位...");
         await Task.Delay(15000); // 等待 bot 完全就緒
 
         // 初始化：先快照一次當前 LP，避免 bot 重啟時誤判
@@ -1882,7 +1893,14 @@ public class Program
         {
             try
             {
-                await Task.Delay(20000);
+                await Task.Delay(60000);
+
+                if (!await IsLolMonitorEnabledAsync())
+                {
+                    Console.WriteLine("[LOL Monitor] 已停用（Redis lol_monitor:enabled = 0）");
+                    continue;
+                }
+
                 var losses = await lolService.CheckForLossesAsync();
                 if (losses.Count == 0) continue;
 

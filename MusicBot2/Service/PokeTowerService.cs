@@ -286,6 +286,7 @@ namespace MusicBot2.Service
         private static readonly Random _rng = new();
         private static readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(8) };
         private static readonly Dictionary<int, List<TowerMove>> _movesApiCache = new();
+        private const int MovesCacheMaxSize = 300;
         private static readonly Dictionary<string, string> _typeEnToZh = new(StringComparer.OrdinalIgnoreCase)
         {
             ["normal"]="一般", ["fire"]="火", ["water"]="水", ["electric"]="電",
@@ -4793,7 +4794,12 @@ namespace MusicBot2.Service
                 var results = await Task.WhenAll(tasks);
                 var valid = results.Where(m => m != null).Cast<TowerMove>().ToList();
 
-                if (valid.Count > 0) _movesApiCache[pokeId] = valid;
+                if (valid.Count > 0)
+                {
+                    if (_movesApiCache.Count >= MovesCacheMaxSize)
+                        _movesApiCache.Remove(_movesApiCache.Keys.First());
+                    _movesApiCache[pokeId] = valid;
+                }
 
                 var picked = valid.Take(4).ToList();
                 if (picked.Count < 4) picked.AddRange(PickMovesStatic(fallbackTypes).Take(4 - picked.Count));
