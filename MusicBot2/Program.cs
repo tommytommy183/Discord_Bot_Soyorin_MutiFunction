@@ -2582,17 +2582,17 @@ public class Program
                 var (origChId, origMsgId, origUserId) = steamDup.Value;
                 if (origMsgId != 0)
                 {
-                    // 有記錄原始訊息 ID → 回覆原始訊息，@新傳的人
+                    // 有記錄原始訊息 ID → 回覆原始訊息，@一開始傳訊息的人
                     try
                     {
                         var origChannel = _client.GetChannel(origChId) as IMessageChannel ?? message.Channel;
                         await origChannel.SendMessageAsync(
-                            $"耖你媽，<@{message.Author.Id}> 傳過了",
+                            $"耖你媽，<@{origUserId}> 傳過了",
                             messageReference: new Discord.MessageReference(origMsgId, origChId));
                     }
                     catch
                     {
-                        await message.Channel.SendMessageAsync($"耖你媽，<@{message.Author.Id}> 傳過了");
+                        await message.Channel.SendMessageAsync($"耖你媽，<@{origUserId}> 傳過了");
                     }
                 }
                 else
