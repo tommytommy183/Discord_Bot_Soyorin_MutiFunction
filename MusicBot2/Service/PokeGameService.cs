@@ -618,7 +618,9 @@ namespace MusicBot2.Service
             }
         }
 
-        public async Task<(Embed embed, ComponentBuilder component)> ListPokemonAsync(ulong userId, string userName)
+        private const int ListPokemonPageSize = 10;
+
+        public async Task<(Embed embed, ComponentBuilder component)> ListPokemonAsync(ulong userId, string userName, int page = 0)
         {
             try
             {
@@ -634,15 +636,19 @@ namespace MusicBot2.Service
                     return (errorEmbed, new ComponentBuilder());
                 }
 
+                int totalPages = (player.CaughtPokemon.Count + ListPokemonPageSize - 1) / ListPokemonPageSize;
+                page = Math.Clamp(page, 0, totalPages - 1);
+                int start = page * ListPokemonPageSize;
+                int end = Math.Min(start + ListPokemonPageSize, player.CaughtPokemon.Count);
+
                 var embed = new EmbedBuilder()
                     .WithTitle($"{userName} 的pokemon圖鑑")
                     .WithColor(Color.Gold)
-                    .WithFooter($"總共 {player.CaughtPokemon.Count} 隻pokemon | 戰績: {player.Wins}勝 {player.Losses}敗");
+                    .WithFooter($"總共 {player.CaughtPokemon.Count} 隻 | 第 {page + 1}/{totalPages} 頁 | 戰績: {player.Wins}勝 {player.Losses}敗");
 
-                for (int i = 0; i < player.CaughtPokemon.Count; i++)
+                for (int i = start; i < end; i++)
                 {
                     var pokemon = player.CaughtPokemon[i];
-                    // 好感度衰減檢查
                     ApplyFriendshipDecay(pokemon);
                     var displayName = pokemon.CustomName ?? pokemon.Name;
                     var evolutionInfo = pokemon.CanEvolve
@@ -650,8 +656,6 @@ namespace MusicBot2.Service
                         : $"\n✨ 最終形態 (階段 {pokemon.EvolutionStage})";
                     string shinyText = pokemon.isShiny ? "✨閃光的✨" : "";
                     string bestFriendMark = (player.BestFriendIndex == i) ? " 💛" : "";
-                    string workingMark = "";
-                    // （工作狀態是非同步的，這裡只做輕量標記，實際靠 /收工 顯示）
 
                     embed.AddField(
                         $"{i + 1}. {shinyText + displayName}{bestFriendMark}",
@@ -665,10 +669,15 @@ namespace MusicBot2.Service
                         false
                     );
                 }
-                // 若好感度衰減有變化，存回去
                 await SavePlayerDataAsync(player);
 
-                return (embed.Build(), new ComponentBuilder());
+                var comp = new ComponentBuilder();
+                if (page > 0)
+                    comp.WithButton("◀ 上一頁", $"poke_list_pg_{userId}_{page - 1}", ButtonStyle.Secondary, row: 0);
+                if (page < totalPages - 1)
+                    comp.WithButton("▶ 下一頁", $"poke_list_pg_{userId}_{page + 1}", ButtonStyle.Secondary, row: 0);
+
+                return (embed.Build(), comp);
             }
             catch (Exception ex)
             {
@@ -676,8 +685,10 @@ namespace MusicBot2.Service
             }
         }
 
+        private const int MenuPageSize = 20; // 4 rows × 5 buttons, row 4 for navigation
+
         // ── 選單：蛋雕（ephemeral 按鈕）────────────────────────────────────
-        public async Task<(Embed embed, ComponentBuilder component)> ShowReleasePokemonMenuAsync(ulong userId, string userName)
+        public async Task<(Embed embed, ComponentBuilder component)> ShowReleasePokemonMenuAsync(ulong userId, string userName, int page = 0)
         {
             try
             {
@@ -687,14 +698,20 @@ namespace MusicBot2.Service
                 if (player.CaughtPokemon.Count < 6)
                     return (new EmbedBuilder().WithTitle("❌ 你的pokemon數量不足！").WithDescription("至少需要 6 隻pokemon才能蛋雕喔！").WithColor(Color.Red).Build(), new ComponentBuilder());
 
+                int totalPages = (player.CaughtPokemon.Count + MenuPageSize - 1) / MenuPageSize;
+                page = Math.Clamp(page, 0, totalPages - 1);
+                int start = page * MenuPageSize;
+                int end = Math.Min(start + MenuPageSize, player.CaughtPokemon.Count);
+
+                string pageInfo = totalPages > 1 ? $"（第 {page + 1}/{totalPages} 頁）" : "";
                 var embed = new EmbedBuilder()
-                    .WithTitle("👋 選擇要蛋雕的 pokemon")
+                    .WithTitle($"👋 選擇要蛋雕的 pokemon {pageInfo}")
                     .WithDescription("選一隻你要放生的寶可夢：")
                     .WithColor(Color.Orange)
                     .Build();
 
                 var comp = new ComponentBuilder();
-                for (int i = 0; i < player.CaughtPokemon.Count; i++)
+                for (int i = start; i < end; i++)
                 {
                     var p = player.CaughtPokemon[i];
                     string shiny = p.isShiny ? "✨" : "";
@@ -702,8 +719,12 @@ namespace MusicBot2.Service
                         ? $"{i + 1}. {shiny}{p.Name}"
                         : $"{i + 1}. {shiny}{p.CustomName}（{p.Name}）";
                     if (label.Length > 80) label = label[..77] + "...";
-                    comp.WithButton(label, $"poke_release_{userId}_{i}", ButtonStyle.Danger, row: i / 5);
+                    comp.WithButton(label, $"poke_release_{userId}_{i}", ButtonStyle.Danger, row: (i - start) / 5);
                 }
+                if (page > 0)
+                    comp.WithButton("◀ 上一頁", $"poke_release_pg_{userId}_{page - 1}", ButtonStyle.Secondary, row: 4);
+                if (page < totalPages - 1)
+                    comp.WithButton("▶ 下一頁", $"poke_release_pg_{userId}_{page + 1}", ButtonStyle.Secondary, row: 4);
                 return (embed, comp);
             }
             catch (Exception ex)
@@ -713,7 +734,7 @@ namespace MusicBot2.Service
         }
 
         // ── 選單：1v1 對戰（ephemeral 按鈕）─────────────────────────────────
-        public async Task<(Embed embed, ComponentBuilder component)> ShowBattleSelectMenuAsync(ulong userId, string userName)
+        public async Task<(Embed embed, ComponentBuilder component)> ShowBattleSelectMenuAsync(ulong userId, string userName, int page = 0)
         {
             try
             {
@@ -721,14 +742,20 @@ namespace MusicBot2.Service
                 if (player.CaughtPokemon.Count == 0)
                     return (new EmbedBuilder().WithTitle("❌ 你還沒有任何pokemon！").WithColor(Color.Red).Build(), new ComponentBuilder());
 
+                int totalPages = (player.CaughtPokemon.Count + MenuPageSize - 1) / MenuPageSize;
+                page = Math.Clamp(page, 0, totalPages - 1);
+                int start = page * MenuPageSize;
+                int end = Math.Min(start + MenuPageSize, player.CaughtPokemon.Count);
+
+                string pageInfo = totalPages > 1 ? $"（第 {page + 1}/{totalPages} 頁）" : "";
                 var embed = new EmbedBuilder()
-                    .WithTitle("⚔️ 選擇出戰 pokemon")
+                    .WithTitle($"⚔️ 選擇出戰 pokemon {pageInfo}")
                     .WithDescription("選一隻寶可夢出戰：")
                     .WithColor(Color.Blue)
                     .Build();
 
                 var comp = new ComponentBuilder();
-                for (int i = 0; i < player.CaughtPokemon.Count; i++)
+                for (int i = start; i < end; i++)
                 {
                     var p = player.CaughtPokemon[i];
                     string shiny = p.isShiny ? "✨" : "";
@@ -736,8 +763,12 @@ namespace MusicBot2.Service
                         ? $"{i + 1}. {shiny}{p.Name}"
                         : $"{i + 1}. {shiny}{p.CustomName}（{p.Name}）";
                     if (label.Length > 80) label = label[..77] + "...";
-                    comp.WithButton(label, $"poke_battle_{userId}_{i}", ButtonStyle.Primary, row: i / 5);
+                    comp.WithButton(label, $"poke_battle_{userId}_{i}", ButtonStyle.Primary, row: (i - start) / 5);
                 }
+                if (page > 0)
+                    comp.WithButton("◀ 上一頁", $"poke_battle_pg_{userId}_{page - 1}", ButtonStyle.Secondary, row: 4);
+                if (page < totalPages - 1)
+                    comp.WithButton("▶ 下一頁", $"poke_battle_pg_{userId}_{page + 1}", ButtonStyle.Secondary, row: 4);
                 return (embed, comp);
             }
             catch (Exception ex)
@@ -747,7 +778,7 @@ namespace MusicBot2.Service
         }
 
         // ── 選單：2v2 第一隻（ephemeral）────────────────────────────────────
-        public async Task<(Embed embed, ComponentBuilder component)> Show2v2Step1MenuAsync(ulong userId, string userName)
+        public async Task<(Embed embed, ComponentBuilder component)> Show2v2Step1MenuAsync(ulong userId, string userName, int page = 0)
         {
             try
             {
@@ -755,12 +786,18 @@ namespace MusicBot2.Service
                 if (player.CaughtPokemon.Count < 2)
                     return (new EmbedBuilder().WithTitle("❌ 至少需要 2 隻pokemon！").WithColor(Color.Red).Build(), new ComponentBuilder());
 
+                int totalPages = (player.CaughtPokemon.Count + MenuPageSize - 1) / MenuPageSize;
+                page = Math.Clamp(page, 0, totalPages - 1);
+                int start = page * MenuPageSize;
+                int end = Math.Min(start + MenuPageSize, player.CaughtPokemon.Count);
+
+                string pageInfo = totalPages > 1 ? $"（第 {page + 1}/{totalPages} 頁）" : "";
                 var embed = new EmbedBuilder()
-                    .WithTitle("⚔️ 2v2 — 選擇第一隻出戰 pokemon")
+                    .WithTitle($"⚔️ 2v2 — 選擇第一隻出戰 pokemon {pageInfo}")
                     .WithColor(Color.Blue).Build();
 
                 var comp = new ComponentBuilder();
-                for (int i = 0; i < player.CaughtPokemon.Count; i++)
+                for (int i = start; i < end; i++)
                 {
                     var p = player.CaughtPokemon[i];
                     string shiny = p.isShiny ? "✨" : "";
@@ -768,8 +805,12 @@ namespace MusicBot2.Service
                         ? $"{i + 1}. {shiny}{p.Name}"
                         : $"{i + 1}. {shiny}{p.CustomName}（{p.Name}）";
                     if (label.Length > 80) label = label[..77] + "...";
-                    comp.WithButton(label, $"poke_battle2v2_1_{userId}_{i}", ButtonStyle.Primary, row: i / 5);
+                    comp.WithButton(label, $"poke_battle2v2_1_{userId}_{i}", ButtonStyle.Primary, row: (i - start) / 5);
                 }
+                if (page > 0)
+                    comp.WithButton("◀ 上一頁", $"poke_b2v2_1_pg_{userId}_{page - 1}", ButtonStyle.Secondary, row: 4);
+                if (page < totalPages - 1)
+                    comp.WithButton("▶ 下一頁", $"poke_b2v2_1_pg_{userId}_{page + 1}", ButtonStyle.Secondary, row: 4);
                 return (embed, comp);
             }
             catch (Exception ex)
@@ -779,29 +820,43 @@ namespace MusicBot2.Service
         }
 
         // ── 選單：2v2 第二隻（ephemeral）────────────────────────────────────
-        public async Task<(Embed embed, ComponentBuilder component)> Show2v2Step2MenuAsync(ulong userId, string userName, int firstIdx)
+        public async Task<(Embed embed, ComponentBuilder component)> Show2v2Step2MenuAsync(ulong userId, string userName, int firstIdx, int page = 0)
         {
             try
             {
                 var player = await GetPlayerDataAsync(userId, userName);
 
+                var allCandidates = player.CaughtPokemon
+                    .Select((p, i) => (p, i))
+                    .Where(x => x.i != firstIdx)
+                    .ToList();
+
+                int totalPages = (allCandidates.Count + MenuPageSize - 1) / MenuPageSize;
+                page = Math.Clamp(page, 0, Math.Max(0, totalPages - 1));
+                int start = page * MenuPageSize;
+                var pageItems = allCandidates.Skip(start).Take(MenuPageSize).ToList();
+
+                string pageInfo = totalPages > 1 ? $"（第 {page + 1}/{totalPages} 頁）" : "";
                 var embed = new EmbedBuilder()
-                    .WithTitle("⚔️ 2v2 — 選擇第二隻出戰 pokemon")
+                    .WithTitle($"⚔️ 2v2 — 選擇第二隻出戰 pokemon {pageInfo}")
                     .WithDescription($"第一隻：**{player.CaughtPokemon[firstIdx].CustomName ?? player.CaughtPokemon[firstIdx].Name}**")
                     .WithColor(Color.Blue).Build();
 
                 var comp = new ComponentBuilder();
-                for (int i = 0; i < player.CaughtPokemon.Count; i++)
+                for (int j = 0; j < pageItems.Count; j++)
                 {
-                    if (i == firstIdx) continue; // 不能選同一隻
-                    var p = player.CaughtPokemon[i];
+                    var (p, i) = pageItems[j];
                     string shiny = p.isShiny ? "✨" : "";
                     string label = string.IsNullOrEmpty(p.CustomName)
                         ? $"{i + 1}. {shiny}{p.Name}"
                         : $"{i + 1}. {shiny}{p.CustomName}（{p.Name}）";
                     if (label.Length > 80) label = label[..77] + "...";
-                    comp.WithButton(label, $"poke_battle2v2_2_{userId}_{firstIdx}_{i}", ButtonStyle.Primary, row: i / 5);
+                    comp.WithButton(label, $"poke_battle2v2_2_{userId}_{firstIdx}_{i}", ButtonStyle.Primary, row: j / 5);
                 }
+                if (page > 0)
+                    comp.WithButton("◀ 上一頁", $"poke_b2v2_2_pg_{userId}_{firstIdx}_{page - 1}", ButtonStyle.Secondary, row: 4);
+                if (page < totalPages - 1)
+                    comp.WithButton("▶ 下一頁", $"poke_b2v2_2_pg_{userId}_{firstIdx}_{page + 1}", ButtonStyle.Secondary, row: 4);
                 return (embed, comp);
             }
             catch (Exception ex)
@@ -3107,7 +3162,7 @@ HP為0就是真的死亡，不會再有後續動作
         }
 
         // 撫摸 pokemon（每日一次 +5）
-        public async Task<(Embed embed, ComponentBuilder component)> ShowPetMenuAsync(ulong userId, string userName)
+        public async Task<(Embed embed, ComponentBuilder component)> ShowPetMenuAsync(ulong userId, string userName, int page = 0)
         {
             try
             {
@@ -3115,14 +3170,20 @@ HP為0就是真的死亡，不會再有後續動作
                 if (player.CaughtPokemon.Count == 0)
                     return (new EmbedBuilder().WithTitle("❌ 你還沒有任何pokemon！").WithColor(Color.Red).Build(), new ComponentBuilder());
 
+                int totalPages = (player.CaughtPokemon.Count + MenuPageSize - 1) / MenuPageSize;
+                page = Math.Clamp(page, 0, totalPages - 1);
+                int start = page * MenuPageSize;
+                int end = Math.Min(start + MenuPageSize, player.CaughtPokemon.Count);
+
+                string pageInfo = totalPages > 1 ? $"（第 {page + 1}/{totalPages} 頁）" : "";
                 var embed = new EmbedBuilder()
-                    .WithTitle("🤗 選擇要撫摸的 pokemon")
+                    .WithTitle($"🤗 選擇要撫摸的 pokemon {pageInfo}")
                     .WithDescription("今天還沒撫摸過的可以獲得 好感度 +5")
                     .WithColor(new Color(0xFFB6C1))
                     .Build();
 
                 var comp = new ComponentBuilder();
-                for (int i = 0; i < player.CaughtPokemon.Count; i++)
+                for (int i = start; i < end; i++)
                 {
                     var p = player.CaughtPokemon[i];
                     string shiny = p.isShiny ? "✨" : "";
@@ -3130,8 +3191,12 @@ HP為0就是真的死亡，不會再有後續動作
                         ? $"{i + 1}. {shiny}{p.Name}"
                         : $"{i + 1}. {shiny}{p.CustomName}（{p.Name}）";
                     if (label.Length > 80) label = label[..77] + "...";
-                    comp.WithButton(label, $"poke_pet_{userId}_{i}", ButtonStyle.Success, row: i / 5);
+                    comp.WithButton(label, $"poke_pet_{userId}_{i}", ButtonStyle.Success, row: (i - start) / 5);
                 }
+                if (page > 0)
+                    comp.WithButton("◀ 上一頁", $"poke_pet_pg_{userId}_{page - 1}", ButtonStyle.Secondary, row: 4);
+                if (page < totalPages - 1)
+                    comp.WithButton("▶ 下一頁", $"poke_pet_pg_{userId}_{page + 1}", ButtonStyle.Secondary, row: 4);
                 return (embed, comp);
             }
             catch (Exception ex)
@@ -3191,7 +3256,7 @@ HP為0就是真的死亡，不會再有後續動作
         }
 
         // 設定最好的夥伴（需好感 ≥ 200）
-        public async Task<(Embed embed, ComponentBuilder component)> ShowSetBestFriendMenuAsync(ulong userId, string userName)
+        public async Task<(Embed embed, ComponentBuilder component)> ShowSetBestFriendMenuAsync(ulong userId, string userName, int page = 0)
         {
             try
             {
@@ -3207,18 +3272,28 @@ HP為0就是真的死亡，不會再有後續動作
                         .WithDescription("多互動、多打架讓好感度提升吧！")
                         .WithColor(Color.Orange).Build(), new ComponentBuilder());
 
+                int totalPages = (eligible.Count + MenuPageSize - 1) / MenuPageSize;
+                page = Math.Clamp(page, 0, totalPages - 1);
+                var pageItems = eligible.Skip(page * MenuPageSize).Take(MenuPageSize).ToList();
+
+                string pageInfo = totalPages > 1 ? $"（第 {page + 1}/{totalPages} 頁）" : "";
                 var embed = new EmbedBuilder()
-                    .WithTitle("💛 選擇你最好的夥伴")
+                    .WithTitle($"💛 選擇你最好的夥伴 {pageInfo}")
                     .WithDescription("只能有一隻最好的夥伴，好感度需達 200\n設定後在 `/我的pokemon` 會顯示 💛 標記")
                     .WithColor(new Color(0xFFD700)).Build();
 
                 var comp = new ComponentBuilder();
-                foreach (var (p, i) in eligible)
+                for (int j = 0; j < pageItems.Count; j++)
                 {
+                    var (p, i) = pageItems[j];
                     string label = $"{i + 1}. {p.CustomName ?? p.Name} (好感 {p.Friendship})";
                     if (label.Length > 80) label = label[..77] + "...";
-                    comp.WithButton(label, $"poke_bestfriend_{userId}_{i}", ButtonStyle.Primary, row: eligible.IndexOf((p, i)) / 5);
+                    comp.WithButton(label, $"poke_bestfriend_{userId}_{i}", ButtonStyle.Primary, row: j / 5);
                 }
+                if (page > 0)
+                    comp.WithButton("◀ 上一頁", $"poke_bestfriend_pg_{userId}_{page - 1}", ButtonStyle.Secondary, row: 4);
+                if (page < totalPages - 1)
+                    comp.WithButton("▶ 下一頁", $"poke_bestfriend_pg_{userId}_{page + 1}", ButtonStyle.Secondary, row: 4);
                 return (embed, comp);
             }
             catch (Exception ex)
@@ -4030,7 +4105,7 @@ HP為0就是真的死亡，不會再有後續動作
         }
 
         // 顯示使用道具的 pokemon 選單
-        public async Task<(Embed embed, ComponentBuilder component)> ShowUseItemOnPokemonMenuAsync(ulong userId, string userName, string itemKey)
+        public async Task<(Embed embed, ComponentBuilder component)> ShowUseItemOnPokemonMenuAsync(ulong userId, string userName, string itemKey, int page = 0)
         {
             try
             {
@@ -4038,14 +4113,20 @@ HP為0就是真的死亡，不會再有後續動作
                 if (!CraftRecipes.TryGetValue(itemKey, out var recipe))
                     return (new EmbedBuilder().WithTitle("❌ 未知的道具").WithColor(Color.Red).Build(), new ComponentBuilder());
 
+                int totalPages = (player.CaughtPokemon.Count + MenuPageSize - 1) / MenuPageSize;
+                page = Math.Clamp(page, 0, Math.Max(0, totalPages - 1));
+                int start = page * MenuPageSize;
+                int end = Math.Min(start + MenuPageSize, player.CaughtPokemon.Count);
+
                 var (itemName, _, desc) = recipe;
+                string pageInfo = totalPages > 1 ? $"（第 {page + 1}/{totalPages} 頁）" : "";
                 var embed = new EmbedBuilder()
-                    .WithTitle($"💊 {itemName} — 選擇要使用的 pokemon")
+                    .WithTitle($"💊 {itemName} — 選擇要使用的 pokemon {pageInfo}")
                     .WithDescription($"效果：{desc}")
                     .WithColor(Color.Blue).Build();
 
                 var comp = new ComponentBuilder();
-                for (int i = 0; i < player.CaughtPokemon.Count; i++)
+                for (int i = start; i < end; i++)
                 {
                     var p = player.CaughtPokemon[i];
                     string shiny = p.isShiny ? "✨" : "";
@@ -4053,8 +4134,12 @@ HP為0就是真的死亡，不會再有後續動作
                         ? $"{i + 1}. {shiny}{p.Name} (精力{p.Stamina} 好感{p.Friendship})"
                         : $"{i + 1}. {shiny}{p.CustomName} (精力{p.Stamina} 好感{p.Friendship})";
                     if (label.Length > 80) label = label[..77] + "...";
-                    comp.WithButton(label, $"poke_useitem_use_{userId}_{itemKey}_{i}", ButtonStyle.Success, row: i / 5);
+                    comp.WithButton(label, $"poke_useitem_use_{userId}_{itemKey}_{i}", ButtonStyle.Success, row: (i - start) / 5);
                 }
+                if (page > 0)
+                    comp.WithButton("◀ 上一頁", $"poke_useitem_pg_{userId}_{itemKey}_{page - 1}", ButtonStyle.Secondary, row: 4);
+                if (page < totalPages - 1)
+                    comp.WithButton("▶ 下一頁", $"poke_useitem_pg_{userId}_{itemKey}_{page + 1}", ButtonStyle.Secondary, row: 4);
                 return (embed, comp);
             }
             catch (Exception ex)
@@ -4213,7 +4298,7 @@ HP為0就是真的死亡，不會再有後續動作
         #region 交配/孵化系統
 
         // 顯示選擇第一隻親代選單
-        public async Task<(Embed embed, ComponentBuilder component)> ShowBreedParent1MenuAsync(ulong userId, string userName)
+        public async Task<(Embed embed, ComponentBuilder component)> ShowBreedParent1MenuAsync(ulong userId, string userName, int page = 0)
         {
             try
             {
@@ -4235,19 +4320,29 @@ HP為0就是真的死亡，不會再有後續動作
                         .WithDescription("需要至少 **2 隻**精力 ≥ 50、好感 ≥ 30 的 pokemon")
                         .WithColor(Color.Orange).Build(), new ComponentBuilder());
 
+                int totalPages = (eligible.Count + MenuPageSize - 1) / MenuPageSize;
+                page = Math.Clamp(page, 0, Math.Max(0, totalPages - 1));
+                var pageItems = eligible.Skip(page * MenuPageSize).Take(MenuPageSize).ToList();
+
+                string pageInfo = totalPages > 1 ? $"（第 {page + 1}/{totalPages} 頁）" : "";
                 var embed = new EmbedBuilder()
-                    .WithTitle("💕 交配系統 — 選擇第一隻親代")
+                    .WithTitle($"💕 交配系統 — 選擇第一隻親代 {pageInfo}")
                     .WithDescription("需要：精力 ≥ 50、好感 ≥ 30\n交配後雙方精力 -30、好感 -10\n24 小時後可用 `/孵化pokemon` 取得新 pokemon")
                     .WithColor(new Color(0xFF69B4)).Build();
 
                 var comp = new ComponentBuilder();
-                foreach (var (p, i) in eligible)
+                for (int j = 0; j < pageItems.Count; j++)
                 {
+                    var (p, i) = pageItems[j];
                     string shiny = p.isShiny ? "✨" : "";
                     string label = $"{i + 1}. {shiny}{p.CustomName ?? p.Name} (精力{p.Stamina} 好感{p.Friendship})";
                     if (label.Length > 80) label = label[..77] + "...";
-                    comp.WithButton(label, $"poke_breed_1_{userId}_{i}", ButtonStyle.Primary, row: eligible.IndexOf((p, i)) / 5);
+                    comp.WithButton(label, $"poke_breed_1_{userId}_{i}", ButtonStyle.Primary, row: j / 5);
                 }
+                if (page > 0)
+                    comp.WithButton("◀ 上一頁", $"poke_breed_1_pg_{userId}_{page - 1}", ButtonStyle.Secondary, row: 4);
+                if (page < totalPages - 1)
+                    comp.WithButton("▶ 下一頁", $"poke_breed_1_pg_{userId}_{page + 1}", ButtonStyle.Secondary, row: 4);
                 return (embed, comp);
             }
             catch (Exception ex)
@@ -4257,7 +4352,7 @@ HP為0就是真的死亡，不會再有後續動作
         }
 
         // 顯示選擇第二隻親代選單
-        public async Task<(Embed embed, ComponentBuilder component)> ShowBreedParent2MenuAsync(ulong userId, string userName, int parent1Idx)
+        public async Task<(Embed embed, ComponentBuilder component)> ShowBreedParent2MenuAsync(ulong userId, string userName, int parent1Idx, int page = 0)
         {
             try
             {
@@ -4276,21 +4371,31 @@ HP為0就是真的死亡，不會再有後續動作
                         .WithDescription("需要有**共同屬性**且精力 ≥ 50、好感 ≥ 30 的另一隻")
                         .WithColor(Color.Orange).Build(), new ComponentBuilder());
 
+                int totalPages = (eligible.Count + MenuPageSize - 1) / MenuPageSize;
+                page = Math.Clamp(page, 0, Math.Max(0, totalPages - 1));
+                var pageItems = eligible.Skip(page * MenuPageSize).Take(MenuPageSize).ToList();
+
                 string p1CommonTypes = string.Join(", ", p1.Types);
+                string pageInfo = totalPages > 1 ? $"（第 {page + 1}/{totalPages} 頁）" : "";
                 var embed = new EmbedBuilder()
-                    .WithTitle($"💕 交配系統 — 選擇第二隻親代（與 {p1.CustomName ?? p1.Name} 配對）")
+                    .WithTitle($"💕 交配系統 — 選擇第二隻親代（與 {p1.CustomName ?? p1.Name} 配對）{pageInfo}")
                     .WithDescription($"{p1.CustomName ?? p1.Name} 的屬性：{p1CommonTypes}\n需有共同屬性才能交配")
                     .WithColor(new Color(0xFF69B4)).Build();
 
                 var comp = new ComponentBuilder();
-                foreach (var (p, i) in eligible)
+                for (int j = 0; j < pageItems.Count; j++)
                 {
+                    var (p, i) = pageItems[j];
                     string shiny = p.isShiny ? "✨" : "";
                     string commonTypes = string.Join(", ", p.Types.Intersect(p1.Types));
                     string label = $"{i + 1}. {shiny}{p.CustomName ?? p.Name} [{commonTypes}]";
                     if (label.Length > 80) label = label[..77] + "...";
-                    comp.WithButton(label, $"poke_breed_2_{userId}_{parent1Idx}_{i}", ButtonStyle.Primary, row: eligible.IndexOf((p, i)) / 5);
+                    comp.WithButton(label, $"poke_breed_2_{userId}_{parent1Idx}_{i}", ButtonStyle.Primary, row: j / 5);
                 }
+                if (page > 0)
+                    comp.WithButton("◀ 上一頁", $"poke_breed_2_pg_{userId}_{parent1Idx}_{page - 1}", ButtonStyle.Secondary, row: 4);
+                if (page < totalPages - 1)
+                    comp.WithButton("▶ 下一頁", $"poke_breed_2_pg_{userId}_{parent1Idx}_{page + 1}", ButtonStyle.Secondary, row: 4);
                 return (embed, comp);
             }
             catch (Exception ex)
