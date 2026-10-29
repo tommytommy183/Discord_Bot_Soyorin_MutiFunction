@@ -431,7 +431,7 @@ houka,和泉朋花
                 .ToArray();
 
             if (_googleApiKeys.Length > 0)
-                _googleHttpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
+                _googleHttpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(25) };
 
             if (_useGoogleAI)
                 Console.WriteLine($"✅ [AI Service] Google AI Studio 模式，共 {_googleApiKeys.Length} 個 key");
@@ -1131,6 +1131,7 @@ houka,和泉朋花
                                 availableKeys = _googleApiKeys.ToList();  // 等完強制重試
                             }
                             r = new ApiCallResult(null, true, false, null, null);  // 預設 break（換 model）
+                            bool allKeysTimeout = false;
                             foreach (var key in availableKeys)
                             {
                                 r = await CallGoogleAIOnceAsync(
@@ -1141,7 +1142,13 @@ houka,和泉朋花
                                     new[] { "使用者名稱:", "\n使用者名稱" },
                                     model, key, retry: 0);
                                 if (!r.ShouldContinue) break;  // 成功或 ShouldBreak → 不用再試下一個 key
-                                // ShouldContinue（429 或暫時錯誤）→ 試下一個 key
+                                // ShouldContinue（429 或 timeout）→ 試下一個 key
+                            }
+                            // 所有 key 都 ShouldContinue（全部 timeout/429） → 換 model，不要再 retry 同一個 model
+                            if (r.ShouldContinue)
+                            {
+                                Console.WriteLine($"[GoogleAI] Model:{model} 所有 key 都失敗，換下一個 model");
+                                r = new ApiCallResult(null, true, false, null, null);  // ShouldBreak
                             }
                         }
                         else

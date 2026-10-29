@@ -2007,8 +2007,14 @@ public class Program
         }
     }
 
+    private bool _clientReadyExecuted = false;
+
     private async Task ClientReady()
     {
+        // 防止重連時重複執行（AddModuleAsync 重複呼叫會拋 ArgumentException）
+        if (_clientReadyExecuted) return;
+        _clientReadyExecuted = true;
+
         // 註冊 Slash Commands
         await _interactionService.AddModuleAsync<MusicBot2.SlahCommands.SlashCommandHandler>(_services);
 
