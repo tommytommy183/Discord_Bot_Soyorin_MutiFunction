@@ -993,10 +993,10 @@ namespace MusicBot2.SlahCommands
         [SlashCommand("指派幻獸pokemon工作", "根據屬性派pokemon去打工幾小時後回來帶材料")]
         public async Task SendPokeWorkCmdAsync()
         {
-            await DeferAsync(ephemeral: true);
+            await DeferAsync();
             var user = Context.User as SocketGuildUser;
             var (embed, comp) = await _pokeGameService.ShowSendToWorkMenuAsync(user.Id, user.Username, page: 0, resetSelection: true);
-            await FollowupAsync(embed: embed, components: comp.Build(), ephemeral: true);
+            await FollowupAsync(embed: embed, components: comp.Build());
         }
 
         [SlashCommand("收工pokemon", "取回工作中的pokemon並獲得材料")]
