@@ -462,6 +462,8 @@ namespace MusicBot2.Service
         public string Text { get; set; }
         public DateTime Timestamp { get; set; }
         public string UserName { get; set; }
+        // Discord 訊息 ID（用來去重 contextMessages；舊資料為 null）
+        public ulong? MessageId { get; set; }
     }
 
     // Gemini API 回應的資料結構

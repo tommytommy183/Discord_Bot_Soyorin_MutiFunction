@@ -450,12 +450,13 @@ public class Program
                 // 一般格式: anime_guess_{sel}_{cor}_{name}   → Split('_') → [anime,guess,sel,cor,name]
                 var parts = component.Data.CustomId.Split('_');
                 int offset = isR2 ? 3 : 2; // r2 多一個 "r2" segment
-                if (parts.Length >= offset + 3)
+                if (parts.Length >= offset + 2)
                 {
                     if (int.TryParse(parts[offset], out int selectedId)
                         && int.TryParse(parts[offset + 1], out int correctId))
                     {
-                        string correctName = parts[offset + 2];
+                        // 新格式不帶名稱（由 service 從按鈕 label 反查）；舊訊息仍可能帶名稱
+                        string correctName = parts.Length > offset + 2 ? string.Join("_", parts.Skip(offset + 2)) : null;
 
                         var jikanService = _services.GetService<JikanAnimeService>();
                         var (embed, newComponent) = await jikanService.HandleButtonClickAsync(

@@ -74,6 +74,7 @@ namespace MusicBot2.Service
                     options.KeepAlive = 60; // 保持連線 60 秒
 
                     var redis = ConnectionMultiplexer.Connect(options);
+                    _redisConn = redis;
                     _redisDb = redis.GetDatabase();
                     _useRedis = true;
                     Console.WriteLine("✅ Redis 連線成功");
@@ -92,6 +93,69 @@ namespace MusicBot2.Service
 
             // 初始化傳說/神話 Pokemon 列表
             _ = InitializeLegendaryPokemonAsync();
+
+            // 背景遷移：把 Redis 裡舊玩家資料的圖片統一成「立繪 + 對戰 GIF」
+            if (_useRedis)
+                _ = Task.Run(MigrateAllPlayerSpritesAsync);
+        }
+
+        private ConnectionMultiplexer _redisConn;
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<ulong, bool> _spriteMigrating = new();
+
+        /// <summary>
+        /// 重算單一玩家的圖片並「有條件」寫回：只有 Redis 內容仍是我們讀到的那份才寫，
+        /// 避免背景遷移蓋掉玩家同時間的操作（抓寶 / 對戰結果）。回傳是否寫入成功或不需寫入。
+        /// </summary>
+        private async Task<bool> MigratePlayerSpritesAsync(string key)
+        {
+            var raw = await _redisDb.StringGetAsync(key);
+            if (raw.IsNullOrEmpty) return true;
+
+            PokeGamePlayer player;
+            try { player = JsonConvert.DeserializeObject<PokeGamePlayer>(raw); }
+            catch { return true; }
+
+            var changed = await PokemonSpriteHelper.NormalizeIfOutdatedAsync(player?.CaughtPokemon);
+            // 孵化中的蛋 / 其他欄位不處理
+            if (!changed) return true;
+
+            var tran = _redisDb.CreateTransaction();
+            tran.AddCondition(Condition.StringEqual(key, raw));
+            _ = tran.StringSetAsync(key, JsonConvert.SerializeObject(player));
+            return await tran.ExecuteAsync();
+        }
+
+        private async Task MigrateAllPlayerSpritesAsync()
+        {
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(20)); // 等 bot 啟動完成
+                int total = 0, migrated = 0;
+                foreach (var endpoint in _redisConn.GetEndPoints())
+                {
+                    var server = _redisConn.GetServer(endpoint);
+                    if (!server.IsConnected || server.IsReplica) continue;
+                    await foreach (var key in server.KeysAsync(pattern: $"{PLAYER_DATA_KEY}*"))
+                    {
+                        total++;
+                        try
+                        {
+                            // 若被同時改到，最多重試 3 次
+                            for (int i = 0; i < 3; i++)
+                                if (await MigratePlayerSpritesAsync(key)) { migrated++; break; }
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"[Sprite Migrate] {key} 失敗: {ex.Message}");
+                        }
+                    }
+                }
+                Console.WriteLine($"[Sprite Migrate] 完成：檢查 {total} 位玩家，處理 {migrated} 位");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Sprite Migrate] 中止: {ex.Message}");
+            }
         }
 
         private async Task InitializeLegendaryPokemonAsync()
@@ -384,6 +448,9 @@ namespace MusicBot2.Service
                 Back_GIF = isShiny ? pokeData.sprites.other.showdown.back_shiny : pokeData.sprites.other.showdown.back_default
             };
 
+            // 統一圖片：立繪 + 對戰 GIF（確認存在才用）
+            await PokemonSpriteHelper.NormalizeAsync(pokemon);
+
             // 檢查這隻pokemon是否有進化鏈
             await CheckEvolutionChainAsync(pokemon, speciesData);
 
@@ -500,6 +567,9 @@ namespace MusicBot2.Service
                 pokemon.CaughtDate = caughtDate;
                 pokemon.EvolutionPoints = 0; // 重置進化點數
                 pokemon.EvolutionStage++;
+
+                // 進化後圖片也要套統一規則
+                await PokemonSpriteHelper.NormalizeAsync(pokemon);
 
                 // 檢查新的進化鏈
                 await CheckEvolutionChainAsync(pokemon, speciesData);
@@ -1408,13 +1478,16 @@ namespace MusicBot2.Service
             IMessageChannel channel, ulong viewerUserId,
             PokeGamePokemon pokemon, BattleMatchmaking opponent)
         {
-            // 發送對方的 pokemon 圖（從對方視角是敵方）
-            var opponentImageUrl = opponent.Pokemon.Front_GIF ?? opponent.Pokemon.ImageUrl;
+            // 配對池裡存的是舊副本，顯示前先套用統一圖片規則
+            await PokemonSpriteHelper.NormalizeIfOutdatedAsync(new[] { pokemon, opponent.Pokemon });
+
+            // 發送對方的 pokemon 圖（正面 GIF）
+            var opponentImageUrl = PokemonSpriteHelper.BattleFront(opponent.Pokemon);
             if (!string.IsNullOrEmpty(opponentImageUrl))
                 await channel.SendMessageAsync(opponentImageUrl);
 
-            // 發送自己的 pokemon 圖（背面）
-            var myImageUrl = (pokemon.Back_GIF ?? pokemon.Back_ImageUrl) ?? pokemon.ImageUrl;
+            // 發送自己的 pokemon 圖（背面 GIF）
+            var myImageUrl = PokemonSpriteHelper.BattleBack(pokemon);
             if (!string.IsNullOrEmpty(myImageUrl))
                 await channel.SendMessageAsync(myImageUrl);
         }
@@ -1424,27 +1497,16 @@ namespace MusicBot2.Service
             PokeGamePokemon pokemon1, PokeGamePokemon pokemon2
             , BattleMatchmaking2V2 opponent)
         {
-            //對戰前先丟一次雙方pokemon圖片
-            if (!string.IsNullOrEmpty(opponent.Pokemon1.Front_GIF ?? opponent.Pokemon1.ImageUrl))
-            {
-                await channel.SendMessageAsync(opponent.Pokemon1.Front_GIF ?? opponent.Pokemon1.ImageUrl);
+            await PokemonSpriteHelper.NormalizeIfOutdatedAsync(new[] { pokemon1, pokemon2, opponent.Pokemon1, opponent.Pokemon2 });
 
-            }
-            if (!string.IsNullOrEmpty(opponent.Pokemon2.Front_GIF ?? opponent.Pokemon2.ImageUrl))
-            {
-                await channel.SendMessageAsync(opponent.Pokemon2.Front_GIF ?? opponent.Pokemon2.ImageUrl);
-            }
+            //對戰前先丟一次雙方pokemon圖片（敵方正面 GIF、我方背面 GIF）
+            foreach (var url in new[] { PokemonSpriteHelper.BattleFront(opponent.Pokemon1), PokemonSpriteHelper.BattleFront(opponent.Pokemon2) })
+                if (!string.IsNullOrEmpty(url)) await channel.SendMessageAsync(url);
 
             await channel.SendMessageAsync("==========對上==========");
 
-            if (!string.IsNullOrEmpty((pokemon1.Back_GIF ?? pokemon1.Back_ImageUrl) ?? pokemon1.ImageUrl))
-            {
-                await channel.SendMessageAsync((pokemon1.Back_GIF ?? pokemon1.Back_ImageUrl) ?? pokemon1.ImageUrl);
-            }
-            if (!string.IsNullOrEmpty((pokemon2.Back_GIF ?? pokemon2.Back_ImageUrl) ?? pokemon2.ImageUrl))
-            {
-                await channel.SendMessageAsync((pokemon2.Back_GIF ?? pokemon2.Back_ImageUrl) ?? pokemon2.ImageUrl);
-            }
+            foreach (var url in new[] { PokemonSpriteHelper.BattleBack(pokemon1), PokemonSpriteHelper.BattleBack(pokemon2) })
+                if (!string.IsNullOrEmpty(url)) await channel.SendMessageAsync(url);
         }
 
 
@@ -2522,18 +2584,19 @@ HP為0就是真的死亡，不會再有後續動作
 
                 //對戰前先丟一次Boss 和玩家 pokemon圖片
 
-                if (!string.IsNullOrEmpty(currentBoss.BossPokemon.Front_GIF ?? currentBoss.BossPokemon.ImageUrl))
-                {
-                    await channel.SendMessageAsync(currentBoss.BossPokemon.Front_GIF ?? currentBoss.BossPokemon.ImageUrl);
-                }
+                await PokemonSpriteHelper.NormalizeIfOutdatedAsync(
+                    new[] { currentBoss.BossPokemon }.Concat(currentBoss.Participants.Select(p => p.Pokemon)));
+
+                var bossUrl = PokemonSpriteHelper.BattleFront(currentBoss.BossPokemon);
+                if (!string.IsNullOrEmpty(bossUrl))
+                    await channel.SendMessageAsync(bossUrl);
                 await channel.SendMessageAsync("==========對上==========");
 
                 foreach (var participant in currentBoss.Participants)
                 {
-                    if (!string.IsNullOrEmpty(participant.Pokemon.Back_GIF ?? participant.Pokemon.Back_ImageUrl ?? participant.Pokemon.ImageUrl))
-                    {
-                        await channel.SendMessageAsync(participant.Pokemon.Back_GIF ?? participant.Pokemon.Back_ImageUrl ?? participant.Pokemon.ImageUrl);
-                    }
+                    var pUrl = PokemonSpriteHelper.BattleBack(participant.Pokemon);
+                    if (!string.IsNullOrEmpty(pUrl))
+                        await channel.SendMessageAsync(pUrl);
                 }
                 //改完立刻存
                 currentBoss.IsFighting = true;
@@ -2706,6 +2769,7 @@ HP為0就是真的死亡，不會再有後續動作
                     Back_GIF = pokeData.sprites.other.showdown.back_default
                 };
 
+                await PokemonSpriteHelper.NormalizeAsync(pokemon);
                 return pokemon;
             }
             catch (Exception ex)
@@ -2792,7 +2856,22 @@ HP為0就是真的死亡，不會再有後續動作
                         };
                     }
 
-                    return JsonConvert.DeserializeObject<PokeGamePlayer>(data);
+                    var loaded = JsonConvert.DeserializeObject<PokeGamePlayer>(data);
+
+                    // 還有舊圖片規則的 Pokemon → 背景重算並有條件寫回（不拖慢這次操作、不覆蓋玩家的寫入）
+                    if (loaded?.CaughtPokemon != null
+                        && loaded.CaughtPokemon.Any(p => p != null && p.SpriteVersion < PokemonSpriteHelper.CurrentSpriteVersion)
+                        && _spriteMigrating.TryAdd(userId, true))
+                    {
+                        _ = Task.Run(async () =>
+                        {
+                            try { await MigratePlayerSpritesAsync(key); }
+                            catch (Exception mex) { Console.WriteLine($"[Sprite Migrate] {userId} 失敗: {mex.Message}"); }
+                            finally { _spriteMigrating.TryRemove(userId, out _); }
+                        });
+                    }
+
+                    return loaded;
                 }
                 catch (Exception ex)
                 {
@@ -4546,8 +4625,9 @@ HP為0就是真的死亡，不會再有後續動作
                 var speciesResponse = await _httpClient.GetAsync(pokeData.species.url);
                 var speciesContent = await speciesResponse.Content.ReadAsStringAsync();
                 var speciesData = JsonConvert.DeserializeObject<PokeSpecies>(speciesContent);
-                var chineseName = speciesData.names?.FirstOrDefault(n => n.language.name == "zh-Hant")?.name
-                               ?? speciesData.names?.FirstOrDefault(n => n.language.name == "zh-Hans")?.name
+                // PokeAPI 的語言代碼是小寫 zh-hant / zh-hans（以前寫成 zh-Hant 永遠比對不到 → 變簡體）
+                var chineseName = speciesData.names?.FirstOrDefault(n => string.Equals(n.language.name, "zh-hant", StringComparison.OrdinalIgnoreCase))?.name
+                               ?? speciesData.names?.FirstOrDefault(n => string.Equals(n.language.name, "zh-hans", StringComparison.OrdinalIgnoreCase))?.name
                                ?? pokeData.species.name;
 
                 bool isShiny = forceShiny;
@@ -4571,6 +4651,7 @@ HP為0就是真的死亡，不會再有後續動作
                     Front_GIF = isShiny ? pokeData.sprites.other.showdown.front_shiny : pokeData.sprites.other.showdown.front_default,
                     Back_GIF = isShiny ? pokeData.sprites.other.showdown.back_shiny : pokeData.sprites.other.showdown.back_default
                 };
+                await PokemonSpriteHelper.NormalizeAsync(pokemon);
                 await CheckEvolutionChainAsync(pokemon, speciesData);
                 return pokemon;
             }

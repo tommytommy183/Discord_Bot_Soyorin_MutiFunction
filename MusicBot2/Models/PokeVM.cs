@@ -195,6 +195,8 @@ namespace MusicBot2.Models
         public int? NextEvolutionId { get; set; } // 下一階段進化的 Pokemon ID
         public string Front_GIF { get; set; } // 動態圖片 URL
         public string Back_GIF { get; set; } // 動態圖片 URL
+        // 圖片規則版本（PokemonSpriteHelper.CurrentSpriteVersion），舊資料為 0 → 讀取時自動重算圖片
+        public int SpriteVersion { get; set; } = 0;
 
         // 好感度系統
         public int Friendship { get; set; } = 0; // 好感度 (0-255)

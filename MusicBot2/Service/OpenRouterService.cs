@@ -55,6 +55,9 @@ namespace MusicBot2.Service
         private readonly Dictionary<string, DateTime> _channelLastAccess = new();
         private readonly SemaphoreSlim _saveLock = new(1, 1);
         private readonly HashSet<string> _summarizingChannels = new();
+        // Discord 事件是並行處理的：同頻道同時兩則訊息會同時改同一個 List / Dictionary，
+        // 造成序列化時 "Collection was modified" 例外 → 記憶存不進 Redis。所有記憶體結構的讀寫都要包在這個 lock 裡。
+        private readonly object _memLock = new();
 
         // ── 遊戲短期記憶（海龜湯 / 猜角色 / 卡片決鬥 …）────────────────
         private readonly Dictionary<string, SoyoGameState> _gameStates = new();
@@ -674,18 +677,32 @@ houka,和泉朋花
 
                 if (_useRedis)
                 {
-                    if (_channelHistories.TryGetValue(channelKey, out var hist))
-                        await _redisDb.StringSetAsync(CHANNEL_HIST_PREFIX + channelKey, JsonSerializer.Serialize(hist, jsonOpts), ChannelHistoryTTL);
-                    if (_channelSummaries.TryGetValue(channelKey, out var sum))
+                    // 在 lock 內做快照序列化，避免與其他執行緒同時 Add 衝突
+                    string histJson = null, sum = null;
+                    lock (_memLock)
+                    {
+                        if (_channelHistories.TryGetValue(channelKey, out var hist))
+                            histJson = JsonSerializer.Serialize(hist, jsonOpts);
+                        _channelSummaries.TryGetValue(channelKey, out sum);
+                    }
+                    if (histJson != null)
+                        await _redisDb.StringSetAsync(CHANNEL_HIST_PREFIX + channelKey, histJson, ChannelHistoryTTL);
+                    if (sum != null)
                         await _redisDb.StringSetAsync(CHANNEL_SUM_PREFIX + channelKey, sum, ChannelHistoryTTL);
                 }
                 else
                 {
                     // fallback：把當前記憶體所有頻道存到 txt（維持舊行為）
+                    string histJson, sumJson;
+                    lock (_memLock)
+                    {
+                        histJson = JsonSerializer.Serialize(_channelHistories, jsonOpts);
+                        sumJson = JsonSerializer.Serialize(_channelSummaries, jsonOpts);
+                    }
                     var dir = Path.GetDirectoryName(_memoryFilePath);
                     if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
-                    await File.WriteAllTextAsync(_memoryFilePath, JsonSerializer.Serialize(_channelHistories, jsonOpts), Encoding.UTF8);
-                    await File.WriteAllTextAsync(_summaryFilePath, JsonSerializer.Serialize(_channelSummaries, jsonOpts), Encoding.UTF8);
+                    await File.WriteAllTextAsync(_memoryFilePath, histJson, Encoding.UTF8);
+                    await File.WriteAllTextAsync(_summaryFilePath, sumJson, Encoding.UTF8);
                 }
             }
             catch (Exception ex)
@@ -702,10 +719,14 @@ houka,和泉朋花
         {
             if (string.IsNullOrEmpty(channelKey))
             {
-                var keys = _channelHistories.Keys.ToList();
-                _channelHistories.Clear();
-                _channelSummaries.Clear();
-                _channelLastAccess.Clear();
+                List<string> keys;
+                lock (_memLock)
+                {
+                    keys = _channelHistories.Keys.ToList();
+                    _channelHistories.Clear();
+                    _channelSummaries.Clear();
+                    _channelLastAccess.Clear();
+                }
                 if (_useRedis)
                 {
                     foreach (var k in keys)
@@ -717,9 +738,12 @@ houka,和泉朋花
             }
             else
             {
-                _channelHistories.Remove(channelKey);
-                _channelSummaries.Remove(channelKey);
-                _channelLastAccess.Remove(channelKey);
+                lock (_memLock)
+                {
+                    _channelHistories.Remove(channelKey);
+                    _channelSummaries.Remove(channelKey);
+                    _channelLastAccess.Remove(channelKey);
+                }
                 if (_useRedis)
                 {
                     await _redisDb.KeyDeleteAsync(CHANNEL_HIST_PREFIX + channelKey);
@@ -731,6 +755,15 @@ houka,和泉朋花
         }
 
         private List<ConversationMessage> GetHistory(string channelKey)
+        {
+            lock (_memLock)
+            {
+                return GetHistoryUnsafe(channelKey);
+            }
+        }
+
+        // 呼叫端必須已持有 _memLock
+        private List<ConversationMessage> GetHistoryUnsafe(string channelKey)
         {
             _channelLastAccess[channelKey] = DateTime.UtcNow;
 
@@ -760,16 +793,20 @@ houka,和泉朋花
                 }
 
                 // Evict LRU channel if over limit
-                if (_channelHistories.Count >= MaxInMemoryChannels)
+                // 沒用 Redis 時不能踢（踢掉就永久遺失）；正在摘要中的頻道也不踢
+                if (_useRedis && _channelHistories.Count >= MaxInMemoryChannels)
                 {
-                    var lruKey = _channelLastAccess
-                        .Where(kv => kv.Key != channelKey && _channelHistories.ContainsKey(kv.Key))
+                    var lru = _channelLastAccess
+                        .Where(kv => kv.Key != channelKey && _channelHistories.ContainsKey(kv.Key) && !_summarizingChannels.Contains(kv.Key))
                         .OrderBy(kv => kv.Value)
-                        .First().Key;
-                    _channelHistories.Remove(lruKey);
-                    _channelSummaries.Remove(lruKey);
-                    _channelLastAccess.Remove(lruKey);
-                    Console.WriteLine($"[OpenRouter Memory] LRU evicted channel {lruKey}");
+                        .FirstOrDefault();
+                    if (lru.Key != null)
+                    {
+                        _channelHistories.Remove(lru.Key);
+                        _channelSummaries.Remove(lru.Key);
+                        _channelLastAccess.Remove(lru.Key);
+                        Console.WriteLine($"[OpenRouter Memory] LRU evicted channel {lru.Key}");
+                    }
                 }
 
                 _channelHistories[channelKey] = list;
@@ -779,13 +816,15 @@ houka,和泉朋花
 
         public string GetChannelSummary(string channelKey)
         {
-            if (!_channelSummaries.TryGetValue(channelKey, out var summary) && _useRedis)
+            string summary;
+            lock (_memLock) { _channelSummaries.TryGetValue(channelKey, out summary); }
+            if (summary == null && _useRedis)
             {
                 try
                 {
                     var val = _redisDb.StringGet(CHANNEL_SUM_PREFIX + channelKey);
                     summary = val.IsNullOrEmpty ? null : val.ToString();
-                    if (summary != null) _channelSummaries[channelKey] = summary;
+                    if (summary != null) lock (_memLock) { _channelSummaries[channelKey] = summary; }
                 }
                 catch { }
             }
@@ -794,8 +833,12 @@ houka,和泉朋花
 
         private List<ConversationMessage> GetRecentMessages(string channelKey)
         {
-            var history = GetHistory(channelKey);
-            var recent = history.Skip(Math.Max(0, history.Count - MaxRecentMessages)).ToList();
+            List<ConversationMessage> recent;
+            lock (_memLock)
+            {
+                var history = GetHistoryUnsafe(channelKey);
+                recent = history.Skip(Math.Max(0, history.Count - MaxRecentMessages)).ToList();
+            }
 
             int totalChars = recent.Sum(m => m.Text?.Length ?? 0);
             while (totalChars > MaxContextChars && recent.Count > 2)
@@ -809,14 +852,17 @@ houka,和泉朋花
         // 當 history 太長時，把舊對話用 AI 摘要後丟掉，避免每次送太多 token
         private async Task SummarizeIfNeededAsync(string channelKey)
         {
-            var history = GetHistory(channelKey);
-            if (history.Count <= MaxTotalMessages) return;
-            if (_summarizingChannels.Contains(channelKey)) return;
-
-            _summarizingChannels.Add(channelKey);
+            List<ConversationMessage> toSummarize;
+            lock (_memLock)
+            {
+                var history = GetHistoryUnsafe(channelKey);
+                if (history.Count <= MaxTotalMessages) return;
+                if (_summarizingChannels.Contains(channelKey)) return;
+                _summarizingChannels.Add(channelKey);
+                toSummarize = history.Take(SummarizeChunkSize).ToList();
+            }
             try
             {
-                var toSummarize = history.Take(SummarizeChunkSize).ToList();
 
                 var existing = GetChannelSummary(channelKey);
 
@@ -859,8 +905,15 @@ houka,和泉朋花
                 {
                     // 清理摘要格式
                     newSummary = CleanSummary(newSummary);
-                    _channelSummaries[channelKey] = newSummary;  // 縮短摘要長度限制
-                    _channelHistories[channelKey] = history.Skip(SummarizeChunkSize).ToList();
+                    lock (_memLock)
+                    {
+                        _channelSummaries[channelKey] = newSummary;
+                        // 只移除「已被摘要」的那幾則（用 reference 比對），
+                        // 不要整個換新 List，否則摘要期間其他執行緒新增的訊息會被丟掉
+                        var current = GetHistoryUnsafe(channelKey);
+                        var summarized = new HashSet<ConversationMessage>(toSummarize, ReferenceEqualityComparer.Instance);
+                        current.RemoveAll(m => summarized.Contains(m));
+                    }
 
                     _ = SaveChannelAsync(channelKey);
                     Console.WriteLine($"[OpenRouter Memory] 頻道 {channelKey} 已摘要 {SummarizeChunkSize} 則對話");
@@ -872,7 +925,7 @@ houka,和泉朋花
             }
             finally
             {
-                _summarizingChannels.Remove(channelKey);
+                lock (_memLock) { _summarizingChannels.Remove(channelKey); }
             }
         }
 
@@ -898,10 +951,12 @@ houka,和泉朋花
             // ✅ 先將 contextMessages 加入記憶（如果有的話）
             if (contextMessages != null && contextMessages.Any())
             {
-                var history = GetHistory(channelKey);
+                var selfId = user?.Guild?.CurrentUser?.Id
+                             ?? (contextMessages.First().Channel as SocketGuildChannel)?.Guild?.CurrentUser?.Id;
+                var pending = new List<ConversationMessage>();
 
-                // 將最近的對話按時間順序加入記憶
-                foreach (var msg in contextMessages.Reverse())
+                // 將最近的對話按時間順序加入記憶（Discord 回傳是新→舊，所以先依時間排序）
+                foreach (var msg in contextMessages.OrderBy(m => m.Timestamp))
                 {
                     // SocketGuildUser cast 失敗時（GetMessagesAsync 可能回傳 IUser），用 GlobalName 再 fallback Username
                     var guildMember = msg.Author as SocketGuildUser
@@ -933,28 +988,39 @@ houka,和泉朋花
                         }
                     }
 
-                    // 用與當前訊息相同的格式儲存，讓 AI 能分辨誰說的
-                    var role = msg.Author.IsBot ? "model" : "user";
-                    var userName = msg.Author.IsBot ? "爽世" : authorName;
+                    if (string.IsNullOrWhiteSpace(rawText)) continue;
+
+                    // 只有「爽世自己」的訊息才算 model；其他 bot（passBotList）是別人在說話，
+                    // 以前用 IsBot 判斷，會把其他 bot 的話記成爽世自己說的 → 記憶錯亂
+                    bool isSelf = selfId.HasValue && msg.Author.Id == selfId.Value;
+                    var role = isSelf ? "model" : "user";
+                    var userName = isSelf ? "爽世" : authorName;
                     var messageText = role == "user"
                         ? $"使用者名稱: {userName}\n訊息: {rawText}"
                         : rawText;
 
-                    // 檢查是否已存在：只比訊息內容 + 時間，不比 UserName
-                    // （主路徑存的是 DisplayName，contextMessages 可能 cast 不一致，UserName 比對不可靠）
-                    bool alreadyExists = history.Any(h =>
-                        h.Text != null && h.Text.Contains(rawText) &&
-                        Math.Abs((h.Timestamp - msg.Timestamp.DateTime).TotalSeconds) < 120);
-
-                    if (!alreadyExists)
+                    pending.Add(new ConversationMessage
                     {
-                        history.Add(new ConversationMessage
-                        {
-                            Role = role,
-                            Text = messageText,
-                            Timestamp = msg.Timestamp.DateTime,
-                            UserName = userName
-                        });
+                        Role = role,
+                        Text = messageText,
+                        Timestamp = msg.Timestamp.UtcDateTime,
+                        UserName = userName,
+                        MessageId = msg.Id
+                    });
+                }
+
+                lock (_memLock)
+                {
+                    var history = GetHistoryUnsafe(channelKey);
+                    foreach (var cm in pending)
+                    {
+                        // 先比 Discord MessageId；舊資料沒有 id 時才用「內容 + 時間」比對
+                        var plain = cm.Role == "user" ? cm.Text[(cm.Text.IndexOf("訊息: ", StringComparison.Ordinal) + 4)..] : cm.Text;
+                        bool alreadyExists = history.Any(h =>
+                            (h.MessageId.HasValue && h.MessageId == cm.MessageId) ||
+                            (h.Text != null && h.Text.Contains(plain) &&
+                             Math.Abs((h.Timestamp - cm.Timestamp).TotalSeconds) < 600));
+                        if (!alreadyExists) history.Add(cm);
                     }
                 }
             }
@@ -1190,6 +1256,11 @@ houka,和泉朋花
                         }
 
                         text = CleanResponse(text);
+                        if (string.IsNullOrWhiteSpace(text))
+                        {
+                            Console.WriteLine($"[OpenRouter] 清理後為空回覆 (model:{model})，換下一個模型");
+                            break;
+                        }
                         text = CommonHelper.SwitchSoyoPic(text);
 
                         // Two-stage search: check if AI wants to search or lookup Valorant
@@ -1676,30 +1747,35 @@ houka,和泉朋花
 
                         if (saveToMemory)
                         {
-                            var history = GetHistory(channelKey);
-                            history.Add(new ConversationMessage
+                            lock (_memLock)
                             {
-                                Role = "user",
-                                Text = Truncate(userMessageWithName, MaxMessageStoreLength),
-                                Timestamp = DateTime.Now,
-                                UserName = displayName
-                            });
-                            // If two-stage search ran, save stage 1 first so AI remembers it said "I'll check"
-                            if (!string.IsNullOrWhiteSpace(stage1TextForHistory))
+                                var history = GetHistoryUnsafe(channelKey);
                                 history.Add(new ConversationMessage
                                 {
-                                    Role = "model",
-                                    Text = Truncate(stage1TextForHistory, MaxMessageStoreLength),
-                                    Timestamp = DateTime.Now,
-                                    UserName = "爽世"
+                                    Role = "user",
+                                    Text = Truncate(userMessageWithName, MaxMessageStoreLength),
+                                    Timestamp = DateTime.UtcNow,
+                                    UserName = displayName
                                 });
-                            history.Add(new ConversationMessage
-                            {
-                                Role = "model",
-                                Text = Truncate(text, MaxMessageStoreLength),
-                                Timestamp = DateTime.Now,
-                                UserName = "爽世"
-                            });
+                                // If two-stage search ran, save stage 1 first so AI remembers it said "I'll check"
+                                if (!string.IsNullOrWhiteSpace(stage1TextForHistory))
+                                    history.Add(new ConversationMessage
+                                    {
+                                        Role = "model",
+                                        Text = Truncate(stage1TextForHistory, MaxMessageStoreLength),
+                                        Timestamp = DateTime.UtcNow,
+                                        UserName = "爽世"
+                                    });
+                                // 空回覆不要存（會讓下一輪 AI 看到空白 assistant turn）
+                                if (!string.IsNullOrWhiteSpace(text))
+                                    history.Add(new ConversationMessage
+                                    {
+                                        Role = "model",
+                                        Text = Truncate(text, MaxMessageStoreLength),
+                                        Timestamp = DateTime.UtcNow,
+                                        UserName = "爽世"
+                                    });
+                            }
 
                             _ = SaveChannelAsync(channelKey);
                             _ = SummarizeIfNeededAsync(channelKey);
@@ -2481,9 +2557,15 @@ houka,和泉朋花
             // 移除 reasoning model 的思考區塊（Qwen3、Nemotron reasoning 等）
             text = Regex.Replace(text, @"<think>[\s\S]*?</think>", "", RegexOptions.IgnoreCase);
             text = Regex.Replace(text, @"<thinking>[\s\S]*?</thinking>", "", RegexOptions.IgnoreCase);
+            // 被 max token 截斷、沒有結尾標籤的思考區塊：從開頭標籤以後全部丟掉
+            text = Regex.Replace(text, @"<think(ing)?>[\s\S]*$", "", RegexOptions.IgnoreCase);
 
             text = Regex.Replace(text, @"^\s*[\[\(【]?\s*(爽世|soyo|Soyo|SOYO|長崎爽世)\s*[\]\)】]?\s*[:：]\s*", "");
-            //text = Regex.Replace(text, @"\*[^*\n]{1,40}\*", "");
+            // 模型模仿對話格式、自己幫使用者接話：從「使用者名稱:」開始（不是開頭的話）之後全部截掉，
+            // 以前只刪掉那一行，會把模型捏造的「使用者發言」留在爽世的回覆裡
+            var fakeTurn = Regex.Match(text, @"(^|\n)\s*使用者名稱\s*[:：]");
+            if (fakeTurn.Success && fakeTurn.Index > 0)
+                text = text[..fakeTurn.Index];
             text = Regex.Replace(text, @"使用者名稱\s*[:：].*", "", RegexOptions.Multiline);
             text = Regex.Replace(text, @"^\s*訊息\s*[:：]\s*", "", RegexOptions.Multiline);
             text = Regex.Replace(text, @"\n{3,}", "\n\n");

@@ -221,6 +221,16 @@ namespace MusicBot2.Service
             bool isCorrect = selectedId == correctId;
             var originalEmbed = interaction.Message.Embeds.FirstOrDefault();
 
+            if (string.IsNullOrEmpty(correctName))
+            {
+                // 從原訊息按鈕反查正確答案 label（customId 結尾為 _{correctId}_{correctId}）
+                correctName = interaction.Message.Components
+                    .OfType<ActionRowComponent>()
+                    .SelectMany(r => r.Components.OfType<ButtonComponent>())
+                    .FirstOrDefault(b => b.CustomId != null && b.CustomId.EndsWith($"_{correctId}_{correctId}"))?.Label
+                    ?? "???";
+            }
+
             var embedBuilder = new EmbedBuilder();
             if (originalEmbed != null)
             {
@@ -280,18 +290,20 @@ namespace MusicBot2.Service
         // ── CTA v1 ────────────────────────────────────────────────────────
         private async Task<(ComponentBuilder component, Embed embed)> StartCharacterToAnimeGameAsync(bool isTop)
         {
-            var chara = await GetCharacterAsync(isTop);
+            CharactersV1Resopnse chara = null;
+            for (int attempt = 0; attempt < 3 && (chara?.animeography == null || chara.animeography.Count == 0); attempt++)
+                chara = await GetCharacterAsync(isTop);
             if (chara == null)
                 return CommonHelper.BuildErrorResponse("無法獲取角色資料，請稍後再試");
             if (chara.animeography == null || chara.animeography.Count == 0)
                 return CommonHelper.BuildErrorResponse($"角色 {chara.name} 沒有動畫記錄，請重試");
 
             var correctAnime = chara.animeography[0];
-            var (options, correctId, correctName) = await GetAnimeOptionsForCharacterAsync(correctAnime.malId, correctAnime.title);
-            if (options == null || options.Count == 0)
+            var (options, correctId) = await GetAnimeOptionsForCharacterAsync(correctAnime, chara.animeography);
+            if (options == null || options.Count < 2)
                 return CommonHelper.BuildErrorResponse("無法取得動畫選項，請重試");
 
-            return (BuildAnimeOptionsComponent(options, correctId, correctName), BuildCharacterToAnimeEmbed(chara));
+            return (BuildAnimeOptionsComponent(options, correctId), BuildCharacterToAnimeEmbed(chara));
         }
 
         // ── CTC v1 ────────────────────────────────────────────────────────
@@ -303,34 +315,39 @@ namespace MusicBot2.Service
 
             var opts = new List<CharactersV1Resopnse> { correctChar };
             int retries = 0;
-            while (opts.Count < 6 && retries < 30)
+            while (opts.Count < 6 && retries < 5)
             {
                 retries++;
-                var rnd = await GetCharacterAsync(false);
-                if (rnd != null && rnd.malId != correctChar.malId) opts.Add(rnd);
-                else await Task.Delay(300);
+                var page = await GetCharacterPageAsync(false);
+                if (page == null) { await Task.Delay(300); continue; }
+                foreach (var c in page.OrderBy(_ => Guid.NewGuid()))
+                {
+                    if (opts.Count >= 6) break;
+                    // 去重（重複 malId 會造成 Discord 重複 custom_id 錯誤）
+                    if (c != null && !string.IsNullOrEmpty(c.name) && !opts.Any(o => o.malId == c.malId))
+                        opts.Add(c);
+                }
             }
             if (opts.Count < 4)
                 return CommonHelper.BuildErrorResponse("無法湊齊足夠的角色選項，請重試");
 
             opts = opts.OrderBy(_ => Guid.NewGuid()).ToList();
-            return (BuildCharacterOptionsComponent(opts, correctChar.malId, correctChar.name), BuildCharacterToCharacterEmbed(correctChar));
+            return (BuildCharacterOptionsComponent(opts, correctChar.malId), BuildCharacterToCharacterEmbed(correctChar));
         }
 
         // ── GetCharacterAsync v1 ──────────────────────────────────────────
-        private async Task<CharactersV1Resopnse> GetCharacterAsync(bool isTop)
+        private async Task<List<CharactersV1Resopnse>> GetCharacterPageAsync(bool isTop)
         {
             try
             {
-                var rng = new Random();
-                int page = isTop ? rng.Next(1, 6) : rng.Next(1, 51);
+                int page = isTop ? Random.Shared.Next(1, 6) : Random.Shared.Next(1, 51);
                 string url = $"{API_BASE_URL}/top/characters?page={page}";
-                Console.WriteLine($"[Jikan] GetCharacterAsync: GET {url}");
+                Console.WriteLine($"[Jikan] GetCharacterPageAsync: GET {url}");
 
                 var response = await _httpClient.GetAsync(url);
                 if (!response.IsSuccessStatusCode)
                 {
-                    Console.WriteLine($"[Jikan] GetCharacterAsync: HTTP {(int)response.StatusCode} from {url}");
+                    Console.WriteLine($"[Jikan] GetCharacterPageAsync: HTTP {(int)response.StatusCode} from {url}");
                     return null;
                 }
 
@@ -338,107 +355,121 @@ namespace MusicBot2.Service
                 var wrapper = JsonConvert.DeserializeObject<TopCharactersV1Response>(content);
                 if (wrapper?.data == null || wrapper.data.Count == 0)
                 {
-                    Console.WriteLine($"[Jikan] GetCharacterAsync: data null/empty. Raw: {content[..Math.Min(200, content.Length)]}");
+                    Console.WriteLine($"[Jikan] GetCharacterPageAsync: data null/empty. Raw: {content[..Math.Min(200, content.Length)]}");
                     return null;
                 }
-
-                var result = wrapper.data[rng.Next(wrapper.data.Count)];
-                Console.WriteLine($"[Jikan] GetCharacterAsync: 抽到 {result.name} (malId={result.malId})");
-                return result;
+                return wrapper.data;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[Jikan] GetCharacterAsync 例外: {ex.Message}");
+                Console.WriteLine($"[Jikan] GetCharacterPageAsync 例外: {ex.Message}");
                 return null;
             }
         }
 
-        // ── GetAnimeOptionsForCharacterAsync v1 ───────────────────────────
-        private async Task<(List<AnimeV1Response> options, int correctId, string correctName)> GetAnimeOptionsForCharacterAsync(
-            int correctMalId, string correctTitle)
+        private async Task<CharactersV1Resopnse> GetCharacterAsync(bool isTop)
         {
-            var correctEntry = new AnimeV1Response { malId = correctMalId, title = correctTitle };
-            var options = new List<AnimeV1Response> { correctEntry };
-            var rng = new Random();
+            var page = await GetCharacterPageAsync(isTop);
+            if (page == null) return null;
+            var result = page[Random.Shared.Next(page.Count)];
+            Console.WriteLine($"[Jikan] GetCharacterAsync: 抽到 {result.name} (malId={result.malId})");
+            return result;
+        }
 
-            // /top/anime 不需要 filter 參數，先抓第 1 頁建候選池並取得 totalPages
-            int totalPages = 1;
-            try
+        /// <summary>
+        /// 取作品「系列名」判斷是否同系列（例如 Re:Zero 4th Season 與 Re:Zero 視為同一系列）
+        /// </summary>
+        private static string FranchiseKey(string title)
+        {
+            if (string.IsNullOrWhiteSpace(title)) return "";
+            var t = title.ToLowerInvariant();
+            foreach (var sep in new[] { ": ", " - ", " season", " 2nd", " 3rd", " 4th", " 5th", " part", " movie", " (" })
             {
-                var firstResp = await _httpClient.GetAsync($"{API_BASE_URL}/top/anime?page=1");
-                if (firstResp.IsSuccessStatusCode)
-                {
-                    var firstJson = await firstResp.Content.ReadAsStringAsync();
-                    var firstWrap = JsonConvert.DeserializeObject<JikanAnimeDevV1>(firstJson);
-                    if (firstWrap?.data != null)
-                    {
-                        foreach (var a in firstWrap.data)
-                            if (a != null && a.malId != correctMalId && !options.Any(o => o.malId == a.malId))
-                                options.Add(a);
-
-                        if (firstWrap.meta?.pagination?.total != null && firstWrap.meta.pagination.limit > 0)
-                            totalPages = Math.Max(1, firstWrap.meta.pagination.total.Value / firstWrap.meta.pagination.limit);
-                        else if (firstWrap.meta?.pagination?.hasNextPage == true)
-                            totalPages = 20;
-                    }
-                    Console.WriteLine($"[Jikan] GetAnimeOptions: totalPages={totalPages}, pool after page1={options.Count}");
-                }
-                else
-                    Console.WriteLine($"[Jikan] GetAnimeOptions page1: HTTP {(int)firstResp.StatusCode}");
+                int idx = t.IndexOf(sep, StringComparison.Ordinal);
+                if (idx > 0) t = t[..idx];
             }
-            catch (Exception ex) { Console.WriteLine($"[Jikan] GetAnimeOptions page1 例外: {ex.Message}"); }
+            t = new string(t.Where(char.IsLetterOrDigit).ToArray());
+            return t.Length > 12 ? t[..12] : t;
+        }
+
+        private static bool IsSameFranchise(AnimeV1Response a, IEnumerable<AnimeographyItem> characterAnime)
+        {
+            var key = FranchiseKey(a.title);
+            foreach (var c in characterAnime)
+            {
+                if (c.malId == a.malId) return true;
+                var ck = FranchiseKey(c.title);
+                if (key.Length >= 3 && ck.Length >= 3 && (key.StartsWith(ck) || ck.StartsWith(key)))
+                    return true;
+            }
+            return false;
+        }
+
+        // ── GetAnimeOptionsForCharacterAsync v1 ───────────────────────────
+        private async Task<(List<AnimeV1Response> options, int correctId)> GetAnimeOptionsForCharacterAsync(
+            AnimeographyItem correct, List<AnimeographyItem> characterAnime)
+        {
+            var correctEntry = new AnimeV1Response { malId = correct.malId, title = correct.title };
+            var distractors = new List<AnimeV1Response>();
+
+            void AddFrom(IEnumerable<AnimeV1Response> list)
+            {
+                foreach (var a in list.OrderBy(_ => Guid.NewGuid()))
+                {
+                    if (distractors.Count >= 5) break;
+                    if (a == null || string.IsNullOrWhiteSpace(a.title)) continue;
+                    // 排除角色本身出演的作品 & 同系列作品，否則會「選了對的卻判錯」
+                    if (IsSameFranchise(a, characterAnime)) continue;
+                    var key = FranchiseKey(a.title);
+                    if (distractors.Any(d => d.malId == a.malId || FranchiseKey(d.title) == key)) continue;
+                    distractors.Add(a);
+                }
+            }
 
             int retries = 0;
-            while (options.Count < 6 && retries < 10)
+            while (distractors.Count < 5 && retries < 6)
             {
                 retries++;
                 try
                 {
-                    int page = rng.Next(1, totalPages + 1);
-                    string url = $"{API_BASE_URL}/top/anime?page={page}";
-                    var response = await _httpClient.GetAsync(url);
+                    int page = Random.Shared.Next(1, 41);
+                    var response = await _httpClient.GetAsync($"{API_BASE_URL}/top/anime?page={page}");
                     if (!response.IsSuccessStatusCode)
                     {
                         Console.WriteLine($"[Jikan] GetAnimeOptions: HTTP {(int)response.StatusCode} page={page}");
                         await Task.Delay(300); continue;
                     }
-
                     var content = await response.Content.ReadAsStringAsync();
                     var wrapper = JsonConvert.DeserializeObject<JikanAnimeDevV1>(content);
-                    if (wrapper?.data == null || wrapper.data.Count == 0) { await Task.Delay(300); continue; }
-
-                    foreach (var a in wrapper.data)
-                    {
-                        if (a != null && a.malId != correctMalId && !options.Any(o => o.malId == a.malId))
-                            options.Add(a);
-                        if (options.Count >= 6) break;
-                    }
-                    Console.WriteLine($"[Jikan] GetAnimeOptions: retry={retries}, pool={options.Count}");
+                    if (wrapper?.data != null) AddFrom(wrapper.data);
                 }
-                catch (Exception ex) { Console.WriteLine($"[Jikan] GetAnimeOptions loop 例外: {ex.Message}"); }
-                await Task.Delay(200);
+                catch (Exception ex) { Console.WriteLine($"[Jikan] GetAnimeOptions 例外: {ex.Message}"); }
             }
 
-            // 取 6 個打亂，確保選項夠多才顯示
-            var pool = options.OrderBy(_ => Guid.NewGuid()).Take(6).ToList();
-            Console.WriteLine($"[Jikan] GetAnimeOptions: 最終選項數={pool.Count}");
-            return (pool, correctMalId, correctTitle);
+            // 正確答案一定在選項內（以前是整池洗牌後 Take(6)，正確答案常被洗掉）
+            var options = new List<AnimeV1Response> { correctEntry };
+            options.AddRange(distractors.Take(5));
+            options = options.OrderBy(_ => Guid.NewGuid()).ToList();
+            Console.WriteLine($"[Jikan] GetAnimeOptions: 最終選項數={options.Count}");
+            return (options, correct.malId);
         }
 
         // ── Buttons v1 ────────────────────────────────────────────────────
-        private ComponentBuilder BuildAnimeOptionsComponent(List<AnimeV1Response> options, int correctId, string correctName)
+        // customId: anime_guess_{selectedId}_{correctId}
+        // 正確答案名稱不再塞進 customId（超過 100 字元或名稱含 '_' 會壞），改由按鈕 label 反查
+        private ComponentBuilder BuildAnimeOptionsComponent(List<AnimeV1Response> options, int correctId)
         {
             var builder = new ComponentBuilder();
             for (int i = 0; i < Math.Min(options.Count, 6); i++)
             {
                 string label = options[i].title ?? $"(ID:{options[i].malId})";
                 if (label.Length > 80) label = label[..77] + "...";
-                builder.WithButton(label: label, customId: $"anime_guess_{options[i].malId}_{correctId}_{correctName}", style: ButtonStyle.Primary, row: i / 3);
+                builder.WithButton(label: label, customId: $"anime_guess_{options[i].malId}_{correctId}", style: ButtonStyle.Primary, row: i / 3);
             }
             return builder;
         }
 
-        private ComponentBuilder BuildCharacterOptionsComponent(List<CharactersV1Resopnse> chars, int correctId, string correctName)
+        private ComponentBuilder BuildCharacterOptionsComponent(List<CharactersV1Resopnse> chars, int correctId)
         {
             var builder = new ComponentBuilder();
             for (int i = 0; i < Math.Min(chars.Count, 6); i++)
@@ -446,7 +477,7 @@ namespace MusicBot2.Service
                 var c = chars[i];
                 string label = string.IsNullOrEmpty(c.nameKanji) ? c.name : $"{c.name} / {c.nameKanji}";
                 if (label.Length > 80) label = label[..77] + "...";
-                builder.WithButton(label: label, customId: $"anime_guess_{c.malId}_{correctId}_{correctName}", style: ButtonStyle.Primary, row: i / 3);
+                builder.WithButton(label: label, customId: $"anime_guess_{c.malId}_{correctId}", style: ButtonStyle.Primary, row: i / 3);
             }
             return builder;
         }
