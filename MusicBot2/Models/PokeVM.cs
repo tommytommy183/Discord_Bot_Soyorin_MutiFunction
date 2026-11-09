@@ -204,6 +204,8 @@ namespace MusicBot2.Models
 
         // 精力系統
         public int Stamina { get; set; } = 100; // 精力值 (0-100)
+        // 下一次開始算精力回復的時間點（UTC）；滿精力時為 null。讀取時依經過時間補回，不需要背景計時器
+        public DateTime? StaminaRegenAt { get; set; }
 
         // 型態變換（對戰用，不儲存至 DB）
         [JsonIgnore]

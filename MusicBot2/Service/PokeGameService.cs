@@ -1766,8 +1766,8 @@ HP為0就是真的死亡，不會再有後續動作
                     AddFriendship(winnerPokemon1, new Random().Next(2, 5));
                     AddFriendship(winnerPokemon2, new Random().Next(2, 5));
                     // 精力消耗
-                    winnerPokemon1.Stamina = Math.Max(0, winnerPokemon1.Stamina - 10);
-                    winnerPokemon2.Stamina = Math.Max(0, winnerPokemon2.Stamina - 10);
+                    ConsumeStamina(winnerPokemon1, 10);
+                    ConsumeStamina(winnerPokemon2, 10);
 
                     // 更新勝利者pokemon的進化點數 (+2)
                     winnerPokemon1.EvolutionPoints += 2;
@@ -1828,8 +1828,8 @@ HP為0就是真的死亡，不會再有後續動作
                     AddFriendship(loserPokemon1, 1);
                     AddFriendship(loserPokemon2, 1);
                     // 精力消耗
-                    loserPokemon1.Stamina = Math.Max(0, loserPokemon1.Stamina - 10);
-                    loserPokemon2.Stamina = Math.Max(0, loserPokemon2.Stamina - 10);
+                    ConsumeStamina(loserPokemon1, 10);
+                    ConsumeStamina(loserPokemon2, 10);
 
                     // 更新失敗者pokemon的進化點數 (+1)
                     loserPokemon1.EvolutionPoints += 1;
@@ -2219,7 +2219,7 @@ HP為0就是真的死亡，不會再有後續動作
 
                     // 好感度（勝利）、精力 -10
                     AddFriendship(winnerPokemon, new Random().Next(2, 5));
-                    winnerPokemon.Stamina = Math.Max(0, winnerPokemon.Stamina - 10);
+                    ConsumeStamina(winnerPokemon, 10);
 
                     // 更新勝利者pokemon的進化點數 (+2)
                     winnerPokemon.EvolutionPoints += 2;
@@ -2259,7 +2259,7 @@ HP為0就是真的死亡，不會再有後續動作
 
                     // 好感度 +1（落敗也有）、精力 -10
                     AddFriendship(loserPokemon, 1);
-                    loserPokemon.Stamina = Math.Max(0, loserPokemon.Stamina - 10);
+                    ConsumeStamina(loserPokemon, 10);
 
                     // 更新失敗者pokemon的進化點數 (+1)
                     loserPokemon.EvolutionPoints += 1;
@@ -2871,6 +2871,19 @@ HP為0就是真的死亡，不會再有後續動作
                         });
                     }
 
+                    // 精力自然回復（純計算）；只有舊資料第一次設定起點時才有條件寫回
+                    if (loaded != null && await ApplyStaminaRegenAsync(loaded))
+                    {
+                        try
+                        {
+                            var tran = _redisDb.CreateTransaction();
+                            tran.AddCondition(Condition.StringEqual(key, data));
+                            _ = tran.StringSetAsync(key, JsonConvert.SerializeObject(loaded));
+                            await tran.ExecuteAsync();
+                        }
+                        catch (Exception sex) { Console.WriteLine($"[Stamina] {userId} 寫回失敗: {sex.Message}"); }
+                    }
+
                     return loaded;
                 }
                 catch (Exception ex)
@@ -2890,7 +2903,8 @@ HP為0就是真的死亡，不會再有後續動作
                             Losses = 0
                         };
                     }
-                    return await Task.FromResult(_memoryPlayers[userId]);
+                    await ApplyStaminaRegenAsync(_memoryPlayers[userId]);
+                    return _memoryPlayers[userId];
                 }
             }
             else
@@ -2909,7 +2923,8 @@ HP為0就是真的死亡，不會再有後續動作
                         Losses = 0
                     };
                 }
-                return await Task.FromResult(_memoryPlayers[userId]);
+                await ApplyStaminaRegenAsync(_memoryPlayers[userId]);
+                return _memoryPlayers[userId];
             }
         }
 
@@ -3231,6 +3246,79 @@ HP為0就是真的死亡，不會再有後續動作
         {
             if (p.LastInteractDate.HasValue && (DateTime.UtcNow - p.LastInteractDate.Value).TotalDays > 3)
                 p.Friendship = Math.Max(0, p.Friendship - 2);
+        }
+
+        // ─── 精力自然回復 ─────────────────────────────────────────────────
+        // 最後一次消耗精力後閒置 30 分鐘開始回復，之後每 6 分鐘 +1（每小時 +10，0 → 100 約 10 小時）。
+        // 只存一個時間戳，讀取玩家資料時依經過時間計算，不開背景計時器、不額外快取。
+        private const int StaminaIdleMinutes = 30;
+        private static readonly TimeSpan StaminaRegenInterval = TimeSpan.FromMinutes(6);
+
+        private static void ConsumeStamina(PokeGamePokemon p, int amount)
+        {
+            if (p == null) return;
+            p.Stamina = Math.Max(0, p.Stamina - amount);
+            p.StaminaRegenAt = DateTime.UtcNow.AddMinutes(StaminaIdleMinutes);
+        }
+
+        // 回傳 true 表示「舊資料第一次設定回復起點」，需要寫回才不會每次讀取都重新起算
+        private static bool ApplyStaminaRegen(PokeGamePokemon p, DateTime now)
+        {
+            if (p.Stamina >= 100)
+            {
+                p.Stamina = Math.Min(p.Stamina, 100);
+                p.StaminaRegenAt = null;
+                return false;
+            }
+            if (p.StaminaRegenAt == null)
+            {
+                p.StaminaRegenAt = now;
+                return true;
+            }
+            if (now <= p.StaminaRegenAt.Value) return false;
+
+            long pts = (now - p.StaminaRegenAt.Value).Ticks / StaminaRegenInterval.Ticks;
+            if (pts <= 0) return false;
+            if (p.Stamina + pts >= 100)
+            {
+                p.Stamina = 100;
+                p.StaminaRegenAt = null;
+            }
+            else
+            {
+                p.Stamina += (int)pts;
+                p.StaminaRegenAt = p.StaminaRegenAt.Value.AddTicks(pts * StaminaRegenInterval.Ticks);
+            }
+            return false;
+        }
+
+        // 對玩家所有「沒在工作、沒在配對排隊」的 pokemon 套用精力回復；回傳是否需要寫回
+        private async Task<bool> ApplyStaminaRegenAsync(PokeGamePlayer player)
+        {
+            if (player?.CaughtPokemon == null || player.CaughtPokemon.Count == 0) return false;
+            var now = DateTime.UtcNow;
+
+            // 沒有任何 pokemon 需要回復 → 不查工作狀態，省一次 Redis
+            if (!player.CaughtPokemon.Any(p => p != null && p.Stamina < 100 && (p.StaminaRegenAt == null || p.StaminaRegenAt.Value < now)))
+                return false;
+
+            var states = await GetWorkStatesAsync(player.UserId);
+            var busy = new HashSet<DateTime>(states.Select(s => s.PokemonCaughtDate));
+            if (_memoryMatchmaking.TryGetValue(player.UserId, out var mm) && mm?.Pokemon != null)
+                busy.Add(mm.Pokemon.CaughtDate);
+            if (_memoryMatchmaking2V2.TryGetValue(player.UserId, out var mm2))
+            {
+                if (mm2?.Pokemon1 != null) busy.Add(mm2.Pokemon1.CaughtDate);
+                if (mm2?.Pokemon2 != null) busy.Add(mm2.Pokemon2.CaughtDate);
+            }
+
+            bool needSave = false;
+            foreach (var p in player.CaughtPokemon)
+            {
+                if (p == null || busy.Contains(p.CaughtDate)) continue;
+                needSave |= ApplyStaminaRegen(p, now);
+            }
+            return needSave;
         }
 
         // 增加好感度（加完後存玩家資料）
@@ -3905,7 +3993,7 @@ HP為0就是真的死亡，不會再有後續動作
 
                     if (p != null)
                     {
-                        p.Stamina = Math.Max(0, p.Stamina - 20);
+                        ConsumeStamina(p, 20);
                         AddFriendship(p, friendshipGained);
                     }
                     resultLines.Add($"**{displayName}**（{state.WorkType}）→ {matText}");
@@ -4508,8 +4596,8 @@ HP為0就是真的死亡，不會再有後續動作
                 int childBaseId = rng.Next(0, 2) == 0 ? p1.Id : p2.Id;
 
                 // 消耗
-                p1.Stamina = Math.Max(0, p1.Stamina - 30);
-                p2.Stamina = Math.Max(0, p2.Stamina - 30);
+                ConsumeStamina(p1, 30);
+                ConsumeStamina(p2, 30);
                 p1.Friendship = Math.Max(0, p1.Friendship - 10);
                 p2.Friendship = Math.Max(0, p2.Friendship - 10);
 
