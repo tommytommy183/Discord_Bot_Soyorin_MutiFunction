@@ -720,10 +720,10 @@ namespace MusicBot2.SlahCommands
         }
 
         [SlashCommand("抓pokemon", "每天抓一隻隨機pokemon")]
-        public async Task CatchPokemonAsync()
+        public async Task CatchPokemonAsync([Summary("幸運球", "用幸運球抓（保證閃光），預設用精靈球")] bool useLuckyBall = false)
         {
             await DeferAsync();
-            var (embed, component) = await _pokeGameService.CatchPokemonAsync(Context.User.Id, Context.User.Username);
+            var (embed, component) = await _pokeGameService.CatchPokemonAsync(Context.User.Id, Context.User.Username, useLuckyBall);
             await FollowupAsync(embed: embed, components: component.Build());
         }
 

@@ -168,6 +168,9 @@ namespace MusicBot2.Models
 
         // 倉庫擴建等級（每級 +5 pokemon 上限，最多 3 級 → 30 隻）
         public int WarehouseLevel { get; set; } = 0;
+
+        // 幸運符：下一次收工材料數量加倍
+        public bool WorkLuckyCharm { get; set; } = false;
     }
 
     public class PokeGamePokemon
@@ -206,6 +209,12 @@ namespace MusicBot2.Models
         public int Stamina { get; set; } = 100; // 精力值 (0-100)
         // 下一次開始算精力回復的時間點（UTC）；滿精力時為 null。讀取時依經過時間補回，不需要背景計時器
         public DateTime? StaminaRegenAt { get; set; }
+        // 強力補給：下一場 1v1 / 2v2 對戰攻擊、特攻 +15%（打完自動清除）
+        public bool BattleBoostPending { get; set; } = false;
+        // 不變之石：鎖住後對戰 / 神奇糖果不會讓牠進化
+        public bool EvolutionLocked { get; set; } = false;
+        // 能力藥使用次數（每隻上限 PokeGameService.MaxVitaminPerPokemon）
+        public int VitaminCount { get; set; } = 0;
 
         // 型態變換（對戰用，不儲存至 DB）
         [JsonIgnore]

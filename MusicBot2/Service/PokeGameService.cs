@@ -245,7 +245,7 @@ namespace MusicBot2.Service
         private static DateTime TaiwanToday => DateTime.UtcNow.AddHours(8).Date;
 
         #region 抓pokemon
-        public async Task<(Embed embed, ComponentBuilder component)> CatchPokemonAsync(ulong userId, string userName)
+        public async Task<(Embed embed, ComponentBuilder component)> CatchPokemonAsync(ulong userId, string userName, bool useLuckyBall = false)
         {
             try
             {
@@ -269,6 +269,27 @@ namespace MusicBot2.Service
                 // ── 檢查手上有沒有球 ─────────────────────────────────────────
                 int pokeballs  = player.Bag.GetValueOrDefault("pokeball",  0);
                 int luckyballs = player.Bag.GetValueOrDefault("luckyball", 0);
+
+                // 指定用幸運球但手上沒有
+                if (useLuckyBall && luckyballs <= 0)
+                {
+                    return (new EmbedBuilder()
+                        .WithTitle("❌ 你沒有幸運球 ✨")
+                        .WithDescription("幸運球要用合成的（寶石×4、化石×4、能量石×4、數據碎片×3、海鮮×2）。")
+                        .WithColor(Color.Orange)
+                        .AddField("目前持有", $"精靈球 ×{pokeballs}　幸運球 ×0")
+                        .Build(), new ComponentBuilder());
+                }
+
+                // 沒指定幸運球但只剩幸運球 → 不自動用掉，提醒要指定
+                if (!useLuckyBall && pokeballs <= 0 && luckyballs > 0)
+                {
+                    return (new EmbedBuilder()
+                        .WithTitle("❌ 沒有精靈球了！")
+                        .WithDescription($"你還有 **幸運球 ✨ ×{luckyballs}**，但不會自動用掉。\n想用的話請在 `/抓pokemon` 選 `幸運球: True`。")
+                        .WithColor(Color.Orange)
+                        .Build(), new ComponentBuilder());
+                }
 
                 if (pokeballs <= 0 && luckyballs <= 0)
                 {
@@ -296,8 +317,7 @@ namespace MusicBot2.Service
                         .WithColor(Color.Red).Build(), new ComponentBuilder());
                 }
 
-                // ── 決定用哪顆球 ─────────────────────────────────────────────
-                bool useLuckyBall = luckyballs > 0;
+                // ── 用哪顆球由玩家決定（useLuckyBall），不再有幸運球就強制先用 ──
 
                 // ── 決定 shiny ────────────────────────────────────────────────
                 // 幸運球 > 爬塔 shiny > 普通隨機
@@ -376,26 +396,58 @@ namespace MusicBot2.Service
             }
         }
 
+        // 全部 pokemon id 只快取一份 int[]（幾 KB），一天更新一次；以前每抓一次就下載整份清單
+        private static int[] _allPokemonIds;
+        private static DateTime _allPokemonIdsAt = DateTime.MinValue;
+        private static readonly SemaphoreSlim _allPokemonIdsLock = new(1, 1);
+
+        private async Task<int[]> GetAllPokemonIdsAsync()
+        {
+            var cached = _allPokemonIds;
+            if (cached != null && cached.Length > 0 && DateTime.UtcNow - _allPokemonIdsAt < TimeSpan.FromHours(24))
+                return cached;
+
+            await _allPokemonIdsLock.WaitAsync();
+            try
+            {
+                if (_allPokemonIds != null && _allPokemonIds.Length > 0 && DateTime.UtcNow - _allPokemonIdsAt < TimeSpan.FromHours(24))
+                    return _allPokemonIds;
+
+                var responseRandom = await _httpClient.GetAsync($"{API_BASE_URL}pokemon?limit=10000&offset=0");
+                if (!responseRandom.IsSuccessStatusCode)
+                {
+                    if (cached != null && cached.Length > 0) return cached; // 更新失敗就沿用舊的
+                    throw new Exception("無法獲取pokemon資料");
+                }
+                var pokeResponses = JsonConvert.DeserializeObject<RandomResponse>(await responseRandom.Content.ReadAsStringAsync());
+                var ids = pokeResponses?.results?
+                    .Select(r => int.TryParse(r.url?.TrimEnd('/').Split('/').LastOrDefault(), out var id) ? id : 0)
+                    .Where(id => id > 0)
+                    .ToArray() ?? Array.Empty<int>();
+                if (ids.Length == 0)
+                {
+                    if (cached != null && cached.Length > 0) return cached;
+                    throw new Exception("無法獲取pokemon資料");
+                }
+                _allPokemonIds = ids;
+                _allPokemonIdsAt = DateTime.UtcNow;
+                return ids;
+            }
+            finally
+            {
+                _allPokemonIdsLock.Release();
+            }
+        }
+
         private async Task<PokeGamePokemon> GetRandomPokemonAsync(bool forcedShiny = false)
         {
             bool isShiny = false;
 
-            //先全部取出來，再隨機挑
-            string url = $"{API_BASE_URL}pokemon?limit=10000&offset=0";
-            var responseRandom = await _httpClient.GetAsync(url);
-
-            if (!responseRandom.IsSuccessStatusCode)
-                throw new Exception("無法獲取pokemon資料");
-
-            var responseContent = await responseRandom.Content.ReadAsStringAsync();
-            var pokeResponses = JsonConvert.DeserializeObject<RandomResponse>(responseContent);
-
-            Random randomPoke = new Random();
-
-            int randomIndex = randomPoke.Next(0, pokeResponses.results.Count);
+            var allIds = await GetAllPokemonIdsAsync();
+            int randomId = allIds[new Random().Next(0, allIds.Length)];
 
             // 獲取pokemon詳細資料
-            var response = await _httpClient.GetAsync(pokeResponses.results[randomIndex].url);
+            var response = await _httpClient.GetAsync($"{API_BASE_URL}pokemon/{randomId}");
             if (!response.IsSuccessStatusCode)
                 throw new Exception("無法獲取pokemon資料");
 
@@ -1611,32 +1663,32 @@ namespace MusicBot2.Service
 1. 玩家A {player1Name} 的 第一隻寶可夢:
     自訂名稱:{pokemon1.CustomName ?? pokemon1.Name}，真實名稱:{pokemon1.Name}
    - 屬性: {string.Join(", ", pokemon1.Types)}
-   - HP: {pokemon1.HP}, 攻擊: {pokemon1.Attack}, 防禦: {pokemon1.Defense}
-   - 特攻: {pokemon1.SpecialAttack}, 特防: {pokemon1.SpecialDefense}, 速度: {pokemon1.Speed}
-   - 是否為閃光: {(pokemon1.isShiny ? "是" : "否")}
+   - HP: {pokemon1.HP}, 攻擊: {BattleAtk(pokemon1)}, 防禦: {pokemon1.Defense}
+   - 特攻: {BattleSpAtk(pokemon1)}, 特防: {pokemon1.SpecialDefense}, 速度: {pokemon1.Speed}
+   - 是否為閃光: {(pokemon1.isShiny ? "是" : "否")}{BoostNote(pokemon1)}
 
 2. 玩家A {player1Name} 的 第二隻寶可夢:
     自訂名稱:{pokemon2.CustomName ?? pokemon2.Name}，真實名稱:{pokemon2.Name}
    - 屬性: {string.Join(", ", pokemon2.Types)}
-   - HP: {pokemon2.HP}, 攻擊: {pokemon2.Attack}, 防禦: {pokemon2.Defense}
-   - 特攻: {pokemon2.SpecialAttack}, 特防: {pokemon2.SpecialDefense}, 速度: {pokemon2.Speed}
-   - 是否為閃光: {(pokemon2.isShiny ? "是" : "否")}
+   - HP: {pokemon2.HP}, 攻擊: {BattleAtk(pokemon2)}, 防禦: {pokemon2.Defense}
+   - 特攻: {BattleSpAtk(pokemon2)}, 特防: {pokemon2.SpecialDefense}, 速度: {pokemon2.Speed}
+   - 是否為閃光: {(pokemon2.isShiny ? "是" : "否")}{BoostNote(pokemon2)}
 
 ========對上========
 
 3. 玩家B {player2Name} 的第一隻寶可夢:
     自訂名稱:{opponentPokemon1.CustomName ?? opponentPokemon1.Name}，真實名稱:{opponentPokemon1.Name}
    - 屬性: {string.Join(", ", opponentPokemon1.Types)}
-   - HP: {opponentPokemon1.HP}, 攻擊: {opponentPokemon1.Attack}, 防禦: {opponentPokemon1.Defense}
-   - 特攻: {opponentPokemon1.SpecialAttack}, 特防: {opponentPokemon1.SpecialDefense}, 速度: {opponentPokemon1.Speed}
-   - 是否為閃光: {(opponentPokemon1.isShiny ? "是" : "否")}
+   - HP: {opponentPokemon1.HP}, 攻擊: {BattleAtk(opponentPokemon1)}, 防禦: {opponentPokemon1.Defense}
+   - 特攻: {BattleSpAtk(opponentPokemon1)}, 特防: {opponentPokemon1.SpecialDefense}, 速度: {opponentPokemon1.Speed}
+   - 是否為閃光: {(opponentPokemon1.isShiny ? "是" : "否")}{BoostNote(opponentPokemon1)}
 
 4. 玩家B {player2Name} 的第二隻寶可夢:
     自訂名稱:{opponentPokemon2.CustomName ?? opponentPokemon2.Name}，真實名稱:{opponentPokemon2.Name}
    - 屬性: {string.Join(", ", opponentPokemon2.Types)}
-   - HP: {opponentPokemon2.HP}, 攻擊: {opponentPokemon2.Attack}, 防禦: {opponentPokemon2.Defense}
-   - 特攻: {opponentPokemon2.SpecialAttack}, 特防: {opponentPokemon2.SpecialDefense}, 速度: {opponentPokemon2.Speed}
-   - 是否為閃光: {(opponentPokemon2.isShiny ? "是" : "否")}
+   - HP: {opponentPokemon2.HP}, 攻擊: {BattleAtk(opponentPokemon2)}, 防禦: {opponentPokemon2.Defense}
+   - 特攻: {BattleSpAtk(opponentPokemon2)}, 特防: {opponentPokemon2.SpecialDefense}, 速度: {opponentPokemon2.Speed}
+   - 是否為閃光: {(opponentPokemon2.isShiny ? "是" : "否")}{BoostNote(opponentPokemon2)}
 
 
 請根據以上數據和屬性相剋關係，判斷誰會獲勝，並用繁體中文描述一段精彩的對戰過程。
@@ -1731,19 +1783,22 @@ HP為0就是真的死亡，不會再有後續動作
                 if (!player1Wins && !player2Wins)
                 {
                     Console.WriteLine($"[PokeGame] 無法從劇情判斷勝者，使用數值 fallback");
-                    int pokemon1Total = pokemon1.HP + pokemon1.Attack + pokemon1.Defense +
-                                       pokemon1.SpecialAttack + pokemon1.SpecialDefense + pokemon1.Speed +
-                                       pokemon2.HP + pokemon2.Attack + pokemon2.Defense +
-                                       pokemon2.SpecialAttack + pokemon2.SpecialDefense + pokemon2.Speed;
-                    int opponentPokemonTotal = opponentPokemon1.HP + opponentPokemon1.Attack + opponentPokemon1.Defense +
-                                       opponentPokemon1.SpecialAttack + opponentPokemon1.SpecialDefense + opponentPokemon1.Speed +
-                                       opponentPokemon2.HP + opponentPokemon2.Attack + opponentPokemon2.Defense +
-                                       opponentPokemon2.SpecialAttack + opponentPokemon2.SpecialDefense + opponentPokemon2.Speed;
+                    int pokemon1Total = pokemon1.HP + BattleAtk(pokemon1) + pokemon1.Defense +
+                                       BattleSpAtk(pokemon1) + pokemon1.SpecialDefense + pokemon1.Speed +
+                                       pokemon2.HP + BattleAtk(pokemon2) + pokemon2.Defense +
+                                       BattleSpAtk(pokemon2) + pokemon2.SpecialDefense + pokemon2.Speed;
+                    int opponentPokemonTotal = opponentPokemon1.HP + BattleAtk(opponentPokemon1) + opponentPokemon1.Defense +
+                                       BattleSpAtk(opponentPokemon1) + opponentPokemon1.SpecialDefense + opponentPokemon1.Speed +
+                                       opponentPokemon2.HP + BattleAtk(opponentPokemon2) + opponentPokemon2.Defense +
+                                       BattleSpAtk(opponentPokemon2) + opponentPokemon2.SpecialDefense + opponentPokemon2.Speed;
                     player1Wins = pokemon1Total > opponentPokemonTotal;
                 }
 
                 var winnerId = player1Wins ? player1Id : player2Id;
                 var winnerName = player1Wins ? player1Name : player2Name;
+                // 強力補給只作用一場
+                ClearBattleBoost(pokemon1, pokemon2, opponentPokemon1, opponentPokemon2);
+
                 var winnerPokemon1 = player1Wins ? pokemon1 : opponentPokemon1;
                 var winnerPokemon2 = player1Wins ? pokemon2 : opponentPokemon2;
 
@@ -1777,7 +1832,7 @@ HP為0就是真的死亡，不會再有後續動作
                     int preId2 = winnerPokemon2.Id;
 
                     // 檢查是否達到進化條件（3點）
-                    if (winnerPokemon1.CanEvolve && winnerPokemon1.EvolutionPoints >= 3)
+                    if (winnerPokemon1.CanEvolve && !winnerPokemon1.EvolutionLocked && winnerPokemon1.EvolutionPoints >= 3)
                     {
                         var oldName = winnerPokemon1.Name;
                         winnerPokemon1 = await EvolvePokemonAsync(winnerPokemon1);
@@ -1792,7 +1847,7 @@ HP為0就是真的死亡，不會再有後續動作
                         }
                     }
 
-                    if (winnerPokemon2.CanEvolve && winnerPokemon2.EvolutionPoints >= 3)
+                    if (winnerPokemon2.CanEvolve && !winnerPokemon2.EvolutionLocked && winnerPokemon2.EvolutionPoints >= 3)
                     {
                         var oldName = winnerPokemon2.Name;
                         winnerPokemon2 = await EvolvePokemonAsync(winnerPokemon2);
@@ -1808,9 +1863,9 @@ HP為0就是真的死亡，不會再有後續動作
 
                     winner.CaughtPokemon = winner.CaughtPokemon.Select(p =>
                     {
-                        if (p.Id == preId1)
+                        if (p.CaughtDate == winnerPokemon1.CaughtDate)
                             return winnerPokemon1;
-                        if (p.Id == preId2)
+                        if (p.CaughtDate == winnerPokemon2.CaughtDate)
                             return winnerPokemon2;
                         return p;
                     }).ToList();
@@ -1839,7 +1894,7 @@ HP為0就是真的死亡，不會再有後續動作
                     int preId2 = loserPokemon2.Id;
 
                     // 檢查是否達到進化條件（3點）
-                    if (loserPokemon1.CanEvolve && loserPokemon1.EvolutionPoints >= 3)
+                    if (loserPokemon1.CanEvolve && !loserPokemon1.EvolutionLocked && loserPokemon1.EvolutionPoints >= 3)
                     {
                         var oldName = loserPokemon1.Name;
                         loserPokemon1 = await EvolvePokemonAsync(loserPokemon1);
@@ -1857,7 +1912,7 @@ HP為0就是真的死亡，不會再有後續動作
                         }
                     }
 
-                    if (loserPokemon2.CanEvolve && loserPokemon2.EvolutionPoints >= 3)
+                    if (loserPokemon2.CanEvolve && !loserPokemon2.EvolutionLocked && loserPokemon2.EvolutionPoints >= 3)
                     {
                         var oldName = loserPokemon2.Name;
                         loserPokemon2 = await EvolvePokemonAsync(loserPokemon2);
@@ -1877,13 +1932,15 @@ HP為0就是真的死亡，不會再有後續動作
 
                     loser.CaughtPokemon = loser.CaughtPokemon.Select(p =>
                     {
-                        if (p.Id == preId1)
+                        if (p.CaughtDate == loserPokemon1.CaughtDate)
                             return loserPokemon1;
-                        if (p.Id == preId2)
+                        if (p.CaughtDate == loserPokemon2.CaughtDate)
                             return loserPokemon2;
                         return p;
                     }).ToList();
 
+                    // 敗者安慰獎：一個基礎材料
+                    GiveRandomMaterial(loser, BasicMaterials, new Random());
                     await SavePlayerDataAsync(loser);
                 }
 
@@ -1932,13 +1989,13 @@ HP為0就是真的死亡，不會再有後續動作
                 // 只有真實玩家獲勝才給獎勵
                 if (winnerId != 0)
                 {
-                    embedBuilder.AddField("🎁 獲勝獎勵", "恭喜獲得一顆精靈球！🎾", false);
-
-                    // 給勝者一顆精靈球
+                    // 給勝者一顆精靈球 + 一個隨機材料
                     var winnerForReward = await GetPlayerDataAsync(winnerId, winnerName);
                     winnerForReward.Bag.TryGetValue("pokeball", out int wb);
                     winnerForReward.Bag["pokeball"] = wb + 1;
+                    var rewardMat = GiveRandomMaterial(winnerForReward, MaterialNames.Keys.ToList(), new Random());
                     await SavePlayerDataAsync(winnerForReward);
+                    embedBuilder.AddField("🎁 獲勝獎勵", $"精靈球 ×1 🎾、{rewardMat} ×1", false);
                 }
 
                 embedBuilder.WithCurrentTimestamp();
@@ -2088,15 +2145,15 @@ HP為0就是真的死亡，不會再有後續動作
 對戰雙方：
 1. 玩家A : {player1Name} 的 自訂名稱:{pokemon1.CustomName ?? pokemon1.Name}，真實名稱:{pokemon1.Name}
    - 屬性: {string.Join(", ", pokemon1.Types)}
-   - HP: {pokemon1.HP}, 攻擊: {pokemon1.Attack}, 防禦: {pokemon1.Defense}
-   - 特攻: {pokemon1.SpecialAttack}, 特防: {pokemon1.SpecialDefense}, 速度: {pokemon1.Speed}
-   - 是否為閃光: {(pokemon1.isShiny ? "是" : "否")}
+   - HP: {pokemon1.HP}, 攻擊: {BattleAtk(pokemon1)}, 防禦: {pokemon1.Defense}
+   - 特攻: {BattleSpAtk(pokemon1)}, 特防: {pokemon1.SpecialDefense}, 速度: {pokemon1.Speed}
+   - 是否為閃光: {(pokemon1.isShiny ? "是" : "否")}{BoostNote(pokemon1)}
 
 2. 玩家B : {player2Name} 的 自訂名稱:{pokemon2.CustomName ?? pokemon2.Name}，真實名稱:{pokemon2.Name}
    - 屬性: {string.Join(", ", pokemon2.Types)}
-   - HP: {pokemon2.HP}, 攻擊: {pokemon2.Attack}, 防禦: {pokemon2.Defense}
-   - 特攻: {pokemon2.SpecialAttack}, 特防: {pokemon2.SpecialDefense}, 速度: {pokemon2.Speed}
-   - 是否為閃光: {(pokemon2.isShiny ? "是" : "否")}
+   - HP: {pokemon2.HP}, 攻擊: {BattleAtk(pokemon2)}, 防禦: {pokemon2.Defense}
+   - 特攻: {BattleSpAtk(pokemon2)}, 特防: {pokemon2.SpecialDefense}, 速度: {pokemon2.Speed}
+   - 是否為閃光: {(pokemon2.isShiny ? "是" : "否")}{BoostNote(pokemon2)}
 
 【屬性克制分析】
 {typeAdvantageInfo}
@@ -2194,12 +2251,15 @@ HP為0就是真的死亡，不會再有後續動作
                 // 如果 AI 沒有明確指出勝者，則根據數值判斷
                 if (!player1Wins && !player2Wins)
                 {
-                    int pokemon1Total = pokemon1.HP + pokemon1.Attack + pokemon1.Defense +
-                                       pokemon1.SpecialAttack + pokemon1.SpecialDefense + pokemon1.Speed;
-                    int pokemon2Total = pokemon2.HP + pokemon2.Attack + pokemon2.Defense +
-                                       pokemon2.SpecialAttack + pokemon2.SpecialDefense + pokemon2.Speed;
+                    int pokemon1Total = pokemon1.HP + BattleAtk(pokemon1) + pokemon1.Defense +
+                                       BattleSpAtk(pokemon1) + pokemon1.SpecialDefense + pokemon1.Speed;
+                    int pokemon2Total = pokemon2.HP + BattleAtk(pokemon2) + pokemon2.Defense +
+                                       BattleSpAtk(pokemon2) + pokemon2.SpecialDefense + pokemon2.Speed;
                     player1Wins = pokemon1Total > pokemon2Total;
                 }
+
+                // 強力補給只作用一場
+                ClearBattleBoost(pokemon1, pokemon2);
 
                 var winnerId = player1Wins ? player1Id : player2Id;
                 var winnerName = player1Wins ? player1Name : player2Name;
@@ -2226,7 +2286,7 @@ HP為0就是真的死亡，不會再有後續動作
 
                     int preId = winnerPokemon.Id;
                     // 檢查是否達到進化條件（3點）
-                    if (winnerPokemon.CanEvolve && winnerPokemon.EvolutionPoints >= 3)
+                    if (winnerPokemon.CanEvolve && !winnerPokemon.EvolutionLocked && winnerPokemon.EvolutionPoints >= 3)
                     {
                         var oldName = winnerPokemon.Name;
                         winnerPokemon = await EvolvePokemonAsync(winnerPokemon);
@@ -2243,7 +2303,7 @@ HP為0就是真的死亡，不會再有後續動作
 
                     winner.CaughtPokemon = winner.CaughtPokemon.Select(p =>
                     {
-                        if (p.Id == preId)
+                        if (p.CaughtDate == winnerPokemon.CaughtDate)
                             return winnerPokemon;
                         return p;
                     }).ToList();
@@ -2266,7 +2326,7 @@ HP為0就是真的死亡，不會再有後續動作
 
                     int preId = loserPokemon.Id;
                     // 檢查是否達到進化條件（3點）
-                    if (loserPokemon.CanEvolve && loserPokemon.EvolutionPoints >= 3)
+                    if (loserPokemon.CanEvolve && !loserPokemon.EvolutionLocked && loserPokemon.EvolutionPoints >= 3)
                     {
                         var oldName = loserPokemon.Name;
                         loserPokemon = await EvolvePokemonAsync(loserPokemon);
@@ -2286,11 +2346,13 @@ HP為0就是真的死亡，不會再有後續動作
 
                     loser.CaughtPokemon = loser.CaughtPokemon.Select(p =>
                     {
-                        if (p.Id == preId)
+                        if (p.CaughtDate == loserPokemon.CaughtDate)
                             return loserPokemon;
                         return p;
                     }).ToList();
 
+                    // 敗者安慰獎：一個基礎材料
+                    GiveRandomMaterial(loser, BasicMaterials, new Random());
                     await SavePlayerDataAsync(loser);
                 }
 
@@ -2335,13 +2397,13 @@ HP為0就是真的死亡，不會再有後續動作
                 // 只有真實玩家獲勝才給獎勵
                 if (winnerId != 0)
                 {
-                    embedBuilder.AddField("🎁 獲勝獎勵", "恭喜獲得一顆精靈球！🎾", false);
-
-                    // 給勝者一顆精靈球
+                    // 給勝者一顆精靈球 + 一個隨機材料
                     var winnerForReward = await GetPlayerDataAsync(winnerId, winnerName);
                     winnerForReward.Bag.TryGetValue("pokeball", out int wb);
                     winnerForReward.Bag["pokeball"] = wb + 1;
+                    var rewardMat = GiveRandomMaterial(winnerForReward, MaterialNames.Keys.ToList(), new Random());
                     await SavePlayerDataAsync(winnerForReward);
+                    embedBuilder.AddField("🎁 獲勝獎勵", $"精靈球 ×1 🎾、{rewardMat} ×1", false);
                 }
 
                 embedBuilder.WithCurrentTimestamp();
@@ -2654,6 +2716,9 @@ HP為0就是真的死亡，不會再有後續動作
                         var participantPlayer = await GetPlayerDataAsync(p.UserId, p.UserName);
                         participantPlayer.Bag.TryGetValue("pokeball", out int pb);
                         participantPlayer.Bag["pokeball"] = pb + 1; // 給一顆精靈球
+                        var teamRng = new Random();
+                        GiveRandomMaterial(participantPlayer, RareMaterials, teamRng);
+                        GiveRandomMaterial(participantPlayer, RareMaterials, teamRng);
                         participantPlayer.Wins++; // 增加勝場
                         await SavePlayerDataAsync(participantPlayer);
                     }
@@ -2665,7 +2730,7 @@ HP為0就是真的死亡，不會再有後續動作
                         .WithColor(Color.Gold)
                         .AddField("參與者", string.Join("\n", currentBoss.Participants.Select(p =>
                             $"{p.UserName} - {p.Pokemon.CustomName ?? p.Pokemon.Name}")))
-                        .AddField("🎁 獎勵", "所有參與者獲得：\n🎾 精靈球 ×1\n✅ 勝場 +1")
+                        .AddField("🎁 獎勵", "所有參與者獲得：\n🎾 精靈球 ×1\n💎 隨機稀有材料 ×2\n✅ 勝場 +1")
                         .WithCurrentTimestamp()
                         .Build();
 
@@ -3254,6 +3319,15 @@ HP為0就是真的死亡，不會再有後續動作
         private const int StaminaIdleMinutes = 30;
         private static readonly TimeSpan StaminaRegenInterval = TimeSpan.FromMinutes(6);
 
+        // ─── 強力補給（下一場對戰攻擊 / 特攻 +15%）──────────────────────────
+        private static int BattleAtk(PokeGamePokemon p) => p.BattleBoostPending ? (int)Math.Round(p.Attack * 1.15) : p.Attack;
+        private static int BattleSpAtk(PokeGamePokemon p) => p.BattleBoostPending ? (int)Math.Round(p.SpecialAttack * 1.15) : p.SpecialAttack;
+        private static string BoostNote(PokeGamePokemon p) => p.BattleBoostPending ? "\n   - 吃了強力補給：攻擊與特攻已 +15%（數值已含加成）" : "";
+        private static void ClearBattleBoost(params PokeGamePokemon[] list)
+        {
+            foreach (var p in list) if (p != null) p.BattleBoostPending = false;
+        }
+
         private static void ConsumeStamina(PokeGamePokemon p, int amount)
         {
             if (p == null) return;
@@ -3519,7 +3593,7 @@ HP為0就是真的死亡，不會再有後續動作
             ["electric"] = ("技師",     3, new List<string>{ "energystone", "data" }),
             ["psychic"]  = ("技師",     3, new List<string>{ "data", "energystone" }),
             ["ground"]   = ("礦工",     3, new List<string>{ "ore", "fossil" }),
-            ["steel"]    = ("礦工",     3, new List<string>{ "ore", "ore" }),
+            ["steel"]    = ("礦工",     3, new List<string>{ "ore", "gem" }),
             ["ghost"]    = ("情報員",   4, new List<string>{ "gem", "data" }),
             ["dark"]     = ("情報員",   4, new List<string>{ "data", "gem" }),
             ["dragon"]   = ("研究員",   4, new List<string>{ "fossil", "energystone" }),
@@ -3553,6 +3627,51 @@ HP為0就是真的死亡，不會再有後續動作
 
         // 最多同時派遣幾隻 pokemon（固定 3 隻）
         private const int MaxWorkingPokemon = 3;
+        // 出工至少要有的精力（= 收工會扣的量）
+        private const int MinWorkStamina = 20;
+        // 同職業最多同時幾隻
+        private const int MaxSameJob = 2;
+        // 能力藥每隻上限
+        public const int MaxVitaminPerPokemon = 5;
+
+        private static readonly string[] BasicMaterials = { "ore", "fish", "herb" };
+        private static readonly string[] RareMaterials = { "gem", "fossil", "energystone", "data" };
+
+        // 各職業看的能力值（> 80 有 50% 多一份）
+        private static readonly Dictionary<string, (string Label, Func<PokeGamePokemon, int> Stat)> _workStat = new()
+        {
+            ["熔爐工"] = ("攻擊", p => p.Attack),
+            ["礦工"]   = ("防禦", p => p.Defense),
+            ["漁夫"]   = ("速度", p => p.Speed),
+            ["快遞員"] = ("速度", p => p.Speed),
+            ["情報員"] = ("速度", p => p.Speed),
+            ["農夫"]   = ("特防", p => p.SpecialDefense),
+            ["技師"]   = ("特攻", p => p.SpecialAttack),
+            ["研究員"] = ("特攻", p => p.SpecialAttack),
+        };
+
+        // 挑一個還有名額的職業（同職業最多 MaxSameJob 隻）；全滿回 null
+        private (string WorkName, string TypeKey, int WorkHours, List<string> Materials)? PickWorkDef(PokeGamePokemon p, List<PokemonWorkState> states)
+        {
+            foreach (var wd in GetWorkDefs(p))
+                if (states.Count(s => s.WorkType == wd.WorkName) < MaxSameJob)
+                    return wd;
+            return null;
+        }
+
+        private static void AddToBag(PokeGamePlayer player, string key, int qty = 1)
+        {
+            player.Bag.TryGetValue(key, out int cur);
+            player.Bag[key] = cur + qty;
+        }
+
+        // 隨機給一個材料，回傳顯示名稱
+        private static string GiveRandomMaterial(PokeGamePlayer player, IReadOnlyList<string> pool, Random rng)
+        {
+            var mat = pool[rng.Next(pool.Count)];
+            AddToBag(player, mat);
+            return MaterialNames.GetValueOrDefault(mat, mat);
+        }
 
         // 依屬性取所有可用職業（去重，保留順序）
         private List<(string WorkName, string TypeKey, int WorkHours, List<string> Materials)> GetWorkDefs(PokeGamePokemon p)
@@ -3593,6 +3712,8 @@ HP為0就是真的死亡，不會再有後續動作
                 {
                     var data = JsonConvert.SerializeObject(states);
                     await _redisDb.StringSetAsync($"{WORK_STATE_KEY_PREFIX}{userId}", data, TimeSpan.FromHours(48));
+                    _memoryWorkStates.Remove(userId); // Redis 成功就不留記憶體副本
+                    return;
                 }
                 catch { }
             }
@@ -3609,21 +3730,28 @@ HP為0就是真的死亡，不會再有後續動作
         }
 
         // 計算這隻 pokemon 的工作效率並回傳實際材料清單
-        private List<string> CalculateWorkOutput(PokeGamePokemon p, List<string> baseMaterials)
+        // 工作幾小時就有幾份材料（2h=2、3h=3、4h=4），長工時回報才對等
+        private List<string> CalculateWorkOutput(PokeGamePokemon p, string workName, int workHours, List<string> baseMaterials)
         {
-            var result = new List<string>(baseMaterials);
             var rng = new Random();
+            var result = new List<string>();
+            for (int i = 0; i < Math.Max(2, workHours); i++)
+                result.Add(baseMaterials[i % baseMaterials.Count]);
 
-            // 精力不足則減少產出
-            if (p.Stamina < 30)
-                result.RemoveAt(result.Count - 1); // 移除最後一個
+            // 精力偏低（< 40）少一份
+            if (p.Stamina < 40 && result.Count > 1)
+                result.RemoveAt(result.Count - 1);
 
-            // 高相關屬性加成（攻擊/特攻 > 80 有50%機率多一個）
-            int relevantStat = Math.Max(p.Attack, p.SpecialAttack);
-            if (relevantStat > 80 && rng.Next(0, 2) == 0)
+            // 職業對應能力值 > 80 → 50% 多一份
+            if (_workStat.TryGetValue(workName, out var ws) && ws.Stat(p) > 80 && rng.Next(0, 2) == 0)
                 result.Add(result[rng.Next(0, result.Count)]);
 
-            return result.Count > 0 ? result : new List<string>{ baseMaterials[0] };
+            // 好感度加成：≥100 → 25%、≥200 → 50% 多一份
+            int friendChance = p.Friendship >= 200 ? 50 : p.Friendship >= 100 ? 25 : 0;
+            if (friendChance > 0 && rng.Next(0, 100) < friendChance)
+                result.Add(result[rng.Next(0, result.Count)]);
+
+            return result;
         }
 
         // 選單：派 pokemon 出工
@@ -3650,24 +3778,26 @@ HP為0就是真的死亡，不會再有後續動作
                         .WithDescription("使用 `/收工pokemon` 收回完成的 pokemon 後再來。")
                         .WithColor(Color.Red).Build(), new ComponentBuilder());
 
-                // 可派遣 pokemon（沒在工作、精力 > 0）
+                // 可派遣 pokemon（沒在工作、精力 >= MinWorkStamina）
                 var available = new List<(int idx, PokeGamePokemon p)>();
                 for (int i = 0; i < player.CaughtPokemon.Count; i++)
                 {
                     var p = player.CaughtPokemon[i];
-                    if (!workingDates.Contains(p.CaughtDate) && p.Stamina > 0)
+                    if (!workingDates.Contains(p.CaughtDate) && p.Stamina >= MinWorkStamina)
                         available.Add((i, p));
                 }
 
                 if (!available.Any())
                     return (new EmbedBuilder()
                         .WithTitle("❌ 沒有可派遣的 pokemon！")
-                        .WithDescription("所有 pokemon 都在工作中或精力耗盡，請恢復精力後再來。")
+                        .WithDescription("所有 pokemon 都在工作中或精力不足 20，休息一下或用道具恢復後再來。")
                         .WithColor(Color.Orange).Build(), new ComponentBuilder());
 
                 // 初始化 / 清理暫選狀態
                 if (!_pendingWorkSelections.TryGetValue(userId, out var pending))
                 {
+                    // 選到一半放棄的人不會清掉 → 累積太多就整個重置，避免一直佔記憶體
+                    if (_pendingWorkSelections.Count > 100) _pendingWorkSelections.Clear();
                     pending = new HashSet<int>();
                     _pendingWorkSelections[userId] = pending;
                 }
@@ -3758,7 +3888,7 @@ HP為0就是真的死亡，不會再有後續動作
                 for (int i = 0; i < player.CaughtPokemon.Count; i++)
                 {
                     var p = player.CaughtPokemon[i];
-                    if (!workingDates.Contains(p.CaughtDate) && p.Stamina > 0)
+                    if (!workingDates.Contains(p.CaughtDate) && p.Stamina >= MinWorkStamina)
                         available.Add((i, p));
                 }
 
@@ -3770,6 +3900,8 @@ HP為0就是真的死亡，不會再有後續動作
 
                 if (!_pendingWorkSelections.TryGetValue(userId, out var pending))
                 {
+                    // 選到一半放棄的人不會清掉 → 累積太多就整個重置，避免一直佔記憶體
+                    if (_pendingWorkSelections.Count > 100) _pendingWorkSelections.Clear();
                     pending = new HashSet<int>();
                     _pendingWorkSelections[userId] = pending;
                 }
@@ -3812,33 +3944,31 @@ HP為0就是真的死亡，不會再有後續動作
                     var p = player.CaughtPokemon[pokemonIndex];
                     if (existingStates.Any(s => s.PokemonCaughtDate == p.CaughtDate))
                         { failList.Add($"{p.CustomName ?? p.Name}（已在工作）"); continue; }
-                    if (p.Stamina <= 0)
-                        { failList.Add($"{p.CustomName ?? p.Name}（精力耗盡）"); continue; }
+                    if (p.Stamina < MinWorkStamina)
+                        { failList.Add($"{p.CustomName ?? p.Name}（精力不足 {MinWorkStamina}）"); continue; }
 
-                    // 多屬性 pokemon 同時做所有職業
-                    var allWorkDefs = GetWorkDefs(p);
+                    // 一隻只做一份工作：依屬性順序挑還有名額的職業
+                    var picked = PickWorkDef(p, existingStates);
+                    if (picked == null)
+                        { failList.Add($"{p.CustomName ?? p.Name}（{string.Join("/", GetWorkDefs(p).Select(w => w.WorkName))} 已各有 {MaxSameJob} 隻在做）"); continue; }
+                    var wd = picked.Value;
                     string shiny = p.isShiny ? "✨" : "";
-                    var jobLines = new List<string>();
 
-                    foreach (var wd in allWorkDefs)
+                    var actualMaterials = CalculateWorkOutput(p, wd.WorkName, wd.WorkHours, wd.Materials);
+                    existingStates.Add(new PokemonWorkState
                     {
-                        var actualMaterials = CalculateWorkOutput(p, wd.Materials);
-                        existingStates.Add(new PokemonWorkState
-                        {
-                            UserId = userId,
-                            PokemonCaughtDate = p.CaughtDate,
-                            WorkType = wd.WorkName,
-                            WorkTypeKey = wd.TypeKey,
-                            WorkStartTime = DateTime.UtcNow,
-                            WorkEndTime = DateTime.UtcNow.AddHours(wd.WorkHours),
-                            ExpectedMaterials = actualMaterials
-                        });
-                        string mats = string.Join("、", actualMaterials.Select(m => MaterialNames.GetValueOrDefault(m, m)));
-                        jobLines.Add($"{wd.WorkName}（{wd.WorkHours}h → {mats}）");
-                    }
+                        UserId = userId,
+                        PokemonCaughtDate = p.CaughtDate,
+                        WorkType = wd.WorkName,
+                        WorkTypeKey = wd.TypeKey,
+                        WorkStartTime = DateTime.UtcNow,
+                        WorkEndTime = DateTime.UtcNow.AddHours(wd.WorkHours),
+                        ExpectedMaterials = actualMaterials
+                    });
+                    string mats = string.Join("、", actualMaterials.Select(m => MaterialNames.GetValueOrDefault(m, m)));
 
                     workingCount++;
-                    successList.Add($"{shiny}{p.CustomName ?? p.Name} → {string.Join(" + ", jobLines)}");
+                    successList.Add($"{shiny}{p.CustomName ?? p.Name} → {wd.WorkName}（{wd.WorkHours}h → {mats}）");
                 }
 
                 if (successList.Any())
@@ -3887,26 +4017,23 @@ HP為0就是真的死亡，不會再有後續動作
                         .WithTitle($"❌ {p.CustomName ?? p.Name} 已經在工作中了！")
                         .WithColor(Color.Red).Build(), new ComponentBuilder());
 
-                if (p.Stamina <= 0)
+                if (p.Stamina < MinWorkStamina)
                     return (new EmbedBuilder()
                         .WithTitle($"❌ {p.CustomName ?? p.Name} 太累了，無法工作")
-                        .WithDescription("使用道具恢復精力後再出發吧！")
+                        .WithDescription($"出工至少要 {MinWorkStamina} 精力（目前 {p.Stamina}）。休息一下會自己回，或用道具恢復！")
                         .WithColor(Color.Red).Build(), new ComponentBuilder());
 
-                (string WorkName, int WorkHours, List<string> Materials) workDef = ("快遞員", 2, new List<string>{ "ore", "fish" });
-                string matchedType = "normal";
-                foreach (var t in p.Types)
-                    if (_typeWorkMap.TryGetValue(t, out var wt)) { workDef = wt; matchedType = t; break; }
-
-                // 分業系統：同類型最多 2 隻同時工作
-                int sameTypeCount = existingStates.Count(s => s.WorkType == workDef.WorkName);
-                if (sameTypeCount >= 2)
+                // 分業系統：同職業最多 MaxSameJob 隻；多屬性會自動挑還有名額的職業
+                var picked = PickWorkDef(p, existingStates);
+                if (picked == null)
                     return (new EmbedBuilder()
-                        .WithTitle($"❌ 分業限制：{workDef.WorkName} 已有 2 隻在工作中")
-                        .WithDescription("同類型最多 2 隻同時工作，請換其他屬性的 pokemon 派遣！")
+                        .WithTitle($"❌ 分業限制：{string.Join("/", GetWorkDefs(p).Select(w => w.WorkName))} 已各有 {MaxSameJob} 隻在工作中")
+                        .WithDescription($"同職業最多 {MaxSameJob} 隻同時工作，請換其他屬性的 pokemon 派遣！")
                         .WithColor(Color.Orange).Build(), new ComponentBuilder());
+                var workDef = (WorkName: picked.Value.WorkName, WorkHours: picked.Value.WorkHours, Materials: picked.Value.Materials);
+                string matchedType = picked.Value.TypeKey;
 
-                var actualMaterials = CalculateWorkOutput(p, workDef.Materials);
+                var actualMaterials = CalculateWorkOutput(p, workDef.WorkName, workDef.WorkHours, workDef.Materials);
                 var state = new PokemonWorkState
                 {
                     UserId = userId,
@@ -3931,7 +4058,7 @@ HP為0就是真的死亡，不會再有後續動作
                     .WithColor(new Color(0x5865F2))
                     .AddField("預期回報", materialPreview)
                     .AddField("精力", $"{p.Stamina}/100")
-                    .AddField("工作名額", $"{newSlotCount}/3")
+                    .AddField("工作名額", $"{GetWorkingPokemonCount(existingStates)}/{MaxWorkingPokemon}")
                     .WithFooter("工作中無法對戰，完工後使用 /收工pokemon 取回")
                     .Build(), new ComponentBuilder());
             }
@@ -3973,30 +4100,57 @@ HP為0就是真的死亡，不會再有後續動作
 
                 // 收工完成的 pokemon
                 var resultLines = new List<string>();
+                var bonusLines = new List<string>();
                 int friendshipGained = rng.Next(1, 4);
+
+                // 幸運符：這次收工材料數量加倍（用掉）
+                bool lucky = player.WorkLuckyCharm;
+                if (lucky)
+                {
+                    player.WorkLuckyCharm = false;
+                    bonusLines.Add("🍀 幸運符生效：這次材料數量 ×2！");
+                }
+
+                // 同職業夥伴：這次一起收工的同職業 pokemon 各多一份
+                var partnerJobs = finished.GroupBy(s => s.WorkType).Where(g => g.Count() >= 2).Select(g => g.Key).ToHashSet();
+                foreach (var job in partnerJobs)
+                    bonusLines.Add($"🤝 {job} 夥伴合作：每隻多一份材料");
+
                 foreach (var state in finished)
                 {
                     var p = player.CaughtPokemon.FirstOrDefault(x => x.CaughtDate == state.PokemonCaughtDate);
                     string displayName = p != null ? (p.CustomName ?? p.Name) : "你的pokemon";
 
-                    // 給材料（每種材料 1-2 個）
+                    var mats = new List<string>(state.ExpectedMaterials);
+                    if (partnerJobs.Contains(state.WorkType) && mats.Count > 0)
+                        mats.Add(mats[0]);
+
+                    // 給材料（每份 1-2 個，幸運符 ×2）
                     var matSummary = new Dictionary<string, int>();
-                    foreach (var mat in state.ExpectedMaterials)
+                    foreach (var mat in mats)
                     {
-                        int qty = rng.Next(1, 3); // 1 or 2
-                        player.Bag.TryGetValue(mat, out int cur);
-                        player.Bag[mat] = cur + qty;
+                        int qty = rng.Next(1, 3) * (lucky ? 2 : 1);
+                        AddToBag(player, mat, qty);
                         matSummary.TryGetValue(mat, out int existing);
                         matSummary[mat] = existing + qty;
                     }
                     string matText = string.Join("、", matSummary.Select(kv => $"{MaterialNames.GetValueOrDefault(kv.Key, kv.Key)}×{kv.Value}"));
 
+                    // 隨機事件：10% 撿到稀有材料、5% 受傷多扣 10 精力
+                    string eventText = "";
+                    int roll = rng.Next(0, 100);
+                    bool hurt = roll >= 10 && roll < 15 && p != null;
+                    if (roll < 10)
+                        eventText = $"　🎁 工作時撿到了 **{GiveRandomMaterial(player, RareMaterials, rng)}**！";
+                    else if (hurt)
+                        eventText = "　🤕 不小心受傷了，精力多扣 10";
+
                     if (p != null)
                     {
-                        ConsumeStamina(p, 20);
+                        ConsumeStamina(p, hurt ? 30 : 20);
                         AddFriendship(p, friendshipGained);
                     }
-                    resultLines.Add($"**{displayName}**（{state.WorkType}）→ {matText}");
+                    resultLines.Add($"**{displayName}**（{state.WorkType}）→ {matText}{eventText}");
                 }
 
                 bool allDone = stillWorking.Count == 0;
@@ -4010,13 +4164,15 @@ HP為0就是真的死亡，不會再有後續動作
                 string title = allDone ? "🎉 全員收工！" : $"🎉 {finished.Count} 隻 pokemon 收工！";
                 string footer = allDone ? "所有 pokemon 都收工了，可以重新派遣喔！" : $"還有 {stillWorking.Count} 隻仍在工作中";
 
-                return (new EmbedBuilder()
+                var collectEb = new EmbedBuilder()
                     .WithTitle(title)
                     .WithDescription(string.Join("\n", resultLines))
                     .WithColor(Color.Green)
                     .AddField("好感度", $"各 +{friendshipGained}（工作獎勵）")
-                    .WithFooter(footer)
-                    .Build(), new ComponentBuilder());
+                    .WithFooter(footer);
+                if (bonusLines.Count > 0)
+                    collectEb.AddField("加成", string.Join("\n", bonusLines));
+                return (collectEb.Build(), new ComponentBuilder());
             }
             catch (Exception ex)
             {
@@ -4035,13 +4191,29 @@ HP為0就是真的死亡，不會再有後續動作
             ["berry"]        = ("樹果",    new(){ ["herb"]=2 },                                                                 "精力 +30，好感 +5"),
             ["energydrink"]  = ("能量飲料", new(){ ["fish"]=2, ["energystone"]=1 },                                            "精力 +60"),
             ["shampoo"]      = ("沐浴露",  new(){ ["herb"]=1, ["seafood"]=1 },                                                  "好感 +20"),
-            ["wondercandy"]  = ("神奇糖果", new(){ ["energystone"]=2, ["ore"]=1 },                                             "進化點 +3"),
-            ["rarecandy"]    = ("稀有糖果", new(){ ["fossil"]=2, ["energystone"]=2, ["gem"]=1 },                               "直接進化（已是最終形態則無效）"),
-            ["powderboost"]  = ("強力補給", new(){ ["ore"]=2, ["gem"]=1 },                                                     "下一場對戰攻擊 +15%"),
+            ["wondercandy"]  = ("神奇糖果", new(){ ["energystone"]=1, ["ore"]=2 },                                             "進化點 +2（湊滿 3 點會進化）"),
+            ["rarecandy"]    = ("稀有糖果", new(){ ["fossil"]=1, ["energystone"]=2, ["gem"]=1 },                               "直接進化（已是最終形態則無效）"),
+            ["powderboost"]  = ("強力補給", new(){ ["ore"]=2, ["gem"]=1 },                                                     "下一場 1v1/2v2 對戰攻擊、特攻 +15%"),
+            ["vitamin"]      = ("能力藥 💪", new(){ ["ore"]=2, ["seafood"]=2 },                                                $"隨機一項能力 +5（每隻最多 {MaxVitaminPerPokemon} 次）"),
+            ["everstone"]    = ("不變之石 🪨", new(){ ["fossil"]=1, ["ore"]=2 },                                               "鎖住進化（對戰、神奇糖果都不會進化）；對已鎖住的使用 = 免費解鎖"),
+            ["speedticket"]  = ("加速券 ⏩", new(){ ["data"]=2, ["energystone"]=1 },                                           "所有工作中的 pokemon 提早 1 小時完工"),
+            ["luckycharm"]   = ("幸運符 🍀", new(){ ["gem"]=1, ["herb"]=2 },                                                   "下一次收工材料數量 ×2"),
+            ["conv_fossil"]  = ("化石（轉換）", new(){ ["ore"]=3 },                                                           "礦石 ×3 → 化石 ×1"),
+            ["conv_gem"]     = ("寶石（轉換）", new(){ ["ore"]=2, ["fish"]=1 },                                               "礦石 ×2 + 魚貨 ×1 → 寶石 ×1"),
             ["pokeball"]     = ("精靈球",  new(){ ["ore"]=2, ["herb"]=1 },                                                     "抓一隻 pokemon（每日台灣時間00:00自動補一顆）"),
             ["luckyball"]        = ("幸運球 ✨",  new(){ ["gem"]=4, ["fossil"]=4, ["energystone"]=4, ["data"]=3, ["seafood"]=2 }, "保證下一次抓到的是閃光 pokemon！"),
-            ["warehouse_expand"] = ("倉庫擴建 🏗️", new(){ ["ore"]=5, ["gem"]=5, ["fossil"]=5, ["data"]=4 },                     "pokemon 上限 +5（最多 3 次，上限 30 隻）"),
+            ["warehouse_expand"] = ("倉庫擴建 🏗️", new(){ ["ore"]=8, ["gem"]=3, ["fossil"]=3, ["data"]=3 },                     "pokemon 上限 +5（最多 3 次，上限 30 隻）"),
         };
+
+        // 材料轉換配方：合成結果直接是材料
+        private static readonly Dictionary<string, string> ConversionOutputs = new()
+        {
+            ["conv_fossil"] = "fossil",
+            ["conv_gem"]    = "gem",
+        };
+
+        // 不需要選 pokemon、直接對玩家生效的道具
+        private static readonly HashSet<string> PlayerLevelItems = new() { "warehouse_expand", "speedticket", "luckycharm" };
 
         // 查看背包
         public async Task<(Embed embed, ComponentBuilder component)> ShowBagAsync(ulong userId, string userName)
@@ -4106,8 +4278,9 @@ HP為0就是真的死亡，不會再有後續動作
             try
             {
                 var player = await GetPlayerDataAsync(userId, userName);
+                // 和每日球一樣用台灣時間 00:00 重置
                 if (player.LastDailyLoginDate.HasValue &&
-                    player.LastDailyLoginDate.Value.Date == DateTime.UtcNow.Date)
+                    player.LastDailyLoginDate.Value.AddHours(8).Date >= TaiwanToday)
                 {
                     return (new EmbedBuilder()
                         .WithTitle("❌ 今天已經領過每日材料了！")
@@ -4210,6 +4383,19 @@ HP為0就是真的死亡，不會再有後續動作
                 foreach (var kv in materials)
                     bag[kv.Key] -= kv.Value;
 
+                // 材料轉換：直接給材料
+                if (ConversionOutputs.TryGetValue(itemKey, out var outMat))
+                {
+                    AddToBag(player, outMat);
+                    await SavePlayerDataAsync(player);
+                    return (new EmbedBuilder()
+                        .WithTitle($"✅ 轉換成功：{MaterialNames[outMat]} ×1")
+                        .WithDescription(desc)
+                        .WithColor(Color.Green)
+                        .AddField("目前持有", $"{MaterialNames[outMat]} ×{bag[outMat]}")
+                        .Build(), new ComponentBuilder());
+                }
+
                 // 加道具
                 bag.TryGetValue(itemKey, out int curItem);
                 bag[itemKey] = curItem + 1;
@@ -4243,7 +4429,7 @@ HP為0就是真的死亡，不會再有後續動作
                 if (!ownedItems.Any())
                     return (new EmbedBuilder()
                         .WithTitle("❌ 背包沒有任何道具")
-                        .WithDescription("先合成道具再來使用吧！（球類在 `/抓pokemon` 時自動使用）")
+                        .WithDescription("先合成道具再來使用吧！（精靈球在 `/抓pokemon` 使用；幸運球要在 `/抓pokemon` 選 `幸運球: True`）")
                         .WithColor(Color.Orange).Build(), new ComponentBuilder());
 
                 var embed = new EmbedBuilder()
@@ -4258,7 +4444,7 @@ HP為0就是真的死亡，不會再有後續動作
                     // 倉庫擴建不需要選 pokemon，走獨立路由
                     string customId = key == "warehouse_expand"
                         ? $"poke_warehouse_expand_{userId}"
-                        : $"poke_useitem_select_{userId}_{key}";
+                        : $"poke_useitem_select_{userId}_{key}"; // 加速券 / 幸運符會在下一步顯示確認按鈕
                     comp.WithButton($"{itemName} ×{bag[key]}", customId, ButtonStyle.Primary, row: row);
                     btnInRow++;
                     if (btnInRow >= 5) { row++; btnInRow = 0; }
@@ -4279,6 +4465,16 @@ HP為0就是真的死亡，不會再有後續動作
                 var player = await GetPlayerDataAsync(userId, userName);
                 if (!CraftRecipes.TryGetValue(itemKey, out var recipe))
                     return (new EmbedBuilder().WithTitle("❌ 未知的道具").WithColor(Color.Red).Build(), new ComponentBuilder());
+
+                // 不用選 pokemon 的道具 → 直接給確認按鈕
+                if (PlayerLevelItems.Contains(itemKey))
+                {
+                    return (new EmbedBuilder()
+                        .WithTitle($"💊 使用 {recipe.ItemName}？")
+                        .WithDescription($"效果：{recipe.Description}\n持有：{player.Bag.GetValueOrDefault(itemKey, 0)}")
+                        .WithColor(Color.Blue).Build(),
+                        new ComponentBuilder().WithButton("確認使用", $"poke_useitem_use_{userId}_{itemKey}_0", ButtonStyle.Success));
+                }
 
                 int totalPages = (player.CaughtPokemon.Count + MenuPageSize - 1) / MenuPageSize;
                 page = Math.Clamp(page, 0, Math.Max(0, totalPages - 1));
@@ -4323,6 +4519,8 @@ HP為0就是真的死亡，不會再有後續動作
                 // 倉庫擴建不需要選 pokemon，直接轉呼叫
                 if (itemKey == "warehouse_expand")
                     return await UseWarehouseExpandAsync(userId, userName);
+                if (itemKey == "speedticket" || itemKey == "luckycharm")
+                    return await UsePlayerItemAsync(userId, userName, itemKey);
 
                 var player = await GetPlayerDataAsync(userId, userName);
                 if (!CraftRecipes.TryGetValue(itemKey, out var recipe))
@@ -4354,8 +4552,8 @@ HP為0就是真的死亡，不會再有後續動作
                         resultText = $"好感 +20（{p.Friendship}/255）";
                         break;
                     case "wondercandy":
-                        p.EvolutionPoints += 3;
-                        if (p.CanEvolve && p.EvolutionPoints >= 3)
+                        p.EvolutionPoints += 2;
+                        if (p.CanEvolve && !p.EvolutionLocked && p.EvolutionPoints >= 3)
                         {
                             var evolved = await EvolvePokemonAsync(p);
                             if (evolved != p)
@@ -4374,12 +4572,19 @@ HP為0就是真的死亡，不會再有後續動作
                                     .AddField("結果", resultText).Build(), new ComponentBuilder());
                             }
                         }
-                        resultText = $"進化點 +3（{p.EvolutionPoints}/3）";
+                        resultText = p.EvolutionLocked
+                            ? $"進化點 +2（{p.EvolutionPoints}/3）\n🪨 有不變之石，不會進化"
+                            : $"進化點 +2（{p.EvolutionPoints}/3）";
                         break;
                     case "rarecandy":
                         if (!p.CanEvolve)
                         {
-                            resultText = "已是最終形態，稀有糖果無效！";
+                            // 沒效果就不扣道具
+                            return (new EmbedBuilder().WithTitle("❌ 已是最終形態，稀有糖果無效！").WithDescription("道具沒有被使用").WithColor(Color.Orange).Build(), new ComponentBuilder());
+                        }
+                        else if (p.EvolutionLocked)
+                        {
+                            return (new EmbedBuilder().WithTitle("❌ 這隻有不變之石").WithDescription("再對牠使用一次不變之石即可免費解鎖").WithColor(Color.Orange).Build(), new ComponentBuilder());
                         }
                         else
                         {
@@ -4401,9 +4606,49 @@ HP為0就是真的死亡，不會再有後續動作
                         }
                         break;
                     case "powderboost":
-                        // 將「下場攻擊加成」標記存在 bag 特殊 key 中
-                        player.Bag["boost_pending"] = pokemonIndex;
-                        resultText = $"**{p.CustomName ?? p.Name}** 下一場對戰攻擊 +15%！";
+                        if (p.BattleBoostPending)
+                            return (new EmbedBuilder().WithTitle($"❌ {p.CustomName ?? p.Name} 已經吃過強力補給了").WithDescription("打完下一場對戰才能再吃").WithColor(Color.Orange).Build(), new ComponentBuilder());
+                        // 排隊中的對戰用的是排隊當下的資料，這時吃會被蓋掉
+                        if ((_memoryMatchmaking.TryGetValue(userId, out var q1) && q1?.Pokemon?.CaughtDate == p.CaughtDate) ||
+                            (_memoryMatchmaking2V2.TryGetValue(userId, out var q2) && (q2?.Pokemon1?.CaughtDate == p.CaughtDate || q2?.Pokemon2?.CaughtDate == p.CaughtDate)))
+                            return (new EmbedBuilder().WithTitle("❌ 這隻正在排隊對戰").WithDescription("請先取消配對再使用強力補給").WithColor(Color.Orange).Build(), new ComponentBuilder());
+                        p.BattleBoostPending = true;
+                        player.Bag.Remove("boost_pending"); // 舊版存在背包的無效標記
+                        resultText = $"**{p.CustomName ?? p.Name}** 下一場對戰（1v1 / 2v2）攻擊、特攻 +15%！";
+                        break;
+                    case "vitamin":
+                    {
+                        if (p.VitaminCount >= MaxVitaminPerPokemon)
+                            return (new EmbedBuilder().WithTitle($"❌ {p.CustomName ?? p.Name} 已經吃滿 {MaxVitaminPerPokemon} 次能力藥了").WithColor(Color.Orange).Build(), new ComponentBuilder());
+                        var stats = new (string Name, Func<int> Get, Action<int> Set)[]
+                        {
+                            ("HP",   () => p.HP,             v => p.HP = v),
+                            ("攻擊", () => p.Attack,         v => p.Attack = v),
+                            ("防禦", () => p.Defense,        v => p.Defense = v),
+                            ("特攻", () => p.SpecialAttack,  v => p.SpecialAttack = v),
+                            ("特防", () => p.SpecialDefense, v => p.SpecialDefense = v),
+                            ("速度", () => p.Speed,          v => p.Speed = v),
+                        };
+                        var st = stats[new Random().Next(stats.Length)];
+                        st.Set(st.Get() + 5);
+                        p.VitaminCount++;
+                        resultText = $"{st.Name} +5（{st.Get()}）\n已使用 {p.VitaminCount}/{MaxVitaminPerPokemon} 次";
+                        break;
+                    }
+                    case "everstone":
+                        if (p.EvolutionLocked)
+                        {
+                            // 解鎖免費，不扣道具
+                            p.EvolutionLocked = false;
+                            await SavePlayerDataAsync(player);
+                            return (new EmbedBuilder()
+                                .WithTitle($"🔓 {p.CustomName ?? p.Name} 解除了不變之石")
+                                .WithDescription("之後湊滿進化點就會進化（不變之石沒有消耗）")
+                                .WithThumbnailUrl(p.ImageUrl)
+                                .WithColor(Color.Green).Build(), new ComponentBuilder());
+                        }
+                        p.EvolutionLocked = true;
+                        resultText = $"🪨 **{p.CustomName ?? p.Name}** 不會再進化了（再用一次不變之石可免費解鎖）";
                         break;
                 }
 
@@ -4416,6 +4661,54 @@ HP為0就是真的死亡，不會再有後續動作
                 return (new EmbedBuilder()
                     .WithTitle($"✅ 使用了 {itemName}！")
                     .WithThumbnailUrl(p.ImageUrl)
+                    .WithColor(Color.Green)
+                    .AddField("結果", resultText)
+                    .Build(), new ComponentBuilder());
+            }
+            catch (Exception ex)
+            {
+                return (CommonHelper.BuildErrorResponse($"使用道具失敗: {ex.Message}").Item2, new ComponentBuilder());
+            }
+        }
+
+        // 加速券 / 幸運符（不需要選 pokemon）
+        public async Task<(Embed embed, ComponentBuilder component)> UsePlayerItemAsync(ulong userId, string userName, string itemKey)
+        {
+            try
+            {
+                var player = await GetPlayerDataAsync(userId, userName);
+                if (!CraftRecipes.TryGetValue(itemKey, out var recipe) || player.Bag.GetValueOrDefault(itemKey, 0) <= 0)
+                    return (new EmbedBuilder().WithTitle("❌ 沒有這個道具").WithColor(Color.Red).Build(), new ComponentBuilder());
+
+                string resultText;
+                if (itemKey == "speedticket")
+                {
+                    var states = await GetWorkStatesAsync(userId);
+                    var now = DateTime.UtcNow;
+                    var working = states.Where(s => s.WorkEndTime > now).ToList();
+                    if (working.Count == 0)
+                        return (new EmbedBuilder().WithTitle("❌ 目前沒有還在工作的 pokemon").WithDescription("加速券沒有被使用").WithColor(Color.Orange).Build(), new ComponentBuilder());
+                    foreach (var st in working)
+                        st.WorkEndTime = st.WorkEndTime.AddHours(-1) < now ? now : st.WorkEndTime.AddHours(-1);
+                    await SaveWorkStatesAsync(userId, states);
+                    resultText = $"{working.Count} 份工作提早 1 小時完工！";
+                }
+                else if (itemKey == "luckycharm")
+                {
+                    if (player.WorkLuckyCharm)
+                        return (new EmbedBuilder().WithTitle("❌ 幸運符已經在生效中").WithDescription("收工一次後才能再用").WithColor(Color.Orange).Build(), new ComponentBuilder());
+                    player.WorkLuckyCharm = true;
+                    resultText = "下一次收工材料數量 ×2！";
+                }
+                else
+                {
+                    return (new EmbedBuilder().WithTitle("❌ 未知的道具").WithColor(Color.Red).Build(), new ComponentBuilder());
+                }
+
+                player.Bag[itemKey]--;
+                await SavePlayerDataAsync(player);
+                return (new EmbedBuilder()
+                    .WithTitle($"✅ 使用了 {recipe.ItemName}！")
                     .WithColor(Color.Green)
                     .AddField("結果", resultText)
                     .Build(), new ComponentBuilder());

@@ -2339,7 +2339,7 @@ public class Program
             if (feature.StartsWith("抓寶可夢"))
             {
                 var svc = _services.GetRequiredService<PokeGameService>();
-                var (embed, comp) = await svc.CatchPokemonAsync(userId, talker?.DisplayName ?? talker?.Username ?? "訓練師");
+                var (embed, comp) = await svc.CatchPokemonAsync(userId, talker?.DisplayName ?? talker?.Username ?? "訓練師", feature.Contains("幸運"));
                 await channel.SendMessageAsync(embed: embed, components: comp.Build());
                 return;
             }
