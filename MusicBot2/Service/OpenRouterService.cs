@@ -938,6 +938,12 @@ houka,和泉朋花
         {
             channelKey ??= user?.Guild?.Id.ToString() ?? "global";
 
+            // 把 <@id> 換成「@伺服器名稱(<@id>)」，爽世才知道被 @ 的是誰（保留 id 給 Valorant/LOL 對應表用）
+            var mentionGuild = user?.Guild
+                ?? (contextMessages?.FirstOrDefault()?.Channel as SocketGuildChannel)?.Guild
+                ?? (repliedMessage?.Channel as SocketGuildChannel)?.Guild;
+            request.UserMessage = await ResolveMentionsAsync(request.UserMessage, mentionGuild);
+
             const int maxRetry = 2;
             var basePersona = string.IsNullOrWhiteSpace(request.SystemInstruction) ? Persona : request.SystemInstruction;
 
@@ -962,7 +968,7 @@ houka,和泉朋花
                     var guildMember = msg.Author as SocketGuildUser
                         ?? (msg.Channel as SocketGuildChannel)?.Guild.GetUser(msg.Author.Id);
                     var authorName = guildMember?.DisplayName ?? msg.Author?.GlobalName ?? msg.Author?.Username ?? "某人";
-                    var rawText = Truncate(msg.Content, MaxMessageStoreLength);
+                    var rawText = Truncate(await ResolveMentionsAsync(msg.Content, mentionGuild), MaxMessageStoreLength);
 
                     // 補充 embed 內容，讓 AI 知道 bot 說過什麼功能回覆
                     if (msg.Embeds != null && msg.Embeds.Count > 0)
@@ -1082,6 +1088,9 @@ houka,和泉朋花
                 ? basePersona
                 : basePersona + $"\n\n[過去對話摘要]\n{summary}";
 
+            systemPrompt += "\n\n[提及格式] 訊息裡的「@名稱(<@數字>)」代表被 @ 的人，名稱是他在伺服器的暱稱，請用這個名稱稱呼他；" +
+                            "如果你要 @ 某人，只寫 <@數字> 就好，不要照抄括號格式。";
+
             // 注入遊戲短期記憶（如果有進行中的遊戲）
             var gameState = GetGameState(channelKey);
             if (gameState != null)
@@ -1113,7 +1122,7 @@ houka,和泉朋花
             if (searchContext != null)
                 systemPrompt += $"\n\n{searchContext}";
 
-            string repliedText = repliedMessage == null ? "" : repliedMessage.Content;
+            string repliedText = repliedMessage == null ? "" : await ResolveMentionsAsync(repliedMessage.Content, mentionGuild);
 
             if (string.IsNullOrWhiteSpace(repliedText) && repliedMessage != null)
             {
@@ -2548,11 +2557,64 @@ houka,和泉朋花
             return cleaned.Length >= 2 ? cleaned : null;
         }
 
+        private static readonly Regex UserMentionRegex = new(@"<@!?(\d+)>", RegexOptions.Compiled);
+        private static readonly Regex RoleMentionRegex = new(@"<@&(\d+)>", RegexOptions.Compiled);
+        private static readonly Regex ChannelMentionRegex = new(@"<#(\d+)>", RegexOptions.Compiled);
+        // AI 照抄「@名稱(<@id>)」時還原成單純的 <@id>
+        private static readonly Regex EchoedMentionRegex = new(@"@[^\s@()（）<>]{1,40}[（(]\s*(<@!?\d+>)\s*[)）]", RegexOptions.Compiled);
+
+        /// <summary>
+        /// 把 Discord 原始提及換成看得懂的名稱：
+        /// 使用者 → @伺服器暱稱(&lt;@id&gt;)、身分組 → @身分組名、頻道 → #頻道名。找不到的保持原樣。
+        /// </summary>
+        // 不在快取裡的成員用 REST 查到的暱稱：上限 500 筆、1 小時過期（不開 AlwaysDownloadUsers，省記憶體）
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<(ulong Guild, ulong User), (string Name, DateTime At)> _memberNameCache = new();
+
+        private static async Task<string> GetMemberNameAsync(SocketGuild guild, ulong id)
+        {
+            var cachedMember = guild.GetUser(id);
+            if (cachedMember != null) return cachedMember.DisplayName ?? cachedMember.Username;
+
+            if (_memberNameCache.TryGetValue((guild.Id, id), out var hit) && DateTime.UtcNow - hit.At < TimeSpan.FromHours(1))
+                return hit.Name;
+            try
+            {
+                var member = await ((IGuild)guild).GetUserAsync(id, CacheMode.AllowDownload);
+                var name = member == null ? null : (member.Nickname ?? member.GlobalName ?? member.Username);
+                if (_memberNameCache.Count > 500) _memberNameCache.Clear();
+                _memberNameCache[(guild.Id, id)] = (name, DateTime.UtcNow);
+                return name;
+            }
+            catch { return null; }
+        }
+
+        private static async Task<string> ResolveMentionsAsync(string text, SocketGuild guild)
+        {
+            if (string.IsNullOrEmpty(text) || guild == null || text.IndexOf('<') < 0) return text;
+
+            // 先查好所有被 @ 的人的名稱，再一次替換
+            var names = new Dictionary<ulong, string>();
+            foreach (Match m in UserMentionRegex.Matches(text))
+                if (ulong.TryParse(m.Groups[1].Value, out var uid) && !names.ContainsKey(uid))
+                    names[uid] = await GetMemberNameAsync(guild, uid);
+
+            text = UserMentionRegex.Replace(text, m =>
+                ulong.TryParse(m.Groups[1].Value, out var id) && names.TryGetValue(id, out var name) && !string.IsNullOrEmpty(name)
+                    ? $"@{name}(<@{id}>)"
+                    : m.Value);
+            text = RoleMentionRegex.Replace(text, m =>
+                ulong.TryParse(m.Groups[1].Value, out var id) && guild.GetRole(id) is { } role ? $"@{role.Name}" : m.Value);
+            text = ChannelMentionRegex.Replace(text, m =>
+                ulong.TryParse(m.Groups[1].Value, out var id) && guild.GetChannel(id) is { } ch ? $"#{ch.Name}" : m.Value);
+            return text;
+        }
+
         private static string CleanResponse(string text)
         {
             if (string.IsNullOrWhiteSpace(text)) return text;
 
             text = text.Trim();
+            text = EchoedMentionRegex.Replace(text, "$1");
 
             // 移除 reasoning model 的思考區塊（Qwen3、Nemotron reasoning 等）
             text = Regex.Replace(text, @"<think>[\s\S]*?</think>", "", RegexOptions.IgnoreCase);
