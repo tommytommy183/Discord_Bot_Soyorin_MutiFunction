@@ -269,7 +269,9 @@ namespace MusicBot2.Service
                     foreach (var btn in actionRow.Components.OfType<ButtonComponent>())
                     {
                         string newId = btn.CustomId.Replace("anime_guess_", "anime_guess_r2_");
-                        r2Component.WithButton(btn.Label, newId, ButtonStyle.Secondary, row: btnIdx / 3);
+                        // 剛剛猜錯的那個反紅鎖住，第二次不會再按到同一個
+                        bool wasPicked = btn.CustomId.StartsWith($"anime_guess_{selectedId}_");
+                        r2Component.WithButton(btn.Label, newId, wasPicked ? ButtonStyle.Danger : ButtonStyle.Secondary, disabled: wasPicked, row: btnIdx / 3);
                         btnIdx++;
                     }
                 }
