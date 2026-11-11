@@ -2130,6 +2130,43 @@ HP為0就是真的死亡，不會再有後續動作
             return result.ToString();
         }
 
+        private async Task<(PokeGamePokemon,bool)> GetFriendShipEffect(PokeGamePokemon pokemon)
+        {
+            //是否撐住
+            bool isResist = false;
+            if(pokemon.Friendship >=255)
+            {
+                isResist = true;
+            }
+            //撐住機會20%
+            else if (pokemon.Friendship >= 100)
+            {
+                Random random = new Random();
+                int chance = random.Next(1, 101); // 生成1到100之間的隨機數
+                if (chance <= 20)
+                {
+                    isResist = true;
+                }
+            }
+
+            //數值相關
+            if (pokemon.Friendship >= 200)
+            {
+                pokemon.Attack += 20;
+                pokemon.Defense += 20;
+            }
+            if(pokemon.Friendship >= 150)
+            {
+                pokemon.Defense += 20;
+                pokemon.SpecialDefense += 20;
+            }
+            if (pokemon.Friendship >= 50)
+            {
+                pokemon.HP += 20;
+            }
+            return (pokemon,isResist);
+        }
+
         private async Task<(Embed embed, ComponentBuilder component)> ExecuteBattleAsync(
     ulong player1Id, string player1Name, PokeGamePokemon pokemon1,
     ulong player2Id, string player2Name, PokeGamePokemon pokemon2)
@@ -2138,6 +2175,13 @@ HP為0就是真的死亡，不會再有後續動作
             {
                 // 計算屬性克制關係
                 var typeAdvantageInfo = CalculateTypeAdvantage(pokemon1.Types, pokemon2.Types);
+
+                bool isResist1 = false;
+                bool isResist2 = false;
+                (pokemon1, isResist1) = await GetFriendShipEffect(pokemon1);
+                (pokemon2, isResist2) = await GetFriendShipEffect(pokemon2);
+
+                string friendShipEffect = "";
 
                 // 準備對戰資訊給 AI 判斷
                 string battlePrompt = $@"請模擬一場精彩的pokemon對戰，並判斷勝負。
@@ -2148,12 +2192,14 @@ HP為0就是真的死亡，不會再有後續動作
    - HP: {pokemon1.HP}, 攻擊: {BattleAtk(pokemon1)}, 防禦: {pokemon1.Defense}
    - 特攻: {BattleSpAtk(pokemon1)}, 特防: {pokemon1.SpecialDefense}, 速度: {pokemon1.Speed}
    - 是否為閃光: {(pokemon1.isShiny ? "是" : "否")}{BoostNote(pokemon1)}
+   - 本次戰鬥是否可以撐住一次致死攻擊: {(isResist1 ? "是" : "否")}
 
 2. 玩家B : {player2Name} 的 自訂名稱:{pokemon2.CustomName ?? pokemon2.Name}，真實名稱:{pokemon2.Name}
    - 屬性: {string.Join(", ", pokemon2.Types)}
    - HP: {pokemon2.HP}, 攻擊: {BattleAtk(pokemon2)}, 防禦: {pokemon2.Defense}
    - 特攻: {BattleSpAtk(pokemon2)}, 特防: {pokemon2.SpecialDefense}, 速度: {pokemon2.Speed}
    - 是否為閃光: {(pokemon2.isShiny ? "是" : "否")}{BoostNote(pokemon2)}
+   - 本次戰鬥是否可以撐住一次致死攻擊: {(isResist2 ? "是" : "否")}
 
 【屬性克制分析】
 {typeAdvantageInfo}
@@ -2170,6 +2216,7 @@ HP為0就是真的死亡，不會再有後續動作
    - 能力值差異（HP、攻擊、防禦、特攻、特防、速度）
    - 屬性克制優勢（這是最重要的因素！）
    - 速度優勢（先手攻擊的優勢）
+   - 撐住致死攻擊只有一次的機會，如果有成功擋住攻擊的話就要說因為羈絆所以撐住致死攻擊，並且在對戰過程中描述這個情節。
 
 請根據以上數據和屬性相剋關係，判斷誰會獲勝，並用繁體中文描述一段精彩的對戰過程。
 要求：
@@ -3480,11 +3527,23 @@ HP為0就是真的死亡，不會再有後續動作
                     await SavePlayerDataAsync(player);
                     embed = new EmbedBuilder()
                         .WithTitle($"🥰 {displayName} 很開心！")
-                        .WithDescription($"你輕輕摸了摸 **{displayName}**，牠高興地蹭了你一下！")
+                        .WithDescription(
+                            $"你輕輕摸了摸 **{displayName}**，牠高興地蹭了你一下！"
+                        )
                         .WithThumbnailUrl(p.ImageUrl)
                         .WithColor(new Color(0xFFB6C1))
-                        .AddField("好感度", $"{p.Friendship}/255 ❤️ (+{gained})")
-                        .AddField("效果提示", p.Friendship >= 200 ? "💛 好感滿滿，攻擊力有加成！" : p.Friendship >= 100 ? "💗 夠好感了，對戰時可能撐住一擊" : "繼續互動提升好感吧！")
+                        .AddField(
+                            "❤️ 好感度",
+                            $"**{p.Friendship}/255** ❤️ `(+{gained})`"
+                        )
+                        .AddField(
+                            "✨ 好感度效果",
+                            "💛 **255**｜100% 撐住一擊（一次）\n" +
+                            "⚔️ **200 以上**｜雙攻 +20\n" +
+                            "🛡️ **150 以上**｜雙防 +20\n" +
+                            "💗 **100 以上**｜20% 機率撐住一擊\n" +
+                            "💚 **50 以上**｜血量 +20"
+                        )
                         .Build();
                 }
 
