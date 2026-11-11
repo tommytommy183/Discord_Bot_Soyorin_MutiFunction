@@ -12,19 +12,23 @@ namespace MusicBot2.Service
 {
     public class WordGuessingService
     {
-        public WordsGuessingVM Answer;
-        private readonly WordGuessingService _wordService;
-        private readonly GetChampService _getChampService;
+        // 每個頻道各自一局（以前全部伺服器共用同一個答案）
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<ulong, WordsGuessingVM> _answers = new();
         private const string FirstWords = "pornhubersSoBigDesuWa";
-        public WordGuessingService()
+
+        // 先幫玩家猜的那個字：長度不夠就重複補（以前超過 21 個字母會直接爆掉）
+        private static string MakeFirstGuess(int length)
         {
-            Answer = null;
+            var sb = new StringBuilder();
+            while (sb.Length < length) sb.Append(FirstWords);
+            return sb.ToString(0, length);
         }
 
         public async Task<string> Guess(IMessageChannel channel,string word, SocketGuildUser user,string diff)
         {
             try
             {
+                _answers.TryGetValue(channel.Id, out var Answer);
                 // 如果沒有提供猜測的單字，且目前沒有答案，就開始新的遊戲
                 if (Answer == null)
                 {
@@ -33,13 +37,15 @@ namespace MusicBot2.Service
                         var words = LoadWords();
 
                         Random r = new Random();
+                        if (words.Count == 0) return "單字庫是空的，請先上傳 words.txt";
                         var answerVM = words[r.Next(words.Count)];
 
                         Answer = answerVM;
+                        _answers[channel.Id] = answerVM;
                         Console.WriteLine($"正確答案: {Answer.word}");
 
                         //先幫他猜一個單字
-                        string FirstGuessingWords = FirstWords.Substring(0, answerVM.word.Length);
+                        string FirstGuessingWords = MakeFirstGuess(answerVM.word.Length);
 
                         var result = CheckWord(Answer.word, FirstGuessingWords);
 
@@ -54,27 +60,31 @@ namespace MusicBot2.Service
                             "easy" => 1,
                             "normal" => 6,
                             "hard" => 8,
-                            "發kinghard" => 10
+                            "發kinghard" => 10,
+                            _ => 1
                         };
                         int wordMaxLength = diff switch
                         {
                             "easy" => 5,
                             "normal" => 7,
                             "hard" => 9,
-                            "發kinghard" => 100
+                            "發kinghard" => 100,
+                            _ => 100
                         };
                         var words = LoadWords();
 
                         var lengthFilteredWords = words.Where(w => w.word.Length >= wordMinLength && w.word.Length <= wordMaxLength).ToList();
 
                         Random r = new Random();
+                        if (lengthFilteredWords.Count == 0) return "這個難度沒有符合長度的單字，換個難度試試";
                         var answerVM = lengthFilteredWords[r.Next(lengthFilteredWords.Count)];
 
                         Answer = answerVM;
+                        _answers[channel.Id] = answerVM;
                         Console.WriteLine($"正確答案: {Answer.word}");
 
                         //先幫他猜一個單字
-                        string FirstGuessingWords = FirstWords.Substring(0, answerVM.word.Length);
+                        string FirstGuessingWords = MakeFirstGuess(answerVM.word.Length);
 
                         var result = CheckWord(Answer.word, FirstGuessingWords);
 
@@ -85,6 +95,7 @@ namespace MusicBot2.Service
                 }
                 else
                 {
+                    word = (word ?? "").Trim();
                     if(word.Length != Answer.word.Length)
                     {
                         return $"字數錯啦，你是唐寶愛音484? 要猜 {Answer.word.Length} 個字的單字，你猜這什麼鬼? {word}";
@@ -96,7 +107,7 @@ namespace MusicBot2.Service
                     if (word.ToLower() == Answer.word)
                     {
                         display += $"\n\n🎉 猜對了我的寶\n單字: **{Answer.word}**\n意思: {Answer.translate} \n 獎勵 {user.DisplayName} {await RewardsHelpers.GetRandomRewards(channel, user)}";
-                        Answer = null;
+                        _answers.TryRemove(channel.Id, out _);
                     }
                     return display;
                 }
@@ -112,7 +123,8 @@ namespace MusicBot2.Service
         {
             try
             {
-                string _filePath = Path.Combine(Directory.GetCurrentDirectory(), "words.txt");
+                // 和 LoadWords 讀同一個位置（以前寫到 CurrentDirectory、讀 BaseDirectory，上傳可能沒生效）
+                string _filePath = Path.Combine(AppContext.BaseDirectory, "words.txt");
 
                 using var httpClient = new HttpClient();
                 var bytes = await httpClient.GetByteArrayAsync(file.Url);

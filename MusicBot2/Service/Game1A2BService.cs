@@ -17,7 +17,9 @@ namespace MusicBot2.Service
 
         public Task<(ComponentBuilder, Embed)> StartGameAsync(ulong userId, string number)
         {
-            // 檢查是否已有進行中的遊戲
+            // 檢查是否已有進行中的遊戲（超過 1 小時沒動的舊局直接作廢，避免卡住）
+            if (_activeSessions.TryGetValue(userId, out var old) && DateTime.UtcNow - old.LastActive > TimeSpan.FromHours(1))
+                _activeSessions.Remove(userId);
             if (_activeSessions.ContainsKey(userId))
             {
                 var errorEmbed = new EmbedBuilder()
@@ -35,9 +37,18 @@ namespace MusicBot2.Service
                 // 隨機產生4位數字（可重複）
                 answer = GenerateRandomNumber();
             }
-            else
+            else if (number.Length == 4 && number.All(char.IsDigit))
             {
                 answer = number;
+            }
+            else
+            {
+                var errorEmbed = new EmbedBuilder()
+                    .WithTitle("⚠️ 提示")
+                    .WithColor(Color.Orange)
+                    .WithDescription("答案要是 4 位數字！")
+                    .Build();
+                return Task.FromResult((new ComponentBuilder(), errorEmbed));
             }
 
             // 建立遊戲session
@@ -139,6 +150,7 @@ namespace MusicBot2.Service
             // 計算 A、B
             var (a, b) = Calculate(guess, session.Answer);
             session.Attempts++;
+            session.LastActive = DateTime.UtcNow;
             session.History.Add($"`{guess}` → **{a}A{b}B**");
 
             // 判斷勝利

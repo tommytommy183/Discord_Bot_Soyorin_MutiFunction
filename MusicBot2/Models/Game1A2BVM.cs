@@ -13,5 +13,6 @@ namespace MusicBot2.Models
         public int Attempts { get; set; } = 0;
         public List<string> History { get; set; } = new();
         public ulong MessageId { get; set; }    // 綁定的 Embed 訊息 ID
+        public DateTime LastActive { get; set; } = DateTime.UtcNow; // 最後一次猜的時間（太久沒動自動作廢）
     }
 }

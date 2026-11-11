@@ -83,9 +83,13 @@ namespace MusicBot2.Service
                 }
 
                 bool moved = false;
-                int[,] previousGrid = (int[,])gameState.Grid.Clone();
 
-                // 根據方向移動
+                if (direction.ToUpper() == "RESET")
+                    return StartGameAsync(gameState.ChannelId);
+
+                // 大家都可以按，同時按會互相踩到棋盤 → 一次只處理一個移動
+                lock (gameState)
+                {
                 switch (direction.ToUpper())
                 {
                     case "UP":
@@ -100,14 +104,17 @@ namespace MusicBot2.Service
                     case "RIGHT":
                         moved = MoveRight(gameState);
                         break;
-                    case "RESET":
-                        return StartGameAsync(gameState.ChannelId);
                 }
 
                 // 如果有移動，添加新方塊
                 if (moved)
                 {
                     AddRandomTile(gameState);
+                }
+                }
+
+                if (moved)
+                {
 
                     // 檢查是否獲勝
                     if (!gameState.Won && CheckWin(gameState))

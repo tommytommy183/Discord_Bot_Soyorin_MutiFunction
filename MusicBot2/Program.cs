@@ -233,8 +233,21 @@ public class Program
                     int x = int.Parse(parts[2]);
                     int y = int.Parse(parts[3]);
 
+                    // 只有開局的人能踩（以前別人點會用「點的人」的遊戲，沒有遊戲還會把整個盤面洗掉）
+                    if (component.User.Id != userId)
+                    {
+                        await component.RespondAsync("❌ 這不是你的地圖，用 `/mine` 開一局自己的吧", ephemeral: true);
+                        return;
+                    }
+
                     var mineService = _services.GetService<MineGameService>();
                     var (newComponent, embed, gameOver) = await mineService.HandleButtonClick(component, x, y);
+                    if (newComponent == null)
+                    {
+                        // 找不到遊戲 / 出錯：不要把盤面清掉，只回給自己看
+                        await component.RespondAsync(embed: embed, ephemeral: true);
+                        return;
+                    }
 
                     await component.UpdateAsync(msg =>
                     {
@@ -1545,10 +1558,20 @@ public class Program
                     // 如果是猜數字，需要彈出Modal（HandleButtonClickAsync會處理響應）
                     if (mode == "guess")
                     {
+                        if (game1A2BService.GetSession(userId) == null)
+                        {
+                            await component.RespondAsync("⚠️ 這局已經結束了，請重新開始！", ephemeral: true);
+                            return;
+                        }
                         await game1A2BService.HandleButtonClickAsync(component, mode, userId);
                     }
                     else if (mode == "quit")
                     {
+                        if (component.User.Id != userId)
+                        {
+                            await component.RespondAsync("❌ 只有開局的人可以放棄", ephemeral: true);
+                            return;
+                        }
                         // 放棄遊戲需要更新訊息
                         await component.DeferAsync();
                         var (newComponent, embed) = await game1A2BService.HandleButtonClickAsync(component, mode, userId);
@@ -1965,17 +1988,21 @@ public class Program
                             // 成功 → Defer，不產生任何新訊息
                             await modal.DeferAsync();
 
-                            if (session.MessageId != 0)
+                            // 優先改 modal 所屬的那則訊息，沒有才用記下來的 MessageId
+                            IUserMessage userMsg = modal.Message;
+                            if (userMsg == null && session.MessageId != 0)
+                                userMsg = await modal.Channel.GetMessageAsync(session.MessageId) as IUserMessage;
+                            if (userMsg != null)
                             {
-                                var gameMessage = await modal.Channel.GetMessageAsync(session.MessageId);
-                                if (gameMessage is IUserMessage userMsg)
+                                await userMsg.ModifyAsync(msg =>
                                 {
-                                    await userMsg.ModifyAsync(msg =>
-                                    {
-                                        msg.Embed = result.Item1.embed;
-                                        msg.Components = result.Item1.component?.Build();
-                                    });
-                                }
+                                    msg.Embed = result.Item1.embed;
+                                    msg.Components = result.Item1.component?.Build();
+                                });
+                            }
+                            else
+                            {
+                                await modal.Channel.SendMessageAsync(embed: result.Item1.embed, components: result.Item1.component?.Build());
                             }
                         }
                     }
@@ -2350,7 +2377,10 @@ public class Program
                     {
                         var svc = _services.GetRequiredService<Game1A2BService>();
                         var (comp, embed) = await svc.StartGameAsync(userId, "");
-                        await channel.SendMessageAsync(embed: embed, components: comp.Build());
+                        var sent1a2b = await channel.SendMessageAsync(embed: embed, components: comp.Build());
+                        // 記住遊戲訊息，猜完才更新得到同一則（以前沒設 → 猜了畫面都不會動）
+                        var s1a2b = svc.GetSession(userId);
+                        if (s1a2b != null && s1a2b.MessageId == 0) s1a2b.MessageId = sent1a2b.Id;
                         break;
                     }
                 case "猜動漫":
@@ -2640,8 +2670,10 @@ public class Program
         }
         else if (cmd.ToLower().StartsWith("mine"))
         {
-            var height = int.Parse(cmd.Substring(5).ToLower().Trim().Split(' ')[0]);
-            var width = int.Parse(cmd.Substring(5).ToLower().Trim().Split(' ')[1]);
+            // $$mine 高 寬（Discord 按鈕最多 5x5；沒填或填錯就用 5x5）
+            var mineArgs = cmd.Length > 4 ? cmd.Substring(4).Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries) : Array.Empty<string>();
+            int height = mineArgs.Length > 0 && int.TryParse(mineArgs[0], out var mh) ? Math.Clamp(mh, 3, 5) : 5;
+            int width = mineArgs.Length > 1 && int.TryParse(mineArgs[1], out var mw) ? Math.Clamp(mw, 3, 5) : 5;
             var mineService = _services.GetService<MineGameService>();
             var (component, embed) = await mineService.StartGameAsync(user.Id, height, width);
             await channel.SendMessageAsync(embed: embed, components: component.Build());

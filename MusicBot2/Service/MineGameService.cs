@@ -28,11 +28,14 @@ namespace MusicBot2.Service
                 //int mines = new Random().Next(minMines, maxMines + 1);
 
                 // 初始化遊戲狀態
+                // 按鈕版最多 5x5；地雷數不能比格子多（以前 2x2 以下會在放地雷時無限迴圈）
+                width = Math.Clamp(width, 3, 5);
+                height = Math.Clamp(height, 3, 5);
                 var gameState = new MineGameVM
                 {
                     Width = width,
                     Height = height,
-                    Mines = 4
+                    Mines = Math.Min(4, width * height - 1)
                 };
 
                 gameState.MineMap = new bool[gameState.Width, gameState.Height];
@@ -179,6 +182,7 @@ namespace MusicBot2.Service
                 if (game.MineMap[x, y])
                 {
                     RevealAllMines(game);
+                    _activeGames.Remove(userId); // 輸了就結束，不能繼續踩
                     var loseEmbed = BuildBigGameEmbed(game, userId, "💥 遊戲結束",
                         $"你在 ({x + 1},{y + 1}) 踩到外星人了\n請到花蓮地檢署一趟\n💀 Game Over");
                     return Task.FromResult(loseEmbed);
@@ -195,6 +199,7 @@ namespace MusicBot2.Service
                 if (CheckWin(game))
                 {
                     RevealAllMines(game);
+                    _activeGames.Remove(userId);
                     var winEmbed = BuildBigGameEmbed(game, userId, "🎉 恭喜你贏了",
                         $"基本上你跟faker最大的差別只在他有去打職業，而你還沒有\n");
                     return Task.FromResult(winEmbed);
@@ -311,7 +316,9 @@ namespace MusicBot2.Service
         {
             try
             {
-                ulong userId = interaction.User.Id;
+                // customId 裡的擁有者（Program 已擋掉別人點）
+                var idParts = interaction.Data.CustomId.Split('_');
+                ulong userId = idParts.Length >= 2 && ulong.TryParse(idParts[1], out var ownerId) ? ownerId : interaction.User.Id;
 
                 if (!_activeGames.ContainsKey(userId))
                 {
@@ -351,6 +358,7 @@ namespace MusicBot2.Service
                         Color = Color.Red
                     }.Build();
 
+                    _activeGames.Remove(userId); // 結束就釋放
                     interaction.Channel.SendMessageAsync($"{interaction.User.Username} / {interaction.User.GlobalName} 收到了外星人的傳票");
                     return Task.FromResult<(ComponentBuilder?, Embed, bool)>((BuildGameBoard(game, userId, true), loseEmbed, true));
                 }
@@ -372,6 +380,7 @@ namespace MusicBot2.Service
                                       "🔄 輸入 /mine 再開始新遊戲",
                         Color = Color.Gold
                     }.Build();
+                    _activeGames.Remove(userId); // 結束就釋放
                     return Task.FromResult<(ComponentBuilder?, Embed, bool)>((BuildGameBoard(game, userId, true), winEmbed, true));
                 }
 
