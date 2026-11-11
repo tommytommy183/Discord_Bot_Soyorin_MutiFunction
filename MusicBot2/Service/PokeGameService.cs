@@ -1663,38 +1663,43 @@ namespace MusicBot2.Service
 1. 玩家A {player1Name} 的 第一隻寶可夢:
     自訂名稱:{pokemon1.CustomName ?? pokemon1.Name}，真實名稱:{pokemon1.Name}
    - 屬性: {string.Join(", ", pokemon1.Types)}
-   - HP: {pokemon1.HP}, 攻擊: {BattleAtk(pokemon1)}, 防禦: {pokemon1.Defense}
-   - 特攻: {BattleSpAtk(pokemon1)}, 特防: {pokemon1.SpecialDefense}, 速度: {pokemon1.Speed}
+   - HP: {BattleHP(pokemon1)}, 攻擊: {BattleAtk(pokemon1)}, 防禦: {BattleDef(pokemon1)}
+   - 特攻: {BattleSpAtk(pokemon1)}, 特防: {BattleSpDef(pokemon1)}, 速度: {pokemon1.Speed}
    - 是否為閃光: {(pokemon1.isShiny ? "是" : "否")}{BoostNote(pokemon1)}
+   - 本次戰鬥是否可以撐住一次致死攻擊: {(RollFriendshipResist(pokemon1) ? "是" : "否")}
 
 2. 玩家A {player1Name} 的 第二隻寶可夢:
     自訂名稱:{pokemon2.CustomName ?? pokemon2.Name}，真實名稱:{pokemon2.Name}
    - 屬性: {string.Join(", ", pokemon2.Types)}
-   - HP: {pokemon2.HP}, 攻擊: {BattleAtk(pokemon2)}, 防禦: {pokemon2.Defense}
-   - 特攻: {BattleSpAtk(pokemon2)}, 特防: {pokemon2.SpecialDefense}, 速度: {pokemon2.Speed}
+   - HP: {BattleHP(pokemon2)}, 攻擊: {BattleAtk(pokemon2)}, 防禦: {BattleDef(pokemon2)}
+   - 特攻: {BattleSpAtk(pokemon2)}, 特防: {BattleSpDef(pokemon2)}, 速度: {pokemon2.Speed}
    - 是否為閃光: {(pokemon2.isShiny ? "是" : "否")}{BoostNote(pokemon2)}
+   - 本次戰鬥是否可以撐住一次致死攻擊: {(RollFriendshipResist(pokemon2) ? "是" : "否")}
 
 ========對上========
 
 3. 玩家B {player2Name} 的第一隻寶可夢:
     自訂名稱:{opponentPokemon1.CustomName ?? opponentPokemon1.Name}，真實名稱:{opponentPokemon1.Name}
    - 屬性: {string.Join(", ", opponentPokemon1.Types)}
-   - HP: {opponentPokemon1.HP}, 攻擊: {BattleAtk(opponentPokemon1)}, 防禦: {opponentPokemon1.Defense}
-   - 特攻: {BattleSpAtk(opponentPokemon1)}, 特防: {opponentPokemon1.SpecialDefense}, 速度: {opponentPokemon1.Speed}
+   - HP: {BattleHP(opponentPokemon1)}, 攻擊: {BattleAtk(opponentPokemon1)}, 防禦: {BattleDef(opponentPokemon1)}
+   - 特攻: {BattleSpAtk(opponentPokemon1)}, 特防: {BattleSpDef(opponentPokemon1)}, 速度: {opponentPokemon1.Speed}
    - 是否為閃光: {(opponentPokemon1.isShiny ? "是" : "否")}{BoostNote(opponentPokemon1)}
+   - 本次戰鬥是否可以撐住一次致死攻擊: {(RollFriendshipResist(opponentPokemon1) ? "是" : "否")}
 
 4. 玩家B {player2Name} 的第二隻寶可夢:
     自訂名稱:{opponentPokemon2.CustomName ?? opponentPokemon2.Name}，真實名稱:{opponentPokemon2.Name}
    - 屬性: {string.Join(", ", opponentPokemon2.Types)}
-   - HP: {opponentPokemon2.HP}, 攻擊: {BattleAtk(opponentPokemon2)}, 防禦: {opponentPokemon2.Defense}
-   - 特攻: {BattleSpAtk(opponentPokemon2)}, 特防: {opponentPokemon2.SpecialDefense}, 速度: {opponentPokemon2.Speed}
+   - HP: {BattleHP(opponentPokemon2)}, 攻擊: {BattleAtk(opponentPokemon2)}, 防禦: {BattleDef(opponentPokemon2)}
+   - 特攻: {BattleSpAtk(opponentPokemon2)}, 特防: {BattleSpDef(opponentPokemon2)}, 速度: {opponentPokemon2.Speed}
    - 是否為閃光: {(opponentPokemon2.isShiny ? "是" : "否")}{BoostNote(opponentPokemon2)}
+   - 本次戰鬥是否可以撐住一次致死攻擊: {(RollFriendshipResist(opponentPokemon2) ? "是" : "否")}
 
 
 請根據以上數據和屬性相剋關係，判斷誰會獲勝，並用繁體中文描述一段精彩的對戰過程。
 並且不要給予任何你的思考過程。
 要以該pokemon真實的技能來敘述，期間有自訂名稱的話就要叫自訂名稱，沒有的話就叫真實名稱。
 如果是閃光的，對話中要提到閃光的特效，但閃光完全不影響戰鬥結果。
+撐住致死攻擊只有一次的機會，如果有成功擋住攻擊的話就要說因為羈絆所以撐住致死攻擊，並且在對戰過程中描述這個情節。
 HP為0就是真的死亡，不會再有後續動作
 最後請在描述的最後一行明確說明勝者是誰，不會有平手的情況，格式為「勝者：[玩家A 或 玩家B]」";
 
@@ -1783,13 +1788,13 @@ HP為0就是真的死亡，不會再有後續動作
                 if (!player1Wins && !player2Wins)
                 {
                     Console.WriteLine($"[PokeGame] 無法從劇情判斷勝者，使用數值 fallback");
-                    int pokemon1Total = pokemon1.HP + BattleAtk(pokemon1) + pokemon1.Defense +
-                                       BattleSpAtk(pokemon1) + pokemon1.SpecialDefense + pokemon1.Speed +
-                                       pokemon2.HP + BattleAtk(pokemon2) + pokemon2.Defense +
+                    int pokemon1Total = BattleHP(pokemon1) + BattleAtk(pokemon1) + BattleDef(pokemon1) +
+                                       BattleSpAtk(pokemon1) + BattleSpDef(pokemon1) + pokemon1.Speed +
+                                       BattleHP(pokemon2) + BattleAtk(pokemon2) + BattleDef(pokemon2) +
                                        BattleSpAtk(pokemon2) + pokemon2.SpecialDefense + pokemon2.Speed;
-                    int opponentPokemonTotal = opponentPokemon1.HP + BattleAtk(opponentPokemon1) + opponentPokemon1.Defense +
-                                       BattleSpAtk(opponentPokemon1) + opponentPokemon1.SpecialDefense + opponentPokemon1.Speed +
-                                       opponentPokemon2.HP + BattleAtk(opponentPokemon2) + opponentPokemon2.Defense +
+                    int opponentPokemonTotal = BattleHP(opponentPokemon1) + BattleAtk(opponentPokemon1) + BattleDef(opponentPokemon1) +
+                                       BattleSpAtk(opponentPokemon1) + BattleSpDef(opponentPokemon1) + opponentPokemon1.Speed +
+                                       BattleHP(opponentPokemon2) + BattleAtk(opponentPokemon2) + BattleDef(opponentPokemon2) +
                                        BattleSpAtk(opponentPokemon2) + opponentPokemon2.SpecialDefense + opponentPokemon2.Speed;
                     player1Wins = pokemon1Total > opponentPokemonTotal;
                 }
@@ -2130,41 +2135,12 @@ HP為0就是真的死亡，不會再有後續動作
             return result.ToString();
         }
 
-        private async Task<(PokeGamePokemon,bool)> GetFriendShipEffect(PokeGamePokemon pokemon)
+        // 好感度「撐住一擊」：255 必定、100 以上 20%
+        private static bool RollFriendshipResist(PokeGamePokemon pokemon)
         {
-            //是否撐住
-            bool isResist = false;
-            if(pokemon.Friendship >=255)
-            {
-                isResist = true;
-            }
-            //撐住機會20%
-            else if (pokemon.Friendship >= 100)
-            {
-                Random random = new Random();
-                int chance = random.Next(1, 101); // 生成1到100之間的隨機數
-                if (chance <= 20)
-                {
-                    isResist = true;
-                }
-            }
-
-            //數值相關
-            if (pokemon.Friendship >= 200)
-            {
-                pokemon.Attack += 20;
-                pokemon.Defense += 20;
-            }
-            if(pokemon.Friendship >= 150)
-            {
-                pokemon.Defense += 20;
-                pokemon.SpecialDefense += 20;
-            }
-            if (pokemon.Friendship >= 50)
-            {
-                pokemon.HP += 20;
-            }
-            return (pokemon,isResist);
+            if (pokemon == null) return false;
+            if (pokemon.Friendship >= 255) return true;
+            return pokemon.Friendship >= 100 && new Random().Next(1, 101) <= 20;
         }
 
         private async Task<(Embed embed, ComponentBuilder component)> ExecuteBattleAsync(
@@ -2176,12 +2152,9 @@ HP為0就是真的死亡，不會再有後續動作
                 // 計算屬性克制關係
                 var typeAdvantageInfo = CalculateTypeAdvantage(pokemon1.Types, pokemon2.Types);
 
-                bool isResist1 = false;
-                bool isResist2 = false;
-                (pokemon1, isResist1) = await GetFriendShipEffect(pokemon1);
-                (pokemon2, isResist2) = await GetFriendShipEffect(pokemon2);
-
-                string friendShipEffect = "";
+                // 好感度數值加成只在這場對戰計算（BattleHP/BattleAtk...），不會寫回寶可夢本身
+                bool isResist1 = RollFriendshipResist(pokemon1);
+                bool isResist2 = RollFriendshipResist(pokemon2);
 
                 // 準備對戰資訊給 AI 判斷
                 string battlePrompt = $@"請模擬一場精彩的pokemon對戰，並判斷勝負。
@@ -2189,15 +2162,15 @@ HP為0就是真的死亡，不會再有後續動作
 對戰雙方：
 1. 玩家A : {player1Name} 的 自訂名稱:{pokemon1.CustomName ?? pokemon1.Name}，真實名稱:{pokemon1.Name}
    - 屬性: {string.Join(", ", pokemon1.Types)}
-   - HP: {pokemon1.HP}, 攻擊: {BattleAtk(pokemon1)}, 防禦: {pokemon1.Defense}
-   - 特攻: {BattleSpAtk(pokemon1)}, 特防: {pokemon1.SpecialDefense}, 速度: {pokemon1.Speed}
+   - HP: {BattleHP(pokemon1)}, 攻擊: {BattleAtk(pokemon1)}, 防禦: {BattleDef(pokemon1)}
+   - 特攻: {BattleSpAtk(pokemon1)}, 特防: {BattleSpDef(pokemon1)}, 速度: {pokemon1.Speed}
    - 是否為閃光: {(pokemon1.isShiny ? "是" : "否")}{BoostNote(pokemon1)}
    - 本次戰鬥是否可以撐住一次致死攻擊: {(isResist1 ? "是" : "否")}
 
 2. 玩家B : {player2Name} 的 自訂名稱:{pokemon2.CustomName ?? pokemon2.Name}，真實名稱:{pokemon2.Name}
    - 屬性: {string.Join(", ", pokemon2.Types)}
-   - HP: {pokemon2.HP}, 攻擊: {BattleAtk(pokemon2)}, 防禦: {pokemon2.Defense}
-   - 特攻: {BattleSpAtk(pokemon2)}, 特防: {pokemon2.SpecialDefense}, 速度: {pokemon2.Speed}
+   - HP: {BattleHP(pokemon2)}, 攻擊: {BattleAtk(pokemon2)}, 防禦: {BattleDef(pokemon2)}
+   - 特攻: {BattleSpAtk(pokemon2)}, 特防: {BattleSpDef(pokemon2)}, 速度: {pokemon2.Speed}
    - 是否為閃光: {(pokemon2.isShiny ? "是" : "否")}{BoostNote(pokemon2)}
    - 本次戰鬥是否可以撐住一次致死攻擊: {(isResist2 ? "是" : "否")}
 
@@ -2298,10 +2271,10 @@ HP為0就是真的死亡，不會再有後續動作
                 // 如果 AI 沒有明確指出勝者，則根據數值判斷
                 if (!player1Wins && !player2Wins)
                 {
-                    int pokemon1Total = pokemon1.HP + BattleAtk(pokemon1) + pokemon1.Defense +
-                                       BattleSpAtk(pokemon1) + pokemon1.SpecialDefense + pokemon1.Speed;
-                    int pokemon2Total = pokemon2.HP + BattleAtk(pokemon2) + pokemon2.Defense +
-                                       BattleSpAtk(pokemon2) + pokemon2.SpecialDefense + pokemon2.Speed;
+                    int pokemon1Total = BattleHP(pokemon1) + BattleAtk(pokemon1) + BattleDef(pokemon1) +
+                                       BattleSpAtk(pokemon1) + BattleSpDef(pokemon1) + pokemon1.Speed;
+                    int pokemon2Total = BattleHP(pokemon2) + BattleAtk(pokemon2) + BattleDef(pokemon2) +
+                                       BattleSpAtk(pokemon2) + BattleSpDef(pokemon2) + pokemon2.Speed;
                     player1Wins = pokemon1Total > pokemon2Total;
                 }
 
@@ -3367,8 +3340,21 @@ HP為0就是真的死亡，不會再有後續動作
         private static readonly TimeSpan StaminaRegenInterval = TimeSpan.FromMinutes(6);
 
         // ─── 強力補給（下一場對戰攻擊 / 特攻 +15%）──────────────────────────
-        private static int BattleAtk(PokeGamePokemon p) => p.BattleBoostPending ? (int)Math.Round(p.Attack * 1.15) : p.Attack;
-        private static int BattleSpAtk(PokeGamePokemon p) => p.BattleBoostPending ? (int)Math.Round(p.SpecialAttack * 1.15) : p.SpecialAttack;
+        // 對戰用數值 = 原始數值 + 好感度加成（+ 強力補給）。只在對戰中計算，不寫回寶可夢
+        //   50↑ HP+20、150↑ 防/特防+20、200↑ 攻/特攻+20
+        private static int BattleHP(PokeGamePokemon p) => p.HP + (p.Friendship >= 50 ? 20 : 0);
+        private static int BattleDef(PokeGamePokemon p) => p.Defense + (p.Friendship >= 150 ? 20 : 0);
+        private static int BattleSpDef(PokeGamePokemon p) => p.SpecialDefense + (p.Friendship >= 150 ? 20 : 0);
+        private static int BattleAtk(PokeGamePokemon p)
+        {
+            int v = p.Attack + (p.Friendship >= 200 ? 20 : 0);
+            return p.BattleBoostPending ? (int)Math.Round(v * 1.15) : v;
+        }
+        private static int BattleSpAtk(PokeGamePokemon p)
+        {
+            int v = p.SpecialAttack + (p.Friendship >= 200 ? 20 : 0);
+            return p.BattleBoostPending ? (int)Math.Round(v * 1.15) : v;
+        }
         private static string BoostNote(PokeGamePokemon p) => p.BattleBoostPending ? "\n   - 吃了強力補給：攻擊與特攻已 +15%（數值已含加成）" : "";
         private static void ClearBattleBoost(params PokeGamePokemon[] list)
         {
