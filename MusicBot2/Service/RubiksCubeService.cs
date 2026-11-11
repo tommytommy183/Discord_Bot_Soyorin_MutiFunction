@@ -49,11 +49,16 @@ namespace MusicBot2.Service
             }
             _gamePlayers[channelId].Add(component.User.Id);
 
-            // 執行旋轉
-            cube.Rotate(face, clockwise);
+            // 執行旋轉（多人同時按會把方塊轉壞 → 一次一個）
+            bool solved;
+            lock (cube)
+            {
+                cube.Rotate(face, clockwise);
+                solved = cube.IsSolved();
+            }
 
             // 檢查是否完成
-            if (cube.IsSolved())
+            if (solved)
             {
                 var playerCount = _gamePlayers[channelId].Count;
                 _activeGames.Remove(channelId);

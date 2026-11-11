@@ -63,6 +63,7 @@ namespace MusicBot2.Models
     public class Pick2GameState
     {
         public ulong ChannelId { get; set; }
+        public bool IsFinished { get; set; } // 冠軍出爐後舊按鈕不能再推進
         public string GameSerial { get; set; }
         public string Title { get; set; }
         public List<Pick2Element> AllElements { get; set; }

@@ -28,7 +28,7 @@ namespace MusicBot2.Service
         // 從 basic_servant 快取整份從者清單
         private List<FgoBasicServant> _servantPool = new();
         // collectionNo → NP 名（避免重複 fetch）
-        private readonly Dictionary<int, string> _npCache = new();
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<int, string> _npCache = new();
 
         private bool _initialized = false;
 
@@ -389,34 +389,8 @@ namespace MusicBot2.Service
 
                 Console.WriteLine($"[FgoGuess] 載入 {_servantPool.Count} 位從者");
 
-                // 2. 異步預載 NP 名快取（從 nice export，不阻塞啟動）
-                _ = Task.Run(async () =>
-                {
-                    try
-                    {
-                        Console.WriteLine("[FgoGuess] 開始預載 NP 快取...");
-                        var niceJson = await _http.GetStringAsync(NiceServantExportUrl);
-                        var niceOpts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-                        var niceAll = JsonSerializer.Deserialize<List<FgoNiceServant>>(niceJson, niceOpts);
-                        if (niceAll == null) return;
-
-                        foreach (var svt in niceAll)
-                        {
-                            var np = svt.NoblePhantasms?
-                                .Where(n => !string.IsNullOrWhiteSpace(n.Name))
-                                .OrderByDescending(n => n.Num)
-                                .Select(n => n.Name)
-                                .FirstOrDefault();
-                            if (np != null)
-                                _npCache[svt.CollectionNo] = np;
-                        }
-                        Console.WriteLine($"[FgoGuess] NP 快取預載完成，共 {_npCache.Count} 筆");
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"[FgoGuess] NP 快取預載失敗（不影響遊戲）: {ex.Message}");
-                    }
-                });
+                // 以前這裡會下載整份 nice_servant.json（解壓後約 51MB，讀成字串 + 反序列化會吃掉好幾百 MB）
+                // 只為了拿寶具名 → 很容易 OOM。現在改成猜寶具時才個別抓單一從者，抓到的寶具名放進 _npCache。
             }
             catch (Exception ex)
             {

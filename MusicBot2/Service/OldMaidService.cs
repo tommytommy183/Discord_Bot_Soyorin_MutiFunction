@@ -406,48 +406,20 @@ namespace MusicBot2.Service
             var targetPlayer = _players[nextPlayerIndex];
             var component = new ComponentBuilder();
 
-            int cardCount = targetPlayer.Hand.Count;
-            
-            // 第一行：1-5
-            var row1 = new ActionRowBuilder();
-            for (int i = 0; i < Math.Min(5, cardCount); i++)
+            // Discord 一行最多 5 顆、最多 5 行 → 最多 25 張（以前第三行沒有上限，超過 15 張會送不出去）
+            int cardCount = Math.Min(targetPlayer.Hand.Count, 25);
+            for (int start = 0; start < cardCount; start += 5)
             {
-                row1.WithButton(
-                    label: $"第 {i + 1} 張",
-                    customId: $"oldmaid_draw_{i + 1}",
-                    style: ButtonStyle.Primary
-                );
-            }
-            component.AddRow(row1);
-
-            // 第二行：6-10
-            if (cardCount > 5)
-            {
-                var row2 = new ActionRowBuilder();
-                for (int i = 5; i < Math.Min(10, cardCount); i++)
+                var row = new ActionRowBuilder();
+                for (int i = start; i < Math.Min(start + 5, cardCount); i++)
                 {
-                    row2.WithButton(
+                    row.WithButton(
                         label: $"第 {i + 1} 張",
                         customId: $"oldmaid_draw_{i + 1}",
                         style: ButtonStyle.Primary
                     );
                 }
-                component.AddRow(row2);
-            }
-
-            // 第三行：11-13
-            if (cardCount > 10)
-            {
-                var row3 = new ActionRowBuilder();
-                for (int i = 10; i < cardCount; i++)
-                {
-                    row3.WithButton(
-                        label: $"第 {i + 1} 張",
-                        customId: $"oldmaid_draw_{i + 1}",
-                        style: ButtonStyle.Primary
-                    );
-                }
-                component.AddRow(row3);
+                component.AddRow(row);
             }
 
             return component;
@@ -584,12 +556,13 @@ namespace MusicBot2.Service
 
             foreach (var group in rankGroups)
             {
-                var cardsToRemove = group.Take(2).ToList();
-                foreach (var card in cardsToRemove)
+                // 4 張同點數要丟 2 對（以前只丟 1 對，另外兩張會一直卡在手上）
+                int pairs = group.Count() / 2;
+                foreach (var card in group.Take(pairs * 2).ToList())
                 {
                     Hand.Remove(card);
                 }
-                pairsRemoved++;
+                pairsRemoved += pairs;
             }
 
             return pairsRemoved;

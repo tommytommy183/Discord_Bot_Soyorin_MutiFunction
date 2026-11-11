@@ -176,22 +176,31 @@ namespace MusicBot2.Service
             }
 
             var gameState = _activeGames[channelId];
-
-            // 檢查使用者是否已經投過票
-            foreach (var voteSet in gameState.Votes.Values)
-                voteSet.Remove(userId);
-
-            // 添加新投票
-            if (gameState.Votes.ContainsKey(choice))
-                gameState.Votes[choice].Add(userId);
-
-            // 檢查是否達到自動推進門檻
-            int totalVotes = gameState.Votes.Values.Sum(s => s.Count);
-            if (gameState.AutoAdvanceThreshold > 0 && totalVotes >= gameState.AutoAdvanceThreshold)
+            if (gameState.IsFinished)
             {
-                // 自動推進到下一題
-                var (img, comp, emb) = await FinishRoundAsync(channelId);
-                return (img, comp, emb, false, true);
+                var emb = CommonHelper.BuildErrorEmbed("這場已經比完了，按「重新開始」或用 /pick2 開新的一場");
+                return ("", new ComponentBuilder(), emb, true, false);
+            }
+
+            // 同時很多人投票（尤其門檻 1 票自動推進）會一次跳過好幾場 → 一次只處理一票
+            lock (gameState)
+            {
+                // 檢查使用者是否已經投過票
+                foreach (var voteSet in gameState.Votes.Values)
+                    voteSet.Remove(userId);
+
+                // 添加新投票
+                if (gameState.Votes.ContainsKey(choice))
+                    gameState.Votes[choice].Add(userId);
+
+                // 檢查是否達到自動推進門檻
+                int totalVotes = gameState.Votes.Values.Sum(s => s.Count);
+                if (gameState.AutoAdvanceThreshold > 0 && totalVotes >= gameState.AutoAdvanceThreshold)
+                {
+                    // 自動推進到下一題
+                    var (img, comp, emb) = FinishRoundLocked(gameState);
+                    return (img, comp, emb, gameState.IsFinished, true);
+                }
             }
 
             var imageMessage = BuildImageMessage(gameState);
@@ -211,7 +220,16 @@ namespace MusicBot2.Service
             }
 
             var gameState = _activeGames[channelId];
+            lock (gameState)
+            {
+                if (gameState.IsFinished)
+                    return ShowWinner(gameState);
+                return FinishRoundLocked(gameState);
+            }
+        }
 
+        private (string imageMessage, ComponentBuilder component, Embed embed) FinishRoundLocked(Pick2GameState gameState)
+        {
             // 統計票數
             int votes0 = gameState.Votes[0].Count;
             int votes1 = gameState.Votes[1].Count;
@@ -245,6 +263,7 @@ namespace MusicBot2.Service
         // 顯示冠軍
         private (string imageMessage, ComponentBuilder component, Embed embed) ShowWinner(Pick2GameState gameState)
         {
+            gameState.IsFinished = true;
             var winner = gameState.NextBracket.FirstOrDefault();
 
             var embed = new EmbedBuilder()
