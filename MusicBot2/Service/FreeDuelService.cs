@@ -54,7 +54,7 @@ namespace MusicBot2.Service
                     var opts = ConfigurationOptions.Parse(redisConn);
                     opts.AbortOnConnectFail = false;
                     opts.ConnectTimeout = 10000;
-                    var conn = ConnectionMultiplexer.Connect(opts);
+                    var conn = MusicBot2.Helpers.RedisConnection.Get(redisConn);
                     _redisDb = conn.GetDatabase();
                     _useRedis = true;
                 }
@@ -99,6 +99,14 @@ namespace MusicBot2.Service
             if (s == null || s.IsDuelEnded) return false;
             if (DateTime.UtcNow - s.LastActionTime > DuelTimeout) { await DeleteAsync(cid); return false; }
             return true;
+        }
+
+        /// <summary>這個頻道有決鬥、而且說話的人就是決鬥玩家（其他人照常聊天，不會被當成出牌）</summary>
+        public async Task<bool> IsDuelPlayerAsync(ulong cid, ulong userId)
+        {
+            if (!await IsDuelActiveAsync(cid)) return false;
+            var s = await LoadAsync(cid);
+            return s != null && s.PlayerId == userId;
         }
 
         public async Task<(Embed embed, ComponentBuilder component, string message)> StartDuelAsync(

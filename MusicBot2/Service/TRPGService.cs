@@ -235,7 +235,7 @@ SAN 值（0-100）：
                     options.AbortOnConnectFail = false;
                     options.KeepAlive = 60;
 
-                    var redis = ConnectionMultiplexer.Connect(options);
+                    var redis = MusicBot2.Helpers.RedisConnection.Get(redisConnectionString);
                     _redisDb = redis.GetDatabase();
                     _useRedis = true;
                     Console.WriteLine("✅ [TRPG] Redis 連線成功");

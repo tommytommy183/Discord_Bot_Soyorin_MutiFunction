@@ -455,7 +455,7 @@ houka,和泉朋花
                     options.ConnectTimeout = 10000;
                     options.AbortOnConnectFail = false;
                     options.ConnectRetry = 3;
-                    var redis = ConnectionMultiplexer.Connect(options);
+                    var redis = MusicBot2.Helpers.RedisConnection.Get(redisConnectionString);
                     _redisDb = redis.GetDatabase();
                     _useRedis = true;
                     Console.WriteLine("✅ [OpenRouter] Redis 連線成功");

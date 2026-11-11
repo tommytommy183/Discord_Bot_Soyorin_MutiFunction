@@ -44,7 +44,7 @@ namespace MusicBot2.Service
                     var opts = ConfigurationOptions.Parse(redisConn);
                     opts.AbortOnConnectFail = false;
                     opts.ConnectTimeout = 10000;
-                    var conn = ConnectionMultiplexer.Connect(opts);
+                    var conn = MusicBot2.Helpers.RedisConnection.Get(redisConn);
                     _redisDb = conn.GetDatabase();
                     _useRedis = true;
                 }

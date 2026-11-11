@@ -41,7 +41,7 @@ namespace MusicBot2.Service
             _http = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
             try
             {
-                var redis = ConnectionMultiplexer.Connect(redisConnectionString);
+                var redis = MusicBot2.Helpers.RedisConnection.Get(redisConnectionString);
                 _db = redis.GetDatabase();
                 Console.WriteLine("[HolyGrailTower] Redis 連線建立成功");
             }

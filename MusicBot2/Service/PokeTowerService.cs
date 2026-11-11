@@ -1828,8 +1828,7 @@ namespace MusicBot2.Service
             {
                 try
                 {
-                    var redis = ConnectionMultiplexer.Connect(
-                        redisConnectionString + ",ConnectTimeout=10000,abortConnect=false,ConnectRetry=3");
+                    var redis = MusicBot2.Helpers.RedisConnection.Get(redisConnectionString);
                     _redisDb = redis.GetDatabase();
                     _useRedis = true;
                 }

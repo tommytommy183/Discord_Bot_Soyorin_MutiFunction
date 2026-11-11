@@ -73,7 +73,7 @@ namespace MusicBot2.Service
                     options.AbortOnConnectFail = false; // 連線失敗時不中止
                     options.KeepAlive = 60; // 保持連線 60 秒
 
-                    var redis = ConnectionMultiplexer.Connect(options);
+                    var redis = MusicBot2.Helpers.RedisConnection.Get(redisConnectionString);
                     _redisConn = redis;
                     _redisDb = redis.GetDatabase();
                     _useRedis = true;

@@ -111,7 +111,7 @@ public class Program
         {
             try
             {
-                var redisForRewards = StackExchange.Redis.ConnectionMultiplexer.Connect(redisConn);
+                var redisForRewards = MusicBot2.Helpers.RedisConnection.Get(redisConn);
                 await MusicBot2.Helpers.RewardsHelpers.InitializeAsync(redisForRewards.GetDatabase());
                 Console.WriteLine("[Rewards] Redis rewards list initialized.");
             }
@@ -2456,7 +2456,8 @@ public class Program
         if (message is not SocketUserMessage userMessage || (message.Author.IsBot && !ispassBot) || message.Author.Id == _client.CurrentUser.Id) return;
 
         // 🃏 自由決鬥模式攔截
-        if (_freeDuelSvc != null && await _freeDuelSvc.IsDuelActiveAsync(message.Channel.Id))
+        // 只有決鬥玩家本人的訊息算出牌；以前頻道裡任何人（含其他 bot）說話都會被丟給決鬥 AI
+        if (_freeDuelSvc != null && await _freeDuelSvc.IsDuelPlayerAsync(message.Channel.Id, message.Author.Id))
         {
             if (!message.Content.StartsWith("/"))
             {
@@ -2470,7 +2471,7 @@ public class Program
 
         // 🎲 檢查是否在 TRPG 遊戲頻道中
         var trpgUser = message.Author as SocketGuildUser;
-        if (trpgUser != null && await _trpgService.IsAdventureActiveAsync(message.Channel.Id))
+        if (trpgUser != null && !message.Author.IsBot && await _trpgService.IsAdventureActiveAsync(message.Channel.Id)) // 其他 bot 說話不算冒險行動
         {
             // 如果訊息不是指令，則視為冒險行動
             if (!message.Content.StartsWith("/"))

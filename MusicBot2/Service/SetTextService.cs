@@ -8,7 +8,7 @@ public class SetTextService
 
     public SetTextService(string redisConnectionString)
     {
-        var redis = ConnectionMultiplexer.Connect(redisConnectionString);
+        var redis = MusicBot2.Helpers.RedisConnection.Get(redisConnectionString);
         _db = redis.GetDatabase();
     }
 
