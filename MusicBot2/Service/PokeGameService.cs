@@ -1033,6 +1033,7 @@ namespace MusicBot2.Service
                 desc.AppendLine();
                 desc.AppendLine("-# 只換外觀，能力值、屬性都不變。進化前的樣子、地區型態、各世代圖片都可以選。");
                 desc.AppendLine("-# 「套用為顯示圖」會用目前預覽的那張；✅ 代表已經在用。");
+                desc.AppendLine("-# 戰鬥正反面一定成套套用，這個風格少了正面或背面就不能拿來當戰鬥圖。");
 
                 var embed = new EmbedBuilder()
                     .WithTitle($"🎨 {p.CustomName ?? p.Name} 的造型")
@@ -1073,9 +1074,10 @@ namespace MusicBot2.Service
                     cb.WithButton(shiny ? "換成一般配色" : "換成閃光配色", Btn("view", sh: 1 - s), ButtonStyle.Secondary, emote: new Emoji("✨"), row: 2);
 
                 cb.WithButton("套用為顯示圖", Btn("art"), ButtonStyle.Primary, disabled: previewUrl == null, row: 3);
-                cb.WithButton("套用為戰鬥正面", Btn("front"), ButtonStyle.Primary, disabled: frontUrl == null, row: 3);
-                cb.WithButton("套用為戰鬥背面", Btn("back"), ButtonStyle.Primary, disabled: backUrl == null, row: 3);
-                cb.WithButton("全部套用", Btn("all"), ButtonStyle.Success, disabled: frontUrl == null && backUrl == null, row: 3);
+                // 戰鬥正反面一定要同一組（不然正反看起來會像不同隻），少一面就不能套
+                bool hasPair = frontUrl != null && backUrl != null;
+                cb.WithButton("套用為戰鬥正反面", Btn("battle"), ButtonStyle.Primary, disabled: !hasPair, row: 3);
+                cb.WithButton("全部套用", Btn("all"), ButtonStyle.Success, disabled: !hasPair, row: 3);
 
                 cb.WithButton("恢復預設", Btn("reset"), ButtonStyle.Danger, row: 4);
                 if (totalPages > 1)
@@ -1094,7 +1096,7 @@ namespace MusicBot2.Service
         }
 
         /// <summary>
-        /// act: art（顯示圖＝目前預覽那張）/ front / back / all（同一風格整套）/ reset。
+        /// act: art（顯示圖＝目前預覽那張）/ battle（戰鬥正反面成套）/ all（同一風格整套）/ reset。
         /// appliedNotice：成功時的提示（失敗為 null）；showcase：「全部套用」時給大家看的 embed
         /// </summary>
         public async Task<(Embed embed, ComponentBuilder component, string appliedNotice, Embed showcase)> ApplySkinAsync(
@@ -1130,14 +1132,21 @@ namespace MusicBot2.Service
                     var frontUrl = SkinUrl(sprites, style, false, shiny);
                     var backUrl = SkinUrl(sprites, style, true, shiny);
 
+                    if (act == "front" || act == "back") act = "battle"; // 舊選單的按鈕也一律成套套用
+
                     var applied = new List<string>();
+                    bool wantsBattle = act == "battle" || act == "all";
+                    if (wantsBattle && (frontUrl == null || backUrl == null))
+                    {
+                        var (e1, c1) = await ShowSkinMenuAsync(userId, userName, caughtTicks, formId, style, back, shiny, page, "❌ 這個風格缺正面或背面，戰鬥圖要正反成套才能套用");
+                        return (e1, c1, null, null);
+                    }
                     if (act == "art" || act == "all")
                     {
-                        var url = act == "all" ? (frontUrl ?? backUrl) : (back ? backUrl : frontUrl);
+                        var url = act == "all" ? frontUrl : (back ? backUrl : frontUrl);
                         if (url != null) { p.ImageUrl = url; applied.Add("顯示圖"); }
                     }
-                    if ((act == "front" || act == "all") && frontUrl != null) { p.Front_GIF = frontUrl; applied.Add("戰鬥正面"); }
-                    if ((act == "back" || act == "all") && backUrl != null) { p.Back_GIF = backUrl; applied.Add("戰鬥背面"); }
+                    if (wantsBattle) { p.Front_GIF = frontUrl; p.Back_GIF = backUrl; applied.Add("戰鬥正反面"); }
 
                     if (applied.Count == 0)
                     {
