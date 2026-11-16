@@ -978,66 +978,60 @@ public class Program
                 }
             }
 
-            // ── 造型: poke_skin_sel_{userId}_{ticks}_{shiny}_{view}（選型態）
-            //          poke_skin_btn_{act}_{userId}_{ticks}_{varietyId}_{shiny}_{view}
+            // ── 造型:
+            //   poke_skin_fsel_{userId}_{ticks}_{style}_{back}_{shiny}_{page}   選型態（值 = formId）
+            //   poke_skin_ssel_{userId}_{ticks}_{formId}_{back}_{shiny}_{page}  選風格（值 = style）
+            //   poke_skin_btn_{act}_{userId}_{ticks}_{formId}_{style}_{back}_{shiny}_{page}
             else if (component.Data.CustomId.StartsWith("poke_skin_"))
             {
                 var parts = component.Data.CustomId.Split('_');
-                bool isSel = parts.Length == 7 && parts[2] == "sel";
-                bool isBtn = parts.Length == 9 && parts[2] == "btn";
-                if (isSel || isBtn)
+                string kind = parts.Length > 2 ? parts[2] : "";
+                bool ok = (kind == "fsel" || kind == "ssel") ? parts.Length == 9 : kind == "btn" && parts.Length == 11;
+                int o = kind == "btn" ? 4 : 3;
+                if (ok && ulong.TryParse(parts[o], out ulong skinUserId) && long.TryParse(parts[o + 1], out long skinTicks))
                 {
-                    int o = isSel ? 3 : 4;
-                    if (ulong.TryParse(parts[o], out ulong skinUserId) && long.TryParse(parts[o + 1], out long skinTicks))
+                    if (component.User.Id != skinUserId)
+                    { await component.RespondAsync("❌ 這不是你的 pokemon！", ephemeral: true); return; }
+
+                    int formId = 0, style = 0, page = 0;
+                    string picked = component.Data.Values?.FirstOrDefault();
+                    if (kind == "fsel") { int.TryParse(picked, out formId); int.TryParse(parts[5], out style); }
+                    else if (kind == "ssel") { int.TryParse(parts[5], out formId); int.TryParse(picked, out style); }
+                    else { int.TryParse(parts[6], out formId); int.TryParse(parts[7], out style); }
+                    bool skinBack = parts[o + (kind == "btn" ? 4 : 3)] == "1";
+                    bool skinShiny = parts[o + (kind == "btn" ? 5 : 4)] == "1";
+                    int.TryParse(parts[parts.Length - 1], out page);
+
+                    await component.DeferAsync(ephemeral: true);
+                    var pokeSvc = _services.GetService<PokeGameService>();
+                    var skinName = (component.User as Discord.WebSocket.SocketGuildUser)?.DisplayName ?? component.User.Username;
+                    var act = kind == "btn" ? parts[3] : "view";
+                    if (act == "view")
                     {
-                        if (component.User.Id != skinUserId)
-                        { await component.RespondAsync("❌ 這不是你的 pokemon！", ephemeral: true); return; }
+                        var (embed, comp) = await pokeSvc.ShowSkinMenuAsync(skinUserId, skinName, skinTicks, formId, style, skinBack, skinShiny, page, null);
+                        await component.ModifyOriginalResponseAsync(msg => { msg.Embed = embed; msg.Components = comp.Build(); });
+                    }
+                    else
+                    {
+                        var (embed, comp, appliedNotice, showcase) = await pokeSvc.ApplySkinAsync(skinUserId, skinName, skinTicks, formId, style, skinBack, skinShiny, page, act);
+                        await component.ModifyOriginalResponseAsync(msg => { msg.Embed = embed; msg.Components = comp.Build(); });
 
-                        int varietyId; bool skinShiny; int skinView;
-                        if (isSel)
+                        // 套用成功：跳一則提示；全部套用則公開給頻道大家看
+                        if (appliedNotice != null)
                         {
-                            int.TryParse(component.Data.Values?.FirstOrDefault(), out varietyId);
-                            skinShiny = parts[5] == "1";
-                            int.TryParse(parts[6], out skinView);
-                        }
-                        else
-                        {
-                            int.TryParse(parts[6], out varietyId);
-                            skinShiny = parts[7] == "1";
-                            int.TryParse(parts[8], out skinView);
-                        }
-
-                        await component.DeferAsync(ephemeral: true);
-                        var pokeSvc = _services.GetService<PokeGameService>();
-                        var skinName = (component.User as Discord.WebSocket.SocketGuildUser)?.DisplayName ?? component.User.Username;
-                        var act = isSel ? "view" : parts[3];
-                        if (act == "view")
-                        {
-                            var (embed, comp) = await pokeSvc.ShowSkinMenuAsync(skinUserId, skinName, skinTicks, varietyId, skinShiny, skinView, null);
-                            await component.ModifyOriginalResponseAsync(msg => { msg.Embed = embed; msg.Components = comp.Build(); });
-                        }
-                        else
-                        {
-                            var (embed, comp, appliedNotice, showcase) = await pokeSvc.ApplySkinAsync(skinUserId, skinName, skinTicks, varietyId, skinShiny, skinView, act);
-                            await component.ModifyOriginalResponseAsync(msg => { msg.Embed = embed; msg.Components = comp.Build(); });
-
-                            // 套用成功：跳一則提示；全部套用則公開給頻道大家看
-                            if (appliedNotice != null)
+                            if (showcase != null)
                             {
-                                if (showcase != null)
+                                try { await component.Channel.SendMessageAsync(embed: showcase); }
+                                catch (Exception ex)
                                 {
-                                    try { await component.Channel.SendMessageAsync(embed: showcase); }
-                                    catch (Exception ex)
-                                    {
-                                        Console.WriteLine($"[Skin] 公開造型訊息失敗: {ex.Message}");
-                                        await component.FollowupAsync(embed: showcase, ephemeral: false);
-                                    }
-                                    await component.FollowupAsync($"{appliedNotice}，已經秀給大家看了！", ephemeral: true);
+                                    Console.WriteLine($"[Skin] 公開造型訊息失敗: {ex.Message}");
+                                    await component.FollowupAsync(embed: showcase, ephemeral: false);
                                 }
-                                else
-                                {
-                                    await component.FollowupAsync(appliedNotice, ephemeral: true);
-                                }
+                                await component.FollowupAsync($"{appliedNotice}，已經秀給大家看了！", ephemeral: true);
+                            }
+                            else
+                            {
+                                await component.FollowupAsync(appliedNotice, ephemeral: true);
                             }
                         }
                     }

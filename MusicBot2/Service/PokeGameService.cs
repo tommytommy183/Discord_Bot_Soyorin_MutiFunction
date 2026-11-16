@@ -4,6 +4,8 @@ using MusicBot2.Helpers;
 using MusicBot2.Models;
 using MusicBot2.Service;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using System.IO;
 using StackExchange.Redis;
 using System;
 using System.Collections.Generic;
@@ -754,18 +756,59 @@ namespace MusicBot2.Service
             }
         }
 
-        #region 造型（地區型態圖片）
-        // 只存「型態清單」這種很小的資料，數量有上限，不會吃記憶體
-        private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, int> _speciesOfPokemon = new();
-        private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, List<SkinVariety>> _varietyCache = new();
-        private const int SkinCacheLimit = 300;
+        #region 造型（同進化線所有型態 × 各世代圖片風格）
+        // 快取只存「型態清單」和「圖片網址」這種小資料，數量有上限，不會吃記憶體；
+        // 對 PokeAPI 的請求都用串流只讀需要的欄位（/pokemon 有 300KB 的招式資料，完全不會載入）
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, int> _skinChainOf = new();
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, List<SkinForm>> _skinChainForms = new();
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, string[]> _skinFormSprites = new();
+        private const int SkinCacheLimit = 200;
+        private const int SkinFormPageSize = 25;
 
-        private sealed class SkinVariety
+        private sealed class SkinForm
         {
-            public int Id;
+            public int FormId;
+            public int SpeciesId;
+            public int VarietyId;
             public string Label;
-            public bool IsDefault;
         }
+
+        private sealed class SkinStyle
+        {
+            public readonly string Label;
+            public readonly string[] Path;
+            public SkinStyle(string label, params string[] path) { Label = label; Path = path; }
+        }
+
+        // 順序固定（index 會放進按鈕 id），剛好 25 個 = 下拉選單上限
+        private static readonly SkinStyle[] SkinStyles =
+        {
+            new("官方立繪", "other", "official-artwork"),
+            new("HOME", "other", "home"),
+            new("Showdown 動畫", "other", "showdown"),
+            new("黑/白 動畫", "versions", "generation-v", "black-white", "animated"),
+            new("朱/紫", "versions", "generation-ix", "scarlet-violet"),
+            new("傳說 Z-A", "versions", "generation-ix", "legends-za"),
+            new("Champions", "versions", "generation-ix", "champions"),
+            new("劍/盾", "versions", "generation-viii", "sword-shield"),
+            new("傳說 阿爾宙斯", "versions", "generation-viii", "legends-arceus"),
+            new("晶燦鑽石/明亮珍珠", "versions", "generation-viii", "brilliant-diamond-shining-pearl"),
+            new("究極之日/究極之月", "versions", "generation-vii", "ultra-sun-ultra-moon"),
+            new("Let's Go", "versions", "generation-vii", "lets-go-pikachu-lets-go-eevee"),
+            new("X/Y", "versions", "generation-vi", "x-y"),
+            new("終極紅寶石/始源藍寶石", "versions", "generation-vi", "omega-ruby-alpha-sapphire"),
+            new("黑/白", "versions", "generation-v", "black-white"),
+            new("白金", "versions", "generation-iv", "platinum"),
+            new("心金/魂銀", "versions", "generation-iv", "heartgold-soulsilver"),
+            new("綠寶石", "versions", "generation-iii", "emerald"),
+            new("火紅/葉綠", "versions", "generation-iii", "firered-leafgreen"),
+            new("紅寶石/藍寶石", "versions", "generation-iii", "ruby-sapphire"),
+            new("水晶 動畫", "versions", "generation-ii", "crystal", "animated"),
+            new("水晶", "versions", "generation-ii", "crystal"),
+            new("金", "versions", "generation-ii", "gold"),
+            new("黃", "versions", "generation-i", "yellow"),
+            new("紅/藍", "versions", "generation-i", "red-blue"),
+        };
 
         private static readonly Dictionary<string, string> SkinFormWords = new()
         {
@@ -773,19 +816,22 @@ namespace MusicBot2.Service
             ["mega"] = "超級進化", ["gmax"] = "超極巨化", ["primal"] = "原始回歸", ["totem"] = "霸主",
             ["origin"] = "起源", ["therian"] = "靈獸", ["incarnate"] = "化身", ["attack"] = "攻擊",
             ["defense"] = "防禦", ["speed"] = "速度", ["sky"] = "天空", ["black"] = "闇黑", ["white"] = "焰白",
-            ["crowned"] = "劍之王/盾之王", ["eternamax"] = "無極巨化", ["female"] = "母", ["male"] = "公",
+            ["crowned"] = "王者", ["eternamax"] = "無極巨化", ["female"] = "母", ["male"] = "公",
             ["combat"] = "鬥戰", ["blaze"] = "火熾", ["aqua"] = "水瀾", ["breed"] = "種",
             ["starter"] = "搭檔", ["cap"] = "帽子", ["school"] = "魚群", ["ultra"] = "究極",
             ["dusk"] = "黃昏", ["midnight"] = "黑夜", ["midday"] = "白晝", ["dawn"] = "拂曉",
-            ["wings"] = "之翼", ["mane"] = "之鬃", ["x"] = "X", ["y"] = "Y",
+            ["wings"] = "之翼", ["mane"] = "之鬃", ["x"] = "X", ["y"] = "Y", ["original"] = "初始",
+            ["hoenn"] = "豐緣", ["sinnoh"] = "神奧", ["unova"] = "合眾", ["kalos"] = "卡洛斯",
+            ["partner"] = "搭檔", ["world"] = "世界", ["rock"] = "搖滾", ["star"] = "明星",
+            ["belle"] = "貴婦", ["pop"] = "偶像", ["phd"] = "博士", ["libre"] = "面罩", ["cosplay"] = "換裝", ["spiky"] = "刺刺", ["eared"] = "耳",
         };
 
-        private static string SkinLabel(string speciesApiName, string varietyApiName, string zhName, bool isDefault)
+        private static string SkinLabel(string speciesApiName, string formApiName, string zhName)
         {
-            if (isDefault) return $"{zhName}（原本的樣子）";
-            var suffix = varietyApiName.StartsWith(speciesApiName + "-")
-                ? varietyApiName.Substring(speciesApiName.Length + 1)
-                : varietyApiName;
+            if (formApiName == speciesApiName) return zhName;
+            var suffix = formApiName.StartsWith(speciesApiName + "-")
+                ? formApiName.Substring(speciesApiName.Length + 1)
+                : formApiName;
             var words = suffix.Split('-', StringSplitOptions.RemoveEmptyEntries)
                 .Select(w => SkinFormWords.TryGetValue(w, out var zh) ? zh : w);
             var label = $"{zhName}（{string.Join(" ", words)}）";
@@ -798,60 +844,132 @@ namespace MusicBot2.Service
             return int.TryParse(seg, out var id) ? id : 0;
         }
 
-        /// <summary>同一物種的所有型態（地區型態、超級進化、超極巨化…）</summary>
-        private async Task<List<SkinVariety>> GetSkinVarietiesAsync(int pokemonId)
+        /// <summary>串流讀 JSON，只取最外層指定的欄位，其他（例如招式清單）直接跳過不配置記憶體；拿齊就停止下載</summary>
+        private async Task<Dictionary<string, JToken>> FetchJsonKeysAsync(string url, params string[] keys)
         {
-            int speciesId;
-            if (pokemonId <= 10000)
+            var want = new HashSet<string>(keys);
+            var result = new Dictionary<string, JToken>();
+            using var resp = await _httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
+            resp.EnsureSuccessStatusCode();
+            using var stream = await resp.Content.ReadAsStreamAsync();
+            using var sr = new StreamReader(stream);
+            using var reader = new JsonTextReader(sr);
+            while (result.Count < want.Count && reader.Read())
             {
-                speciesId = pokemonId; // 一般 pokemon id 就等於物種 id
+                if (reader.TokenType != JsonToken.PropertyName || reader.Depth != 1) continue;
+                var name = (string)reader.Value;
+                if (!reader.Read()) break;
+                if (want.Contains(name)) result[name] = JToken.Load(reader);
+                else reader.Skip();
             }
-            else if (!_speciesOfPokemon.TryGetValue(pokemonId, out speciesId))
+            return result;
+        }
+
+        private static JToken Key(Dictionary<string, JToken> d, string k) => d.TryGetValue(k, out var v) ? v : null;
+
+        /// <summary>整條進化線（含進化前/後）每個物種的所有型態與外觀（地區型態、超級進化、超極巨化、未知圖騰字母…）</summary>
+        private async Task<List<SkinForm>> GetSkinFormsAsync(int pokemonId)
+        {
+            if (_skinChainOf.TryGetValue(pokemonId, out var knownChain) && _skinChainForms.TryGetValue(knownChain, out var hit))
+                return hit;
+
+            int speciesId = pokemonId;
+            if (pokemonId > 10000)
+                speciesId = IdFromApiUrl(Key(await FetchJsonKeysAsync($"{API_BASE_URL}pokemon/{pokemonId}", "species"), "species")?["url"]?.ToString());
+            if (speciesId <= 0) return new List<SkinForm>();
+
+            var chainUrl = Key(await FetchJsonKeysAsync($"{API_BASE_URL}pokemon-species/{speciesId}", "evolution_chain"), "evolution_chain")?["url"]?.ToString();
+            int chainId = IdFromApiUrl(chainUrl);
+            int cacheKey = chainId > 0 ? chainId : -speciesId;
+            if (_skinChainForms.TryGetValue(cacheKey, out hit))
             {
-                var pj = Newtonsoft.Json.Linq.JObject.Parse(await _httpClient.GetStringAsync($"{API_BASE_URL}pokemon/{pokemonId}"));
-                speciesId = IdFromApiUrl(pj["species"]?["url"]?.ToString());
-                if (speciesId <= 0) return new List<SkinVariety>();
-                if (_speciesOfPokemon.Count > SkinCacheLimit) _speciesOfPokemon.Clear();
-                _speciesOfPokemon[pokemonId] = speciesId;
+                _skinChainOf[pokemonId] = cacheKey;
+                return hit;
             }
 
-            if (_varietyCache.TryGetValue(speciesId, out var cached)) return cached;
-
-            var sj = Newtonsoft.Json.Linq.JObject.Parse(await _httpClient.GetStringAsync($"{API_BASE_URL}pokemon-species/{speciesId}"));
-            var speciesApiName = sj["name"]?.ToString() ?? "";
-            var zhName = sj["names"]?.FirstOrDefault(n => n["language"]?["name"]?.ToString() == "zh-hant")?["name"]?.ToString()
-                         ?? speciesApiName;
-
-            var list = new List<SkinVariety>();
-            foreach (var v in sj["varieties"] ?? new Newtonsoft.Json.Linq.JArray())
+            // 進化線上的物種（依進化順序）
+            var speciesIds = new List<int>();
+            if (chainId > 0)
             {
-                int id = IdFromApiUrl(v["pokemon"]?["url"]?.ToString());
-                if (id <= 0) continue;
-                bool isDefault = (bool?)v["is_default"] == true;
-                list.Add(new SkinVariety
+                void Walk(JToken node)
                 {
-                    Id = id,
-                    IsDefault = isDefault,
-                    Label = SkinLabel(speciesApiName, v["pokemon"]?["name"]?.ToString() ?? id.ToString(), zhName, isDefault),
-                });
+                    if (node == null) return;
+                    int sid = IdFromApiUrl(node["species"]?["url"]?.ToString());
+                    if (sid > 0 && !speciesIds.Contains(sid)) speciesIds.Add(sid);
+                    foreach (var next in node["evolves_to"] ?? new JArray()) Walk(next);
+                }
+                Walk(Key(await FetchJsonKeysAsync(chainUrl, "chain"), "chain"));
             }
-            list = list.OrderByDescending(x => x.IsDefault).ThenBy(x => x.Id).Take(25).ToList();
+            if (!speciesIds.Contains(speciesId)) speciesIds.Insert(0, speciesId);
 
-            if (_varietyCache.Count > SkinCacheLimit) _varietyCache.Clear();
-            _varietyCache[speciesId] = list;
+            async Task<List<SkinForm>> LoadSpecies(int sid)
+            {
+                var s = await FetchJsonKeysAsync($"{API_BASE_URL}pokemon-species/{sid}", "name", "names", "varieties");
+                var apiName = Key(s, "name")?.ToString() ?? sid.ToString();
+                var zh = Key(s, "names")?.FirstOrDefault(n => n["language"]?["name"]?.ToString() == "zh-hant")?["name"]?.ToString() ?? apiName;
+                var varieties = (Key(s, "varieties") ?? new JArray())
+                    .OrderByDescending(v => (bool?)v["is_default"] == true)
+                    .Select(v => IdFromApiUrl(v["pokemon"]?["url"]?.ToString()))
+                    .Where(id => id > 0).ToList();
+
+                var formLists = await Task.WhenAll(varieties.Select(async vid =>
+                {
+                    var forms = Key(await FetchJsonKeysAsync($"{API_BASE_URL}pokemon/{vid}", "forms"), "forms") ?? new JArray();
+                    return forms.Select(f => new SkinForm
+                    {
+                        FormId = IdFromApiUrl(f["url"]?.ToString()),
+                        SpeciesId = sid,
+                        VarietyId = vid,
+                        Label = SkinLabel(apiName, f["name"]?.ToString() ?? "", zh),
+                    }).Where(f => f.FormId > 0).ToList();
+                }));
+                return formLists.SelectMany(x => x).ToList();
+            }
+
+            var perSpecies = await Task.WhenAll(speciesIds.Select(LoadSpecies));
+            var list = perSpecies.SelectMany(x => x).ToList();
+
+            if (_skinChainForms.Count > SkinCacheLimit) _skinChainForms.Clear();
+            if (_skinChainOf.Count > SkinCacheLimit * 4) _skinChainOf.Clear();
+            _skinChainForms[cacheKey] = list;
+            _skinChainOf[pokemonId] = cacheKey;
             return list;
         }
 
-        private static readonly string[] SkinViewNames = { "立繪", "戰鬥正面 GIF", "戰鬥背面 GIF" };
-
-        private static Task<string> ResolveSkinImageAsync(int varietyId, bool shiny, int view) => view switch
+        /// <summary>一個型態在各風格的圖：[style*4 + 0正面 / 1背面 / 2閃光正面 / 3閃光背面]</summary>
+        private async Task<string[]> GetFormSpritesAsync(int formId)
         {
-            1 => PokemonSpriteHelper.ResolveBattleGifAsync(varietyId, shiny, back: false),
-            2 => PokemonSpriteHelper.ResolveBattleGifAsync(varietyId, shiny, back: true),
-            _ => PokemonSpriteHelper.ResolveArtworkAsync(varietyId, shiny),
-        };
+            if (_skinFormSprites.TryGetValue(formId, out var hit)) return hit;
 
-        /// <summary>/pokemon造型 入口：從目前的型態開始預覽</summary>
+            var sprites = Key(await FetchJsonKeysAsync($"{API_BASE_URL}pokemon-form/{formId}", "sprites"), "sprites");
+            var arr = new string[SkinStyles.Length * 4];
+            string Url(JToken node, string key)
+            {
+                var u = node?[key]?.Type == JTokenType.String ? node[key].ToString() : null;
+                return string.IsNullOrWhiteSpace(u) || u.EndsWith(".svg") ? null : u; // Discord 不顯示 svg
+            }
+            for (int i = 0; i < SkinStyles.Length; i++)
+            {
+                JToken node = sprites;
+                foreach (var seg in SkinStyles[i].Path) node = node?[seg];
+                arr[i * 4 + 0] = Url(node, "front_default");
+                arr[i * 4 + 1] = Url(node, "back_default");
+                arr[i * 4 + 2] = Url(node, "front_shiny");
+                arr[i * 4 + 3] = Url(node, "back_shiny");
+            }
+
+            if (_skinFormSprites.Count > SkinCacheLimit) _skinFormSprites.Clear();
+            _skinFormSprites[formId] = arr;
+            return arr;
+        }
+
+        private static string SkinUrl(string[] arr, int style, bool back, bool shiny)
+            => style < 0 || style >= SkinStyles.Length ? null : arr[style * 4 + (back ? 1 : 0) + (shiny ? 2 : 0)];
+
+        private static bool SkinStyleExists(string[] arr, int style)
+            => Enumerable.Range(0, 4).Any(k => arr[style * 4 + k] != null);
+
+        /// <summary>/pokemon造型 入口：從目前的型態、官方立繪開始</summary>
         public async Task<(Embed embed, ComponentBuilder component)> OpenSkinMenuAsync(ulong userId, string userName, int index)
         {
             try
@@ -861,7 +979,7 @@ namespace MusicBot2.Service
                     return (CommonHelper.BuildErrorResponse($"請輸入 1 到 {player.CaughtPokemon.Count} 之間的編號").Item2, new ComponentBuilder());
 
                 var p = player.CaughtPokemon[index - 1];
-                return await ShowSkinMenuAsync(userId, userName, p.CaughtDate.Ticks, p.Id, p.isShiny, 0, null);
+                return await ShowSkinMenuAsync(userId, userName, p.CaughtDate.Ticks, 0, -1, false, p.isShiny, -1, null);
             }
             catch (Exception ex)
             {
@@ -870,8 +988,9 @@ namespace MusicBot2.Service
             }
         }
 
+        /// <summary>formId ≤ 0 = 目前的型態；style &lt; 0 = 預設風格；page &lt; 0 = 自動跳到選中型態那頁</summary>
         public async Task<(Embed embed, ComponentBuilder component)> ShowSkinMenuAsync(
-            ulong userId, string userName, long caughtTicks, int varietyId, bool shiny, int view, string notice)
+            ulong userId, string userName, long caughtTicks, int formId, int style, bool back, bool shiny, int page, string notice)
         {
             try
             {
@@ -880,71 +999,90 @@ namespace MusicBot2.Service
                 if (p == null)
                     return (CommonHelper.BuildErrorResponse("找不到這隻 pokemon（可能已經放生或交換了）").Item2, new ComponentBuilder());
 
-                shiny &= p.isShiny; // 不是閃光的只能看非閃光
-                view = Math.Clamp(view, 0, 2);
+                shiny &= p.isShiny; // 不是閃光的只能用一般配色
 
-                var varieties = await GetSkinVarietiesAsync(p.Id);
-                if (varieties.Count == 0)
-                    varieties.Add(new SkinVariety { Id = p.Id, Label = p.Name, IsDefault = true });
-                var current = varieties.FirstOrDefault(v => v.Id == varietyId) ?? varieties.FirstOrDefault(v => v.Id == p.Id) ?? varieties[0];
-                varietyId = current.Id;
+                var forms = await GetSkinFormsAsync(p.Id);
+                if (forms.Count == 0)
+                    return (CommonHelper.BuildErrorResponse("PokeAPI 找不到這隻 pokemon 的型態資料").Item2, new ComponentBuilder());
 
-                var artTask = ResolveSkinImageAsync(varietyId, shiny, 0);
-                var frontTask = ResolveSkinImageAsync(varietyId, shiny, 1);
-                var backTask = ResolveSkinImageAsync(varietyId, shiny, 2);
-                await Task.WhenAll(artTask, frontTask, backTask);
-                var urls = new[] { artTask.Result, frontTask.Result, backTask.Result };
-                var previewUrl = urls[view];
+                var form = forms.FirstOrDefault(f => f.FormId == formId)
+                           ?? forms.FirstOrDefault(f => f.VarietyId == p.Id)
+                           ?? forms[0];
+                int formIdx = forms.IndexOf(form);
+                int totalPages = (forms.Count + SkinFormPageSize - 1) / SkinFormPageSize;
+                if (page < 0) page = formIdx / SkinFormPageSize;
+                page = Math.Clamp(page, 0, totalPages - 1);
 
-                string Mark(string set, string candidate) => !string.IsNullOrEmpty(candidate) && set == candidate ? "✅ 使用中" : "";
+                var sprites = await GetFormSpritesAsync(form.FormId);
+                var styles = Enumerable.Range(0, SkinStyles.Length).Where(i => SkinStyleExists(sprites, i)).ToList();
+                if (!styles.Contains(style)) style = styles.Count > 0 ? styles[0] : 0;
+
+                var frontUrl = SkinUrl(sprites, style, false, shiny);
+                var backUrl = SkinUrl(sprites, style, true, shiny);
+                var previewUrl = back ? backUrl : frontUrl;
+
+                string Mark(string set, string candidate) => !string.IsNullOrEmpty(candidate) && set == candidate ? " ✅" : "";
                 var desc = new StringBuilder();
                 if (!string.IsNullOrEmpty(notice)) desc.AppendLine(notice).AppendLine();
-                desc.AppendLine($"型態：**{current.Label}**");
-                desc.AppendLine($"閃光：{(shiny ? "✨ 閃光" : "一般")}{(p.isShiny ? "" : "（這隻不是閃光，只能用一般配色）")}");
-                desc.AppendLine($"正在預覽：**{SkinViewNames[view]}**");
+                desc.AppendLine($"型態：**{form.Label}**{(form.VarietyId != p.Id ? "（只換外觀）" : "")}");
+                desc.AppendLine($"風格：**{SkinStyles[style].Label}**　預覽：**{(back ? "背面" : "正面")}**");
+                desc.AppendLine($"配色：{(shiny ? "✨ 閃光" : "一般")}{(p.isShiny ? "" : "（這隻不是閃光，只能用一般配色）")}");
                 desc.AppendLine();
-                desc.AppendLine($"立繪：{(urls[0] != null ? "有" : "❌ 沒有")} {Mark(p.ImageUrl, urls[0])}");
-                desc.AppendLine($"戰鬥正面：{(urls[1] != null ? "有" : "❌ 沒有")} {Mark(p.Front_GIF, urls[1])}");
-                desc.AppendLine($"戰鬥背面：{(urls[2] != null ? "有" : "❌ 沒有")} {Mark(p.Back_GIF, urls[2])}");
+                desc.AppendLine($"這個風格：正面 {(frontUrl != null ? "有" : "❌")}{Mark(p.Front_GIF, frontUrl)}{Mark(p.ImageUrl, frontUrl)}　" +
+                                $"背面 {(backUrl != null ? "有" : "❌")}{Mark(p.Back_GIF, backUrl)}");
                 desc.AppendLine();
-                desc.AppendLine("-# 只換外觀，不影響能力值和屬性。「套用為顯示圖」會用目前預覽的那張圖。");
+                desc.AppendLine("-# 只換外觀，能力值、屬性都不變。進化前的樣子、地區型態、各世代圖片都可以選。");
+                desc.AppendLine("-# 「套用為顯示圖」會用目前預覽的那張；✅ 代表已經在用。");
 
                 var embed = new EmbedBuilder()
                     .WithTitle($"🎨 {p.CustomName ?? p.Name} 的造型")
                     .WithDescription(desc.ToString())
                     .WithColor(shiny ? Color.Gold : Color.Blue)
-                    .WithFooter("右上角是目前的顯示圖");
+                    .WithFooter($"共 {forms.Count} 種型態 · {styles.Count} 種風格 · 右上角是目前的顯示圖");
                 if (!string.IsNullOrEmpty(previewUrl)) embed.WithImageUrl(previewUrl);
-                else embed.AddField("預覽", $"這個型態沒有{SkinViewNames[view]}");
+                else embed.AddField("預覽", $"這個風格沒有{(shiny ? "閃光" : "")}{(back ? "背面" : "正面")}圖");
                 if (!string.IsNullOrEmpty(p.ImageUrl)) embed.WithThumbnailUrl(p.ImageUrl);
 
-                int s = shiny ? 1 : 0;
-                string Id(string act, int v = -1, int sh = -1, int vw = -1)
-                    => $"poke_skin_btn_{act}_{userId}_{caughtTicks}_{(v < 0 ? varietyId : v)}_{(sh < 0 ? s : sh)}_{(vw < 0 ? view : vw)}";
+                int b = back ? 1 : 0, s = shiny ? 1 : 0;
+                string Btn(string act, int st = -1, int bk = -1, int sh = -1, int pg = -1)
+                    => $"poke_skin_btn_{act}_{userId}_{caughtTicks}_{form.FormId}_{(st < 0 ? style : st)}_{(bk < 0 ? b : bk)}_{(sh < 0 ? s : sh)}_{(pg < 0 ? page : pg)}";
 
                 var cb = new ComponentBuilder();
-                if (varieties.Count > 1)
+                if (forms.Count > 1)
                 {
                     var menu = new SelectMenuBuilder()
-                        .WithCustomId($"poke_skin_sel_{userId}_{caughtTicks}_{s}_{view}")
-                        .WithPlaceholder("選擇型態");
-                    foreach (var v in varieties)
-                        menu.AddOption(v.Label, v.Id.ToString(), isDefault: v.Id == varietyId);
+                        .WithCustomId($"poke_skin_fsel_{userId}_{caughtTicks}_{style}_{b}_{s}_{page}")
+                        .WithPlaceholder(totalPages > 1 ? $"選擇型態（第 {page + 1}/{totalPages} 頁）" : "選擇型態");
+                    foreach (var f in forms.Skip(page * SkinFormPageSize).Take(SkinFormPageSize))
+                        menu.AddOption(f.Label, f.FormId.ToString(), isDefault: f.FormId == form.FormId);
                     cb.WithSelectMenu(menu, row: 0);
                 }
+                if (styles.Count > 1)
+                {
+                    var menu = new SelectMenuBuilder()
+                        .WithCustomId($"poke_skin_ssel_{userId}_{caughtTicks}_{form.FormId}_{b}_{s}_{page}")
+                        .WithPlaceholder("選擇圖片風格");
+                    foreach (var i in styles)
+                        menu.AddOption(SkinStyles[i].Label, i.ToString(), isDefault: i == style);
+                    cb.WithSelectMenu(menu, row: 1);
+                }
 
-                cb.WithButton("看立繪", Id("view", vw: 0), ButtonStyle.Secondary, disabled: view == 0, row: 1);
-                cb.WithButton("看正面 GIF", Id("view", vw: 1), ButtonStyle.Secondary, disabled: view == 1, row: 1);
-                cb.WithButton("看背面 GIF", Id("view", vw: 2), ButtonStyle.Secondary, disabled: view == 2, row: 1);
+                cb.WithButton("看正面", Btn("view", bk: 0), ButtonStyle.Secondary, disabled: !back, row: 2);
+                cb.WithButton("看背面", Btn("view", bk: 1), ButtonStyle.Secondary, disabled: back, row: 2);
                 if (p.isShiny)
-                    cb.WithButton(shiny ? "換成一般配色" : "換成閃光配色", Id("view", sh: 1 - s), ButtonStyle.Secondary, emote: new Emoji("✨"), row: 1);
+                    cb.WithButton(shiny ? "換成一般配色" : "換成閃光配色", Btn("view", sh: 1 - s), ButtonStyle.Secondary, emote: new Emoji("✨"), row: 2);
 
-                cb.WithButton("套用為顯示圖", Id("art"), ButtonStyle.Primary, disabled: previewUrl == null, row: 2);
-                cb.WithButton("套用為戰鬥正面", Id("front"), ButtonStyle.Primary, disabled: urls[1] == null, row: 2);
-                cb.WithButton("套用為戰鬥背面", Id("back"), ButtonStyle.Primary, disabled: urls[2] == null, row: 2);
-                cb.WithButton("全部套用", Id("all"), ButtonStyle.Success, disabled: urls.All(u => u == null), row: 2);
+                cb.WithButton("套用為顯示圖", Btn("art"), ButtonStyle.Primary, disabled: previewUrl == null, row: 3);
+                cb.WithButton("套用為戰鬥正面", Btn("front"), ButtonStyle.Primary, disabled: frontUrl == null, row: 3);
+                cb.WithButton("套用為戰鬥背面", Btn("back"), ButtonStyle.Primary, disabled: backUrl == null, row: 3);
+                cb.WithButton("全部套用", Btn("all"), ButtonStyle.Success, disabled: frontUrl == null && backUrl == null, row: 3);
 
-                cb.WithButton("恢復預設", Id("reset"), ButtonStyle.Danger, row: 3);
+                cb.WithButton("恢復預設", Btn("reset"), ButtonStyle.Danger, row: 4);
+                if (totalPages > 1)
+                {
+                    cb.WithButton("◀ 上一頁型態", Btn("view", pg: page - 1), ButtonStyle.Secondary, disabled: page == 0, row: 4);
+                    cb.WithButton("下一頁型態 ▶", Btn("view", pg: page + 1), ButtonStyle.Secondary, disabled: page >= totalPages - 1, row: 4);
+                }
 
                 return (embed.Build(), cb);
             }
@@ -956,11 +1094,11 @@ namespace MusicBot2.Service
         }
 
         /// <summary>
-        /// act: art / front / back / all / reset。
-        /// appliedNotice：成功時的提示（失敗為 null）；showcase：「全部套用」時給大家看的 embed（其他情況為 null）
+        /// act: art（顯示圖＝目前預覽那張）/ front / back / all（同一風格整套）/ reset。
+        /// appliedNotice：成功時的提示（失敗為 null）；showcase：「全部套用」時給大家看的 embed
         /// </summary>
         public async Task<(Embed embed, ComponentBuilder component, string appliedNotice, Embed showcase)> ApplySkinAsync(
-            ulong userId, string userName, long caughtTicks, int varietyId, bool shiny, int view, string act)
+            ulong userId, string userName, long caughtTicks, int formId, int style, bool back, bool shiny, int page, string act)
         {
             try
             {
@@ -971,7 +1109,7 @@ namespace MusicBot2.Service
 
                 shiny &= p.isShiny;
                 string notice;
-                string varietyLabel = null;
+                SkinForm form = null;
 
                 if (act == "reset")
                 {
@@ -979,65 +1117,59 @@ namespace MusicBot2.Service
                     p.SpriteVersion = 0;
                     await PokemonSpriteHelper.NormalizeAsync(p);
                     notice = "↩️ 已恢復成預設圖片";
-                    varietyId = p.Id;
-                    shiny = p.isShiny;
+                    formId = 0; style = -1; back = false; shiny = p.isShiny; page = -1;
                 }
                 else
                 {
-                    // 只允許同物種的型態
-                    var varieties = await GetSkinVarietiesAsync(p.Id);
-                    if (varieties.Count > 0 && varieties.All(v => v.Id != varietyId))
-                        return (CommonHelper.BuildErrorResponse("這個型態不屬於這隻 pokemon").Item2, new ComponentBuilder(), null, null);
-                    varietyLabel = varieties.FirstOrDefault(v => v.Id == varietyId)?.Label;
+                    // 只允許同一條進化線上的型態
+                    form = (await GetSkinFormsAsync(p.Id)).FirstOrDefault(f => f.FormId == formId);
+                    if (form == null)
+                        return (CommonHelper.BuildErrorResponse("這個型態不屬於這隻 pokemon 的進化線").Item2, new ComponentBuilder(), null, null);
+
+                    var sprites = await GetFormSpritesAsync(form.FormId);
+                    var frontUrl = SkinUrl(sprites, style, false, shiny);
+                    var backUrl = SkinUrl(sprites, style, true, shiny);
 
                     var applied = new List<string>();
                     if (act == "art" || act == "all")
                     {
-                        // 全部套用時顯示圖用立繪；單獨套用時用目前預覽的圖
-                        var url = await ResolveSkinImageAsync(varietyId, shiny, act == "all" ? 0 : view);
+                        var url = act == "all" ? (frontUrl ?? backUrl) : (back ? backUrl : frontUrl);
                         if (url != null) { p.ImageUrl = url; applied.Add("顯示圖"); }
                     }
-                    if (act == "front" || act == "all")
-                    {
-                        var url = await ResolveSkinImageAsync(varietyId, shiny, 1);
-                        if (url != null) { p.Front_GIF = url; applied.Add("戰鬥正面"); }
-                    }
-                    if (act == "back" || act == "all")
-                    {
-                        var url = await ResolveSkinImageAsync(varietyId, shiny, 2);
-                        if (url != null) { p.Back_GIF = url; applied.Add("戰鬥背面"); }
-                    }
+                    if ((act == "front" || act == "all") && frontUrl != null) { p.Front_GIF = frontUrl; applied.Add("戰鬥正面"); }
+                    if ((act == "back" || act == "all") && backUrl != null) { p.Back_GIF = backUrl; applied.Add("戰鬥背面"); }
 
                     if (applied.Count == 0)
                     {
-                        var (e0, c0) = await ShowSkinMenuAsync(userId, userName, caughtTicks, varietyId, shiny, view, "❌ 這個型態沒有可以套用的圖");
+                        var (e0, c0) = await ShowSkinMenuAsync(userId, userName, caughtTicks, formId, style, back, shiny, page, "❌ 這個風格沒有可以套用的圖");
                         return (e0, c0, null, null);
                     }
 
                     p.CustomSprite = true;
                     p.SpriteVersion = PokemonSpriteHelper.CurrentSpriteVersion;
-                    notice = $"✅ 已套用：{string.Join("、", applied)}";
+                    notice = $"✅ 已套用：{string.Join("、", applied)}（{form.Label} · {SkinStyles[style].Label}）";
                 }
 
                 await SavePlayerDataAsync(player);
 
                 Embed showcase = null;
-                if (act == "all")
+                if (act == "all" && form != null)
                 {
                     var sb = new EmbedBuilder()
                         .WithTitle($"🎨 {userName} 的 {p.CustomName ?? p.Name} 換上新造型了！")
                         .WithDescription(
-                            $"型態：**{varietyLabel ?? p.Name}**\n" +
+                            $"型態：**{form.Label}**\n" +
+                            $"風格：**{SkinStyles[style].Label}**\n" +
                             $"配色：{(shiny ? "✨ 閃光" : "一般")}\n" +
-                            "-# 上方小圖是戰鬥正面，大圖是新的顯示圖")
+                            "-# 大圖是新的顯示圖，右上角是戰鬥背面")
                         .WithColor(shiny ? Color.Gold : Color.Blue)
                         .WithCurrentTimestamp();
                     if (!string.IsNullOrEmpty(p.ImageUrl)) sb.WithImageUrl(p.ImageUrl);
-                    if (!string.IsNullOrEmpty(p.Front_GIF)) sb.WithThumbnailUrl(p.Front_GIF);
+                    if (!string.IsNullOrEmpty(p.Back_GIF)) sb.WithThumbnailUrl(p.Back_GIF);
                     showcase = sb.Build();
                 }
 
-                var (embed, comp) = await ShowSkinMenuAsync(userId, userName, caughtTicks, varietyId, shiny, view, notice);
+                var (embed, comp) = await ShowSkinMenuAsync(userId, userName, caughtTicks, formId, style, back, shiny, page, notice);
                 return (embed, comp, notice, showcase);
             }
             catch (Exception ex)
