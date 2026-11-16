@@ -955,8 +955,11 @@ namespace MusicBot2.Service
             }
         }
 
-        /// <summary>act: art / front / back / all / reset</summary>
-        public async Task<(Embed embed, ComponentBuilder component)> ApplySkinAsync(
+        /// <summary>
+        /// act: art / front / back / all / reset。
+        /// appliedNotice：成功時的提示（失敗為 null）；showcase：「全部套用」時給大家看的 embed（其他情況為 null）
+        /// </summary>
+        public async Task<(Embed embed, ComponentBuilder component, string appliedNotice, Embed showcase)> ApplySkinAsync(
             ulong userId, string userName, long caughtTicks, int varietyId, bool shiny, int view, string act)
         {
             try
@@ -964,10 +967,11 @@ namespace MusicBot2.Service
                 var player = await GetPlayerDataAsync(userId, userName);
                 var p = player.CaughtPokemon.FirstOrDefault(x => x.CaughtDate.Ticks == caughtTicks);
                 if (p == null)
-                    return (CommonHelper.BuildErrorResponse("找不到這隻 pokemon（可能已經放生或交換了）").Item2, new ComponentBuilder());
+                    return (CommonHelper.BuildErrorResponse("找不到這隻 pokemon（可能已經放生或交換了）").Item2, new ComponentBuilder(), null, null);
 
                 shiny &= p.isShiny;
                 string notice;
+                string varietyLabel = null;
 
                 if (act == "reset")
                 {
@@ -983,7 +987,8 @@ namespace MusicBot2.Service
                     // 只允許同物種的型態
                     var varieties = await GetSkinVarietiesAsync(p.Id);
                     if (varieties.Count > 0 && varieties.All(v => v.Id != varietyId))
-                        return (CommonHelper.BuildErrorResponse("這個型態不屬於這隻 pokemon").Item2, new ComponentBuilder());
+                        return (CommonHelper.BuildErrorResponse("這個型態不屬於這隻 pokemon").Item2, new ComponentBuilder(), null, null);
+                    varietyLabel = varieties.FirstOrDefault(v => v.Id == varietyId)?.Label;
 
                     var applied = new List<string>();
                     if (act == "art" || act == "all")
@@ -1004,7 +1009,10 @@ namespace MusicBot2.Service
                     }
 
                     if (applied.Count == 0)
-                        return await ShowSkinMenuAsync(userId, userName, caughtTicks, varietyId, shiny, view, "❌ 這個型態沒有可以套用的圖");
+                    {
+                        var (e0, c0) = await ShowSkinMenuAsync(userId, userName, caughtTicks, varietyId, shiny, view, "❌ 這個型態沒有可以套用的圖");
+                        return (e0, c0, null, null);
+                    }
 
                     p.CustomSprite = true;
                     p.SpriteVersion = PokemonSpriteHelper.CurrentSpriteVersion;
@@ -1012,12 +1020,30 @@ namespace MusicBot2.Service
                 }
 
                 await SavePlayerDataAsync(player);
-                return await ShowSkinMenuAsync(userId, userName, caughtTicks, varietyId, shiny, view, notice);
+
+                Embed showcase = null;
+                if (act == "all")
+                {
+                    var sb = new EmbedBuilder()
+                        .WithTitle($"🎨 {userName} 的 {p.CustomName ?? p.Name} 換上新造型了！")
+                        .WithDescription(
+                            $"型態：**{varietyLabel ?? p.Name}**\n" +
+                            $"配色：{(shiny ? "✨ 閃光" : "一般")}\n" +
+                            "-# 上方小圖是戰鬥正面，大圖是新的顯示圖")
+                        .WithColor(shiny ? Color.Gold : Color.Blue)
+                        .WithCurrentTimestamp();
+                    if (!string.IsNullOrEmpty(p.ImageUrl)) sb.WithImageUrl(p.ImageUrl);
+                    if (!string.IsNullOrEmpty(p.Front_GIF)) sb.WithThumbnailUrl(p.Front_GIF);
+                    showcase = sb.Build();
+                }
+
+                var (embed, comp) = await ShowSkinMenuAsync(userId, userName, caughtTicks, varietyId, shiny, view, notice);
+                return (embed, comp, notice, showcase);
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"[Skin] {ex}");
-                return (CommonHelper.BuildErrorResponse("套用造型時發生錯誤，等一下再試試看").Item2, new ComponentBuilder());
+                return (CommonHelper.BuildErrorResponse("套用造型時發生錯誤，等一下再試試看").Item2, new ComponentBuilder(), null, null);
             }
         }
         #endregion

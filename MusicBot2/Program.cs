@@ -1011,10 +1011,35 @@ public class Program
                         var pokeSvc = _services.GetService<PokeGameService>();
                         var skinName = (component.User as Discord.WebSocket.SocketGuildUser)?.DisplayName ?? component.User.Username;
                         var act = isSel ? "view" : parts[3];
-                        var (embed, comp) = act == "view"
-                            ? await pokeSvc.ShowSkinMenuAsync(skinUserId, skinName, skinTicks, varietyId, skinShiny, skinView, null)
-                            : await pokeSvc.ApplySkinAsync(skinUserId, skinName, skinTicks, varietyId, skinShiny, skinView, act);
-                        await component.ModifyOriginalResponseAsync(msg => { msg.Embed = embed; msg.Components = comp.Build(); });
+                        if (act == "view")
+                        {
+                            var (embed, comp) = await pokeSvc.ShowSkinMenuAsync(skinUserId, skinName, skinTicks, varietyId, skinShiny, skinView, null);
+                            await component.ModifyOriginalResponseAsync(msg => { msg.Embed = embed; msg.Components = comp.Build(); });
+                        }
+                        else
+                        {
+                            var (embed, comp, appliedNotice, showcase) = await pokeSvc.ApplySkinAsync(skinUserId, skinName, skinTicks, varietyId, skinShiny, skinView, act);
+                            await component.ModifyOriginalResponseAsync(msg => { msg.Embed = embed; msg.Components = comp.Build(); });
+
+                            // 套用成功：跳一則提示；全部套用則公開給頻道大家看
+                            if (appliedNotice != null)
+                            {
+                                if (showcase != null)
+                                {
+                                    try { await component.Channel.SendMessageAsync(embed: showcase); }
+                                    catch (Exception ex)
+                                    {
+                                        Console.WriteLine($"[Skin] 公開造型訊息失敗: {ex.Message}");
+                                        await component.FollowupAsync(embed: showcase, ephemeral: false);
+                                    }
+                                    await component.FollowupAsync($"{appliedNotice}，已經秀給大家看了！", ephemeral: true);
+                                }
+                                else
+                                {
+                                    await component.FollowupAsync(appliedNotice, ephemeral: true);
+                                }
+                            }
+                        }
                     }
                 }
             }
