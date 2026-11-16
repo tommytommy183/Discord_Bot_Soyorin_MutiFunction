@@ -12,6 +12,8 @@ using System.Linq;
 using System.Reflection;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading.Channels;
+using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 namespace MusicBot2.Service
@@ -1667,50 +1669,54 @@ namespace MusicBot2.Service
         {
             try
             {
+                bool r1 = RollFriendshipResist(pokemon1), r2 = RollFriendshipResist(pokemon2);
+                bool r3 = RollFriendshipResist(opponentPokemon1), r4 = RollFriendshipResist(opponentPokemon2);
+                var bondRule = BondRule(("玩家A", pokemon1, r1), ("玩家A", pokemon2, r2), ("玩家B", opponentPokemon1, r3), ("玩家B", opponentPokemon2, r4));
+
                 // 準備對戰資訊給 AI 判斷
                 string battlePrompt = $@"請模擬一場精彩的pokemon對戰，並判斷勝負。
 
 對戰雙方：
-1. 玩家A {player1Name} 的 第一隻寶可夢:
+1. 玩家A 的 第一隻寶可夢:
     自訂名稱:{pokemon1.CustomName ?? pokemon1.Name}，真實名稱:{pokemon1.Name}
    - 屬性: {string.Join(", ", pokemon1.Types)}
    - HP: {BattleHP(pokemon1)}, 攻擊: {BattleAtk(pokemon1)}, 防禦: {BattleDef(pokemon1)}
    - 特攻: {BattleSpAtk(pokemon1)}, 特防: {BattleSpDef(pokemon1)}, 速度: {pokemon1.Speed}
    - 是否為閃光: {(pokemon1.isShiny ? "是" : "否")}{BoostNote(pokemon1)}
-   - 本次戰鬥是否可以撐住一次致死攻擊: {(RollFriendshipResist(pokemon1) ? "是" : "否")}
+   - 本次戰鬥是否可以撐住一次致死攻擊: {(r1 ? "是" : "否")}
 
-2. 玩家A {player1Name} 的 第二隻寶可夢:
+2. 玩家A 的 第二隻寶可夢:
     自訂名稱:{pokemon2.CustomName ?? pokemon2.Name}，真實名稱:{pokemon2.Name}
    - 屬性: {string.Join(", ", pokemon2.Types)}
    - HP: {BattleHP(pokemon2)}, 攻擊: {BattleAtk(pokemon2)}, 防禦: {BattleDef(pokemon2)}
    - 特攻: {BattleSpAtk(pokemon2)}, 特防: {BattleSpDef(pokemon2)}, 速度: {pokemon2.Speed}
    - 是否為閃光: {(pokemon2.isShiny ? "是" : "否")}{BoostNote(pokemon2)}
-   - 本次戰鬥是否可以撐住一次致死攻擊: {(RollFriendshipResist(pokemon2) ? "是" : "否")}
+   - 本次戰鬥是否可以撐住一次致死攻擊: {(r2 ? "是" : "否")}
 
 ========對上========
 
-3. 玩家B {player2Name} 的第一隻寶可夢:
+3. 玩家B 的 第一隻寶可夢:
     自訂名稱:{opponentPokemon1.CustomName ?? opponentPokemon1.Name}，真實名稱:{opponentPokemon1.Name}
    - 屬性: {string.Join(", ", opponentPokemon1.Types)}
    - HP: {BattleHP(opponentPokemon1)}, 攻擊: {BattleAtk(opponentPokemon1)}, 防禦: {BattleDef(opponentPokemon1)}
    - 特攻: {BattleSpAtk(opponentPokemon1)}, 特防: {BattleSpDef(opponentPokemon1)}, 速度: {opponentPokemon1.Speed}
    - 是否為閃光: {(opponentPokemon1.isShiny ? "是" : "否")}{BoostNote(opponentPokemon1)}
-   - 本次戰鬥是否可以撐住一次致死攻擊: {(RollFriendshipResist(opponentPokemon1) ? "是" : "否")}
+   - 本次戰鬥是否可以撐住一次致死攻擊: {(r3 ? "是" : "否")}
 
-4. 玩家B {player2Name} 的第二隻寶可夢:
+4. 玩家B 的 第二隻寶可夢:
     自訂名稱:{opponentPokemon2.CustomName ?? opponentPokemon2.Name}，真實名稱:{opponentPokemon2.Name}
    - 屬性: {string.Join(", ", opponentPokemon2.Types)}
    - HP: {BattleHP(opponentPokemon2)}, 攻擊: {BattleAtk(opponentPokemon2)}, 防禦: {BattleDef(opponentPokemon2)}
    - 特攻: {BattleSpAtk(opponentPokemon2)}, 特防: {BattleSpDef(opponentPokemon2)}, 速度: {opponentPokemon2.Speed}
    - 是否為閃光: {(opponentPokemon2.isShiny ? "是" : "否")}{BoostNote(opponentPokemon2)}
-   - 本次戰鬥是否可以撐住一次致死攻擊: {(RollFriendshipResist(opponentPokemon2) ? "是" : "否")}
+   - 本次戰鬥是否可以撐住一次致死攻擊: {(r4 ? "是" : "否")}
 
 
 請根據以上數據和屬性相剋關係，判斷誰會獲勝，並用繁體中文描述一段精彩的對戰過程。
 並且不要給予任何你的思考過程。
 要以該pokemon真實的技能來敘述，期間有自訂名稱的話就要叫自訂名稱，沒有的話就叫真實名稱。
 如果是閃光的，對話中要提到閃光的特效，但閃光完全不影響戰鬥結果。
-撐住致死攻擊只有一次的機會，如果有成功擋住攻擊的話就要說因為羈絆所以撐住致死攻擊，並且在對戰過程中描述這個情節。
+{bondRule}
 HP為0就是真的死亡，不會再有後續動作
 最後請在描述的最後一行明確說明勝者是誰，不會有平手的情況，格式為「勝者：[玩家A 或 玩家B]」";
 
@@ -1718,81 +1724,24 @@ HP為0就是真的死亡，不會再有後續動作
                 var aiResponse = await _aiService.GenerateSimpleTextAsync(battlePrompt);
 
                 // Phase 2：從劇情萃取勝者
-                bool player1Wins = aiResponse.Contains($"勝者：{player1Name}") ||
-                                   aiResponse.Contains($"勝者: {player1Name}") ||
-
-                                   aiResponse.Contains($"勝者：玩家1") ||
-                                   aiResponse.Contains($"勝者: 玩家1") ||
-
-                                   aiResponse.Contains($"勝者：玩家A") ||
-                                   aiResponse.Contains($"勝者: 玩家A") ||
-
-                                   aiResponse.Contains($"勝者：{pokemon1.Name}") ||
-                                   aiResponse.Contains($"勝者: {pokemon1.Name}") ||
-
-                                   (pokemon1.CustomName != null && aiResponse.Contains($"勝者：{pokemon1.CustomName}")) ||
-                                   (pokemon1.CustomName != null && aiResponse.Contains($"勝者: {pokemon1.CustomName}")) ||
-
-                                   aiResponse.Contains($"勝者：[{player1Name}]") ||
-                                   aiResponse.Contains($"勝者: [{player1Name}]") ||
-
-                                   aiResponse.Contains($"勝者：[玩家1]") ||
-                                   aiResponse.Contains($"勝者: [玩家1]") ||
-
-                                   aiResponse.Contains($"勝者：[玩家A]") ||
-                                   aiResponse.Contains($"勝者: [玩家A]") ||
-
-                                   aiResponse.Contains($"勝者：[{pokemon1.Name}]") ||
-                                   aiResponse.Contains($"勝者: [{pokemon1.Name}]") ||
-
-                                   (pokemon1.CustomName != null && aiResponse.Contains($"勝者：[{pokemon1.CustomName}]")) ||
-                                   (pokemon1.CustomName != null && aiResponse.Contains($"勝者: [{pokemon1.CustomName}]"));
-
-                bool player2Wins = aiResponse.Contains($"勝者：{player2Name}") ||
-                                   aiResponse.Contains($"勝者: {player2Name}") ||
-
-                                   aiResponse.Contains($"勝者：玩家B") ||
-                                   aiResponse.Contains($"勝者: 玩家B") ||
-
-                                   aiResponse.Contains($"勝者：玩家2") ||
-                                   aiResponse.Contains($"勝者: 玩家2") ||
-
-                                   aiResponse.Contains($"勝者：{pokemon2.Name}") ||
-                                   aiResponse.Contains($"勝者: {pokemon2.Name}") ||
-
-                                   (pokemon2.CustomName != null && aiResponse.Contains($"勝者：{pokemon2.CustomName}")) ||
-                                   (pokemon2.CustomName != null && aiResponse.Contains($"勝者: {pokemon2.CustomName}")) ||
-
-                                   aiResponse.Contains($"勝者：[{player2Name}]") ||
-                                   aiResponse.Contains($"勝者: [{player2Name}]") ||
-
-                                   aiResponse.Contains($"勝者：[玩家B]") ||
-                                   aiResponse.Contains($"勝者: [玩家B]") ||
-
-                                   aiResponse.Contains($"勝者：[玩家2]") ||
-                                   aiResponse.Contains($"勝者: [玩家2]") ||
-
-                                   aiResponse.Contains($"勝者：[{pokemon2.Name}]") ||
-                                   aiResponse.Contains($"勝者: [{pokemon2.Name}]") ||
-
-                                   (pokemon2.CustomName != null && aiResponse.Contains($"勝者：[{pokemon2.CustomName}]")) ||
-                                   (pokemon2.CustomName != null && aiResponse.Contains($"勝者: [{pokemon2.CustomName}]"));
-
-                // 兩個都 true 時（罕見衝突），讓 player2 優先
-                if (player1Wins && player2Wins) player1Wins = false;
+                var parsedWinner = ParseBattleWinner(aiResponse);
+                bool player1Wins = parsedWinner == true;
+                bool player2Wins = parsedWinner == false;
 
                 if (!player1Wins && !player2Wins)
                 {
                     // AI 沒有明確寫勝者格式，用第二個 call 從劇情判斷
                     Console.WriteLine($"[PokeGame] 劇情未含勝者格式，啟動 Phase2 萃取勝者");
                     var winnerExtractPrompt =
-                        $"以下是一段寶可夢對戰描述，對戰雙方是「{player1Name}」和「{player2Name}」。\n" +
-                        $"請只回覆勝利者的名字（只能是「{player1Name}」或「{player2Name}」其中之一），不要任何其他文字。\n\n" +
+                        $"以下是一段寶可夢對戰描述。玩家A 的寶可夢是「{Disp(pokemon1)}」和「{Disp(pokemon2)}」，" +
+                        $"玩家B 的寶可夢是「{Disp(opponentPokemon1)}」和「{Disp(opponentPokemon2)}」。\n" +
+                        $"請只回覆一行「勝者：玩家A」或「勝者：玩家B」，不要任何其他文字。\n\n" +
                         $"{aiResponse}";
                     var winnerResult = (await _aiService.GenerateSimpleTextAsync(winnerExtractPrompt))?.Trim();
                     Console.WriteLine($"[PokeGame] Phase2 萃取結果: {winnerResult}");
-                    player1Wins = winnerResult?.Contains(player1Name) == true;
-                    player2Wins = !player1Wins && (winnerResult?.Contains(player2Name) == true);
+                    var parsed2 = ParseBattleWinner(winnerResult);
+                    player1Wins = parsed2 == true;
+                    player2Wins = parsed2 == false;
                 }
 
                 // Phase2 仍無法判斷時，才用數值 fallback
@@ -2146,6 +2095,38 @@ HP為0就是真的死亡，不會再有後續動作
             return result.ToString();
         }
 
+        private static string Disp(PokeGamePokemon p) => p.CustomName ?? p.Name;
+
+        /// <summary>
+        /// 羈絆說明：直接點名哪幾隻能撐、哪幾隻不能，避免 AI 搞混
+        /// （以前 prompt 同時放玩家名稱和寶可夢名稱，玩家名稱跟對方寶可夢同名時 AI 就套錯邊）
+        /// </summary>
+        private static string BondRule(params (string side, PokeGamePokemon p, bool resist)[] list)
+        {
+            var yes = list.Where(x => x.resist).Select(x => $"{x.side}的「{Disp(x.p)}」").ToList();
+            var no = list.Where(x => !x.resist).Select(x => $"{x.side}的「{Disp(x.p)}」").ToList();
+            var sb = new StringBuilder("【羈絆（撐住致死攻擊）】\n");
+            sb.Append(yes.Count > 0
+                ? $"- 只有 {string.Join("、", yes)} 可以因為羈絆撐住一次致死攻擊（只有一次機會）。\n"
+                : "- 這場沒有任何寶可夢能撐住致死攻擊。\n");
+            if (no.Count > 0)
+                sb.Append($"- {string.Join("、", no)} 絕對不能撐住致死攻擊，受到致死攻擊就直接倒下，劇情中不可以描寫牠們觸發羈絆。\n");
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// 從 AI 回應最後的「勝者：」行判斷：true = 玩家A 勝、false = 玩家B 勝、null = 無法判斷。
+        /// 只認 A/B（或 1/2），不比對玩家/寶可夢名稱，避免撞名判錯。
+        /// </summary>
+        private static bool? ParseBattleWinner(string aiResponse)
+        {
+            if (string.IsNullOrWhiteSpace(aiResponse)) return null;
+            var m = Regex.Matches(aiResponse, @"勝者\s*[：:]\s*\[?\s*玩家\s*([AaBb12ＡＢ])");
+            if (m.Count == 0) return null;
+            var c = m[m.Count - 1].Groups[1].Value.ToUpperInvariant();
+            return c == "A" || c == "1" || c == "Ａ";
+        }
+
         // 好感度「撐住一擊」：255 必定、100 以上 20%
         private static bool RollFriendshipResist(PokeGamePokemon pokemon)
         {
@@ -2166,19 +2147,20 @@ HP為0就是真的死亡，不會再有後續動作
                 // 好感度數值加成只在這場對戰計算（BattleHP/BattleAtk...），不會寫回寶可夢本身
                 bool isResist1 = RollFriendshipResist(pokemon1);
                 bool isResist2 = RollFriendshipResist(pokemon2);
+                var bondRule = BondRule(("玩家A", pokemon1, isResist1), ("玩家B", pokemon2, isResist2));
 
                 // 準備對戰資訊給 AI 判斷
                 string battlePrompt = $@"請模擬一場精彩的pokemon對戰，並判斷勝負。
 
 對戰雙方：
-1. 玩家A : {player1Name} 的 自訂名稱:{pokemon1.CustomName ?? pokemon1.Name}，真實名稱:{pokemon1.Name}
+1. 玩家A 的寶可夢「{Disp(pokemon1)}」（真實名稱:{pokemon1.Name}）
    - 屬性: {string.Join(", ", pokemon1.Types)}
    - HP: {BattleHP(pokemon1)}, 攻擊: {BattleAtk(pokemon1)}, 防禦: {BattleDef(pokemon1)}
    - 特攻: {BattleSpAtk(pokemon1)}, 特防: {BattleSpDef(pokemon1)}, 速度: {pokemon1.Speed}
    - 是否為閃光: {(pokemon1.isShiny ? "是" : "否")}{BoostNote(pokemon1)}
    - 本次戰鬥是否可以撐住一次致死攻擊: {(isResist1 ? "是" : "否")}
 
-2. 玩家B : {player2Name} 的 自訂名稱:{pokemon2.CustomName ?? pokemon2.Name}，真實名稱:{pokemon2.Name}
+2. 玩家B 的寶可夢「{Disp(pokemon2)}」（真實名稱:{pokemon2.Name}）
    - 屬性: {string.Join(", ", pokemon2.Types)}
    - HP: {BattleHP(pokemon2)}, 攻擊: {BattleAtk(pokemon2)}, 防禦: {BattleDef(pokemon2)}
    - 特攻: {BattleSpAtk(pokemon2)}, 特防: {BattleSpDef(pokemon2)}, 速度: {pokemon2.Speed}
@@ -2188,6 +2170,7 @@ HP為0就是真的死亡，不會再有後續動作
 【屬性克制分析】
 {typeAdvantageInfo}
 
+{bondRule}
 【判斷規則】
 1. 屬性克制關係：
    - 效果絕佳 (2x傷害)：攻擊方屬性剋制防守方
@@ -2200,7 +2183,7 @@ HP為0就是真的死亡，不會再有後續動作
    - 能力值差異（HP、攻擊、防禦、特攻、特防、速度）
    - 屬性克制優勢（這是最重要的因素！）
    - 速度優勢（先手攻擊的優勢）
-   - 撐住致死攻擊只有一次的機會，如果有成功擋住攻擊的話就要說因為羈絆所以撐住致死攻擊，並且在對戰過程中描述這個情節。
+   - 羈絆請嚴格依照【羈絆】段落：能撐住的寶可夢受到致死攻擊時，要描述因為羈絆撐住；不能撐住的寶可夢絕對不能出現這個情節。
 
 請根據以上數據和屬性相剋關係，判斷誰會獲勝，並用繁體中文描述一段精彩的對戰過程。
 要求：
@@ -2216,68 +2199,9 @@ HP為0就是真的死亡，不會再有後續動作
                 var aiResponse = await _aiService.GenerateSimpleTextAsync(battlePrompt);
 
                 // 解析 AI 回應，判斷勝者
-                bool player1Wins = aiResponse.Contains($"勝者：{player1Name}") ||
-                                   aiResponse.Contains($"勝者: {player1Name}") ||
-
-                                   aiResponse.Contains($"勝者：玩家1") ||
-                                   aiResponse.Contains($"勝者: 玩家1") ||
-
-                                   aiResponse.Contains($"勝者：玩家A") ||
-                                   aiResponse.Contains($"勝者: 玩家A") ||
-
-                                   aiResponse.Contains($"勝者：{pokemon1.Name}") ||
-                                   aiResponse.Contains($"勝者: {pokemon1.Name}") ||
-
-                                   (pokemon1.CustomName != null && aiResponse.Contains($"勝者：{pokemon1.CustomName}")) ||
-                                   (pokemon1.CustomName != null && aiResponse.Contains($"勝者: {pokemon1.CustomName}")) ||
-
-                                   aiResponse.Contains($"勝者：[{player1Name}]") ||
-                                   aiResponse.Contains($"勝者: [{player1Name}]") ||
-
-                                   aiResponse.Contains($"勝者：[玩家1]") ||
-                                   aiResponse.Contains($"勝者: [玩家1]") ||
-
-                                   aiResponse.Contains($"勝者：[玩家A]") ||
-                                   aiResponse.Contains($"勝者: [玩家A]") ||
-
-                                   aiResponse.Contains($"勝者：[{pokemon1.Name}]") ||
-                                   aiResponse.Contains($"勝者: [{pokemon1.Name}]") ||
-
-                                   (pokemon1.CustomName != null && aiResponse.Contains($"勝者：[{pokemon1.CustomName}]")) ||
-                                   (pokemon1.CustomName != null && aiResponse.Contains($"勝者: [{pokemon1.CustomName}]"));
-
-                bool player2Wins = aiResponse.Contains($"勝者：{player2Name}") ||
-                                   aiResponse.Contains($"勝者: {player2Name}") ||
-
-                                   aiResponse.Contains($"勝者：玩家B") ||
-                                   aiResponse.Contains($"勝者: 玩家B") ||
-
-                                   aiResponse.Contains($"勝者：玩家2") ||
-                                   aiResponse.Contains($"勝者: 玩家2") ||
-
-                                   aiResponse.Contains($"勝者：{pokemon2.Name}") ||
-                                   aiResponse.Contains($"勝者: {pokemon2.Name}") ||
-
-                                   (pokemon2.CustomName != null && aiResponse.Contains($"勝者：{pokemon2.CustomName}")) ||
-                                   (pokemon2.CustomName != null && aiResponse.Contains($"勝者: {pokemon2.CustomName}")) ||
-
-                                   aiResponse.Contains($"勝者：[{player2Name}]") ||
-                                   aiResponse.Contains($"勝者: [{player2Name}]") ||
-
-                                   aiResponse.Contains($"勝者：[玩家B]") ||
-                                   aiResponse.Contains($"勝者: [玩家B]") ||
-
-                                   aiResponse.Contains($"勝者：[玩家2]") ||
-                                   aiResponse.Contains($"勝者: [玩家2]") ||
-
-                                   aiResponse.Contains($"勝者：[{pokemon2.Name}]") ||
-                                   aiResponse.Contains($"勝者: [{pokemon2.Name}]") ||
-
-                                   (pokemon2.CustomName != null && aiResponse.Contains($"勝者：[{pokemon2.CustomName}]")) ||
-                                   (pokemon2.CustomName != null && aiResponse.Contains($"勝者: [{pokemon2.CustomName}]"));
-
-                // 兩個都 true 時（罕見衝突），讓 player2 優先（避免 player1 的 null CustomName 誤觸）
-                if (player1Wins && player2Wins) player1Wins = false;
+                var parsedWinner = ParseBattleWinner(aiResponse);
+                bool player1Wins = parsedWinner == true;
+                bool player2Wins = parsedWinner == false;
 
                 // 如果 AI 沒有明確指出勝者，則根據數值判斷
                 if (!player1Wins && !player2Wins)
