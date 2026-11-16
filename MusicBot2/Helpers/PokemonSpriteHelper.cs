@@ -35,7 +35,7 @@ namespace MusicBot2.Helpers
 
         private static HttpClient CreateClient()
         {
-            var c = new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
+            var c = RetryHttpHandler.CreateClient(TimeSpan.FromSeconds(8));
             c.DefaultRequestHeaders.UserAgent.ParseAdd("SoyoBot/1.0");
             return c;
         }

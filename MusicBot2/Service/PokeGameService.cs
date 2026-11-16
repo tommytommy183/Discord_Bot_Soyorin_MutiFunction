@@ -56,7 +56,8 @@ namespace MusicBot2.Service
 
         public PokeGameService(string redisConnectionString, OpenRouterService aiService, DiscordSocketClient client)
         {
-            _httpClient = new HttpClient();
+            // PokeAPI 偶爾會重置連線（Connection reset by peer）→ 用會自動重試、不重用舊連線的 client
+            _httpClient = RetryHttpHandler.CreateClient(TimeSpan.FromSeconds(20));
             _aiService = aiService;
             _client = client;
 
@@ -336,6 +337,9 @@ namespace MusicBot2.Service
                         catch { }
                     }
                 }
+                // 隨機抓一隻pokemon（先抓成功，才扣球、清爬塔閃光旗 → 網路出錯不會白白損失）
+                var pokemon = await GetRandomPokemonAsync(forcedShiny);
+
                 if (forcedShiny && !useLuckyBall)
                 {
                     // 爬塔 shiny 清旗
@@ -352,9 +356,6 @@ namespace MusicBot2.Service
                 {
                     player.Bag["pokeball"] = pokeballs - 1;
                 }
-
-                // 隨機抓一隻pokemon
-                var pokemon = await GetRandomPokemonAsync(forcedShiny);
                 string ShinyText = pokemon.isShiny ? "✨襪烙勒是閃的寶貝✨" : "";
                 string ballUsedText = useLuckyBall ? "🌟 使用了幸運球！" : "🎾 使用了精靈球";
                 string dailyBallNote = gotDailyBall ? "\n📬 今日每日球已自動補充" : "";
@@ -392,7 +393,11 @@ namespace MusicBot2.Service
             }
             catch (Exception ex)
             {
-                return (CommonHelper.BuildErrorResponse($"抓pokemon時發生錯誤: {ex}").Item2, new ComponentBuilder());
+                Console.WriteLine($"[PokeGame] 抓pokemon失敗: {ex}");
+                bool network = ex is HttpRequestException || ex is TaskCanceledException || ex.InnerException is System.IO.IOException;
+                return (CommonHelper.BuildErrorResponse(network
+                    ? "寶可夢資料庫（PokeAPI）連線不穩，重試幾次還是失敗了，等一下再抓一次吧！球沒有被扣掉。"
+                    : $"抓pokemon時發生錯誤: {ex.Message}").Item2, new ComponentBuilder());
             }
         }
 

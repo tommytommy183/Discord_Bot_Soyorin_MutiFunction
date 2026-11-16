@@ -21,7 +21,7 @@ namespace MusicBot2.Service
 
         public PokeService()
         {
-            _httpClient = new HttpClient();
+            _httpClient = MusicBot2.Helpers.RetryHttpHandler.CreateClient(TimeSpan.FromSeconds(20)); // PokeAPI 偶爾重置連線 → 自動重試
         }
 
         public async Task<((ComponentBuilder component, Embed embed), Stream silhouette)> StartPokeGameAsync(string mode)
