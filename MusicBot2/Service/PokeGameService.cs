@@ -726,16 +726,22 @@ namespace MusicBot2.Service
                     ? $"\n進化進度: {pokemon.EvolutionPoints}/3 ⭐"
                     : $"\n✨ 最終形態 (階段 {pokemon.EvolutionStage})";
 
-                embed.AddField(
+                embed.WithDescription(
                     $"原名: {shinyText + pokemon.Name}\n" +
-                    $"屬性: {string.Join(", ", pokemon.Types)}\n" +
+                    $"屬性: {string.Join(", ", pokemon.Types ?? new List<string>())}\n" +
                     $"HP: {pokemon.HP} | 攻: {pokemon.Attack} | 防: {pokemon.Defense}\n" +
                     $"特攻: {pokemon.SpecialAttack} | 特防: {pokemon.SpecialDefense} | 速: {pokemon.Speed}\n" +
                     $"抓到時間: {pokemon.CaughtDate:yyyy-MM-dd}" +
-                    evolutionInfo,
-                    false
+                    evolutionInfo
                 );
-                await channel.SendMessageAsync(pokemon.ImageUrl);
+
+                // 圖片直接放進 embed；舊資料 ImageUrl 可能是空的（某些型態 PokeAPI 沒圖），空字串送訊息會被 Discord 擋掉
+                var imageUrl = !string.IsNullOrWhiteSpace(pokemon.ImageUrl) ? pokemon.ImageUrl
+                             : !string.IsNullOrWhiteSpace(pokemon.Front_GIF) ? pokemon.Front_GIF
+                             : pokemon.Id > 0 ? PokemonSpriteHelper.ArtworkUrl(pokemon.Id, pokemon.isShiny)
+                             : null;
+                if (imageUrl != null)
+                    embed.WithImageUrl(imageUrl);
 
                 return (embed.Build(), new ComponentBuilder());
             }

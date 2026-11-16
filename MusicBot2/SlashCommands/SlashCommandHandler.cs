@@ -1167,7 +1167,8 @@ namespace MusicBot2.SlahCommands
 
             var channel = Context.Channel as IMessageChannel;
             await channel.SendMessageAsync($"🎁 {Context.User.Mention} {CommonHelper.GetUserFace(Context.User.Id.ToString())} 屌抽一把\n**{weaponName}** - **{skinName}**");
-            await channel.SendMessageAsync(skinImageUrl);
+            if (!string.IsNullOrWhiteSpace(skinImageUrl))
+                await channel.SendMessageAsync(skinImageUrl);
 
             await FollowupAsync();
         }
