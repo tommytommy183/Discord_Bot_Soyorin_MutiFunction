@@ -156,7 +156,8 @@ namespace MusicBot2.Helpers
         /// </summary>
         public static async Task<bool> NormalizeAsync(PokeGamePokemon p)
         {
-            if (p == null || p.Id <= 0 || p.IsBattleFormChanged) return false;
+            // 玩家自己挑的造型不要被覆蓋
+            if (p == null || p.Id <= 0 || p.IsBattleFormChanged || p.CustomSprite) return false;
 
             var artTask = ResolveArtworkAsync(p.Id, p.isShiny);
             var frontTask = ResolveBattleGifAsync(p.Id, p.isShiny, back: false);

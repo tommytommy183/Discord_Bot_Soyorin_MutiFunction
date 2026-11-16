@@ -627,7 +627,8 @@ namespace MusicBot2.Service
                 pokemon.EvolutionPoints = 0; // 重置進化點數
                 pokemon.EvolutionStage++;
 
-                // 進化後圖片也要套統一規則
+                // 進化後圖片也要套統一規則（自訂造型屬於舊物種，清掉）
+                pokemon.CustomSprite = false;
                 await PokemonSpriteHelper.NormalizeAsync(pokemon);
 
                 // 檢查新的進化鏈
@@ -752,6 +753,274 @@ namespace MusicBot2.Service
                 return (CommonHelper.BuildErrorResponse($"列出pokemon時發生錯誤: {ex}").Item2, new ComponentBuilder());
             }
         }
+
+        #region 造型（地區型態圖片）
+        // 只存「型態清單」這種很小的資料，數量有上限，不會吃記憶體
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, int> _speciesOfPokemon = new();
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, List<SkinVariety>> _varietyCache = new();
+        private const int SkinCacheLimit = 300;
+
+        private sealed class SkinVariety
+        {
+            public int Id;
+            public string Label;
+            public bool IsDefault;
+        }
+
+        private static readonly Dictionary<string, string> SkinFormWords = new()
+        {
+            ["alola"] = "阿羅拉", ["galar"] = "伽勒爾", ["hisui"] = "洗翠", ["paldea"] = "帕底亞",
+            ["mega"] = "超級進化", ["gmax"] = "超極巨化", ["primal"] = "原始回歸", ["totem"] = "霸主",
+            ["origin"] = "起源", ["therian"] = "靈獸", ["incarnate"] = "化身", ["attack"] = "攻擊",
+            ["defense"] = "防禦", ["speed"] = "速度", ["sky"] = "天空", ["black"] = "闇黑", ["white"] = "焰白",
+            ["crowned"] = "劍之王/盾之王", ["eternamax"] = "無極巨化", ["female"] = "母", ["male"] = "公",
+            ["combat"] = "鬥戰", ["blaze"] = "火熾", ["aqua"] = "水瀾", ["breed"] = "種",
+            ["starter"] = "搭檔", ["cap"] = "帽子", ["school"] = "魚群", ["ultra"] = "究極",
+            ["dusk"] = "黃昏", ["midnight"] = "黑夜", ["midday"] = "白晝", ["dawn"] = "拂曉",
+            ["wings"] = "之翼", ["mane"] = "之鬃", ["x"] = "X", ["y"] = "Y",
+        };
+
+        private static string SkinLabel(string speciesApiName, string varietyApiName, string zhName, bool isDefault)
+        {
+            if (isDefault) return $"{zhName}（原本的樣子）";
+            var suffix = varietyApiName.StartsWith(speciesApiName + "-")
+                ? varietyApiName.Substring(speciesApiName.Length + 1)
+                : varietyApiName;
+            var words = suffix.Split('-', StringSplitOptions.RemoveEmptyEntries)
+                .Select(w => SkinFormWords.TryGetValue(w, out var zh) ? zh : w);
+            var label = $"{zhName}（{string.Join(" ", words)}）";
+            return label.Length > 100 ? label.Substring(0, 100) : label;
+        }
+
+        private static int IdFromApiUrl(string url)
+        {
+            var seg = (url ?? "").TrimEnd('/').Split('/').LastOrDefault();
+            return int.TryParse(seg, out var id) ? id : 0;
+        }
+
+        /// <summary>同一物種的所有型態（地區型態、超級進化、超極巨化…）</summary>
+        private async Task<List<SkinVariety>> GetSkinVarietiesAsync(int pokemonId)
+        {
+            int speciesId;
+            if (pokemonId <= 10000)
+            {
+                speciesId = pokemonId; // 一般 pokemon id 就等於物種 id
+            }
+            else if (!_speciesOfPokemon.TryGetValue(pokemonId, out speciesId))
+            {
+                var pj = Newtonsoft.Json.Linq.JObject.Parse(await _httpClient.GetStringAsync($"{API_BASE_URL}pokemon/{pokemonId}"));
+                speciesId = IdFromApiUrl(pj["species"]?["url"]?.ToString());
+                if (speciesId <= 0) return new List<SkinVariety>();
+                if (_speciesOfPokemon.Count > SkinCacheLimit) _speciesOfPokemon.Clear();
+                _speciesOfPokemon[pokemonId] = speciesId;
+            }
+
+            if (_varietyCache.TryGetValue(speciesId, out var cached)) return cached;
+
+            var sj = Newtonsoft.Json.Linq.JObject.Parse(await _httpClient.GetStringAsync($"{API_BASE_URL}pokemon-species/{speciesId}"));
+            var speciesApiName = sj["name"]?.ToString() ?? "";
+            var zhName = sj["names"]?.FirstOrDefault(n => n["language"]?["name"]?.ToString() == "zh-hant")?["name"]?.ToString()
+                         ?? speciesApiName;
+
+            var list = new List<SkinVariety>();
+            foreach (var v in sj["varieties"] ?? new Newtonsoft.Json.Linq.JArray())
+            {
+                int id = IdFromApiUrl(v["pokemon"]?["url"]?.ToString());
+                if (id <= 0) continue;
+                bool isDefault = (bool?)v["is_default"] == true;
+                list.Add(new SkinVariety
+                {
+                    Id = id,
+                    IsDefault = isDefault,
+                    Label = SkinLabel(speciesApiName, v["pokemon"]?["name"]?.ToString() ?? id.ToString(), zhName, isDefault),
+                });
+            }
+            list = list.OrderByDescending(x => x.IsDefault).ThenBy(x => x.Id).Take(25).ToList();
+
+            if (_varietyCache.Count > SkinCacheLimit) _varietyCache.Clear();
+            _varietyCache[speciesId] = list;
+            return list;
+        }
+
+        private static readonly string[] SkinViewNames = { "立繪", "戰鬥正面 GIF", "戰鬥背面 GIF" };
+
+        private static Task<string> ResolveSkinImageAsync(int varietyId, bool shiny, int view) => view switch
+        {
+            1 => PokemonSpriteHelper.ResolveBattleGifAsync(varietyId, shiny, back: false),
+            2 => PokemonSpriteHelper.ResolveBattleGifAsync(varietyId, shiny, back: true),
+            _ => PokemonSpriteHelper.ResolveArtworkAsync(varietyId, shiny),
+        };
+
+        /// <summary>/pokemon造型 入口：從目前的型態開始預覽</summary>
+        public async Task<(Embed embed, ComponentBuilder component)> OpenSkinMenuAsync(ulong userId, string userName, int index)
+        {
+            try
+            {
+                var player = await GetPlayerDataAsync(userId, userName);
+                if (index < 1 || index > player.CaughtPokemon.Count)
+                    return (CommonHelper.BuildErrorResponse($"請輸入 1 到 {player.CaughtPokemon.Count} 之間的編號").Item2, new ComponentBuilder());
+
+                var p = player.CaughtPokemon[index - 1];
+                return await ShowSkinMenuAsync(userId, userName, p.CaughtDate.Ticks, p.Id, p.isShiny, 0, null);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Skin] {ex}");
+                return (CommonHelper.BuildErrorResponse("讀取造型時發生錯誤，PokeAPI 可能暫時連不上，等一下再試試看").Item2, new ComponentBuilder());
+            }
+        }
+
+        public async Task<(Embed embed, ComponentBuilder component)> ShowSkinMenuAsync(
+            ulong userId, string userName, long caughtTicks, int varietyId, bool shiny, int view, string notice)
+        {
+            try
+            {
+                var player = await GetPlayerDataAsync(userId, userName);
+                var p = player.CaughtPokemon.FirstOrDefault(x => x.CaughtDate.Ticks == caughtTicks);
+                if (p == null)
+                    return (CommonHelper.BuildErrorResponse("找不到這隻 pokemon（可能已經放生或交換了）").Item2, new ComponentBuilder());
+
+                shiny &= p.isShiny; // 不是閃光的只能看非閃光
+                view = Math.Clamp(view, 0, 2);
+
+                var varieties = await GetSkinVarietiesAsync(p.Id);
+                if (varieties.Count == 0)
+                    varieties.Add(new SkinVariety { Id = p.Id, Label = p.Name, IsDefault = true });
+                var current = varieties.FirstOrDefault(v => v.Id == varietyId) ?? varieties.FirstOrDefault(v => v.Id == p.Id) ?? varieties[0];
+                varietyId = current.Id;
+
+                var artTask = ResolveSkinImageAsync(varietyId, shiny, 0);
+                var frontTask = ResolveSkinImageAsync(varietyId, shiny, 1);
+                var backTask = ResolveSkinImageAsync(varietyId, shiny, 2);
+                await Task.WhenAll(artTask, frontTask, backTask);
+                var urls = new[] { artTask.Result, frontTask.Result, backTask.Result };
+                var previewUrl = urls[view];
+
+                string Mark(string set, string candidate) => !string.IsNullOrEmpty(candidate) && set == candidate ? "✅ 使用中" : "";
+                var desc = new StringBuilder();
+                if (!string.IsNullOrEmpty(notice)) desc.AppendLine(notice).AppendLine();
+                desc.AppendLine($"型態：**{current.Label}**");
+                desc.AppendLine($"閃光：{(shiny ? "✨ 閃光" : "一般")}{(p.isShiny ? "" : "（這隻不是閃光，只能用一般配色）")}");
+                desc.AppendLine($"正在預覽：**{SkinViewNames[view]}**");
+                desc.AppendLine();
+                desc.AppendLine($"立繪：{(urls[0] != null ? "有" : "❌ 沒有")} {Mark(p.ImageUrl, urls[0])}");
+                desc.AppendLine($"戰鬥正面：{(urls[1] != null ? "有" : "❌ 沒有")} {Mark(p.Front_GIF, urls[1])}");
+                desc.AppendLine($"戰鬥背面：{(urls[2] != null ? "有" : "❌ 沒有")} {Mark(p.Back_GIF, urls[2])}");
+                desc.AppendLine();
+                desc.AppendLine("-# 只換外觀，不影響能力值和屬性。「套用為顯示圖」會用目前預覽的那張圖。");
+
+                var embed = new EmbedBuilder()
+                    .WithTitle($"🎨 {p.CustomName ?? p.Name} 的造型")
+                    .WithDescription(desc.ToString())
+                    .WithColor(shiny ? Color.Gold : Color.Blue)
+                    .WithFooter("右上角是目前的顯示圖");
+                if (!string.IsNullOrEmpty(previewUrl)) embed.WithImageUrl(previewUrl);
+                else embed.AddField("預覽", $"這個型態沒有{SkinViewNames[view]}");
+                if (!string.IsNullOrEmpty(p.ImageUrl)) embed.WithThumbnailUrl(p.ImageUrl);
+
+                int s = shiny ? 1 : 0;
+                string Id(string act, int v = -1, int sh = -1, int vw = -1)
+                    => $"poke_skin_btn_{act}_{userId}_{caughtTicks}_{(v < 0 ? varietyId : v)}_{(sh < 0 ? s : sh)}_{(vw < 0 ? view : vw)}";
+
+                var cb = new ComponentBuilder();
+                if (varieties.Count > 1)
+                {
+                    var menu = new SelectMenuBuilder()
+                        .WithCustomId($"poke_skin_sel_{userId}_{caughtTicks}_{s}_{view}")
+                        .WithPlaceholder("選擇型態");
+                    foreach (var v in varieties)
+                        menu.AddOption(v.Label, v.Id.ToString(), isDefault: v.Id == varietyId);
+                    cb.WithSelectMenu(menu, row: 0);
+                }
+
+                cb.WithButton("看立繪", Id("view", vw: 0), ButtonStyle.Secondary, disabled: view == 0, row: 1);
+                cb.WithButton("看正面 GIF", Id("view", vw: 1), ButtonStyle.Secondary, disabled: view == 1, row: 1);
+                cb.WithButton("看背面 GIF", Id("view", vw: 2), ButtonStyle.Secondary, disabled: view == 2, row: 1);
+                if (p.isShiny)
+                    cb.WithButton(shiny ? "換成一般配色" : "換成閃光配色", Id("view", sh: 1 - s), ButtonStyle.Secondary, emote: new Emoji("✨"), row: 1);
+
+                cb.WithButton("套用為顯示圖", Id("art"), ButtonStyle.Primary, disabled: previewUrl == null, row: 2);
+                cb.WithButton("套用為戰鬥正面", Id("front"), ButtonStyle.Primary, disabled: urls[1] == null, row: 2);
+                cb.WithButton("套用為戰鬥背面", Id("back"), ButtonStyle.Primary, disabled: urls[2] == null, row: 2);
+                cb.WithButton("全部套用", Id("all"), ButtonStyle.Success, disabled: urls.All(u => u == null), row: 2);
+
+                cb.WithButton("恢復預設", Id("reset"), ButtonStyle.Danger, row: 3);
+
+                return (embed.Build(), cb);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Skin] {ex}");
+                return (CommonHelper.BuildErrorResponse("讀取造型時發生錯誤，PokeAPI 可能暫時連不上，等一下再試試看").Item2, new ComponentBuilder());
+            }
+        }
+
+        /// <summary>act: art / front / back / all / reset</summary>
+        public async Task<(Embed embed, ComponentBuilder component)> ApplySkinAsync(
+            ulong userId, string userName, long caughtTicks, int varietyId, bool shiny, int view, string act)
+        {
+            try
+            {
+                var player = await GetPlayerDataAsync(userId, userName);
+                var p = player.CaughtPokemon.FirstOrDefault(x => x.CaughtDate.Ticks == caughtTicks);
+                if (p == null)
+                    return (CommonHelper.BuildErrorResponse("找不到這隻 pokemon（可能已經放生或交換了）").Item2, new ComponentBuilder());
+
+                shiny &= p.isShiny;
+                string notice;
+
+                if (act == "reset")
+                {
+                    p.CustomSprite = false;
+                    p.SpriteVersion = 0;
+                    await PokemonSpriteHelper.NormalizeAsync(p);
+                    notice = "↩️ 已恢復成預設圖片";
+                    varietyId = p.Id;
+                    shiny = p.isShiny;
+                }
+                else
+                {
+                    // 只允許同物種的型態
+                    var varieties = await GetSkinVarietiesAsync(p.Id);
+                    if (varieties.Count > 0 && varieties.All(v => v.Id != varietyId))
+                        return (CommonHelper.BuildErrorResponse("這個型態不屬於這隻 pokemon").Item2, new ComponentBuilder());
+
+                    var applied = new List<string>();
+                    if (act == "art" || act == "all")
+                    {
+                        // 全部套用時顯示圖用立繪；單獨套用時用目前預覽的圖
+                        var url = await ResolveSkinImageAsync(varietyId, shiny, act == "all" ? 0 : view);
+                        if (url != null) { p.ImageUrl = url; applied.Add("顯示圖"); }
+                    }
+                    if (act == "front" || act == "all")
+                    {
+                        var url = await ResolveSkinImageAsync(varietyId, shiny, 1);
+                        if (url != null) { p.Front_GIF = url; applied.Add("戰鬥正面"); }
+                    }
+                    if (act == "back" || act == "all")
+                    {
+                        var url = await ResolveSkinImageAsync(varietyId, shiny, 2);
+                        if (url != null) { p.Back_GIF = url; applied.Add("戰鬥背面"); }
+                    }
+
+                    if (applied.Count == 0)
+                        return await ShowSkinMenuAsync(userId, userName, caughtTicks, varietyId, shiny, view, "❌ 這個型態沒有可以套用的圖");
+
+                    p.CustomSprite = true;
+                    p.SpriteVersion = PokemonSpriteHelper.CurrentSpriteVersion;
+                    notice = $"✅ 已套用：{string.Join("、", applied)}";
+                }
+
+                await SavePlayerDataAsync(player);
+                return await ShowSkinMenuAsync(userId, userName, caughtTicks, varietyId, shiny, view, notice);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Skin] {ex}");
+                return (CommonHelper.BuildErrorResponse("套用造型時發生錯誤，等一下再試試看").Item2, new ComponentBuilder());
+            }
+        }
+        #endregion
 
         private const int ListPokemonPageSize = 10;
 

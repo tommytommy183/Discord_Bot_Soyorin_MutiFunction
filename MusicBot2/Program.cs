@@ -978,6 +978,47 @@ public class Program
                 }
             }
 
+            // ── 造型: poke_skin_sel_{userId}_{ticks}_{shiny}_{view}（選型態）
+            //          poke_skin_btn_{act}_{userId}_{ticks}_{varietyId}_{shiny}_{view}
+            else if (component.Data.CustomId.StartsWith("poke_skin_"))
+            {
+                var parts = component.Data.CustomId.Split('_');
+                bool isSel = parts.Length == 7 && parts[2] == "sel";
+                bool isBtn = parts.Length == 9 && parts[2] == "btn";
+                if (isSel || isBtn)
+                {
+                    int o = isSel ? 3 : 4;
+                    if (ulong.TryParse(parts[o], out ulong skinUserId) && long.TryParse(parts[o + 1], out long skinTicks))
+                    {
+                        if (component.User.Id != skinUserId)
+                        { await component.RespondAsync("❌ 這不是你的 pokemon！", ephemeral: true); return; }
+
+                        int varietyId; bool skinShiny; int skinView;
+                        if (isSel)
+                        {
+                            int.TryParse(component.Data.Values?.FirstOrDefault(), out varietyId);
+                            skinShiny = parts[5] == "1";
+                            int.TryParse(parts[6], out skinView);
+                        }
+                        else
+                        {
+                            int.TryParse(parts[6], out varietyId);
+                            skinShiny = parts[7] == "1";
+                            int.TryParse(parts[8], out skinView);
+                        }
+
+                        await component.DeferAsync(ephemeral: true);
+                        var pokeSvc = _services.GetService<PokeGameService>();
+                        var skinName = (component.User as Discord.WebSocket.SocketGuildUser)?.DisplayName ?? component.User.Username;
+                        var act = isSel ? "view" : parts[3];
+                        var (embed, comp) = act == "view"
+                            ? await pokeSvc.ShowSkinMenuAsync(skinUserId, skinName, skinTicks, varietyId, skinShiny, skinView, null)
+                            : await pokeSvc.ApplySkinAsync(skinUserId, skinName, skinTicks, varietyId, skinShiny, skinView, act);
+                        await component.ModifyOriginalResponseAsync(msg => { msg.Embed = embed; msg.Components = comp.Build(); });
+                    }
+                }
+            }
+
             // ── 派工 SelectMenu: poke_work_sel_{userId}_{page} ─────────────
             else if (component.Data.CustomId.StartsWith("poke_work_sel_"))
             {

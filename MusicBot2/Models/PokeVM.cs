@@ -200,6 +200,8 @@ namespace MusicBot2.Models
         public string Back_GIF { get; set; } // 動態圖片 URL
         // 圖片規則版本（PokemonSpriteHelper.CurrentSpriteVersion），舊資料為 0 → 讀取時自動重算圖片
         public int SpriteVersion { get; set; } = 0;
+        // 玩家用 /pokemon造型 自己挑過圖片 → 自動重算圖片時不要覆蓋
+        public bool CustomSprite { get; set; } = false;
 
         // 好感度系統
         public int Friendship { get; set; } = 0; // 好感度 (0-255)

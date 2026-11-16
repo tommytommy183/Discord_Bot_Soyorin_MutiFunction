@@ -745,6 +745,15 @@ namespace MusicBot2.SlahCommands
             }
         }
 
+        [SlashCommand("pokemon造型", "看 pokemon 的各地區型態，換顯示圖和戰鬥 GIF")]
+        public async Task PokemonSkinAsync([Summary("編號", "pokemon的編號（從1開始）")] int index)
+        {
+            await DeferAsync(ephemeral: true);
+            var name = (Context.User as SocketGuildUser)?.DisplayName ?? Context.User.Username;
+            var (embed, component) = await _pokeGameService.OpenSkinMenuAsync(Context.User.Id, name, index);
+            await FollowupAsync(embed: embed, components: component.Build(), ephemeral: true);
+        }
+
         [SlashCommand("自定義pokemon", "自定義你的pokemon名稱")]
         public async Task CustomizePokemonAsync(
             [Summary("編號", "pokemon的編號（從1開始）")] int index,
