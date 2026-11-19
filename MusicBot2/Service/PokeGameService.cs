@@ -1674,6 +1674,59 @@ namespace MusicBot2.Service
             }
         }
 
+        // 交換：B 選 pokemon 的畫面，一頁 20 隻（embed 欄位上限 25、按鈕 4 排 × 5，第 5 排放換頁）
+        private (Embed embed, ComponentBuilder component) BuildExchangeSelectPage(
+            PokemonExchangeRequest request, PokeGamePlayer targetPlayer, string exchangeKey, int page)
+        {
+            var list = targetPlayer.CaughtPokemon;
+            int totalPages = Math.Max(1, (list.Count + MenuPageSize - 1) / MenuPageSize);
+            page = Math.Clamp(page, 0, totalPages - 1);
+            int start = page * MenuPageSize;
+            int end = Math.Min(start + MenuPageSize, list.Count);
+
+            var selectEmbed = new EmbedBuilder()
+                .WithTitle($"✅ 請選擇要交換的Pokemon{(totalPages > 1 ? $"（第 {page + 1}/{totalPages} 頁）" : "")}")
+                .WithDescription($"**{request.RequesterName}** 提供: **{request.RequesterPokemon.CustomName ?? request.RequesterPokemon.Name}**\n\n請從你的Pokemon中選擇一隻來交換：")
+                .WithThumbnailUrl(request.RequesterPokemon.ImageUrl)
+                .WithColor(Color.Green);
+
+            var comp = new ComponentBuilder();
+            for (int i = start; i < end; i++)
+            {
+                var p = list[i];
+                var name = p.CustomName ?? p.Name;
+                var shinyIcon = p.isShiny ? "✨" : "";
+                selectEmbed.AddField($"{i + 1}. {name} {shinyIcon}",
+                    $"屬性: {string.Join(", ", p.Types)}\nHP: {p.HP} | 攻: {p.Attack} | 防: {p.Defense}\n特攻: {p.SpecialAttack} | 特防: {p.SpecialDefense} | 速: {p.Speed}",
+                    inline: true);
+                comp.WithButton($"{i + 1}", $"poke_exchange_select_{exchangeKey}_{i}", ButtonStyle.Primary, row: (i - start) / 5);
+            }
+            if (page > 0)
+                comp.WithButton("◀ 上一頁", $"poke_exchange_page_{exchangeKey}_{page - 1}", ButtonStyle.Secondary, row: 4);
+            if (page < totalPages - 1)
+                comp.WithButton("▶ 下一頁", $"poke_exchange_page_{exchangeKey}_{page + 1}", ButtonStyle.Secondary, row: 4);
+            return (selectEmbed.Build(), comp);
+        }
+
+        // 交換：B 在選 pokemon 畫面換頁
+        public async Task<(Embed embed, ComponentBuilder component)> ShowExchangeSelectPageAsync(
+            SocketMessageComponent interaction, string exchangeKey, int page)
+        {
+            try
+            {
+                if (!_exchangeRequests.TryGetValue(exchangeKey, out var request))
+                    return (new EmbedBuilder().WithTitle("❌ 交換請求已過期").WithDescription("這個交換請求已經過期或已被處理").WithColor(Color.Red).Build(), new ComponentBuilder());
+                if (interaction.User.Id != request.TargetId || request.TargetSelected)
+                    return (null, null); // 不是 B 或已經選完 → 不動畫面
+                var targetPlayer = await GetPlayerDataAsync(request.TargetId, request.TargetName);
+                return BuildExchangeSelectPage(request, targetPlayer, exchangeKey, page);
+            }
+            catch (Exception ex)
+            {
+                return (CommonHelper.BuildErrorResponse($"換頁時發生錯誤: {ex.Message}").Item2, new ComponentBuilder());
+            }
+        }
+
         public async Task<(Embed embed, ComponentBuilder component, int targetPokemonIndex)> HandleExchangeResponseAsync(
             SocketMessageComponent interaction,
             string exchangeKey,
@@ -1711,35 +1764,10 @@ namespace MusicBot2.Service
                         return (rejectEmbed, new ComponentBuilder(), -1);
                     }
 
-                    // 接受交換 - 顯示選擇 Pokemon 的介面
+                    // 接受交換 - 顯示選擇 Pokemon 的介面（分頁）
                     var targetPlayer = await GetPlayerDataAsync(request.TargetId, request.TargetName);
-
-                    var selectEmbed = new EmbedBuilder()
-                        .WithTitle("✅ 請選擇要交換的Pokemon")
-                        .WithDescription($"**{request.RequesterName}** 提供: **{request.RequesterPokemon.CustomName ?? request.RequesterPokemon.Name}**\n\n請從你的Pokemon中選擇一隻來交換：")
-                        .WithThumbnailUrl(request.RequesterPokemon.ImageUrl)
-                        .WithColor(Color.Green);
-
-                    for (int i = 0; i < targetPlayer.CaughtPokemon.Count; i++)
-                    {
-                        var p = targetPlayer.CaughtPokemon[i];
-                        var name = p.CustomName ?? p.Name;
-                        var shinyIcon = p.isShiny ? "✨" : "";
-                        selectEmbed.AddField($"{i + 1}. {name} {shinyIcon}",
-                            $"屬性: {string.Join(", ", p.Types)}\nHP: {p.HP} | 攻: {p.Attack} | 防: {p.Defense}\n特攻: {p.SpecialAttack} | 特防: {p.SpecialDefense} | 速: {p.Speed}",
-                            inline: true);
-                    }
-
-                    // 創建選擇按鈕
-                    var selectComponent = new ComponentBuilder();
-                    int pokemonCount = targetPlayer.CaughtPokemon.Count;
-
-                    for (int i = 0; i < Math.Min(pokemonCount, 25); i++)
-                    {
-                        selectComponent.WithButton($"{i + 1}", $"poke_exchange_select_{exchangeKey}_{i}", ButtonStyle.Primary);
-                    }
-
-                    return (selectEmbed.Build(), selectComponent, -1);
+                    var (selectEmbed, selectComponent) = BuildExchangeSelectPage(request, targetPlayer, exchangeKey, 0);
+                    return (selectEmbed, selectComponent, -1);
                 }
 
                 // === 階段 2: 對方選擇 Pokemon ===
@@ -4033,9 +4061,32 @@ HP為0就是真的死亡，不會再有後續動作
             ["data"]        = "數據碎片",
         };
 
-        // 倉庫上限：基礎 15，每級 +5，最多 3 級
+        // 倉庫上限：基礎 15，每級 +5，最多 10 級（65 隻）
+        private const int MaxWarehouseLevel = 10;
+        private const int WarehousePerLevel = 5;
         private static int GetMaxPokemon(PokeGamePlayer player)
-            => 15 + Math.Min(player.WarehouseLevel, 3) * 5;
+            => 15 + Math.Min(player.WarehouseLevel, MaxWarehouseLevel) * WarehousePerLevel;
+
+        // 倉庫擴建材料：第 n 次擴建 = 基礎材料 × (1 + 0.3 × (n-1))，第 10 次約 3.7 倍
+        // 第 5 次起多要能量石、第 8 次起多要海鮮，讓後期需要各種工作都跑
+        private static Dictionary<string, int> GetWarehouseRecipe(int tier)
+        {
+            tier = Math.Clamp(tier, 1, MaxWarehouseLevel);
+            double m = 1 + 0.3 * (tier - 1);
+            int Scale(int b) => (int)Math.Ceiling(b * m);
+            var r = new Dictionary<string, int> { ["ore"] = Scale(8), ["gem"] = Scale(3), ["fossil"] = Scale(3), ["data"] = Scale(3) };
+            if (tier >= 5) r["energystone"] = 2 + (tier - 5);
+            if (tier >= 8) r["seafood"] = 2 + (tier - 8);
+            return r;
+        }
+
+        // 下一顆合成出來的倉庫擴建是第幾次（已擴建 + 背包裡還沒用的）
+        private static int NextWarehouseTier(PokeGamePlayer player)
+            => player.WarehouseLevel + player.Bag.GetValueOrDefault("warehouse_expand", 0) + 1;
+
+        // 依玩家狀態取配方材料（倉庫擴建會隨等級變多）
+        private static Dictionary<string, int> GetRecipeMaterials(PokeGamePlayer player, string key)
+            => key == "warehouse_expand" ? GetWarehouseRecipe(NextWarehouseTier(player)) : CraftRecipes[key].Recipe;
 
         // 工作中的獨立 pokemon 數（一隻多職業算一隻）
         private static int GetWorkingPokemonCount(List<PokemonWorkState> states)
@@ -4618,7 +4669,7 @@ HP為0就是真的死亡，不會再有後續動作
             ["conv_gem"]     = ("寶石（轉換）", new(){ ["ore"]=2, ["fish"]=1 },                                               "礦石 ×2 + 魚貨 ×1 → 寶石 ×1"),
             ["pokeball"]     = ("精靈球",  new(){ ["ore"]=2, ["herb"]=1 },                                                     "抓一隻 pokemon（每日台灣時間00:00自動補一顆）"),
             ["luckyball"]        = ("幸運球 ✨",  new(){ ["gem"]=4, ["fossil"]=4, ["energystone"]=4, ["data"]=3, ["seafood"]=2 }, "保證下一次抓到的是閃光 pokemon！"),
-            ["warehouse_expand"] = ("倉庫擴建 🏗️", new(){ ["ore"]=8, ["gem"]=3, ["fossil"]=3, ["data"]=3 },                     "pokemon 上限 +5（最多 3 次，上限 30 隻）"),
+            ["warehouse_expand"] = ("倉庫擴建 🏗️", new(){ ["ore"]=8, ["gem"]=3, ["fossil"]=3, ["data"]=3 },                     "pokemon 上限 +5（最多 10 次，上限 65 隻；越後面材料越多）"),
         };
 
         // 材料轉換配方：合成結果直接是材料
@@ -4746,8 +4797,15 @@ HP為0就是真的死亡，不會再有後續動作
                 int btnInRow = 0;
                 foreach (var (key, recipe) in CraftRecipes)
                 {
-                    var (itemName, materials, desc) = recipe;
+                    var (itemName, _, desc) = recipe;
+                    var materials = GetRecipeMaterials(player, key);
                     bool canCraft = materials.All(kv => bag.GetValueOrDefault(kv.Key, 0) >= kv.Value);
+                    if (key == "warehouse_expand")
+                    {
+                        int tier = NextWarehouseTier(player);
+                        if (tier > MaxWarehouseLevel) { canCraft = false; desc = $"倉庫已滿級（Lv.{MaxWarehouseLevel}，{GetMaxPokemon(player)} 隻），不用再合成"; }
+                        else desc = $"pokemon 上限 +5（第 {tier}/{MaxWarehouseLevel} 次擴建，越後面材料越多）";
+                    }
                     // 球類材料中可能有其他球，用 MaterialNames 或 CraftRecipes 找顯示名稱
                     string matReq = string.Join(", ", materials.Select(kv => {
                         if (MaterialNames.TryGetValue(kv.Key, out var mn)) return $"{mn}×{kv.Value}";
@@ -4784,7 +4842,14 @@ HP為0就是真的死亡，不會再有後續動作
 
                 var player = await GetPlayerDataAsync(userId, userName);
                 var bag = player.Bag;
-                var (itemName, materials, desc) = recipe;
+                var (itemName, _, desc) = recipe;
+                var materials = GetRecipeMaterials(player, itemKey);
+
+                if (itemKey == "warehouse_expand" && NextWarehouseTier(player) > MaxWarehouseLevel)
+                    return (new EmbedBuilder()
+                        .WithTitle("❌ 倉庫擴建已經夠用了")
+                        .WithDescription($"倉庫等級加上背包裡的擴建道具已經到 Lv.{MaxWarehouseLevel}，不用再合成。")
+                        .WithColor(Color.Orange).Build(), new ComponentBuilder());
 
                 foreach (var kv in materials)
                 {
@@ -5144,10 +5209,10 @@ HP為0就是真的死亡，不會再有後續動作
                 if (player.Bag.GetValueOrDefault("warehouse_expand", 0) <= 0)
                     return (new EmbedBuilder().WithTitle("❌ 沒有倉庫擴建道具").WithColor(Color.Red).Build(), new ComponentBuilder());
 
-                if (player.WarehouseLevel >= 3)
+                if (player.WarehouseLevel >= MaxWarehouseLevel)
                     return (new EmbedBuilder()
                         .WithTitle("❌ 倉庫已達最高等級！")
-                        .WithDescription($"目前已是第 3 級倉庫（上限 30 隻），無法再擴建。")
+                        .WithDescription($"目前已是第 {MaxWarehouseLevel} 級倉庫（上限 {GetMaxPokemon(player)} 隻），無法再擴建。")
                         .WithColor(Color.Orange).Build(), new ComponentBuilder());
 
                 player.WarehouseLevel++;
@@ -5157,7 +5222,7 @@ HP為0就是真的死亡，不會再有後續動作
                 int newMax = GetMaxPokemon(player);
                 return (new EmbedBuilder()
                     .WithTitle("🏗️ 倉庫擴建成功！")
-                    .WithDescription($"倉庫升至 **Lv.{player.WarehouseLevel}**\n\n" +
+                    .WithDescription($"倉庫升至 **Lv.{player.WarehouseLevel}/{MaxWarehouseLevel}**\n\n" +
                                      $"📦 pokemon 上限：**{newMax} 隻**\n" +
                                      $"🏭 工作名額：固定 {MaxWorkingPokemon} 隻")
                     .WithColor(Color.Gold).Build(), new ComponentBuilder());

@@ -806,7 +806,23 @@ public class Program
 
                 var pokeGameService = _services.GetService<PokeGameService>();
 
-                if (component.Data.CustomId.Contains("_accept_"))
+                if (component.Data.CustomId.StartsWith("poke_exchange_page_"))
+                {
+                    // 對方在選 pokemon 畫面換頁: poke_exchange_page_{exchangeKey}_{page}
+                    var rest = component.Data.CustomId.Substring("poke_exchange_page_".Length);
+                    int cut = rest.LastIndexOf('_');
+                    if (cut > 0 && int.TryParse(rest[(cut + 1)..], out int exPage))
+                    {
+                        var (embed, newComponent) = await pokeGameService.ShowExchangeSelectPageAsync(component, rest[..cut], exPage);
+                        if (embed != null)
+                            await component.ModifyOriginalResponseAsync(msg =>
+                            {
+                                msg.Embed = embed;
+                                msg.Components = newComponent?.Build();
+                            });
+                    }
+                }
+                else if (component.Data.CustomId.Contains("_accept_"))
                 {
                     // 對方接受交換 - 顯示選擇Pokemon的按鈕
                     var parts = component.Data.CustomId.Split(new[] { "_accept_" }, StringSplitOptions.None);
