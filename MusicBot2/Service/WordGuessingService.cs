@@ -126,8 +126,7 @@ namespace MusicBot2.Service
                 // 和 LoadWords 讀同一個位置（以前寫到 CurrentDirectory、讀 BaseDirectory，上傳可能沒生效）
                 string _filePath = Path.Combine(AppContext.BaseDirectory, "words.txt");
 
-                using var httpClient = new HttpClient();
-                var bytes = await httpClient.GetByteArrayAsync(file.Url);
+                var bytes = await SharedHttp.Client.GetByteArrayAsync(file.Url);
                 var content = Encoding.UTF8.GetString(bytes);
 
                 if (string.IsNullOrWhiteSpace(content))

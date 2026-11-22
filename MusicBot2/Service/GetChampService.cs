@@ -86,12 +86,12 @@ namespace MusicBot2.Service
         private void UpdateVersionFromApi()
         {
             string versionUrl = "https://ddragon.leagueoflegends.com/api/versions.json";
-            using (var client = new HttpClient())
+            var client = SharedHttp.Client;
             {
-                var response = client.GetAsync(versionUrl).Result;
+                var response = client.GetAsync(versionUrl).GetAwaiter().GetResult();
                 if (response.IsSuccessStatusCode)
                 {
-                    var content = response.Content.ReadAsStringAsync().Result;
+                    var content = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
                     var versions = JsonConvert.DeserializeObject<List<string>>(content);
                     version = versions[0];
 
@@ -159,12 +159,12 @@ namespace MusicBot2.Service
         {
             string champListUrl = $"https://ddragon.leagueoflegends.com/cdn/{version}/data/zh_TW/champion.json";
 
-            using (var client = new HttpClient())
+            var client = SharedHttp.Client;
             {
-                var response = client.GetAsync(champListUrl).Result;
+                var response = client.GetAsync(champListUrl).GetAwaiter().GetResult();
                 if (response.IsSuccessStatusCode)
                 {
-                    var content = response.Content.ReadAsStringAsync().Result;
+                    var content = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
                     allChampionData = JsonConvert.DeserializeObject<ChampVM>(content);
 
                     // 儲存到本地檔案
@@ -233,7 +233,7 @@ namespace MusicBot2.Service
                 // 建立詳細資料的 URL
                 string champDetailUrl = $"https://ddragon.leagueoflegends.com/cdn/{version}/data/zh_TW/champion/{championId}.json";
 
-                using (var client = new HttpClient())
+                var client = SharedHttp.Client;
                 {
                     var response = await client.GetAsync(champDetailUrl);
 
@@ -341,7 +341,7 @@ namespace MusicBot2.Service
             // 建立詳細資料的 URL
             string champDetailUrl = $"https://ddragon.leagueoflegends.com/cdn/{version}/data/zh_TW/champion/{championId}.json";
 
-            using (var client = new HttpClient())
+            var client = SharedHttp.Client;
             {
                 var response = await client.GetAsync(champDetailUrl);
 

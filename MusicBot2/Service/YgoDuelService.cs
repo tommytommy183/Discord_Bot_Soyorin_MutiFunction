@@ -1,4 +1,5 @@
-﻿using System.Net.Http;
+﻿using System.Collections.Concurrent;
+using System.Net.Http;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -24,8 +25,8 @@ namespace MusicBot2.Service
         private const string CARD_KEY   = "ygo:cards";   // Redis Hash key（所有卡合併存一個 Hash）
         private const string API_BASE   = "https://db.ygoprodeck.com/api/v7/cardinfo.php";
 
-        private static readonly Dictionary<ulong, YgoDuelState> _memDuels = new();
-        private static readonly Dictionary<string, YgoCardData> _cardCache = new();
+        private static readonly ConcurrentDictionary<ulong, YgoDuelState> _memDuels = new();
+        private static readonly ConcurrentDictionary<string, YgoCardData> _cardCache = new();
         private const int CardCacheMaxSize = 500;
 
         // ─────────────────────────────────────────────────────────────────
@@ -1316,7 +1317,7 @@ namespace MusicBot2.Service
                 if (card == null) return null;
 
                 if (_cardCache.Count >= CardCacheMaxSize)
-                    _cardCache.Remove(_cardCache.Keys.First());
+                    _cardCache.TryRemove(_cardCache.Keys.First(), out _);
                 _cardCache[cacheKey] = card;
                 if (_useRedis)
                 {
@@ -2749,7 +2750,7 @@ namespace MusicBot2.Service
 
         private async Task DeleteDuelAsync(ulong channelId)
         {
-            _memDuels.Remove(channelId);
+            _memDuels.TryRemove(channelId, out _);
             if (_useRedis)
             {
                 try

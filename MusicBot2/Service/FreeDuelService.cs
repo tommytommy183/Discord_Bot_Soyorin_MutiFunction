@@ -3,6 +3,7 @@ using Discord.WebSocket;
 using MusicBot2.Models;
 using StackExchange.Redis;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
@@ -20,7 +21,7 @@ namespace MusicBot2.Service
         private readonly OpenRouterService _ai;
         private readonly DiscordSocketClient _client;
         private readonly YgoDuelService _ygoSvc;
-        private static readonly Dictionary<ulong, FreeDuelState> _memFallback = new();
+        private static readonly ConcurrentDictionary<ulong, FreeDuelState> _memFallback = new();
         private static readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(10) };
 
         private static readonly TimeSpan DuelTimeout = TimeSpan.FromMinutes(30);
@@ -89,7 +90,7 @@ namespace MusicBot2.Service
         private async Task DeleteAsync(ulong cid)
         {
             if (_useRedis) try { await _redisDb!.KeyDeleteAsync(Key(cid)); } catch { }
-            _memFallback.Remove(cid);
+            _memFallback.TryRemove(cid, out _);
         }
 
         // ── Public API ─────────────────────────────────────────────────────

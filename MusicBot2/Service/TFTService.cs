@@ -1,5 +1,6 @@
 using Discord;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
@@ -27,7 +28,7 @@ namespace MusicBot2.Service
         };
 
         // Match list cache
-        private static readonly Dictionary<string, TFTCache> _cache = new();
+        private static readonly ConcurrentDictionary<string, TFTCache> _cache = new();
         private const int TFTCacheMaxSize = 20;
         private static readonly TimeSpan TFTCacheTTL = TimeSpan.FromMinutes(30);
 
@@ -234,7 +235,7 @@ namespace MusicBot2.Service
                 if (_cache.Count >= TFTCacheMaxSize && !_cache.ContainsKey(cacheKey))
                 {
                     var oldest = _cache.OrderBy(kv => kv.Value.CachedAt).First().Key;
-                    _cache.Remove(oldest);
+                    _cache.TryRemove(oldest, out _);
                 }
                 _cache[cacheKey] = new TFTCache(gameName, tagLine, tier, rank, lp, wins, losses, matches, allPlayers, DateTime.UtcNow);
 

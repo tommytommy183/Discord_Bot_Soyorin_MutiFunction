@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
@@ -285,7 +286,7 @@ namespace MusicBot2.Service
         internal static readonly HashSet<ulong> PendingShinyUserIds = new();
         private static readonly Random _rng = new();
         private static readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(8) };
-        private static readonly Dictionary<int, List<TowerMove>> _movesApiCache = new();
+        private static readonly ConcurrentDictionary<int, List<TowerMove>> _movesApiCache = new();
         private const int MovesCacheMaxSize = 300;
         private static readonly Dictionary<string, string> _typeEnToZh = new(StringComparer.OrdinalIgnoreCase)
         {
@@ -665,7 +666,7 @@ namespace MusicBot2.Service
         };
 
         // pending starts keyed by channelId (before passive is chosen)
-        private static readonly Dictionary<ulong, (ulong PlayerId, string PlayerName, PokeGamePokemon Src, List<PassiveDef> Choices)> _pendingStarts = new();
+        private static readonly ConcurrentDictionary<ulong, (ulong PlayerId, string PlayerName, PokeGamePokemon Src, List<PassiveDef> Choices)> _pendingStarts = new();
 
         // ── 中文敵人池 (Name, Types, StatTotal, PokeApiId) ────────
         private static readonly List<(string Name, string[] Types, int StatTotal, int PokeId)> _enemyPool = new()
@@ -2598,7 +2599,7 @@ namespace MusicBot2.Service
                 return ErrEmbed("無效的被動選擇");
 
             var chosen = pending.Choices[idx];
-            _pendingStarts.Remove(channelId);
+            _pendingStarts.TryRemove(channelId, out _);
             return await StartRunAsync(channelId, pending.PlayerId, pending.PlayerName, pending.Src, chosen.Id);
         }
 
@@ -4796,7 +4797,7 @@ namespace MusicBot2.Service
                 if (valid.Count > 0)
                 {
                     if (_movesApiCache.Count >= MovesCacheMaxSize)
-                        _movesApiCache.Remove(_movesApiCache.Keys.First());
+                        _movesApiCache.TryRemove(_movesApiCache.Keys.First(), out _);
                     _movesApiCache[pokeId] = valid;
                 }
 

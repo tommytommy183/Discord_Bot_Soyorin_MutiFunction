@@ -12,6 +12,8 @@ using NAudio.CoreAudioApi;
 using NAudio.Wave;
 using RiotSharp.Endpoints.StatusEndpoint;
 using System;
+using System.Globalization;
+using System.Collections.Concurrent;
 using System.Collections;
 using System.Collections.Generic;
 using System.Data;
@@ -3358,50 +3360,65 @@ public class Program
     #endregion
 
     #region yt相關
+    // ── yt-dlp 影片資訊 ───────────────────────────────────────────────
+    // 以前每首歌都跑 3~4 次 `yt-dlp -J`，每次把整包影片 JSON（常常好幾 MB，含所有格式清單）讀進記憶體；
+    // 現在只 --print 需要的 id / 長度 / 標題，同一個網址 30 分鐘內共用結果。
+    private sealed record YtMeta(string Id, string Title, double? Duration);
+    private static readonly ConcurrentDictionary<string, (DateTime At, YtMeta Meta)> _ytMetaCache = new();
+    private const string YtMetaSep = "|#|";
+
+    // 同時讀 stdout / stderr，避免其中一邊塞滿管線緩衝區讓 process 卡住
+    private static async Task<(int exitCode, string stdout, string stderr)> RunProcessAsync(ProcessStartInfo psi)
+    {
+        psi.RedirectStandardOutput = true;
+        psi.RedirectStandardError = true;
+        psi.UseShellExecute = false;
+        psi.CreateNoWindow = true;
+        psi.StandardOutputEncoding = Encoding.UTF8;
+        psi.StandardErrorEncoding = Encoding.UTF8;
+        using var process = Process.Start(psi);
+        var outTask = process.StandardOutput.ReadToEndAsync();
+        var errTask = process.StandardError.ReadToEndAsync();
+        await Task.WhenAll(outTask, errTask);
+        await process.WaitForExitAsync();
+        return (process.ExitCode, outTask.Result, errTask.Result);
+    }
+
+    private async Task<(YtMeta meta, string error)> GetYtMetaAsync(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return (null, "");
+        if (_ytMetaCache.TryGetValue(url, out var cached) && DateTime.UtcNow - cached.At < TimeSpan.FromMinutes(30))
+            return (cached.Meta, "");
+
+        var (code, stdout, stderr) = await RunProcessAsync(new ProcessStartInfo
+        {
+            FileName = "yt-dlp",
+            Arguments = $"--skip-download --no-playlist --no-warnings --encoding utf-8 --no-check-certificate --extractor-args \"youtube:player_client=android,web\" --print \"%(id)s{YtMetaSep}%(duration)s{YtMetaSep}%(title)s\" {url}",
+        });
+
+        var line = (stdout ?? "").Split('\n').Select(l => l.Trim()).FirstOrDefault(l => l.Contains(YtMetaSep));
+        if (code != 0 || line == null)
+        {
+            Console.WriteLine($"[yt-dlp meta] 失敗 ExitCode={code}: {(stderr ?? "").Substring(0, Math.Min(200, (stderr ?? "").Length))}");
+            return (null, stderr ?? "");
+        }
+        var parts = line.Split(YtMetaSep, 3);
+        if (parts.Length < 3 || string.IsNullOrWhiteSpace(parts[0]) || parts[0] == "NA")
+            return (null, stderr ?? "");
+
+        double? duration = double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var d) ? d : null;
+        var meta = new YtMeta(parts[0], parts[2] == "NA" ? "" : parts[2], duration);
+        if (_ytMetaCache.Count > 200) _ytMetaCache.Clear();
+        _ytMetaCache[url] = (DateTime.UtcNow, meta);
+        return (meta, "");
+    }
+
     public async Task<string> GetVideoIDAsync(string url)
     {
         try
         {
-            Console.WriteLine($"[GetVideoIDAsync] 開始取得影片標題: {url}");
-
-            // 不使用 cookie
-            var processInfo = new ProcessStartInfo
-            {
-                FileName = "yt-dlp",
-                Arguments = $"-J --no-check-certificate --extractor-args \"youtube:player_client=android,web\" {url}",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-
-            using (var process = Process.Start(processInfo))
-            {
-                string output = await process.StandardOutput.ReadToEndAsync();
-                string error = await process.StandardError.ReadToEndAsync();
-                await process.WaitForExitAsync();
-
-                if (process.ExitCode == 0 && !string.IsNullOrWhiteSpace(output))
-                {
-                    try
-                    {
-                        var jsonDoc = System.Text.Json.JsonDocument.Parse(output);
-                        var title = jsonDoc.RootElement.GetProperty("title").GetString();
-                        Console.WriteLine($"[GetVideoIDAsync] 成功取得標題: {title}");
-                        return title ?? "";
-                    }
-                    catch (Exception jsonEx)
-                    {
-                        Console.WriteLine($"[GetVideoIDAsync] 解析 JSON 失敗: {jsonEx.Message}");
-                    }
-                }
-
-                if (!string.IsNullOrEmpty(error))
-                {
-                    Console.WriteLine($"[GetVideoIDAsync] 錯誤: {error.Substring(0, Math.Min(200, error.Length))}");
-                }
-                return "";
-            }
+            var (meta, _) = await GetYtMetaAsync(url);
+            return meta?.Title ?? "";
         }
         catch (Exception ex)
         {
@@ -3464,8 +3481,10 @@ public class Program
 
             using (var process = Process.Start(processInfo))
             {
-                string output = await process.StandardOutput.ReadToEndAsync();
-                string error = await process.StandardError.ReadToEndAsync();
+                var outputTask = process.StandardOutput.ReadToEndAsync();
+                var errorTask = process.StandardError.ReadToEndAsync();
+                await Task.WhenAll(outputTask, errorTask);
+                string output = outputTask.Result, error = errorTask.Result;
                 await process.WaitForExitAsync();
 
                 Console.WriteLine($"[DOWNLOAD DEBUG] 格式 '{formatOption}' - ExitCode: {process.ExitCode}");
@@ -3598,92 +3617,23 @@ public class Program
     {
         try
         {
-            Console.WriteLine($"[GetYoutubeVideoIdAsync] 取得影片 ID: {url}");
-
-            // 不使用 cookie
-            var processInfo = new ProcessStartInfo
-            {
-                FileName = "yt-dlp",
-                Arguments = $"-J --no-check-certificate --extractor-args \"youtube:player_client=android,web\" {url}",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-
-            using (var process = Process.Start(processInfo))
-            {
-                string output = await process.StandardOutput.ReadToEndAsync();
-                await process.WaitForExitAsync();
-
-                if (process.ExitCode == 0 && !string.IsNullOrWhiteSpace(output))
-                {
-                    try
-                    {
-                        var jsonDoc = System.Text.Json.JsonDocument.Parse(output);
-                        var videoId = jsonDoc.RootElement.GetProperty("id").GetString();
-                        Console.WriteLine($"[GetYoutubeVideoIdAsync] 成功取得 ID: {videoId}");
-                        return videoId ?? "";
-                    }
-                    catch (Exception jsonEx)
-                    {
-                        Console.WriteLine($"[GetYoutubeVideoIdAsync] 解析 JSON 失敗: {jsonEx.Message}");
-                    }
-                }
-
-                Console.WriteLine($"[GetYoutubeVideoIdAsync] 失敗 - ExitCode: {process.ExitCode}");
-                return "";
-            }
+            var (meta, _) = await GetYtMetaAsync(url);
+            return meta?.Id ?? "";
         }
-        catch
+        catch (Exception ex)
         {
-            Console.WriteLine($"[GetYoutubeVideoIdAsync] 發生異常");
+            Console.WriteLine($"[GetYoutubeVideoIdAsync] 發生異常: {ex.Message}");
             return "";
         }
     }
 
-    // 輔助方法：取得影片長度
+    // 輔助方法：取得影片長度（拿不到就回傳最大值）
     private async Task<TimeSpan> GetVideoDurationAsync(string videoId)
     {
         try
         {
-            Console.WriteLine($"[GetVideoDurationAsync] 取得影片長度: {videoId}");
-
-            // 不使用 cookie
-            var processInfo = new ProcessStartInfo
-            {
-                FileName = "yt-dlp",
-                Arguments = $"-J --no-check-certificate --extractor-args \"youtube:player_client=android,web\" https://www.youtube.com/watch?v={videoId}",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-
-            using (var process = Process.Start(processInfo))
-            {
-                string output = await process.StandardOutput.ReadToEndAsync();
-                await process.WaitForExitAsync();
-
-                if (process.ExitCode == 0 && !string.IsNullOrWhiteSpace(output))
-                {
-                    try
-                    {
-                        var jsonDoc = System.Text.Json.JsonDocument.Parse(output);
-                        var durationSeconds = jsonDoc.RootElement.GetProperty("duration").GetDouble();
-                        var videoDuration = TimeSpan.FromSeconds(durationSeconds);
-                        Console.WriteLine($"[GetVideoDurationAsync] 影片長度: {videoDuration}");
-                        return videoDuration;
-                    }
-                    catch (Exception jsonEx)
-                    {
-                        Console.WriteLine($"[GetVideoDurationAsync] 解析 JSON 失敗: {jsonEx.Message}");
-                    }
-                }
-
-                Console.WriteLine($"[GetVideoDurationAsync] 無法取得影片長度，返回最大值");
-                return TimeSpan.MaxValue;
-            }
+            var (meta, _) = await GetYtMetaAsync($"https://www.youtube.com/watch?v={videoId}");
+            return meta?.Duration is double sec ? TimeSpan.FromSeconds(sec) : TimeSpan.MaxValue;
         }
         catch (Exception ex)
         {
@@ -3736,8 +3686,10 @@ public class Program
         };
 
         using var process = Process.Start(psi);
-        string output = await process.StandardOutput.ReadToEndAsync();
-        string error = await process.StandardError.ReadToEndAsync();
+        var outputTask = process.StandardOutput.ReadToEndAsync();
+        var errorTask = process.StandardError.ReadToEndAsync();
+        await Task.WhenAll(outputTask, errorTask);
+        string output = outputTask.Result, error = errorTask.Result;
         await process.WaitForExitAsync();
 
         if (process.ExitCode == 0)
@@ -3822,12 +3774,16 @@ public class Program
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
-            CreateNoWindow = true
+            CreateNoWindow = true,
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8,
         };
 
         using var process = Process.Start(psi);
-        string output = await process.StandardOutput.ReadToEndAsync();
-        string error = await process.StandardError.ReadToEndAsync();
+        var outputTask = process.StandardOutput.ReadToEndAsync();
+        var errorTask = process.StandardError.ReadToEndAsync();
+        await Task.WhenAll(outputTask, errorTask);
+        string output = outputTask.Result, error = errorTask.Result;
         await process.WaitForExitAsync();
 
         Console.WriteLine($"[yt-dlp DEBUG] Exit Code: {process.ExitCode}");
@@ -3946,59 +3902,32 @@ public class Program
         {
             // 策略 1: 先不用 cookie 嘗試（避免地區衝突）
             Console.WriteLine($"[CHECK DEBUG] 策略 1: 不使用 cookie");
-            var processInfo1 = new ProcessStartInfo
+            var (meta1, error1) = await GetYtMetaAsync(url);
+            if (meta1 != null && !string.IsNullOrEmpty(meta1.Title))
             {
-                FileName = "yt-dlp",
-                Arguments = $"-J --no-check-certificate --extractor-args \"youtube:player_client=android,web\" {url}",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
+                Console.WriteLine($"[CHECK SUCCESS] 不用 cookie 成功！標題: {meta1.Title}");
+                _NowPlayingSongName = meta1.Title;
+                return true;
+            }
 
-            using (var process1 = Process.Start(processInfo1))
+            // 檢查是否因為年齡限制或會員限定被擋
+            bool needsAuth = error1.Contains("Sign in") ||
+                            error1.Contains("age") ||
+                            error1.Contains("members-only") ||
+                            error1.Contains("private") ||
+                            error1.Contains("unavailable");
+
+            Console.WriteLine($"[CHECK DEBUG] 是否需要認證: {needsAuth}");
+
+            if (!needsAuth)
             {
-                string output1 = await process1.StandardOutput.ReadToEndAsync();
-                string error1 = await process1.StandardError.ReadToEndAsync();
-                await process1.WaitForExitAsync();
-
-                Console.WriteLine($"[CHECK DEBUG] 策略 1 結果 - ExitCode: {process1.ExitCode}");
-
-                if (process1.ExitCode == 0 && !string.IsNullOrWhiteSpace(output1))
-                {
-                    try
-                    {
-                        var jsonDoc = System.Text.Json.JsonDocument.Parse(output1);
-                        var title = jsonDoc.RootElement.GetProperty("title").GetString();
-                        Console.WriteLine($"[CHECK SUCCESS] 不用 cookie 成功！標題: {title}");
-                        _NowPlayingSongName = title;
-                        return true;
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"[CHECK ERROR] 解析 JSON 失敗: {ex.Message}");
-                    }
-                }
-
-                // 檢查是否因為年齡限制或會員限定被擋
-                bool needsAuth = error1.Contains("Sign in") ||
-                                error1.Contains("age") ||
-                                error1.Contains("members-only") ||
-                                error1.Contains("private") ||
-                                error1.Contains("unavailable");
-
-                Console.WriteLine($"[CHECK DEBUG] 是否需要認證: {needsAuth}");
-
-                if (!needsAuth)
-                {
-                    Console.WriteLine($"[CHECK FAILED] 策略 1 失敗且不需認證，直接返回");
-                    return false;
-                }
+                Console.WriteLine($"[CHECK FAILED] 策略 1 失敗且不需認證，直接返回");
+                return false;
             }
 
             // 策略 2: 需要認證時才使用 cookie
             Console.WriteLine($"[CHECK DEBUG] 策略 2: 使用 cookie（因為影片需要認證）");
-            var (exitCode, output2, error2) = await ExecuteYtDlpAsync($"--dump-json --no-check-certificate {url}");
+            var (exitCode, output2, error2) = await ExecuteYtDlpAsync($"--skip-download --encoding utf-8 --no-check-certificate --print \"%(title)s\" {url}");
 
             Console.WriteLine($"[CHECK DEBUG] 策略 2 結果 - ExitCode: {exitCode}");
 
@@ -4006,8 +3935,7 @@ public class Program
             {
                 try
                 {
-                    var jsonDoc = System.Text.Json.JsonDocument.Parse(output2);
-                    var title = jsonDoc.RootElement.GetProperty("title").GetString();
+                    var title = output2.Split('\n').Select(l => l.Trim()).FirstOrDefault(l => l.Length > 0);
 
                     if (!string.IsNullOrEmpty(title))
                     {

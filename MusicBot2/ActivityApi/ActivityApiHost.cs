@@ -1,3 +1,5 @@
+using System.Net.Http;
+using MusicBot2.Helpers;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
@@ -42,7 +44,7 @@ public static class ActivityApiHost
             // Discord Embedded Activity 的 redirect_uri 固定是這個
             var redirectUri = "https://discord.com/api/oauth2/authorize";
 
-            using var http = new HttpClient();
+            var http = SharedHttp.Client;
             var form = new Dictionary<string, string>
             {
                 ["client_id"]     = clientId,
@@ -73,9 +75,11 @@ public static class ActivityApiHost
             };
             try
             {
-                using var httpClient = new HttpClient();
-                httpClient.DefaultRequestHeaders.Add("User-Agent", "PokeTower/1.0");
-                var bytes = await httpClient.GetByteArrayAsync(url);
+                using var req = new HttpRequestMessage(HttpMethod.Get, url);
+                req.Headers.UserAgent.ParseAdd("PokeTower/1.0");
+                using var resp = await SharedHttp.Client.SendAsync(req);
+                resp.EnsureSuccessStatusCode();
+                var bytes = await resp.Content.ReadAsByteArrayAsync();
                 return Results.Bytes(bytes, "image/png");
             }
             catch

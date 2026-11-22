@@ -1,6 +1,7 @@
 ﻿using Discord;
 using Discord.Audio;
 using System;
+using MusicBot2.Helpers;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http.Headers;
@@ -17,7 +18,7 @@ namespace MusicBot2.Service
 
         public async Task<Stream> GetConvertedAudioAsync(Stream audioStream, string fileName, string speaker, double pitch, double indexRate, double protect)
         {
-            using var client = new HttpClient();
+            var client = SharedHttp.Client;
             using var form = new MultipartFormDataContent();
             var fileContent = new StreamContent(audioStream);
             fileContent.Headers.ContentType = new MediaTypeHeaderValue("audio/wav");
@@ -41,7 +42,7 @@ namespace MusicBot2.Service
 
         public async Task SendTextToSpeach(ITextChannel channel,string text,string speaker,string tts_model,double pitch_shift)
         {
-            using var client = new HttpClient();
+            var client = SharedHttp.Client;
             using var form = new MultipartFormDataContent();
 
             form.Add(new StringContent(text), "text");

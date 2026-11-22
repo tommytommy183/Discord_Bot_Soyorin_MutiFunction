@@ -8,6 +8,7 @@ using Newtonsoft.Json.Linq;
 using System.IO;
 using StackExchange.Redis;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
@@ -28,9 +29,9 @@ namespace MusicBot2.Service
         private readonly bool _useRedis;
 
         // 記憶體儲存 (當 Redis 無法連線時使用)
-        private static readonly Dictionary<ulong, PokeGamePlayer> _memoryPlayers = new Dictionary<ulong, PokeGamePlayer>();
-        private static readonly Dictionary<ulong, BattleMatchmaking> _memoryMatchmaking = new Dictionary<ulong, BattleMatchmaking>();
-        private static readonly Dictionary<ulong, BattleMatchmaking2V2> _memoryMatchmaking2V2 = new Dictionary<ulong, BattleMatchmaking2V2>();
+        private static readonly ConcurrentDictionary<ulong, PokeGamePlayer> _memoryPlayers = new();
+        private static readonly ConcurrentDictionary<ulong, BattleMatchmaking> _memoryMatchmaking = new();
+        private static readonly ConcurrentDictionary<ulong, BattleMatchmaking2V2> _memoryMatchmaking2V2 = new();
         private static TeamFightBoss _memoryTeamFightBoss = null;
         private static List<int> _memoryLegendaryPokemonIds = new List<int>();
 
@@ -1558,7 +1559,7 @@ namespace MusicBot2.Service
 
         #region 交換系統
         // 儲存交換請求
-        private static readonly Dictionary<string, PokemonExchangeRequest> _exchangeRequests = new Dictionary<string, PokemonExchangeRequest>();
+        private static readonly ConcurrentDictionary<string, PokemonExchangeRequest> _exchangeRequests = new();
 
         public async Task<(Embed embed, ComponentBuilder component)> InitiateExchangeAsync(
             ulong requesterId,
@@ -1663,7 +1664,7 @@ namespace MusicBot2.Service
                 _ = Task.Run(async () =>
                 {
                     await Task.Delay(TimeSpan.FromMinutes(1440));
-                    _exchangeRequests.Remove(exchangeKey);
+                    _exchangeRequests.TryRemove(exchangeKey, out _);
                 });
 
                 return (embed, component);
@@ -1752,7 +1753,7 @@ namespace MusicBot2.Service
                     // 拒絕交換
                     if (!isAccepted)
                     {
-                        _exchangeRequests.Remove(exchangeKey);
+                        _exchangeRequests.TryRemove(exchangeKey, out _);
 
                         var rejectEmbed = new EmbedBuilder()
                             .WithTitle("❌ 交換已拒絕")
@@ -1826,7 +1827,7 @@ namespace MusicBot2.Service
                     // 發起者取消交換
                     if (!isAccepted)
                     {
-                        _exchangeRequests.Remove(exchangeKey);
+                        _exchangeRequests.TryRemove(exchangeKey, out _);
 
                         var cancelEmbed = new EmbedBuilder()
                             .WithTitle("❌ 交換已取消")
@@ -1845,7 +1846,7 @@ namespace MusicBot2.Service
                     // 驗證Pokemon還存在
                     if (request.RequesterPokemonIndex >= requesterPlayer.CaughtPokemon.Count)
                     {
-                        _exchangeRequests.Remove(exchangeKey);
+                        _exchangeRequests.TryRemove(exchangeKey, out _);
                         var errorEmbed = new EmbedBuilder()
                             .WithTitle("❌ 交換失敗")
                             .WithDescription("發起者的Pokemon已不存在")
@@ -1856,7 +1857,7 @@ namespace MusicBot2.Service
 
                     if (request.TargetPokemonIndex.Value >= targetPlayerConfirm.CaughtPokemon.Count)
                     {
-                        _exchangeRequests.Remove(exchangeKey);
+                        _exchangeRequests.TryRemove(exchangeKey, out _);
                         var errorEmbed = new EmbedBuilder()
                             .WithTitle("❌ 交換失敗")
                             .WithDescription("對方的Pokemon已不存在")
@@ -1875,7 +1876,7 @@ namespace MusicBot2.Service
                     await SavePlayerDataAsync(requesterPlayer);
                     await SavePlayerDataAsync(targetPlayerConfirm);
 
-                    _exchangeRequests.Remove(exchangeKey);
+                    _exchangeRequests.TryRemove(exchangeKey, out _);
 
                     var successEmbed = new EmbedBuilder()
                         .WithTitle("✅ 交換成功！")
@@ -3538,7 +3539,7 @@ HP為0就是真的死亡，不會再有後續動作
 
                     foreach (var key in expiredKeys)
                     {
-                        _memoryMatchmaking.Remove(key);
+                        _memoryMatchmaking.TryRemove(key, out _);
                     }
                 }
             }
@@ -3561,7 +3562,7 @@ HP為0就是真的死亡，不會再有後續動作
                 // 清理過期的配對
                 foreach (var key in expiredKeys)
                 {
-                    _memoryMatchmaking.Remove(key);
+                    _memoryMatchmaking.TryRemove(key, out _);
                 }
 
                 await Task.CompletedTask;
@@ -3584,7 +3585,7 @@ HP為0就是真的死亡，不會再有後續動作
                 }
             }
             // 記憶體永遠同步
-            _memoryMatchmaking.Remove(userId);
+            _memoryMatchmaking.TryRemove(userId, out _);
             RefreshMatchmakingStatus();
         }
 
@@ -3662,7 +3663,7 @@ HP為0就是真的死亡，不會再有後續動作
 
                     foreach (var key in expiredKeys)
                     {
-                        _memoryMatchmaking2V2.Remove(key);
+                        _memoryMatchmaking2V2.TryRemove(key, out _);
                     }
                 }
             }
@@ -3685,7 +3686,7 @@ HP為0就是真的死亡，不會再有後續動作
                 // 清理過期的配對
                 foreach (var key in expiredKeys)
                 {
-                    _memoryMatchmaking2V2.Remove(key);
+                    _memoryMatchmaking2V2.TryRemove(key, out _);
                 }
 
                 await Task.CompletedTask;
@@ -3708,7 +3709,7 @@ HP為0就是真的死亡，不會再有後續動作
                 }
             }
             // 記憶體永遠同步
-            _memoryMatchmaking2V2.Remove(userId);
+            _memoryMatchmaking2V2.TryRemove(userId, out _);
             RefreshMatchmakingStatus();
         }
 
@@ -3719,10 +3720,10 @@ HP為0就是真的死亡，不會再有後續動作
         #region 好感度系統
 
         private const string WORK_STATE_KEY_PREFIX = "pokegame:work:";
-        private static readonly Dictionary<ulong, List<PokemonWorkState>> _memoryWorkStates = new();
+        private static readonly ConcurrentDictionary<ulong, List<PokemonWorkState>> _memoryWorkStates = new();
 
         // 多選派遣：暫存使用者跨頁選擇狀態（userId → 已選的 CaughtPokemon 索引）
-        private static readonly Dictionary<ulong, HashSet<int>> _pendingWorkSelections = new();
+        private static readonly ConcurrentDictionary<ulong, HashSet<int>> _pendingWorkSelections = new();
         private const int WorkSelectPageSize = 24; // Discord SelectMenu 上限 25，留 1 個 buffer
 
         // 好感度衰減：超過 3 天沒互動，每次查看 -2
@@ -4179,7 +4180,7 @@ HP為0就是真的死亡，不會再有後續動作
                 {
                     var data = JsonConvert.SerializeObject(states);
                     await _redisDb.StringSetAsync($"{WORK_STATE_KEY_PREFIX}{userId}", data, TimeSpan.FromHours(48));
-                    _memoryWorkStates.Remove(userId); // Redis 成功就不留記憶體副本
+                    _memoryWorkStates.TryRemove(userId, out _); // Redis 成功就不留記憶體副本
                     return;
                 }
                 catch { }
@@ -4193,7 +4194,7 @@ HP為0就是真的死亡，不會再有後續動作
             {
                 try { await _redisDb.KeyDeleteAsync($"{WORK_STATE_KEY_PREFIX}{userId}"); } catch { }
             }
-            _memoryWorkStates.Remove(userId);
+            _memoryWorkStates.TryRemove(userId, out _);
         }
 
         // 計算這隻 pokemon 的工作效率並回傳實際材料清單
@@ -4228,7 +4229,7 @@ HP為0就是真的死亡，不會再有後續動作
             try
             {
                 if (resetSelection)
-                    _pendingWorkSelections.Remove(userId);
+                    _pendingWorkSelections.TryRemove(userId, out _);
 
                 var player = await GetPlayerDataAsync(userId, userName);
                 if (player.CaughtPokemon.Count == 0)
@@ -5528,35 +5529,63 @@ HP為0就是真的死亡，不會再有後續動作
         // ════════════════════════════════════════════════════════════════════
         #region 排行榜系統
 
+        // 排行榜只需要的摘要（不保留整個倉庫）
+        private sealed class RankRow
+        {
+            public string UserName;
+            public int Wins, Losses, TotalBattles;
+            public string FriendName; public int BestFriendship;
+            public string StrongName; public int BestTotal;
+
+            public static RankRow From(PokeGamePlayer p)
+            {
+                if (p == null) return null;
+                var row = new RankRow { UserName = p.UserName, Wins = p.Wins, Losses = p.Losses, TotalBattles = p.TotalBattles };
+                foreach (var pk in p.CaughtPokemon ?? new List<PokeGamePokemon>())
+                {
+                    if (pk == null) continue;
+                    if (row.FriendName == null || pk.Friendship > row.BestFriendship)
+                    { row.BestFriendship = pk.Friendship; row.FriendName = pk.CustomName ?? pk.Name; }
+                    int total = pk.HP + pk.Attack + pk.Defense + pk.SpecialAttack + pk.SpecialDefense + pk.Speed;
+                    if (row.StrongName == null || total > row.BestTotal)
+                    { row.BestTotal = total; row.StrongName = pk.CustomName ?? pk.Name; }
+                }
+                return row;
+            }
+        }
+
         public async Task<(Embed embed, ComponentBuilder component)> ShowLeaderboardAsync(string category)
         {
             try
             {
-                // 取得所有玩家資料
-                var allPlayers = new List<PokeGamePlayer>();
-
+                // 取得所有玩家的排行摘要：逐一讀出、算完就丟，不把所有人的完整資料（含整個倉庫）同時留在記憶體
+                var allPlayers = new List<RankRow>();
                 if (_useRedis)
                 {
                     try
                     {
-                        var server = _redisDb.Multiplexer.GetServer(_redisDb.Multiplexer.GetEndPoints().First());
-                        var keys = server.Keys(pattern: $"{PLAYER_DATA_KEY}*").ToList();
-                        foreach (var key in keys)
+                        foreach (var endpoint in _redisDb.Multiplexer.GetEndPoints())
                         {
-                            try
+                            var server = _redisDb.Multiplexer.GetServer(endpoint);
+                            if (!server.IsConnected || server.IsReplica) continue;
+                            await foreach (var key in server.KeysAsync(pattern: $"{PLAYER_DATA_KEY}*"))
                             {
-                                var raw = await _redisDb.StringGetAsync(key);
-                                if (!raw.IsNullOrEmpty)
-                                    allPlayers.Add(JsonConvert.DeserializeObject<PokeGamePlayer>(raw));
+                                try
+                                {
+                                    var raw = await _redisDb.StringGetAsync(key);
+                                    if (raw.IsNullOrEmpty) continue;
+                                    var row = RankRow.From(JsonConvert.DeserializeObject<PokeGamePlayer>(raw));
+                                    if (row != null) allPlayers.Add(row);
+                                }
+                                catch { }
                             }
-                            catch { }
                         }
                     }
-                    catch { allPlayers = _memoryPlayers.Values.ToList(); }
+                    catch { allPlayers = _memoryPlayers.Values.Select(RankRow.From).Where(r => r != null).ToList(); }
                 }
                 else
                 {
-                    allPlayers = _memoryPlayers.Values.ToList();
+                    allPlayers = _memoryPlayers.Values.Select(RankRow.From).Where(r => r != null).ToList();
                 }
 
                 if (!allPlayers.Any())
@@ -5598,29 +5627,26 @@ HP為0就是真的死亡，不會再有後續動作
                     case "friendship":
                         embed.WithTitle("❤️ 好感度排行榜（最高單隻）");
                         var rankedF = allPlayers
-                            .Where(p => p.CaughtPokemon.Any())
-                            .Select(p => (p, best: p.CaughtPokemon.OrderByDescending(pk => pk.Friendship).First()))
-                            .OrderByDescending(x => x.best.Friendship)
+                            .Where(p => p.FriendName != null)
+                            .OrderByDescending(p => p.BestFriendship)
                             .Take(10).ToList();
                         for (int i = 0; i < rankedF.Count; i++)
                         {
-                            var (pl, best) = rankedF[i];
-                            embed.AddField($"{i + 1}. {pl.UserName}", $"{best.CustomName ?? best.Name}（好感 {best.Friendship}/255）", false);
+                            var pl = rankedF[i];
+                            embed.AddField($"{i + 1}. {pl.UserName}", $"{pl.FriendName}（好感 {pl.BestFriendship}/255）", false);
                         }
                         break;
 
                     case "strongest":
                         embed.WithTitle("💪 最強 pokemon 排行榜（單隻總能力值）");
                         var rankedS = allPlayers
-                            .Where(p => p.CaughtPokemon.Any())
-                            .Select(p => (p, best: p.CaughtPokemon.OrderByDescending(pk => pk.HP + pk.Attack + pk.Defense + pk.SpecialAttack + pk.SpecialDefense + pk.Speed).First()))
-                            .OrderByDescending(x => x.best.HP + x.best.Attack + x.best.Defense + x.best.SpecialAttack + x.best.SpecialDefense + x.best.Speed)
+                            .Where(p => p.StrongName != null)
+                            .OrderByDescending(p => p.BestTotal)
                             .Take(10).ToList();
                         for (int i = 0; i < rankedS.Count; i++)
                         {
-                            var (pl, best) = rankedS[i];
-                            int total = best.HP + best.Attack + best.Defense + best.SpecialAttack + best.SpecialDefense + best.Speed;
-                            embed.AddField($"{i + 1}. {pl.UserName}", $"{best.CustomName ?? best.Name}（總值 {total}）", false);
+                            var pl = rankedS[i];
+                            embed.AddField($"{i + 1}. {pl.UserName}", $"{pl.StrongName}（總值 {pl.BestTotal}）", false);
                         }
                         break;
 

@@ -436,7 +436,6 @@ namespace MusicBot2.SlahCommands
             //var user = Context.User as SocketGuildUser;
             //var voiceChannel = user.VoiceChannel;
             //await _elevenLabsService.SpeakAsync(voiceChannel, text, "eleven_v3", "pNInz6obpgDQGcFmaJgB");
-            using var httpClient = new HttpClient();
 
             await _rVC_Service.SendTextToSpeach(
                 Context.Channel as ITextChannel,
@@ -456,8 +455,7 @@ namespace MusicBot2.SlahCommands
             [Summary("protect", "原聲保護度 (0-1之間)")] double protect = 0.33
         )
         {
-            using var httpClient = new HttpClient();
-            using var stream = await httpClient.GetStreamAsync(file.Url);
+            using var stream = await SharedHttp.Client.GetStreamAsync(file.Url);
 
             await _rVC_Service.SendConvertedAudioToChannelAsync(
                 Context.Channel as ITextChannel,
@@ -672,9 +670,8 @@ namespace MusicBot2.SlahCommands
 
             if (!string.IsNullOrEmpty(result.imageUrl))
             {
-                using var http = new HttpClient();
-                var imageBytes = await http.GetByteArrayAsync(result.imageUrl);
-                var stream = new MemoryStream(imageBytes);
+                var imageBytes = await SharedHttp.Client.GetByteArrayAsync(result.imageUrl);
+                using var stream = new MemoryStream(imageBytes);
                 var attachment = new FileAttachment(stream, "SPOILER_anime.jpg");
 
                 await Context.Channel.SendFileAsync(attachment);
@@ -695,9 +692,8 @@ namespace MusicBot2.SlahCommands
 
             if (!string.IsNullOrEmpty(result.imageUrl))
             {
-                using var http = new HttpClient();
-                var imageBytes = await http.GetByteArrayAsync(result.imageUrl);
-                var stream = new MemoryStream(imageBytes);
+                var imageBytes = await SharedHttp.Client.GetByteArrayAsync(result.imageUrl);
+                using var stream = new MemoryStream(imageBytes);
                 var attachment = new FileAttachment(stream, "SPOILER_manga.jpg");
 
                 await Context.Channel.SendFileAsync(attachment);

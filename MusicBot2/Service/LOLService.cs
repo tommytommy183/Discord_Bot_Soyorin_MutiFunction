@@ -1,5 +1,6 @@
 using Discord;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
@@ -58,7 +59,7 @@ namespace MusicBot2.Service
         private readonly Dictionary<string, RankSnapshot> _lastRankSnapshot = new(); // key = puuid
 
         // Match list cache：key = first 14 alphanum chars of puuid
-        private static readonly Dictionary<string, MatchListCache> _matchCache = new();
+        private static readonly ConcurrentDictionary<string, MatchListCache> _matchCache = new();
         private const int MatchCacheMaxSize = 30;
         private static readonly TimeSpan MatchCacheTTL = TimeSpan.FromMinutes(30);
         private record MatchListCache(string GameName, string TagLine, int Level,
@@ -333,7 +334,7 @@ namespace MusicBot2.Service
             if (_matchCache.Count >= MatchCacheMaxSize && !_matchCache.ContainsKey(cacheKey))
             {
                 var oldest = _matchCache.OrderBy(kv => kv.Value.CachedAt).First().Key;
-                _matchCache.Remove(oldest);
+                _matchCache.TryRemove(oldest, out _);
             }
             _matchCache[cacheKey] = new MatchListCache(gameName, tagLine, level, soloEntry, flexEntry, matches, teams, DateTime.UtcNow);
 

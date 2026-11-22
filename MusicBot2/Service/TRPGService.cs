@@ -3,6 +3,7 @@ using ElevenLabs.Models;
 using MusicBot2.Models;
 using StackExchange.Redis;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
@@ -23,7 +24,7 @@ namespace MusicBot2.Service
         private readonly Random _random = new();
 
         // 記憶體儲存（當 Redis 無法連線時使用）
-        private static readonly Dictionary<ulong, TRPGGameState> _memoryGames = new();
+        private static readonly ConcurrentDictionary<ulong, TRPGGameState> _memoryGames = new();
 
         private const string ApiUrl = "https://openrouter.ai/api/v1/chat/completions";
         private readonly string[] _models =
@@ -327,7 +328,7 @@ SAN 值（0-100）：
                 }
                 else
                 {
-                    _memoryGames.Remove(channelId);
+                    _memoryGames.TryRemove(channelId, out _);
                     Console.WriteLine($"[TRPG] 已從記憶體刪除遊戲狀態 (頻道: {channelId})");
                 }
             }
