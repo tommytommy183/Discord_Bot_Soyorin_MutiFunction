@@ -5,6 +5,7 @@ using MusicBot2.Models;
 using Newtonsoft.Json;
 using SkiaSharp;
 using System;
+using System.Net.Http;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
@@ -66,8 +67,7 @@ namespace MusicBot2.Service
                 if (!response.IsSuccessStatusCode)
                     return CommonHelper.BuildErrorResponse("無法獲取寶可夢資料");
 
-                var responseContent = await response.Content.ReadAsStringAsync();
-                var pokeResponses = JsonConvert.DeserializeObject<RandomResponse>(responseContent);
+                var pokeResponses = await response.Content.ReadJsonAsync<RandomResponse>();
 
                 Random random = new Random();
 
@@ -93,14 +93,11 @@ namespace MusicBot2.Service
                 {
                     string urlData = pokeResponses.results[idx].url;
                     var res = await _httpClient.GetAsync(urlData);
-                    var content = await res.Content.ReadAsStringAsync();
-
-                    var poke = JsonConvert.DeserializeObject<Pokemon>(content);
+                    var poke = await res.Content.ReadJsonAsync<Pokemon>();
 
                     string urlSpecies = poke.species.url;
                     var resSpecies = await _httpClient.GetAsync(urlSpecies);
-                    var contentSpecies = await resSpecies.Content.ReadAsStringAsync();
-                    var pokeSpecies = JsonConvert.DeserializeObject<PokeSpecies>(contentSpecies);
+                    var pokeSpecies = await resSpecies.Content.ReadJsonAsync<PokeSpecies>();
 
                     poke.formatted_name = pokeSpecies;
 
@@ -203,8 +200,7 @@ namespace MusicBot2.Service
                 if (!response.IsSuccessStatusCode)
                     return CommonHelper.BuildErrorResponse("無法獲取招式資料");
 
-                var responseContent = await response.Content.ReadAsStringAsync();
-                var pokeResponses = JsonConvert.DeserializeObject<RandomResponse>(responseContent);
+                var pokeResponses = await response.Content.ReadJsonAsync<RandomResponse>();
 
                 Random random = new Random();
 
@@ -230,9 +226,7 @@ namespace MusicBot2.Service
                 {
                     string urlData = pokeResponses.results[idx].url;
                     var res = await _httpClient.GetAsync(urlData);
-                    var content = await res.Content.ReadAsStringAsync();
-
-                    var move = JsonConvert.DeserializeObject<Move>(content);
+                    var move = await res.Content.ReadJsonAsync<Move>();
                     options.Add(move);
                 }
 
@@ -251,14 +245,11 @@ namespace MusicBot2.Service
                 {
                     string urlData = pokeData.url;
                     var res = await _httpClient.GetAsync(urlData);
-                    var content = await res.Content.ReadAsStringAsync();
-
-                    var poke = JsonConvert.DeserializeObject<Pokemon>(content);
+                    var poke = await res.Content.ReadJsonAsync<Pokemon>();
 
                     string urlSpecies = poke.species.url;
                     var resSpecies = await _httpClient.GetAsync(urlSpecies);
-                    var contentSpecies = await resSpecies.Content.ReadAsStringAsync();
-                    var pokeSpecies = JsonConvert.DeserializeObject<PokeSpecies>(contentSpecies);
+                    var pokeSpecies = await resSpecies.Content.ReadJsonAsync<PokeSpecies>();
 
                     string pokeName = pokeSpecies.names.FirstOrDefault(n => n.language.name == "zh-hant")?.name
                                      ?? pokeSpecies.names.FirstOrDefault(n => n.language.name == "zh-hans")?.name
@@ -349,8 +340,7 @@ namespace MusicBot2.Service
                 if (!response.IsSuccessStatusCode)
                     return (CommonHelper.BuildErrorResponse("無法獲取寶可夢資料"), null);
 
-                var responseContent = await response.Content.ReadAsStringAsync();
-                var pokeResponses = JsonConvert.DeserializeObject<RandomResponse>(responseContent);
+                var pokeResponses = await response.Content.ReadJsonAsync<RandomResponse>();
 
                 Random random = new Random();
 
@@ -376,14 +366,11 @@ namespace MusicBot2.Service
                 {
                     string urlData = pokeResponses.results[idx].url;
                     var res = await _httpClient.GetAsync(urlData);
-                    var content = await res.Content.ReadAsStringAsync();
-
-                    var poke = JsonConvert.DeserializeObject<Pokemon>(content);
+                    var poke = await res.Content.ReadJsonAsync<Pokemon>();
 
                     string urlSpecies = poke.species.url;
                     var resSpecies = await _httpClient.GetAsync(urlSpecies);
-                    var contentSpecies = await resSpecies.Content.ReadAsStringAsync();
-                    var pokeSpecies = JsonConvert.DeserializeObject<PokeSpecies>(contentSpecies);
+                    var pokeSpecies = await resSpecies.Content.ReadJsonAsync<PokeSpecies>();
 
                     poke.formatted_name = pokeSpecies;
 

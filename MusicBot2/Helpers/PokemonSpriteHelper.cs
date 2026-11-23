@@ -79,6 +79,7 @@ namespace MusicBot2.Helpers
 
         private static bool? Cache(string url, HttpResponseMessage resp)
         {
+            if (_existsCache.Count > 5000) _existsCache.Clear(); // 上限，避免一直長大
             if (resp.IsSuccessStatusCode)
             {
                 _existsCache[url] = true;
@@ -98,9 +99,26 @@ namespace MusicBot2.Helpers
             if (_apiNameCache.TryGetValue(id, out var name)) return name;
             try
             {
-                var json = await _http.GetStringAsync($"https://pokeapi.co/api/v2/pokemon/{id}");
-                name = JObject.Parse(json)["name"]?.ToString();
-                if (!string.IsNullOrEmpty(name)) _apiNameCache[id] = name;
+                // 這支回應約 300KB（大多是招式），只掃最外層的 name，其他直接跳過
+                using var resp = await _http.GetAsync($"https://pokeapi.co/api/v2/pokemon/{id}", HttpCompletionOption.ResponseHeadersRead);
+                resp.EnsureSuccessStatusCode();
+                using var stream = await resp.Content.ReadAsStreamAsync();
+                using var sr = new System.IO.StreamReader(stream);
+                using var reader = new Newtonsoft.Json.JsonTextReader(sr);
+                name = null;
+                while (reader.Read())
+                {
+                    if (reader.TokenType != Newtonsoft.Json.JsonToken.PropertyName || reader.Depth != 1) continue;
+                    var prop = (string)reader.Value;
+                    if (!reader.Read()) break;
+                    if (prop == "name") { name = reader.Value?.ToString(); break; }
+                    reader.Skip();
+                }
+                if (!string.IsNullOrEmpty(name))
+                {
+                    if (_apiNameCache.Count > 2000) _apiNameCache.Clear();
+                    _apiNameCache[id] = name;
+                }
                 return name;
             }
             catch { return null; }

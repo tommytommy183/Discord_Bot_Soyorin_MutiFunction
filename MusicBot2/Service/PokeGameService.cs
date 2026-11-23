@@ -8,6 +8,7 @@ using Newtonsoft.Json.Linq;
 using System.IO;
 using StackExchange.Redis;
 using System;
+using System.Net.Http;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -197,8 +198,7 @@ namespace MusicBot2.Service
                     return;
                 }
 
-                var content = await response.Content.ReadAsStringAsync();
-                var speciesList = JsonConvert.DeserializeObject<RandomResponse>(content);
+                var speciesList = await response.Content.ReadJsonAsync<RandomResponse>();
 
                 int count = 0;
                 // 檢查每個 Pokemon 是否為傳說或神話
@@ -209,8 +209,7 @@ namespace MusicBot2.Service
                         var speciesResponse = await _httpClient.GetAsync(species.url);
                         if (speciesResponse.IsSuccessStatusCode)
                         {
-                            var speciesContent = await speciesResponse.Content.ReadAsStringAsync();
-                            var speciesData = JsonConvert.DeserializeObject<PokeSpecies>(speciesContent);
+                            var speciesData = await speciesResponse.Content.ReadJsonAsync<PokeSpecies>();
 
                             if (speciesData.is_legendary || speciesData.is_mythical)
                             {
@@ -429,7 +428,7 @@ namespace MusicBot2.Service
                     if (cached != null && cached.Length > 0) return cached; // 更新失敗就沿用舊的
                     throw new Exception("無法獲取pokemon資料");
                 }
-                var pokeResponses = JsonConvert.DeserializeObject<RandomResponse>(await responseRandom.Content.ReadAsStringAsync());
+                var pokeResponses = await responseRandom.Content.ReadJsonAsync<RandomResponse>();
                 var ids = pokeResponses?.results?
                     .Select(r => int.TryParse(r.url?.TrimEnd('/').Split('/').LastOrDefault(), out var id) ? id : 0)
                     .Where(id => id > 0)
@@ -457,17 +456,15 @@ namespace MusicBot2.Service
             int randomId = allIds[new Random().Next(0, allIds.Length)];
 
             // 獲取pokemon詳細資料
-            var response = await _httpClient.GetAsync($"{API_BASE_URL}pokemon/{randomId}");
+            var response = await _httpClient.GetAsync($"{API_BASE_URL}pokemon/{randomId}", HttpCompletionOption.ResponseHeadersRead);
             if (!response.IsSuccessStatusCode)
                 throw new Exception("無法獲取pokemon資料");
 
-            var content = await response.Content.ReadAsStringAsync();
-            var pokeData = JsonConvert.DeserializeObject<Pokemon>(content);
+            var pokeData = await response.Content.ReadJsonAsync<Pokemon>();
 
             // 獲取中文名稱
             var speciesResponse = await _httpClient.GetAsync(pokeData.species.url);
-            var speciesContent = await speciesResponse.Content.ReadAsStringAsync();
-            var speciesData = JsonConvert.DeserializeObject<PokeSpecies>(speciesContent);
+            var speciesData = await speciesResponse.Content.ReadJsonAsync<PokeSpecies>();
 
             var chineseName = speciesData.names.FirstOrDefault(n => n.language.name == "zh-hant")?.name
                 ?? pokeData.species.name;
@@ -528,8 +525,7 @@ namespace MusicBot2.Service
                 var evolutionChainResponse = await _httpClient.GetAsync(speciesData.evolution_chain.url);
                 if (!evolutionChainResponse.IsSuccessStatusCode) return;
 
-                var evolutionChainContent = await evolutionChainResponse.Content.ReadAsStringAsync();
-                var evolutionChain = JsonConvert.DeserializeObject<EvolutionChain>(evolutionChainContent);
+                var evolutionChain = await evolutionChainResponse.Content.ReadJsonAsync<EvolutionChain>();
 
                 // 找到當前pokemon在進化鏈中的位置
                 FindPokemonInChain(pokemon, evolutionChain.chain, 0);
@@ -588,17 +584,15 @@ namespace MusicBot2.Service
             try
             {
                 // 獲取進化後的pokemon資料
-                var response = await _httpClient.GetAsync($"{API_BASE_URL}pokemon/{pokemon.NextEvolutionId.Value}");
+                var response = await _httpClient.GetAsync($"{API_BASE_URL}pokemon/{pokemon.NextEvolutionId.Value}", HttpCompletionOption.ResponseHeadersRead);
                 if (!response.IsSuccessStatusCode)
                     return pokemon;
 
-                var content = await response.Content.ReadAsStringAsync();
-                var pokeData = JsonConvert.DeserializeObject<Pokemon>(content);
+                var pokeData = await response.Content.ReadJsonAsync<Pokemon>();
 
                 // 獲取中文名稱
                 var speciesResponse = await _httpClient.GetAsync(pokeData.species.url);
-                var speciesContent = await speciesResponse.Content.ReadAsStringAsync();
-                var speciesData = JsonConvert.DeserializeObject<PokeSpecies>(speciesContent);
+                var speciesData = await speciesResponse.Content.ReadJsonAsync<PokeSpecies>();
 
                 var chineseName = speciesData.names.FirstOrDefault(n => n.language.name == "zh-hant")?.name
                     ?? pokeData.species.name;
@@ -3214,17 +3208,15 @@ HP為0就是真的死亡，不會再有後續動作
                 int randomId = legendaryIds[random.Next(legendaryIds.Count)];
 
                 // 獲取 Pokemon 資料
-                var response = await _httpClient.GetAsync($"{API_BASE_URL}pokemon/{randomId}");
+                var response = await _httpClient.GetAsync($"{API_BASE_URL}pokemon/{randomId}", HttpCompletionOption.ResponseHeadersRead);
                 if (!response.IsSuccessStatusCode)
                     return null;
 
-                var content = await response.Content.ReadAsStringAsync();
-                var pokeData = JsonConvert.DeserializeObject<Pokemon>(content);
+                var pokeData = await response.Content.ReadJsonAsync<Pokemon>();
 
                 // 獲取中文名稱
                 var speciesResponse = await _httpClient.GetAsync(pokeData.species.url);
-                var speciesContent = await speciesResponse.Content.ReadAsStringAsync();
-                var speciesData = JsonConvert.DeserializeObject<PokeSpecies>(speciesContent);
+                var speciesData = await speciesResponse.Content.ReadJsonAsync<PokeSpecies>();
 
                 var chineseName = speciesData.names.FirstOrDefault(n => n.language.name == "zh-hant")?.name
                     ?? pokeData.species.name;
@@ -5478,16 +5470,14 @@ HP為0就是真的死亡，不會再有後續動作
         {
             try
             {
-                var response = await _httpClient.GetAsync($"{API_BASE_URL}pokemon/{pokemonId}");
+                var response = await _httpClient.GetAsync($"{API_BASE_URL}pokemon/{pokemonId}", HttpCompletionOption.ResponseHeadersRead);
                 if (!response.IsSuccessStatusCode)
                     return await GetRandomPokemonAsync(forceShiny);
 
-                var content = await response.Content.ReadAsStringAsync();
-                var pokeData = JsonConvert.DeserializeObject<Pokemon>(content);
+                var pokeData = await response.Content.ReadJsonAsync<Pokemon>();
 
                 var speciesResponse = await _httpClient.GetAsync(pokeData.species.url);
-                var speciesContent = await speciesResponse.Content.ReadAsStringAsync();
-                var speciesData = JsonConvert.DeserializeObject<PokeSpecies>(speciesContent);
+                var speciesData = await speciesResponse.Content.ReadJsonAsync<PokeSpecies>();
                 // PokeAPI 的語言代碼是小寫 zh-hant / zh-hans（以前寫成 zh-Hant 永遠比對不到 → 變簡體）
                 var chineseName = speciesData.names?.FirstOrDefault(n => string.Equals(n.language.name, "zh-hant", StringComparison.OrdinalIgnoreCase))?.name
                                ?? speciesData.names?.FirstOrDefault(n => string.Equals(n.language.name, "zh-hans", StringComparison.OrdinalIgnoreCase))?.name

@@ -4784,8 +4784,10 @@ namespace MusicBot2.Service
 
             try
             {
-                var json = await _http.GetStringAsync($"https://pokeapi.co/api/v2/pokemon/{pokeId}");
-                using var doc = JsonDocument.Parse(json);
+                using var resp = await _http.GetAsync($"https://pokeapi.co/api/v2/pokemon/{pokeId}", HttpCompletionOption.ResponseHeadersRead);
+                resp.EnsureSuccessStatusCode();
+                await using var body = await resp.Content.ReadAsStreamAsync();
+                using var doc = await JsonDocument.ParseAsync(body); // 串流解析，不先轉成一大串字
                 var urls = doc.RootElement.GetProperty("moves").EnumerateArray()
                     .Select(m => m.GetProperty("move").GetProperty("url").GetString())
                     .Where(u => u != null).OrderBy(_ => _rng.Next()).Take(20).ToList();
