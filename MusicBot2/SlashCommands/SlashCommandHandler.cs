@@ -613,42 +613,13 @@ namespace MusicBot2.SlahCommands
         #endregion
 
         #region 殘酷二選一
-        [SlashCommand("呼叫殘酷二選一面板", "重新顯示目前頻道的殘酷二選一面板")]
-        public async Task Pick2ResendPanelAsync()
+        [SlashCommand("查詢殘酷二選一可用題目", "查詢2pick.app上的題目，可用ID開啟遊戲")]
+        public async Task Pick2SearchAsync(
+            [Summary("關鍵字", "搜尋關鍵字（可空白顯示本週熱門）")] string keyword = "")
         {
             await DeferAsync();
-            var channelId = Context.Channel.Id;
-            var panel = _pick2Service.GetCurrentPanel(channelId);
-            if (panel == null)
-            {
-                await FollowupAsync("這個頻道目前沒有進行中的殘酷二選一遊戲。", ephemeral: true);
-                return;
-            }
-            var (imageMessage, component, embed) = panel.Value;
-            var state = _pick2Service.GetGameState(channelId);
-
-            // 優先發到 thread；若無 thread 則發主頻道
-            IMessageChannel targetChannel = Context.Channel;
-            if (state?.ThreadChannelId != 0)
-            {
-                var threadChannel = Context.Client.GetChannel(state.ThreadChannelId) as IMessageChannel;
-                if (threadChannel != null) targetChannel = threadChannel;
-            }
-
-            ulong imageId = 0;
-            if (!string.IsNullOrEmpty(imageMessage))
-            {
-                var imageMsg = await targetChannel.SendMessageAsync(imageMessage);
-                imageId = imageMsg.Id;
-            }
-            var voteMsg = await targetChannel.SendMessageAsync(embed: embed, components: component?.Build());
-            _pick2Service.SetMessageIds(channelId, imageId, voteMsg.Id);
-
-            // 若從主頻道呼叫且有 thread，在主頻道回覆提示
-            if (state?.ThreadChannelId != 0 && Context.Channel.Id != state.ThreadChannelId)
-                await FollowupAsync("已在討論串重新發送面板 👇", ephemeral: true);
-            else
-                await FollowupAsync("已重新發送面板。", ephemeral: true);
+            var (embeds, component) = await _pick2Service.SearchPostsAsync(keyword, 1);
+            await FollowupAsync(embeds: embeds, components: component.Build());
         }
 
         [SlashCommand("輸入殘酷二選一id開啟遊戲", "輸入殘酷二選一ID開啟遊戲")]

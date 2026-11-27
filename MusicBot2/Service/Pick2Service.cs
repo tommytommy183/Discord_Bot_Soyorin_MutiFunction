@@ -297,6 +297,72 @@ namespace MusicBot2.Service
         public ComponentBuilder BuildVoteButtonsPublic(Pick2GameState gameState) => BuildVoteButtons(gameState);
         public Embed BuildRoundEmbedPublic(Pick2GameState gameState) => BuildRoundEmbed(gameState);
 
+        // 查詢 2pick.app 題目列表
+        public async Task<(Embed[] embeds, ComponentBuilder component)> SearchPostsAsync(string keyword, int page)
+        {
+            const int PageSize = 5;
+            try
+            {
+                var url = $"https://2pick.app/api/posts?page={page}&sort_by=hot&range=week";
+                if (!string.IsNullOrWhiteSpace(keyword))
+                    url += $"&k={Uri.EscapeDataString(keyword)}";
+
+                var resp = await _httpClient.GetAsync(url);
+                if (!resp.IsSuccessStatusCode)
+                {
+                    var (comp, emb) = CommonHelper.BuildErrorResponse($"查詢失敗：{resp.StatusCode}");
+                    return (new[] { emb }, comp);
+                }
+
+                var json = await resp.Content.ReadAsStringAsync();
+                var data = JsonConvert.DeserializeObject<Pick2SearchResponse>(json);
+
+                var embeds = new List<Embed>();
+
+                // Header embed
+                var headerDesc = string.IsNullOrWhiteSpace(keyword) ? "本週熱門" : $"搜尋：**{keyword}**";
+                embeds.Add(new EmbedBuilder()
+                    .WithTitle("🔍 殘酷二選一題目查詢")
+                    .WithDescription($"{headerDesc}　第 **{page}** / {data.last_page} 頁，共 {data.total} 筆")
+                    .WithColor(new Color(0xFF6B9D))
+                    .Build());
+
+                // 每筆一個小 embed，含縮圖
+                foreach (var post in data.data.Take(PageSize))
+                {
+                    var censored = post.is_censored ? " 🔞" : "";
+                    var tagStr = post.tags?.Count > 0
+                        ? "\n" + string.Join(" ", post.tags.Take(3).Select(t => $"`{t}`"))
+                        : "";
+                    var eb = new EmbedBuilder()
+                        .WithTitle($"{post.title}{censored}")
+                        .WithDescription(
+                            $"**ID：**`{post.serial}`\n" +
+                            $"🎮 {post.play_count:#,0} 玩過・{post.elements_count} 題" +
+                            tagStr)
+                        .WithColor(new Color(0x2B2D31));
+
+                    if (!string.IsNullOrEmpty(post.element1?.url2))
+                        eb.WithThumbnailUrl(post.element1.url2);
+
+                    embeds.Add(eb.Build());
+                }
+
+                // 安全的 keyword（custom ID 上限 100 字）
+                var safeKeyword = keyword?.Length > 60 ? keyword[..60] : (keyword ?? "");
+                var comp = new ComponentBuilder()
+                    .WithButton("⬅ 上一頁", $"pick2_search_{page - 1}_{safeKeyword}", ButtonStyle.Secondary, disabled: page <= 1)
+                    .WithButton("下一頁 ➡", $"pick2_search_{page + 1}_{safeKeyword}", ButtonStyle.Secondary, disabled: page >= data.last_page);
+
+                return (embeds.ToArray(), comp);
+            }
+            catch (Exception ex)
+            {
+                var (comp, emb) = CommonHelper.BuildErrorResponse($"查詢發生錯誤：{ex.Message}");
+                return (new[] { emb }, comp);
+            }
+        }
+
         // 重新顯示當前面板（面板被洗上去後呼叫）
         public (string imageMessage, ComponentBuilder component, Embed embed)? GetCurrentPanel(ulong channelId)
         {

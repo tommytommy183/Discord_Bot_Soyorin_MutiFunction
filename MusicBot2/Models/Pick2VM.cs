@@ -59,6 +59,32 @@ namespace MusicBot2.Models
         public List<Pick2Element> data { get; set; }
     }
 
+    // 題目搜尋 API 回應模型
+    public class Pick2SearchResponse
+    {
+        public int current_page { get; set; }
+        public int last_page { get; set; }
+        public int total { get; set; }
+        public List<Pick2SearchPost> data { get; set; }
+    }
+
+    public class Pick2SearchPost
+    {
+        public string title { get; set; }
+        public string serial { get; set; }
+        public int play_count { get; set; }
+        public int elements_count { get; set; }
+        public List<string> tags { get; set; }
+        public bool is_censored { get; set; }
+        public Pick2PostCover element1 { get; set; }
+    }
+
+    public class Pick2PostCover
+    {
+        public string url2 { get; set; }  // medium thumbnail
+        public string type { get; set; }  // "image" or "video"
+    }
+
     // 遊戲狀態類別
     public class Pick2GameState
     {

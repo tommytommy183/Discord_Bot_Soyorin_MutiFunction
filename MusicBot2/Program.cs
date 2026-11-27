@@ -317,6 +317,22 @@ public class Program
                     });
                 }
             }
+            // 殘酷二選一題目查詢分頁
+            else if (component.Data.CustomId.StartsWith("pick2_search_"))
+            {
+                await component.DeferAsync();
+                var raw = component.Data.CustomId["pick2_search_".Length..];
+                var sepIdx = raw.IndexOf('_');
+                var page = int.Parse(raw[..sepIdx]);
+                var keyword = raw[(sepIdx + 1)..];
+                var pick2Service = _services.GetService<Pick2Service>();
+                var (embeds, newComp) = await pick2Service.SearchPostsAsync(keyword, page);
+                await component.Message.ModifyAsync(msg =>
+                {
+                    msg.Embeds = embeds;
+                    msg.Components = newComp.Build();
+                });
+            }
             // 處理二選一遊戲按鈕
             else if (component.Data.CustomId.StartsWith("pick2_"))
             {
