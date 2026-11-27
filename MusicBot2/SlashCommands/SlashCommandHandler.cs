@@ -613,6 +613,24 @@ namespace MusicBot2.SlahCommands
         #endregion
 
         #region 殘酷二選一
+        [SlashCommand("呼叫殘酷二選一面板", "重新顯示目前頻道的殘酷二選一面板")]
+        public async Task Pick2ResendPanelAsync()
+        {
+            await DeferAsync();
+            var channelId = Context.Channel.Id;
+            var panel = _pick2Service.GetCurrentPanel(channelId);
+            if (panel == null)
+            {
+                await FollowupAsync("這個頻道目前沒有進行中的殘酷二選一遊戲。", ephemeral: true);
+                return;
+            }
+            var (imageMessage, component, embed) = panel.Value;
+            if (!string.IsNullOrEmpty(imageMessage))
+                await Context.Channel.SendMessageAsync(imageMessage);
+            var voteMsg = await FollowupAsync(embed: embed, components: component?.Build());
+            _pick2Service.SetMessageIds(channelId, 0, voteMsg.Id);
+        }
+
         [SlashCommand("輸入殘酷二選一id開啟遊戲", "輸入殘酷二選一ID開啟遊戲")]
         public async Task Pick2TitleAsync(
     [Summary("遊戲id", "要開啟的遊戲ID")] string gameID,

@@ -297,6 +297,22 @@ namespace MusicBot2.Service
         public ComponentBuilder BuildVoteButtonsPublic(Pick2GameState gameState) => BuildVoteButtons(gameState);
         public Embed BuildRoundEmbedPublic(Pick2GameState gameState) => BuildRoundEmbed(gameState);
 
+        // 重新顯示當前面板（面板被洗上去後呼叫）
+        public (string imageMessage, ComponentBuilder component, Embed embed)? GetCurrentPanel(ulong channelId)
+        {
+            var state = GetGameState(channelId);
+            if (state == null) return null;
+            if (state.IsFinished)
+            {
+                var winnerEmbed = BuildRoundEmbed(state);
+                return (null, null, winnerEmbed);
+            }
+            var image = BuildImageMessage(state);
+            var comp = BuildVoteButtons(state);
+            var embed = BuildRoundEmbed(state);
+            return (image, comp, embed);
+        }
+
         private ComponentBuilder BuildVoteButtons(Pick2GameState gameState)
         {
             var builder = new ComponentBuilder();
