@@ -246,11 +246,11 @@ namespace MusicBot2.Service
         private readonly string[] _googleModels =
         {
             // ══ 第一梯：最新 Flash 主力（3.x 系列）══
-            //"gemini-3.8-flash",             // 最新 Flash
-            //"gemini-3.7-flash",
-            //"gemini-3.6-flash",
+            //"gemini-3.8-flash",             // 太久
+            "gemini-3.6-flash",             // 3.7 實測一直失敗故移除
             "gemini-3.5-flash",
-            
+            "gemini-flash-latest",          // alias，可能打到不同後端
+
             // ══ 第二梯：2.5 穩定版 ══
             "gemini-2.5-flash",
             "gemini-3.5-flash-lite",
