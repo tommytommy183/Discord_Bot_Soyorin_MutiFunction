@@ -310,8 +310,8 @@ namespace MusicBot2.Service
                 var resp = await _httpClient.GetAsync(url);
                 if (!resp.IsSuccessStatusCode)
                 {
-                    var (comp, emb) = CommonHelper.BuildErrorResponse($"查詢失敗：{resp.StatusCode}");
-                    return (new[] { emb }, comp);
+                    var (errComp, errEmb) = CommonHelper.BuildErrorResponse($"查詢失敗：{resp.StatusCode}");
+                    return (new[] { errEmb }, errComp);
                 }
 
                 var json = await resp.Content.ReadAsStringAsync();
@@ -358,8 +358,8 @@ namespace MusicBot2.Service
             }
             catch (Exception ex)
             {
-                var (comp, emb) = CommonHelper.BuildErrorResponse($"查詢發生錯誤：{ex.Message}");
-                return (new[] { emb }, comp);
+                var (errComp, errEmb) = CommonHelper.BuildErrorResponse($"查詢發生錯誤：{ex.Message}");
+                return (new[] { errEmb }, errComp);
             }
         }
 
