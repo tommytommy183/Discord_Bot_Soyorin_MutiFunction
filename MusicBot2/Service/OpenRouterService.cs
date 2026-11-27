@@ -245,35 +245,46 @@ namespace MusicBot2.Service
         // 只保留 generateContent 聊天用模型
         private readonly string[] _googleModels =
         {
-            // ══ 第一梯：最新 Flash 主力 ══
-            //"gemini-3.8-flash",             // 最新 Flash，但很長無法使用
-            "gemini-3.7-flash",             // 最新一代 Flash
-            "gemini-3.6-flash",             // 穩定 Flash
+            // ══ 第一梯：最新 Flash 主力（3.x 系列）══
+            "gemini-3.8-flash",             // 最新 Flash
+            "gemini-3.7-flash",
+            "gemini-3.6-flash",
+            "gemini-3.5-flash",
+            "gemini-flash-latest",          // alias，可能打到不同後端
 
-            // ══ 第二梯：3.5 / 高性價比 ══
-            "gemini-3.5-flash",             // 高品質 Flash
-            "gemini-3.5-flash-lite",        // 高吞吐、低成本
-            "gemini-3.1-flash-lite",        // 舊 Lite，2027/5/7 將關閉
-
-            // ══ 第三梯：2.5 穩定版 ══
-            "gemini-2.5-pro",
+            // ══ 第二梯：2.5 穩定版 ══
             "gemini-2.5-flash",
+            "gemini-3.5-flash-lite",
+            "gemini-3.1-flash-lite",
             "gemini-2.5-flash-lite",
-            // ══ 第四梯：Gemma 保底 ══
+            "gemini-flash-lite-latest",     // alias
+
+            // ══ 第三梯：Gemini 4（較新，可能較不擁擠）══
+            "gemini-4-neon",
+            "gemini-4-hydrogen",
+            "gemini-4-carbon",
+            "gemini-4-argon",
+
+            // ══ 第四梯：Pro / Omni 保底 ══
+            "gemini-2.5-pro",
+            "gemini-omni-1.2-flash",
+            "gemini-omni-1.1-flash",
+
+            // ══ 第五梯：Gemma 最後防線 ══
             "gemma-4-31b-it",
             "gemma-4-26b-a4b-it"
         };
 
         private readonly string[] _googleModelsForSimpleText =
         {
-            // 無記憶呼叫（摘要/搜尋意圖判斷），速度優先，不需要最強
-            "gemini-3.6-flash",
-            "gemini-3.5-flash",
+            // 無記憶呼叫（摘要/搜尋意圖判斷），速度優先
+            "gemini-3.5-flash-lite",
             "gemini-3.1-flash-lite",
-            "gemini-2.5-flash",
+            "gemini-flash-lite-latest",
             "gemini-2.5-flash-lite",
-            "gemini-2.0-flash",
-            "gemini-2.0-flash-lite",
+            "gemini-3.5-flash",
+            "gemini-2.5-flash",
+            "gemini-flash-latest",
         };
 
         private const string Persona = @"你是「長崎爽世（Soyo）」——MyGO!!!!! 的貝斯手，個性溫柔可愛、有禮貌、稍微毒舌但不傷人，珍惜朋友。
@@ -2471,12 +2482,8 @@ houka,和泉朋花
                     CooldownGoogleKey(apiKey, 60);
                     return new ApiCallResult(null, false, true, null, "key_ratelimit");   // ShouldContinue
                 }
-                if (status is 500 or 502 or 503 or 504)
-                {
-                    await Task.Delay(1000 * (retry + 1));
-                    return new ApiCallResult(null, false, true, null, null);  // ShouldContinue → 換 key 試
-                }
-                // 其他 4xx（400/404/403 等），此 model 不能用，換下一個 model
+                // 5xx 是 server-side 問題，換 key 沒意義，直接換 model
+                // 429 rate limit 才換 key（已在上面處理）
                 return new ApiCallResult(null, true, false, null, null);   // ShouldBreak
             }
 
