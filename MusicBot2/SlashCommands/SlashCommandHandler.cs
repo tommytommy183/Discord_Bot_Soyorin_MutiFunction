@@ -638,15 +638,24 @@ namespace MusicBot2.SlahCommands
                 // 在主頻道發公告訊息（作為 thread 的起點）
                 var announcementMsg = await FollowupAsync($"🎮 **殘酷二選一開始！** 請進入下方討論串參與投票 👇");
 
-                // 建立討論串
+                // 建立討論串：嘗試 OneWeek，失敗降為 OneDay
                 IThreadChannel thread = null;
                 if (Context.Channel is ITextChannel textChannel)
                 {
-                    thread = await textChannel.CreateThreadAsync(
-                        $"殘酷二選一 · {gameID}",
-                        ThreadType.PublicThread,
-                        ThreadArchiveDuration.OneDay,
-                        announcementMsg);
+                    try
+                    {
+                        thread = await textChannel.CreateThreadAsync(
+                            $"殘酷二選一 · {gameID}", ThreadType.PublicThread, ThreadArchiveDuration.OneWeek, announcementMsg);
+                    }
+                    catch
+                    {
+                        try
+                        {
+                            thread = await textChannel.CreateThreadAsync(
+                                $"殘酷二選一 · {gameID}", ThreadType.PublicThread, ThreadArchiveDuration.OneDay, announcementMsg);
+                        }
+                        catch { }
+                    }
                 }
 
                 // 在 thread 裡發圖片和投票面板，否則退回主頻道

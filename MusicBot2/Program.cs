@@ -333,6 +333,90 @@ public class Program
                     msg.Components = newComp.Build();
                 });
             }
+            // 殘酷二選一：點「開始遊戲 ①~⑤」→ 彈出選人數 ephemeral
+            else if (component.Data.CustomId.StartsWith("pick2_startmenu_"))
+            {
+                var raw = component.Data.CustomId["pick2_startmenu_".Length..];
+                var lastU = raw.LastIndexOf('_');
+                var serial = raw[..lastU];
+                var maxCount = int.Parse(raw[(lastU + 1)..]);
+
+                // 建立人數選項：8/16/32 若 <= maxCount，最後加全部
+                var countOptions = new[] { 8, 16, 32 }.Where(c => c < maxCount).ToList();
+                countOptions.Add(maxCount);
+
+                var searchMsgId = component.Message.Id;
+                var countComp = new ComponentBuilder();
+                for (int i = 0; i < countOptions.Count && i < 5; i++)
+                {
+                    var c = countOptions[i];
+                    var label = c == maxCount ? $"全部 ({c} 題)" : $"{c} 題";
+                    countComp.WithButton(label, $"pick2_startgame_{serial}_{c}_{searchMsgId}", ButtonStyle.Primary, row: 0);
+                }
+                countComp.WithButton("取消", "pick2_cancel_count", ButtonStyle.Secondary, row: 1);
+
+                await component.RespondAsync("選擇參賽選手數量：", components: countComp.Build(), ephemeral: true);
+            }
+            // 殘酷二選一：確認人數 → 開始遊戲
+            else if (component.Data.CustomId.StartsWith("pick2_startgame_"))
+            {
+                await component.DeferAsync(ephemeral: true);
+
+                // 解析 ID：pick2_startgame_{serial}_{count}_{searchMsgId}
+                var raw = component.Data.CustomId["pick2_startgame_".Length..];
+                var lastU = raw.LastIndexOf('_');
+                var searchMsgId = ulong.Parse(raw[(lastU + 1)..]);
+                var withoutMsg = raw[..lastU];
+                var secondLastU = withoutMsg.LastIndexOf('_');
+                var count = int.Parse(withoutMsg[(secondLastU + 1)..]);
+                var serial = withoutMsg[..secondLastU];
+
+                var pick2Service = _services.GetService<Pick2Service>();
+                var parentChannelId = component.Channel.Id;
+                var (imageMessage, gameComp, embed) = await pick2Service.StartGameAsync(parentChannelId, serial, count);
+
+                // 取得搜尋訊息（作為 thread 起點）
+                IUserMessage searchMsg = null;
+                try { searchMsg = await component.Channel.GetMessageAsync(searchMsgId) as IUserMessage; } catch { }
+
+                // 建立 thread：嘗試 OneWeek，失敗降為 OneDay
+                IThreadChannel thread = null;
+                if (component.Channel is ITextChannel textCh)
+                {
+                    async Task<IThreadChannel> TryCreate(ThreadArchiveDuration dur) =>
+                        searchMsg != null
+                            ? await textCh.CreateThreadAsync($"殘酷二選一 · {serial}", ThreadType.PublicThread, dur, searchMsg)
+                            : await textCh.CreateThreadAsync($"殘酷二選一 · {serial}", ThreadType.PublicThread, dur);
+                    try { thread = await TryCreate(ThreadArchiveDuration.OneWeek); }
+                    catch { try { thread = await TryCreate(ThreadArchiveDuration.OneDay); } catch { } }
+                }
+
+                IMessageChannel targetCh = (IMessageChannel)thread ?? component.Channel;
+                var imageMsg2 = await targetCh.SendMessageAsync(imageMessage);
+                var voteMsg = await targetCh.SendMessageAsync(embed: embed, components: gameComp?.Build());
+
+                pick2Service.SetMessageIds(parentChannelId, imageMsg2.Id, voteMsg.Id);
+                if (thread != null) pick2Service.SetThreadId(parentChannelId, thread.Id);
+
+                // 關閉搜尋訊息的按鈕，避免其他人再點
+                try { await searchMsg?.ModifyAsync(msg => msg.Components = new ComponentBuilder().Build()); } catch { }
+
+                // 更新 ephemeral
+                await component.ModifyOriginalResponseAsync(msg =>
+                {
+                    msg.Content = "✅ 遊戲已在討論串開始！";
+                    msg.Components = new ComponentBuilder().Build();
+                });
+            }
+            // 殘酷二選一：取消選人數
+            else if (component.Data.CustomId == "pick2_cancel_count")
+            {
+                await component.UpdateAsync(msg =>
+                {
+                    msg.Content = "已取消。";
+                    msg.Components = new ComponentBuilder().Build();
+                });
+            }
             // 處理二選一遊戲按鈕
             else if (component.Data.CustomId.StartsWith("pick2_"))
             {

@@ -351,8 +351,14 @@ namespace MusicBot2.Service
                 // 安全的 keyword（custom ID 上限 100 字）
                 var safeKeyword = keyword?.Length > 60 ? keyword[..60] : (keyword ?? "");
                 var comp = new ComponentBuilder()
-                    .WithButton("⬅ 上一頁", $"pick2_search_{page - 1}_{safeKeyword}", ButtonStyle.Secondary, disabled: page <= 1)
-                    .WithButton("下一頁 ➡", $"pick2_search_{page + 1}_{safeKeyword}", ButtonStyle.Secondary, disabled: page >= data.last_page);
+                    .WithButton("⬅ 上一頁", $"pick2_search_{page - 1}_{safeKeyword}", ButtonStyle.Secondary, disabled: page <= 1, row: 0)
+                    .WithButton("下一頁 ➡", $"pick2_search_{page + 1}_{safeKeyword}", ButtonStyle.Secondary, disabled: page >= data.last_page, row: 0);
+
+                // 每筆一個「開始遊戲」按鈕（row 1，最多 5 個）
+                var circled = new[] { "①", "②", "③", "④", "⑤" };
+                var posts = data.data.Take(PageSize).ToList();
+                for (int i = 0; i < posts.Count; i++)
+                    comp.WithButton($"▶ {circled[i]}", $"pick2_startmenu_{posts[i].serial}_{posts[i].elements_count}", ButtonStyle.Success, row: 1);
 
                 return (embeds.ToArray(), comp);
             }

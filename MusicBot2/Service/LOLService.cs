@@ -111,7 +111,7 @@ namespace MusicBot2.Service
         private async Task<JsonElement?> GetJsonAsync(string url)
         {
             var resp = await _httpClient.GetAsync(url);
-            Console.WriteLine($"[LOLService] {(int)resp.StatusCode} {url[..Math.Min(100, url.Length)]}");
+           // Console.WriteLine($"[LOLService] {(int)resp.StatusCode} {url[..Math.Min(100, url.Length)]}");
             if (!resp.IsSuccessStatusCode) return null;
             using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
             return doc.RootElement.Clone();
@@ -301,25 +301,25 @@ namespace MusicBot2.Service
             try
             {
             var (platform, matchRegional, accountRegional) = GetEndpoints(region);
-            Console.WriteLine($"[LOLService] GetPlayerStats puuid={puuid[..20]}... platform={platform} match={matchRegional} account={accountRegional}");
+            //Console.WriteLine($"[LOLService] GetPlayerStats puuid={puuid[..20]}... platform={platform} match={matchRegional} account={accountRegional}");
             var (gameName, tagLine) = await GetAccountByPuuidAsync(puuid, accountRegional);
             var level = await GetSummonerLevelAsync(puuid, platform);
-            Console.WriteLine($"[LOLService] account={gameName}#{tagLine} level={level}");
+            //Console.WriteLine($"[LOLService] account={gameName}#{tagLine} level={level}");
 
             var rankEntries = await GetRankEntriesAsync(puuid, platform);
-            Console.WriteLine($"[LOLService] rankEntries count={rankEntries.Count}");
+            //Console.WriteLine($"[LOLService] rankEntries count={rankEntries.Count}");
             var soloEntry = rankEntries.FirstOrDefault(e => e.Queue == "RANKED_SOLO_5x5");
             var flexEntry = rankEntries.FirstOrDefault(e => e.Queue == "RANKED_FLEX_SR");
 
             // Fetch recent 20 matches (all queues)
             var matchIds = await GetMatchIdsAsync(puuid, matchRegional, 20);
-            Console.WriteLine($"[LOLService] matchIds count={matchIds.Count}");
+            //Console.WriteLine($"[LOLService] matchIds count={matchIds.Count}");
             var matchTasks = matchIds.Select(id => GetMatchWithTeamsAsync(id, puuid, matchRegional)).ToArray();
             await Task.WhenAll(matchTasks);
             var matchResults = matchTasks.Select(t => t.Result).Where(m => m != null).ToList();
             var matches = matchResults.Select(m => m.Detail).ToList();
             var teams   = matchResults.Select(m => (m.Blue, m.Red)).ToList();
-            Console.WriteLine($"[LOLService] matches parsed={matches.Count}");
+            //Console.WriteLine($"[LOLService] matches parsed={matches.Count}");
 
             // Fallback: use name from first match if account API returned "?"
             if ((gameName == "?" || string.IsNullOrEmpty(gameName)) && matchResults.Count > 0)
