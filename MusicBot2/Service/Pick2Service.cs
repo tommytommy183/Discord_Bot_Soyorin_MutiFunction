@@ -473,8 +473,11 @@ namespace MusicBot2.Service
         // 重置遊戲
         public void ResetGame(ulong channelId)
         {
-            if (_activeGames.ContainsKey(channelId))
+            if (_activeGames.TryGetValue(channelId, out var state))
             {
+                // 移除雙 key（thread + parent）
+                if (state.ThreadChannelId != 0) _activeGames.Remove(state.ThreadChannelId);
+                if (state.ParentChannelId != 0) _activeGames.Remove(state.ParentChannelId);
                 _activeGames.Remove(channelId);
             }
         }
@@ -482,17 +485,29 @@ namespace MusicBot2.Service
         // 設置訊息 ID
         public void SetMessageIds(ulong channelId, ulong imageMessageId, ulong voteMessageId)
         {
-            if (_activeGames.ContainsKey(channelId))
+            var state = GetGameState(channelId);
+            if (state != null)
             {
-                _activeGames[channelId].ImageMessageId = imageMessageId;
-                _activeGames[channelId].VoteMessageId = voteMessageId;
+                state.ImageMessageId = imageMessageId;
+                state.VoteMessageId = voteMessageId;
             }
         }
 
-        // 取得遊戲狀態
+        // 取得遊戲狀態（支援 thread channel ID 或 parent channel ID 查詢）
         public Pick2GameState GetGameState(ulong channelId)
         {
-            return _activeGames.ContainsKey(channelId) ? _activeGames[channelId] : null;
+            return _activeGames.TryGetValue(channelId, out var s) ? s : null;
+        }
+
+        // 建立 thread 後呼叫：雙 key 讓 thread 和 parent 都能查到同一個 state
+        public void SetThreadId(ulong parentChannelId, ulong threadChannelId)
+        {
+            if (_activeGames.TryGetValue(parentChannelId, out var state))
+            {
+                state.ThreadChannelId = threadChannelId;
+                state.ParentChannelId = parentChannelId;
+                _activeGames[threadChannelId] = state;  // 額外用 thread ID 建索引
+            }
         }
     }
 }

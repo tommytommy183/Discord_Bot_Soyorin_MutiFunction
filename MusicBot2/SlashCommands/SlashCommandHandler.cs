@@ -625,10 +625,30 @@ namespace MusicBot2.SlahCommands
                 return;
             }
             var (imageMessage, component, embed) = panel.Value;
+            var state = _pick2Service.GetGameState(channelId);
+
+            // 優先發到 thread；若無 thread 則發主頻道
+            IMessageChannel targetChannel = Context.Channel;
+            if (state?.ThreadChannelId != 0)
+            {
+                var threadChannel = Context.Client.GetChannel(state.ThreadChannelId) as IMessageChannel;
+                if (threadChannel != null) targetChannel = threadChannel;
+            }
+
+            ulong imageId = 0;
             if (!string.IsNullOrEmpty(imageMessage))
-                await Context.Channel.SendMessageAsync(imageMessage);
-            var voteMsg = await FollowupAsync(embed: embed, components: component?.Build());
-            _pick2Service.SetMessageIds(channelId, 0, voteMsg.Id);
+            {
+                var imageMsg = await targetChannel.SendMessageAsync(imageMessage);
+                imageId = imageMsg.Id;
+            }
+            var voteMsg = await targetChannel.SendMessageAsync(embed: embed, components: component?.Build());
+            _pick2Service.SetMessageIds(channelId, imageId, voteMsg.Id);
+
+            // 若從主頻道呼叫且有 thread，在主頻道回覆提示
+            if (state?.ThreadChannelId != 0 && Context.Channel.Id != state.ThreadChannelId)
+                await FollowupAsync("已在討論串重新發送面板 👇", ephemeral: true);
+            else
+                await FollowupAsync("已重新發送面板。", ephemeral: true);
         }
 
         [SlashCommand("輸入殘酷二選一id開啟遊戲", "輸入殘酷二選一ID開啟遊戲")]
@@ -638,20 +658,34 @@ namespace MusicBot2.SlahCommands
         {
             await DeferAsync();
 
-            var channelId = Context.Channel.Id;
+            var parentChannelId = Context.Channel.Id;
 
             try
             {
-                var (imageMessage, component, embed) = await _pick2Service.StartGameAsync(channelId, gameID, count);
+                var (imageMessage, component, embed) = await _pick2Service.StartGameAsync(parentChannelId, gameID, count);
 
-                // 先發送圖片訊息
-                var imageMsg = await Context.Channel.SendMessageAsync(imageMessage);
+                // 在主頻道發公告訊息（作為 thread 的起點）
+                var announcementMsg = await FollowupAsync($"🎮 **殘酷二選一開始！** 請進入下方討論串參與投票 👇");
 
-                // 再發送投票訊息
-                var voteMsg = await FollowupAsync(embed: embed, components: component?.Build());
+                // 建立討論串
+                IThreadChannel thread = null;
+                if (Context.Channel is ITextChannel textChannel)
+                {
+                    thread = await textChannel.CreateThreadAsync(
+                        $"殘酷二選一 · {gameID}",
+                        ThreadType.PublicThread,
+                        ThreadArchiveDuration.OneDay,
+                        announcementMsg);
+                }
 
-                // 儲存訊息 ID
-                _pick2Service.SetMessageIds(channelId, imageMsg.Id, voteMsg.Id);
+                // 在 thread 裡發圖片和投票面板，否則退回主頻道
+                IMessageChannel targetChannel = (IMessageChannel)thread ?? Context.Channel;
+                var imageMsg = await targetChannel.SendMessageAsync(imageMessage);
+                var voteMsg = await targetChannel.SendMessageAsync(embed: embed, components: component?.Build());
+
+                _pick2Service.SetMessageIds(parentChannelId, imageMsg.Id, voteMsg.Id);
+                if (thread != null)
+                    _pick2Service.SetThreadId(parentChannelId, thread.Id);
             }
             catch (Exception ex)
             {

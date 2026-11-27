@@ -77,5 +77,7 @@ namespace MusicBot2.Models
         public ulong ImageMessageId { get; set; }  // 圖片訊息的 ID
         public ulong VoteMessageId { get; set; }   // 投票訊息的 ID
         public int AutoAdvanceThreshold { get; set; } = 0;  // 0 = 停用；>0 = 達到此票數自動進下一題
+        public ulong ThreadChannelId { get; set; } = 0;  // 討論串頻道 ID；0 = 無 thread
+        public ulong ParentChannelId { get; set; } = 0;  // 開局的主頻道 ID（有 thread 時使用）
     }
 }
